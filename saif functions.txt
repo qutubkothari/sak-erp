@@ -1,0 +1,147 @@
+SAIF AUTOMATIONS – Functional Requirements Specification (FRS)
+________________________________________
+1. Objective
+To define detailed departmental-level functional requirements for the integrated ERP solution of Saif Automations Services LLP, ensuring unified processes across Accounts, Purchase, Stores, Production, R&D, HR, Sales, and After-Sales Service.
+The ERP must enable traceability through Unique Identification Numbers (UIDs), document and warranty management, and configurable approval workflows.
+________________________________________
+2. Core System Foundation
+Every part, subassembly, and finished product carries a UID generated at the Goods Receipt stage.
+UIDs are tracked through the complete lifecycle:
+Procurement → Inventory → Production → Assembly → Sales → After-Sales Service.
+Each UID links to vendor, manufacturing stage, and final customer.
+________________________________________
+3. Functional Requirements by Department
+________________________________________
+3.1 Purchase Department
+•	Multi-level Purchase Request → Department Head → Accounts approval.
+•	Auto-generation of POs from requisitions or BOM.
+•	Vendor master with quality and compliance scoring.
+•	Automatic UID assignment at GRN.
+•	Sync approved POs and invoices to Tally ERP.
+•	Reports: vendor performance, purchase cost analysis, pending receipts.
+________________________________________
+3.2 Stores & Inventory Department
+•	Record all received goods with UID, GRN linkage, and storage location.
+•	Manage inventory categories: Raw, WIP, Finished, Demo, and Service Spares.
+•	BOM-driven issue and return workflow with approvals.
+•	Alerts for low stock or UID discrepancies.
+•	Reports: stock valuation, UID trace, material variance.
+ 
+Demo Issue Handling:
+•	Demo stock tagged with Demo ID linked to UID and staff name.
+•	Track demo issue, return, or sale with inspection results.
+________________________________________
+3.3 Production / Manufacturing Department
+•	Generate Production Orders from BOM or sales demand.
+•	UID-based linkage from components to final product.
+•	Maintain engineering drawings with revision control.
+•	Stage-wise workflow approvals: Assembly → QC → Final Approval.
+•	Reports: efficiency, defect ratio, WIP summary.
+________________________________________
+3.4 Research & Development (R&D)
+•	Assign project codes with budget and resource tracking.
+•	Prototype BOMs, test logs, and design versioning.
+•	Cost reporting per prototype iteration and material consumption.
+________________________________________
+3.5 Quality & Inspection
+•	Record incoming, in-process, and final inspections with UID.
+•	NCR logging and closure tracking.
+•	Vendor and process quality analytics.
+________________________________________
+3.6 Sales & Dispatch Department
+Core Objective: Manage quotations, sales, warranty documentation, dispatch, and demo tracking.
+Functional Requirements:
+•	Quotation & Order Management
+o	Generate quotations linked to customer/prospect.
+o	Approval chain for pricing and discounts.
+o	Convert to Sales Order (SO) upon approval.
+•	Warranty Definition
+o	During sale, system must clearly define warranty start date, duration, and covered components.
+o	Warranty terms automatically printed on the invoice and warranty certificate.
+o	Each sold product UID linked to its warranty period.
+•	Dispatch
+o	Prepare delivery challan and invoices with linked UID.
+o	Attach warranty, QC, and technical documents automatically.
+•	Integration
+o	Push confirmed invoices and receipts to Tally.
+•	Reports
+o	Sales performance, warranty coverage analytics, and product profitability.
+Demo Management (Integrated)
+•	Finished goods issued from Stores as Demo Inventory.
+•	Track demo duration, staff, and customer details.
+•	Log demo expenses (travel, transport) under Demo ID.
+•	When prospect confirms order, expenses automatically attributed to sale.
+•	Reports: demo cost vs. sales margin, demo conversion rates.
+________________________________________
+3.7 After-Sales Service & Warranty Management
+Core Objective: Log customer complaints, manage service activities, and enforce warranty validation.
+Functional Requirements:
+1.	Customer Complaint Logging
+o	Centralized interface to register complaints via phone, email, or portal.
+o	Mandatory fields: customer name, product UID, issue type, description, and date.
+o	Auto-generate a Service Ticket Number for tracking.
+2.	Warranty Validation
+o	System automatically verifies if the product UID is within warranty based on sale date and warranty duration.
+o	If under warranty → mark as “Free Service / Replacement.”
+o	If expired → mark as “Chargeable Service.”
+3.	Service Assignment & Workflow
+o	Assign service ticket to technician or field engineer.
+o	Technician updates action taken, parts replaced, and time spent.
+o	Supervisor approval required before closing ticket.
+o	Link service ticket to inventory (for replaced parts) and accounts (for billed service).
+4.	Spare Parts & Replacement
+o	Service department can raise internal requisition to Stores for spare parts.
+o	Replacement parts carry new UIDs linked to the original product UID.
+o	Track all replaced parts under Service History for audit.
+5.	Reports & Analytics
+o	Open vs. closed complaints.
+o	Warranty claim cost summary.
+o	Product reliability and recurring issue trends.
+o	Engineer productivity and turnaround times.
+________________________________________
+3.8 Human Resources (HR)
+•	Biometric or web-based attendance with dashboard view.
+•	Automatic payslip generation, approval, and email delivery.
+•	Workflow: attendance → HR → accounts release.
+•	Reports: payroll register, attendance performance.
+________________________________________
+3.9 Admin & Document Control
+•	Centralized storage of all drawings, manuals, service reports, and templates.
+•	Version and revision control.
+•	Role-based access and multi-level approvals.
+•	Full audit trail with timestamped logs.
+•	Reports: pending approvals, document history.
+________________________________________
+4. Workflow and Approval Framework
+•	Every transaction passes through defined approval hierarchies with alerts and timestamps.
+•	Escalation triggers on pending approvals beyond SLA.
+Examples:
+1.	Purchase: PR → Dept Head → Accounts → Procurement → PO Issue
+2.	Material Issue: Stores → Production Supervisor → QC → Accounts
+3.	Demo: Sales → Stores (Demo UID) → Accounts → Sales Manager Approval
+4.	Warranty / Service: Complaint Logged → Service Engineer → Supervisor Approval → Closure
+5.	Payroll: HR → Accounts → Final Release
+6.	Document Control: Creator → Reviewer → Approver → Release
+Workflow Reports: pending approvals, turnaround times, and escalation logs.
+________________________________________
+5. Dashboards & Analytics
+•	Inventory Dashboard: UID and demo stock tracking.
+•	Production Dashboard: assembly progress, WIP.
+•	Sales Dashboard: order pipeline, demo conversion, and warranty analytics.
+•	Service Dashboard: open/closed complaints, warranty status, part replacement costs.
+•	HR Dashboard: attendance, payroll, and staff performance.
+________________________________________
+6. Integration & Technical Considerations
+•	Bi-directional integration with Tally ERP.
+•	Real-time data sync between Kolkata and Visakhapatnam.
+•	Cloud-based, role-secured access.
+•	APIs for CRM, IoT, and service apps.
+•	Daily backup and audit trails.
+________________________________________
+7. Expected Outcomes
+•	Unified ERP covering production to service lifecycle.
+•	End-to-end UID traceability for every part and product.
+•	Transparent warranty and complaint management.
+•	Improved demo cost attribution and profitability tracking.
+•	Enhanced customer satisfaction through timely service response.
+________________________________________

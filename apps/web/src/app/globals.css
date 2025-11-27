@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Manufacturing Theme - Warm Industrial Colors */
+    --background: 41 33% 98%;           /* Off-White */
+    --foreground: 210 11% 26%;          /* Dark Charcoal */
+    
+    --card: 0 0% 100%;                  /* Pure White */
+    --card-foreground: 210 11% 26%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 11% 26%;
+    
+    --primary: 27 33% 42%;              /* Warm Brown */
+    --primary-foreground: 41 33% 98%;
+    
+    --secondary: 36 39% 82%;            /* Beige */
+    --secondary-foreground: 210 11% 26%;
+    
+    --muted: 36 39% 92%;                /* Light Beige */
+    --muted-foreground: 27 20% 40%;
+    
+    --accent: 25 47% 32%;               /* Coffee Brown */
+    --accent-foreground: 41 33% 98%;
+    
+    --destructive: 9 66% 61%;           /* Terracotta */
+    --destructive-foreground: 0 0% 100%;
+    
+    --success: 75 47% 35%;              /* Olive Green */
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 22 100% 40%;             /* Burnt Orange */
+    --warning-foreground: 0 0% 100%;
+    
+    --border: 36 39% 88%;               /* Light Border */
+    --input: 36 39% 88%;
+    --ring: 27 33% 42%;
+    
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Dark theme with warm tones */
+    --background: 210 11% 15%;
+    --foreground: 41 33% 98%;
+    
+    --card: 210 11% 18%;
+    --card-foreground: 41 33% 98%;
+    
+    --popover: 210 11% 18%;
+    --popover-foreground: 41 33% 98%;
+    
+    --primary: 27 33% 52%;
+    --primary-foreground: 210 11% 15%;
+    
+    --secondary: 36 39% 25%;
+    --secondary-foreground: 41 33% 98%;
+    
+    --muted: 210 11% 25%;
+    --muted-foreground: 36 39% 70%;
+    
+    --accent: 25 47% 42%;
+    --accent-foreground: 41 33% 98%;
+    
+    --destructive: 9 66% 51%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --success: 75 47% 45%;
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 22 100% 50%;
+    --warning-foreground: 0 0% 100%;
+    
+    --border: 210 11% 25%;
+    --input: 210 11% 25%;
+    --ring: 27 33% 52%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  /* Manufacturing-specific utilities */
+  .manufacturing-card {
+    @apply bg-card border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow;
+  }
+  
+  .workstation-badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-accent text-accent-foreground;
+  }
+  
+  .uid-display {
+    @apply font-mono text-sm bg-muted px-2 py-1 rounded border border-border;
+  }
+  
+  .assembly-tree-line {
+    @apply border-l-2 border-primary/30;
+  }
+}

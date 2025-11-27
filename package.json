@@ -1,0 +1,36 @@
+{
+  "name": "@sak-erp/monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SAK Solutions Manufacturing ERP - Multi-tenant, Multi-language, Multi-plant",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "docker:dev": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "db:migrate": "pnpm --filter @sak-erp/database migrate",
+    "db:seed": "pnpm --filter @sak-erp/database seed",
+    "db:studio": "pnpm --filter @sak-erp/database studio"
+  },
+  "devDependencies": {
+    "@turbo/gen": "^2.0.0",
+    "turbo": "^2.0.0",
+    "prettier": "^3.3.3",
+    "eslint": "^8.57.0",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.0.0"
+}
