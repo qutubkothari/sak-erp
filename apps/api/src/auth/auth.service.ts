@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import * as bcrypt from 'bcrypt';
 
 interface RegisterDto {
@@ -20,19 +21,30 @@ interface LoginDto {
 
 @Injectable()
 export class AuthService {
+  private supabase: SupabaseClient;
+
   constructor(
-    private prisma: PrismaService,
     private jwtService: JwtService,
-  ) {}
+    private configService: ConfigService,
+  ) {
+    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
+    const supabaseKey = this.configService.get<string>('SUPABASE_KEY');
+    
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('SUPABASE_URL and SUPABASE_KEY must be set in environment variables');
+    }
+    
+    this.supabase = createClient(supabaseUrl, supabaseKey);
+  }
 
   async register(dto: RegisterDto) {
     // Check if user already exists
-    const existingUser = await this.prisma.user.findFirst({
-      where: {
-        email: dto.email,
-        tenantId: dto.tenantId,
-      },
-    });
+    const { data: existingUser, error: checkError } = await this.supabase
+      .from('users')
+      .select('id')
+      .eq('email', dto.email)
+      .eq('tenant_id', dto.tenantId)
+      .single();
 
     if (existingUser) {
       throw new ConflictException('User with this email already exists');
@@ -44,48 +56,86 @@ export class AuthService {
     // Get default role if not provided
     let roleId = dto.roleId;
     if (!roleId) {
-      const defaultRole = await this.prisma.role.findFirst({
-        where: {
-          tenantId: dto.tenantId,
-          name: 'USER',
-        },
-      });
+      const { data: defaultRole, error: roleError } = await this.supabase
+        .from('roles')
+        .select('id')
+        .eq('tenant_id', dto.tenantId)
+        .eq('name', 'USER')
+        .single();
+      
+      if (roleError && roleError.code !== 'PGRST116') {
+        throw new Error(`Failed to fetch default role: ${roleError.message}`);
+      }
       roleId = defaultRole?.id;
     }
 
     // Create user
-    const user = await this.prisma.user.create({
-      data: {
+    const { data: newUser, error: createError } = await this.supabase
+      .from('users')
+      .insert({
         email: dto.email,
-        passwordHash: hashedPassword,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        tenantId: dto.tenantId,
+        password_hash: hashedPassword,
+        first_name: dto.firstName,
+        last_name: dto.lastName,
+        tenant_id: dto.tenantId,
         status: 'ACTIVE',
-        roles: roleId ? {
-          create: {
-            roleId: roleId,
-          },
-        } : undefined,
-      },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        roles: {
-          select: {
-            role: {
-              select: {
-                id: true,
-                name: true,
-                permissions: true,
-              },
-            },
-          },
-        },
-      },
-    });
+      })
+      .select('id, email, first_name, last_name, tenant_id')
+      .single();
+
+    if (createError) {
+      throw new Error(`Failed to create user: ${createError.message}`);
+    }
+
+    // Create user role association if roleId exists
+    if (roleId) {
+      const { error: userRoleError } = await this.supabase
+        .from('user_roles')
+        .insert({
+          user_id: newUser.id,
+          role_id: roleId,
+        });
+
+      if (userRoleError) {
+        // Rollback user creation if role assignment fails
+        await this.supabase.from('users').delete().eq('id', newUser.id);
+        throw new Error(`Failed to assign role: ${userRoleError.message}`);
+      }
+    }
+
+    // Fetch user with roles for response
+    const { data: userWithRoles, error: fetchError } = await this.supabase
+      .from('users')
+      .select(`
+        id,
+        email,
+        first_name,
+        last_name,
+        user_roles (
+          role:roles (
+            id,
+            name,
+            permissions
+          )
+        )
+      `)
+      .eq('id', newUser.id)
+      .single();
+
+    if (fetchError) {
+      throw new Error(`Failed to fetch user details: ${fetchError.message}`);
+    }
+
+    // Transform to match expected format
+    const user = {
+      id: userWithRoles.id,
+      email: userWithRoles.email,
+      firstName: userWithRoles.first_name,
+      lastName: userWithRoles.last_name,
+      roles: userWithRoles.user_roles?.map((ur: any) => ({
+        role: ur.role
+      })) || [],
+    };
 
     // Generate tokens
     const tokens = await this.generateTokens(user.id, user.email, dto.tenantId);
@@ -98,34 +148,34 @@ export class AuthService {
 
   async login(dto: LoginDto) {
     // Find user
-    const user = await this.prisma.user.findFirst({
-      where: {
-        email: dto.email,
-        tenantId: dto.tenantId,
-      },
-      include: {
-        roles: {
-          select: {
-            role: {
-              select: {
-                id: true,
-                name: true,
-                permissions: true,
-              },
-            },
-          },
-        },
-        tenant: {
-          select: {
-            id: true,
-            name: true,
-            domain: true,
-          },
-        },
-      },
-    });
+    const { data: user, error: userError } = await this.supabase
+      .from('users')
+      .select(`
+        id,
+        email,
+        password_hash,
+        status,
+        tenant_id,
+        first_name,
+        last_name,
+        user_roles (
+          role:roles (
+            id,
+            name,
+            permissions
+          )
+        ),
+        tenant:tenants (
+          id,
+          name,
+          domain
+        )
+      `)
+      .eq('email', dto.email)
+      .eq('tenant_id', dto.tenantId)
+      .single();
 
-    if (!user) {
+    if (userError || !user) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -135,25 +185,36 @@ export class AuthService {
     }
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(dto.password, user.password_hash);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     // Update last login
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
-    });
+    await this.supabase
+      .from('users')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', user.id);
 
     // Generate tokens
     const tokens = await this.generateTokens(user.id, user.email, dto.tenantId);
 
-    // Remove password from response
-    const { passwordHash, ...userWithoutPassword } = user;
+    // Remove password from response and transform to camelCase
+    const { password_hash, ...userWithoutPassword } = user;
+    const transformedUser = {
+      ...userWithoutPassword,
+      firstName: user.first_name,
+      lastName: user.last_name,
+      tenantId: user.tenant_id,
+      passwordHash: undefined,
+      password_hash: undefined,
+      roles: user.user_roles?.map((ur: any) => ({
+        role: ur.role
+      })) || [],
+    };
 
     return {
-      user: userWithoutPassword,
+      user: transformedUser,
       ...tokens,
     };
   }
@@ -164,15 +225,17 @@ export class AuthService {
         secret: process.env.JWT_REFRESH_SECRET,
       });
 
-      const user = await this.prisma.user.findUnique({
-        where: { id: payload.sub },
-      });
+      const { data: user, error: userError } = await this.supabase
+        .from('users')
+        .select('id, email, status, tenant_id')
+        .eq('id', payload.sub)
+        .single();
 
-      if (!user || user.status !== 'ACTIVE') {
+      if (userError || !user || user.status !== 'ACTIVE') {
         throw new UnauthorizedException('Invalid token');
       }
 
-      return this.generateTokens(user.id, user.email, user.tenantId);
+      return this.generateTokens(user.id, user.email, user.tenant_id);
     } catch (error) {
       throw new UnauthorizedException('Invalid refresh token');
     }
@@ -184,32 +247,45 @@ export class AuthService {
   }
 
   async validateUser(userId: string, tenantId: string) {
-    const user = await this.prisma.user.findFirst({
-      where: {
-        id: userId,
-        tenantId,
-        status: 'ACTIVE',
-      },
-      include: {
-        roles: {
-          select: {
-            role: {
-              select: {
-                id: true,
-                name: true,
-                permissions: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    const { data: user, error: userError } = await this.supabase
+      .from('users')
+      .select(`
+        id,
+        email,
+        first_name,
+        last_name,
+        status,
+        tenant_id,
+        user_roles (
+          role:roles (
+            id,
+            name,
+            permissions
+          )
+        )
+      `)
+      .eq('id', userId)
+      .eq('tenant_id', tenantId)
+      .eq('status', 'ACTIVE')
+      .single();
 
-    if (!user) {
+    if (userError || !user) {
       return null;
     }
 
-    const { passwordHash, ...result } = user;
+    // Transform to camelCase format
+    const result = {
+      id: user.id,
+      email: user.email,
+      firstName: user.first_name,
+      lastName: user.last_name,
+      status: user.status,
+      tenantId: user.tenant_id,
+      roles: user.user_roles?.map((ur: any) => ({
+        role: ur.role
+      })) || [],
+    };
+
     return result;
   }
 
@@ -234,35 +310,44 @@ export class AuthService {
   }
 
   async changePassword(userId: string, oldPassword: string, newPassword: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const { data: user, error: userError } = await this.supabase
+      .from('users')
+      .select('id, password_hash')
+      .eq('id', userId)
+      .single();
 
-    if (!user) {
+    if (userError || !user) {
       throw new UnauthorizedException('User not found');
     }
 
-    const isPasswordValid = await bcrypt.compare(oldPassword, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(oldPassword, user.password_hash);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 12);
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { passwordHash: hashedPassword },
-    });
+    const { error: updateError } = await this.supabase
+      .from('users')
+      .update({ password_hash: hashedPassword })
+      .eq('id', userId);
+
+    if (updateError) {
+      throw new Error(`Failed to update password: ${updateError.message}`);
+    }
 
     return { message: 'Password changed successfully' };
   }
 
   async resetPasswordRequest(email: string, tenantId: string) {
-    const user = await this.prisma.user.findFirst({
-      where: { email, tenantId },
-    });
+    const { data: user, error: userError } = await this.supabase
+      .from('users')
+      .select('id, email')
+      .eq('email', email)
+      .eq('tenant_id', tenantId)
+      .single();
 
-    if (!user) {
+    if (userError || !user) {
       // Don't reveal if user exists
       return { message: 'If user exists, password reset email will be sent' };
     }
@@ -289,10 +374,14 @@ export class AuthService {
 
       const hashedPassword = await bcrypt.hash(newPassword, 12);
 
-      await this.prisma.user.update({
-        where: { id: payload.sub },
-        data: { passwordHash: hashedPassword },
-      });
+      const { error: updateError } = await this.supabase
+        .from('users')
+        .update({ password_hash: hashedPassword })
+        .eq('id', payload.sub);
+
+      if (updateError) {
+        throw new Error(`Failed to reset password: ${updateError.message}`);
+      }
 
       return { message: 'Password reset successfully' };
     } catch (error) {

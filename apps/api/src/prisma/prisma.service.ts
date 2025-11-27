@@ -16,8 +16,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
-    await this.$connect();
-    console.log('✅ Prisma connected to Supabase PostgreSQL');
+    // Disabled: EC2 doesn't have IPv6, Supabase direct connection requires IPv6
+    // TODO: Enable IPv6 on EC2 or use Supabase pooler
+    // await this.$connect();
+    console.log('⚠️ Database connection disabled - EC2 IPv6 issue');
   }
 
   async onModuleDestroy() {
