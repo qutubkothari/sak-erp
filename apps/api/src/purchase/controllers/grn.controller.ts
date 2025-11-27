@@ -47,4 +47,14 @@ export class GrnController {
   async delete(@Request() req: any, @Param('id') id: string) {
     return this.grnService.delete(req.user.tenantId, id);
   }
+
+  @Post('items/:itemId/generate-uids')
+  async generateUIDs(@Request() req: any, @Param('itemId') itemId: string, @Body() body: any) {
+    return this.grnService.generateUIDs(req.user.tenantId, itemId, body);
+  }
+
+  @Get(':id/uids')
+  async getUIDsByGRN(@Request() req: any, @Param('id') id: string) {
+    return this.grnService.getUIDsByGRN(req.user.tenantId, id);
+  }
 }
