@@ -294,7 +294,7 @@ export default function PurchaseRequisitionsPage() {
 
           <div className="p-6 text-center text-gray-500">
             <p className="text-lg mb-2">No purchase requisitions yet</p>
-            <p className="text-sm">Click "New Requisition" to create your first purchase request</p>
+            <p className="text-sm">Click &ldquo;New Requisition&rdquo; to create your first purchase request</p>
           </div>
         </div>
       </div>
