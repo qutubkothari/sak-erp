@@ -21,14 +21,19 @@ export class PurchaseOrdersService {
       .insert({
         tenant_id: tenantId,
         po_number: poNumber,
+        pr_id: data.prId,
         vendor_id: data.vendorId,
-        order_date: data.orderDate,
-        expected_delivery: data.expectedDelivery,
-        status: data.status || 'DRAFT',
-        payment_terms: data.paymentTerms,
+        po_date: data.poDate || new Date().toISOString().split('T')[0],
+        delivery_date: data.deliveryDate,
+        payment_terms: data.paymentTerms || 'NET_30',
         delivery_address: data.deliveryAddress,
-        notes: data.notes,
-        total_amount: data.totalAmount,
+        terms_and_conditions: data.termsAndConditions,
+        status: data.status || 'DRAFT',
+        total_amount: data.totalAmount || 0,
+        tax_amount: data.taxAmount || 0,
+        discount_amount: data.discountAmount || 0,
+        grand_total: data.grandTotal || 0,
+        remarks: data.remarks,
         created_by: userId,
       })
       .select()
@@ -40,12 +45,18 @@ export class PurchaseOrdersService {
     if (data.items && data.items.length > 0) {
       const items = data.items.map((item: any) => ({
         po_id: po.id,
-        item_id: item.itemId,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        tax_rate: item.taxRate || 0,
-        total_price: item.totalPrice,
-        specifications: item.specifications,
+        pr_item_id: item.prItemId,
+        item_code: item.itemCode,
+        item_name: item.itemName,
+        description: item.description,
+        uom: item.uom,
+        ordered_qty: item.orderedQty,
+        rate: item.rate,
+        tax_percent: item.taxPercent || 0,
+        discount_percent: item.discountPercent || 0,
+        amount: item.amount,
+        delivery_date: item.deliveryDate,
+        remarks: item.remarks,
       }));
 
       const { error: itemsError } = await this.supabase

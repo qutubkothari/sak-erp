@@ -21,12 +21,13 @@ export class PurchaseRequisitionsService {
       .insert({
         tenant_id: tenantId,
         pr_number: prNumber,
+        request_date: data.requestDate || new Date().toISOString().split('T')[0],
         department: data.department,
+        purpose: data.purpose,
         requested_by: userId,
         required_date: data.requiredDate,
         status: data.status || 'DRAFT',
-        priority: data.priority,
-        notes: data.notes,
+        remarks: data.remarks,
       })
       .select()
       .single();
@@ -37,11 +38,14 @@ export class PurchaseRequisitionsService {
     if (data.items && data.items.length > 0) {
       const items = data.items.map((item: any) => ({
         pr_id: pr.id,
-        item_id: item.itemId,
-        quantity: item.quantity,
-        estimated_price: item.estimatedPrice,
-        specifications: item.specifications,
-        notes: item.notes,
+        item_code: item.itemCode,
+        item_name: item.itemName,
+        description: item.description,
+        uom: item.uom,
+        requested_qty: item.requestedQty,
+        estimated_rate: item.estimatedRate,
+        required_date: item.requiredDate,
+        remarks: item.remarks,
       }));
 
       const { error: itemsError } = await this.supabase

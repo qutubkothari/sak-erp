@@ -1,7 +1,7 @@
-#!/bin/bash
+﻿#!/bin/bash
 
 # End-to-End Purchase Flow Test
-# Tests: Vendor → Purchase Requisition → Purchase Order → GRN → UID Generation
+# Tests: Vendor ΓåÆ Purchase Requisition ΓåÆ Purchase Order ΓåÆ GRN ΓåÆ UID Generation
 
 BASE_URL="http://localhost:4000/api/v1"
 TIMESTAMP=$(date +%s)
@@ -31,12 +31,12 @@ TENANT_ID=$(echo "$LOGIN_RESPONSE" | grep -o '"tenant_id":"[^"]*' | cut -d'"' -f
 USER_ID=$(echo "$LOGIN_RESPONSE" | grep -o '"id":"[^"]*' | cut -d'"' -f4 | head -1)
 
 if [ -z "$TOKEN" ]; then
-    echo -e "${RED}✗ Authentication failed${NC}"
+    echo -e "${RED}Γ£ù Authentication failed${NC}"
     echo "Response: $LOGIN_RESPONSE"
     exit 1
 fi
 
-echo -e "${GREEN}✓ Authenticated successfully${NC}"
+echo -e "${GREEN}Γ£ô Authenticated successfully${NC}"
 echo "Tenant ID: $TENANT_ID"
 echo "User ID: $USER_ID"
 echo ""
@@ -47,10 +47,11 @@ VENDOR_RESPONSE=$(curl -s -X POST "$BASE_URL/purchase/vendors" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
-    \"vendorCode\": \"VEN-QA-${TIMESTAMP}\",
-    \"vendorName\": \"QA Test Vendor ${TIMESTAMP}\",
+    \"code\": \"VEN-QA-${TIMESTAMP}\",
+    \"name\": \"QA Test Vendor ${TIMESTAMP}\",
+    \"category\": \"RAW_MATERIAL\",
     \"contactPerson\": \"John Doe\",
-    \"contactNumber\": \"1234567890\",
+    \"phone\": \"1234567890\",
     \"email\": \"vendor${TIMESTAMP}@test.com\",
     \"address\": \"123 Test Street\",
     \"gstNumber\": \"GST${TIMESTAMP}\",
@@ -62,12 +63,12 @@ VENDOR_RESPONSE=$(curl -s -X POST "$BASE_URL/purchase/vendors" \
 VENDOR_ID=$(echo "$VENDOR_RESPONSE" | grep -o '"id":"[^"]*' | cut -d'"' -f4 | head -1)
 
 if [ -z "$VENDOR_ID" ]; then
-    echo -e "${RED}✗ Vendor creation failed${NC}"
+    echo -e "${RED}Γ£ù Vendor creation failed${NC}"
     echo "Response: $VENDOR_RESPONSE"
     exit 1
 fi
 
-echo -e "${GREEN}✓ Vendor created: $VENDOR_ID${NC}"
+echo -e "${GREEN}Γ£ô Vendor created: $VENDOR_ID${NC}"
 echo "Vendor Code: VEN-QA-${TIMESTAMP}"
 echo ""
 
@@ -105,12 +106,12 @@ PR_RESPONSE=$(curl -s -X POST "$BASE_URL/purchase/requisitions" \
 PR_ID=$(echo "$PR_RESPONSE" | grep -o '"id":"[^"]*' | cut -d'"' -f4 | head -1)
 
 if [ -z "$PR_ID" ]; then
-    echo -e "${RED}✗ PR creation failed${NC}"
+    echo -e "${RED}Γ£ù PR creation failed${NC}"
     echo "Response: $PR_RESPONSE"
     exit 1
 fi
 
-echo -e "${GREEN}✓ Purchase Requisition created: $PR_ID${NC}"
+echo -e "${GREEN}Γ£ô Purchase Requisition created: $PR_ID${NC}"
 echo "PR Number: PR-QA-${TIMESTAMP}"
 echo ""
 
@@ -123,7 +124,7 @@ PR_APPROVE_RESPONSE=$(curl -s -X PUT "$BASE_URL/purchase/requisitions/$PR_ID/app
     \"remarks\": \"Approved by QA automation\"
   }")
 
-echo -e "${GREEN}✓ Purchase Requisition approved${NC}"
+echo -e "${GREEN}Γ£ô Purchase Requisition approved${NC}"
 echo ""
 
 # Step 5: Create Purchase Order from PR
@@ -164,12 +165,12 @@ PO_RESPONSE=$(curl -s -X POST "$BASE_URL/purchase/orders" \
 PO_ID=$(echo "$PO_RESPONSE" | grep -o '"id":"[^"]*' | cut -d'"' -f4 | head -1)
 
 if [ -z "$PO_ID" ]; then
-    echo -e "${RED}✗ PO creation failed${NC}"
+    echo -e "${RED}Γ£ù PO creation failed${NC}"
     echo "Response: $PO_RESPONSE"
     exit 1
 fi
 
-echo -e "${GREEN}✓ Purchase Order created: $PO_ID${NC}"
+echo -e "${GREEN}Γ£ô Purchase Order created: $PO_ID${NC}"
 echo "PO Number: PO-QA-${TIMESTAMP}"
 echo ""
 
@@ -219,11 +220,11 @@ GRN_RESPONSE=$(curl -s -X POST "$BASE_URL/purchase/grn" \
 GRN_ID=$(echo "$GRN_RESPONSE" | grep -o '"id":"[^"]*' | cut -d'"' -f4 | head -1)
 
 if [ -z "$GRN_ID" ]; then
-    echo -e "${RED}✗ GRN creation failed${NC}"
+    echo -e "${RED}Γ£ù GRN creation failed${NC}"
     echo "Response: $GRN_RESPONSE"
     # Continue anyway to show response
 else
-    echo -e "${GREEN}✓ GRN created: $GRN_ID${NC}"
+    echo -e "${GREEN}Γ£ô GRN created: $GRN_ID${NC}"
     echo "GRN Number: GRN-QA-${TIMESTAMP}"
 fi
 echo ""
@@ -236,11 +237,11 @@ UID_RESPONSE=$(curl -s -X GET "$BASE_URL/uid?referenceType=GRN&referenceId=$GRN_
 UID_COUNT=$(echo "$UID_RESPONSE" | grep -o '"uid"' | wc -l)
 
 if [ "$UID_COUNT" -gt 0 ]; then
-    echo -e "${GREEN}✓ UIDs generated successfully: $UID_COUNT UIDs${NC}"
+    echo -e "${GREEN}Γ£ô UIDs generated successfully: $UID_COUNT UIDs${NC}"
     echo "Sample UIDs:"
     echo "$UID_RESPONSE" | grep -o '"uid":"[^"]*' | head -3 | cut -d'"' -f4
 else
-    echo -e "${YELLOW}⚠ No UIDs found (may need manual verification)${NC}"
+    echo -e "${YELLOW}ΓÜá No UIDs found (may need manual verification)${NC}"
     echo "Response: $UID_RESPONSE"
 fi
 echo ""
@@ -258,21 +259,21 @@ echo ""
 echo "========================================================"
 echo "  E2E Test Summary"
 echo "========================================================"
-echo -e "${GREEN}✓ Authentication successful${NC}"
-echo -e "${GREEN}✓ Vendor created${NC}"
-echo -e "${GREEN}✓ Purchase Requisition created and approved${NC}"
-echo -e "${GREEN}✓ Purchase Order created${NC}"
+echo -e "${GREEN}Γ£ô Authentication successful${NC}"
+echo -e "${GREEN}Γ£ô Vendor created${NC}"
+echo -e "${GREEN}Γ£ô Purchase Requisition created and approved${NC}"
+echo -e "${GREEN}Γ£ô Purchase Order created${NC}"
 
 if [ -n "$GRN_ID" ]; then
-    echo -e "${GREEN}✓ GRN created${NC}"
+    echo -e "${GREEN}Γ£ô GRN created${NC}"
 else
-    echo -e "${RED}✗ GRN creation needs verification${NC}"
+    echo -e "${RED}Γ£ù GRN creation needs verification${NC}"
 fi
 
 if [ "$UID_COUNT" -gt 0 ]; then
-    echo -e "${GREEN}✓ UID generation verified ($UID_COUNT UIDs)${NC}"
+    echo -e "${GREEN}Γ£ô UID generation verified ($UID_COUNT UIDs)${NC}"
 else
-    echo -e "${YELLOW}⚠ UID generation needs manual check${NC}"
+    echo -e "${YELLOW}ΓÜá UID generation needs manual check${NC}"
 fi
 
 echo ""
