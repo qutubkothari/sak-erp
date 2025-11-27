@@ -20,6 +20,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException();
     }
 
-    return user;
+    // Map fields for consistency across controllers
+    return {
+      ...user,
+      userId: user.id,  // Add userId alias
+    };
   }
 }
