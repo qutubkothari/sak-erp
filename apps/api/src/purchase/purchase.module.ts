@@ -7,8 +7,10 @@ import { PurchaseRequisitionsService } from './services/purchase-requisitions.se
 import { PurchaseOrdersService } from './services/purchase-orders.service';
 import { VendorsService } from './services/vendors.service';
 import { GrnService } from './services/grn.service';
+import { UidModule } from '../uid/uid.module';
 
 @Module({
+  imports: [UidModule],
   controllers: [
     PurchaseRequisitionsController,
     PurchaseOrdersController,

@@ -351,12 +351,14 @@ CREATE TABLE grn_items (
     unit_price DECIMAL(15,2),
     batch_number VARCHAR(50),
     expiry_date DATE,
+    uid VARCHAR(100), -- Auto-generated UID for traceability
     notes TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_grn_items_grn ON grn_items(grn_id);
 CREATE INDEX idx_grn_items_item ON grn_items(item_id);
+CREATE INDEX idx_grn_items_uid ON grn_items(uid);
 
 -- ============================================================================
 -- INVENTORY MODULE

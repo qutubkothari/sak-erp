@@ -1,11 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
 
 @Injectable()
 export class GrnService {
   private supabase: SupabaseClient;
 
-  constructor() {
+  constructor(private uidService: UidSupabaseService) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_KEY!,
@@ -36,25 +37,95 @@ export class GrnService {
 
     if (error) throw new BadRequestException(error.message);
 
-    // Insert items
+    // Get vendor details for UID generation
+    const { data: vendor } = await this.supabase
+      .from('vendors')
+      .select('code, name')
+      .eq('id', data.vendorId)
+      .single();
+
+    // Get warehouse details
+    const { data: warehouse } = await this.supabase
+      .from('warehouses')
+      .select('code, name')
+      .eq('id', data.warehouseId)
+      .single();
+
+    // Insert items with auto-generated UIDs
     if (data.items && data.items.length > 0) {
-      const items = data.items.map((item: any) => ({
-        grn_id: grn.id,
-        item_id: item.itemId,
-        po_item_id: item.poItemId,
-        ordered_quantity: item.orderedQuantity,
-        received_quantity: item.receivedQuantity,
-        accepted_quantity: item.acceptedQuantity,
-        rejected_quantity: item.rejectedQuantity,
-        unit_price: item.unitPrice,
-        batch_number: item.batchNumber,
-        expiry_date: item.expiryDate,
-        notes: item.notes,
-      }));
+      const itemsWithUIDs = [];
+
+      for (const item of data.items) {
+        // Get item details to determine entity type
+        const { data: itemDetails } = await this.supabase
+          .from('items')
+          .select('code, name, type')
+          .eq('id', item.itemId)
+          .single();
+
+        // Determine entity type based on item type
+        let entityType = 'RM'; // Raw Material default
+        if (itemDetails?.type === 'FINISHED') entityType = 'FG';
+        else if (itemDetails?.type === 'SEMI_FINISHED') entityType = 'WIP';
+        else if (itemDetails?.type === 'CONSUMABLE') entityType = 'CN';
+
+        // Generate UID for this item
+        const uid = await this.uidService.generateUID(
+          'SAIF',
+          warehouse?.code || 'KOL',
+          entityType
+        );
+
+        // Create UID record in registry with full traceability
+        const mockReq = {
+          user: {
+            tenantId: tenantId,
+            email: 'system@grn.auto',
+          }
+        };
+
+        await this.uidService.createUID(mockReq, {
+          tenantCode: 'SAIF',
+          plantCode: warehouse?.code || 'KOL',
+          entityType: entityType,
+          entity_type: entityType,
+          entity_id: item.itemId,
+          location: warehouse?.name || 'Main Warehouse',
+          status: 'ACTIVE',
+          vendor_id: data.vendorId,
+          vendor_name: vendor?.name,
+          vendor_code: vendor?.code,
+          reference: `GRN-${grnNumber}`,
+          description: itemDetails?.name,
+          metadata: {
+            grn_number: grnNumber,
+            grn_id: grn.id,
+            po_id: data.poId,
+            batch_number: item.batchNumber,
+            received_quantity: item.receivedQuantity,
+            accepted_quantity: item.acceptedQuantity,
+          }
+        });
+
+        itemsWithUIDs.push({
+          grn_id: grn.id,
+          item_id: item.itemId,
+          po_item_id: item.poItemId,
+          ordered_quantity: item.orderedQuantity,
+          received_quantity: item.receivedQuantity,
+          accepted_quantity: item.acceptedQuantity,
+          rejected_quantity: item.rejectedQuantity,
+          unit_price: item.unitPrice,
+          batch_number: item.batchNumber,
+          expiry_date: item.expiryDate,
+          uid: uid, // Store UID reference
+          notes: item.notes,
+        });
+      }
 
       const { error: itemsError } = await this.supabase
         .from('grn_items')
-        .insert(items);
+        .insert(itemsWithUIDs);
 
       if (itemsError) throw new BadRequestException(itemsError.message);
     }
