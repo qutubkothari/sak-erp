@@ -25,15 +25,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   /**
-   * Enable shutdown hooks - Prisma 5+ uses process events directly
-   */
-  async enableShutdownHooks(app: INestApplication) {
-    process.on('beforeExit', async () => {
-      await app.close();
-    });
-  }
-
-  /**
    * Soft delete helper
    */
   async softDelete(model: string, where: any) {

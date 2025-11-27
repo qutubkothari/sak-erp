@@ -57,23 +57,31 @@ export class AuthService {
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
-        password: hashedPassword,
+        passwordHash: hashedPassword,
         firstName: dto.firstName,
         lastName: dto.lastName,
         tenantId: dto.tenantId,
-        roleId,
-        isActive: true,
+        status: 'ACTIVE',
+        roles: roleId ? {
+          create: {
+            roleId: roleId,
+          },
+        } : undefined,
       },
       select: {
         id: true,
         email: true,
         firstName: true,
         lastName: true,
-        role: {
+        roles: {
           select: {
-            id: true,
-            name: true,
-            permissions: true,
+            role: {
+              select: {
+                id: true,
+                name: true,
+                permissions: true,
+              },
+            },
           },
         },
       },
@@ -96,18 +104,22 @@ export class AuthService {
         tenantId: dto.tenantId,
       },
       include: {
-        role: {
+        roles: {
           select: {
-            id: true,
-            name: true,
-            permissions: true,
+            role: {
+              select: {
+                id: true,
+                name: true,
+                permissions: true,
+              },
+            },
           },
         },
         tenant: {
           select: {
             id: true,
             name: true,
-            subdomain: true,
+            domain: true,
           },
         },
       },
@@ -118,12 +130,12 @@ export class AuthService {
     }
 
     // Check if user is active
-    if (!user.isActive) {
+    if (user.status !== 'ACTIVE') {
       throw new UnauthorizedException('Account is deactivated');
     }
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(dto.password, user.password);
+    const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -138,7 +150,7 @@ export class AuthService {
     const tokens = await this.generateTokens(user.id, user.email, dto.tenantId);
 
     // Remove password from response
-    const { password, ...userWithoutPassword } = user;
+    const { passwordHash, ...userWithoutPassword } = user;
 
     return {
       user: userWithoutPassword,
@@ -156,7 +168,7 @@ export class AuthService {
         where: { id: payload.sub },
       });
 
-      if (!user || !user.isActive) {
+      if (!user || user.status !== 'ACTIVE') {
         throw new UnauthorizedException('Invalid token');
       }
 
@@ -176,14 +188,18 @@ export class AuthService {
       where: {
         id: userId,
         tenantId,
-        isActive: true,
+        status: 'ACTIVE',
       },
       include: {
-        role: {
+        roles: {
           select: {
-            id: true,
-            name: true,
-            permissions: true,
+            role: {
+              select: {
+                id: true,
+                name: true,
+                permissions: true,
+              },
+            },
           },
         },
       },
@@ -193,7 +209,7 @@ export class AuthService {
       return null;
     }
 
-    const { password, ...result } = user;
+    const { passwordHash, ...result } = user;
     return result;
   }
 
@@ -226,7 +242,7 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
+    const isPasswordValid = await bcrypt.compare(oldPassword, user.passwordHash);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Current password is incorrect');
     }
@@ -235,7 +251,7 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: userId },
-      data: { password: hashedPassword },
+      data: { passwordHash: hashedPassword },
     });
 
     return { message: 'Password changed successfully' };
@@ -275,7 +291,7 @@ export class AuthService {
 
       await this.prisma.user.update({
         where: { id: payload.sub },
-        data: { password: hashedPassword },
+        data: { passwordHash: hashedPassword },
       });
 
       return { message: 'Password reset successfully' };

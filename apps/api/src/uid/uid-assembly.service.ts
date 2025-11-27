@@ -90,6 +90,10 @@ export class UidService {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
     const plant = await this.prisma.plant.findUnique({ where: { id: plantId } });
 
+    if (!tenant || !plant) {
+      throw new Error('Tenant or plant not found');
+    }
+
     // Generate new UID for assembled part
     const newUid = await this.generateUid({
       tenantCode: tenant.code,
@@ -129,6 +133,10 @@ export class UidService {
         const parent = await this.prisma.uidRegistry.findUnique({
           where: { uid: parentUid },
         });
+        
+        if (!parent) {
+          throw new Error(`Parent UID ${parentUid} not found`);
+        }
         
         const currentChildren = Array.isArray(parent.childUids) ? parent.childUids : [];
         
@@ -181,22 +189,26 @@ export class UidService {
         where: { id: uidRecord.supplierId },
       });
 
-      node.supplier = {
-        id: supplier.id,
-        name: supplier.name,
-      };
+      if (supplier) {
+        node.supplier = {
+          id: supplier.id,
+          name: supplier.name,
+        };
 
-      // Add purchase details (with price only if permitted)
-      if (uidRecord.purchaseOrderId) {
-        const po = await this.prisma.purchaseOrder.findUnique({
-          where: { id: uidRecord.purchaseOrderId },
-        });
+        // Add purchase details (with price only if permitted)
+        if (uidRecord.purchaseOrderId) {
+          const po = await this.prisma.purchaseOrder.findUnique({
+            where: { id: uidRecord.purchaseOrderId },
+          });
 
-        node.purchaseDetails = {
-          poNumber: po.poNumber,
-          date: po.orderDate.toISOString(),
-          price: canViewPrice ? parseFloat(uidRecord.unitPrice?.toString() || '0') : undefined,
-        } as any;
+          if (po) {
+            node.purchaseDetails = {
+              poNumber: po.poNumber,
+              date: po.orderDate.toISOString(),
+              price: canViewPrice ? parseFloat(uidRecord.unitPrice?.toString() || '0') : undefined,
+            } as any;
+          }
+        }
       }
     }
 
@@ -248,7 +260,7 @@ export class UidService {
   /**
    * Track which supplier provided faulty part
    */
-  async traceFaultyPartToSupplier(faultyUid: string, tenantId: string) {
+  async traceFaultyPartToSupplier(faultyUid: string, tenantId: string): Promise<any[]> {
     const uidRecord = await this.prisma.uidRegistry.findUnique({
       where: { uid: faultyUid },
     });
@@ -261,8 +273,8 @@ export class UidService {
     if (uidRecord.assemblyLevel > 0) {
       const parentUids = Array.isArray(uidRecord.parentUids) ? uidRecord.parentUids : [];
       
-      const suppliers = await Promise.all(
-        parentUids.map(async (parentUid: string) => {
+      const suppliers: any[] = await Promise.all(
+        parentUids.map(async (parentUid: string): Promise<any[]> => {
           return this.traceFaultyPartToSupplier(parentUid as string, tenantId);
         }),
       );
@@ -275,6 +287,10 @@ export class UidService {
       const supplier = await this.prisma.vendor.findUnique({
         where: { id: uidRecord.supplierId },
       });
+
+      if (!supplier) {
+        return [];
+      }
 
       const po = uidRecord.purchaseOrderId
         ? await this.prisma.purchaseOrder.findUnique({

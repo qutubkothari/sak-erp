@@ -62,10 +62,6 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  // Prisma shutdown hooks
-  const prismaService = app.get(PrismaService);
-  await prismaService.enableShutdownHooks(app);
-
   await app.listen(port);
   console.log(`🚀 API Server running on: http://localhost:${port}`);
   console.log(`📚 API Documentation: http://localhost:${port}/api/docs`);
