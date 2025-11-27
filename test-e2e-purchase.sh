@@ -220,28 +220,66 @@ GRN_RESPONSE=$(curl -s -X POST "$BASE_URL/purchase/grn" \
 GRN_ID=$(echo "$GRN_RESPONSE" | grep -o '"id":"[^"]*' | cut -d'"' -f4 | head -1)
 
 if [ -z "$GRN_ID" ]; then
-    echo -e "${RED}Γ£ù GRN creation failed${NC}"
+    echo -e "${RED}✗ GRN creation failed${NC}"
     echo "Response: $GRN_RESPONSE"
     # Continue anyway to show response
 else
-    echo -e "${GREEN}Γ£ô GRN created: $GRN_ID${NC}"
+    echo -e "${GREEN}✓ GRN created: $GRN_ID${NC}"
     echo "GRN Number: GRN-QA-${TIMESTAMP}"
+fi
+echo ""
+
+# Step 6.5: Get GRN items to generate UIDs
+echo -e "${BLUE}Step 6.5: Getting GRN items for UID generation...${NC}"
+GRN_DETAILS=$(curl -s -X GET "$BASE_URL/purchase/grn/$GRN_ID" \
+  -H "Authorization: Bearer $TOKEN")
+
+# Extract GRN item IDs from grn_items array
+GRN_ITEM_ID=$(echo "$GRN_DETAILS" | grep -oP '"grn_items":\[\{"id":"\K[^"]+' | head -1)
+
+if [ -z "$GRN_ITEM_ID" ]; then
+    # Try alternative pattern
+    GRN_ITEM_ID=$(echo "$GRN_DETAILS" | grep -oP 'grn_items.*?"id":"\K[^"]+' | head -1)
+fi
+
+if [ -n "$GRN_ITEM_ID" ]; then
+    echo -e "${GREEN}✓ Found GRN item: $GRN_ITEM_ID${NC}"
+    
+    # Generate UIDs for the first item (100 pieces accepted)
+    echo -e "${BLUE}Generating UIDs for GRN item...${NC}"
+    UID_GEN_RESPONSE=$(curl -s -X POST "$BASE_URL/purchase/grn/items/$GRN_ITEM_ID/generate-uids" \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"acceptedQty\": 100,
+        \"warrantyMonths\": 12
+      }")
+    
+    UIDS_GENERATED=$(echo "$UID_GEN_RESPONSE" | grep -o '"uidsGenerated":[0-9]*' | cut -d':' -f2)
+    
+    if [ -n "$UIDS_GENERATED" ] && [ "$UIDS_GENERATED" -gt 0 ]; then
+        echo -e "${GREEN}✓ Generated $UIDS_GENERATED UIDs successfully${NC}"
+    else
+        echo -e "${YELLOW}⚠ UID generation response: $UID_GEN_RESPONSE${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ Could not find GRN item ID${NC}"
 fi
 echo ""
 
 # Step 7: Verify UID Generation
 echo -e "${BLUE}Step 7: Verifying UID generation...${NC}"
-UID_RESPONSE=$(curl -s -X GET "$BASE_URL/uid?referenceType=GRN&referenceId=$GRN_ID" \
+UID_RESPONSE=$(curl -s -X GET "$BASE_URL/purchase/grn/$GRN_ID/uids" \
   -H "Authorization: Bearer $TOKEN")
 
-UID_COUNT=$(echo "$UID_RESPONSE" | grep -o '"uid"' | wc -l)
+UID_COUNT=$(echo "$UID_RESPONSE" | grep -o '"uid_code"' | wc -l)
 
 if [ "$UID_COUNT" -gt 0 ]; then
-    echo -e "${GREEN}Γ£ô UIDs generated successfully: $UID_COUNT UIDs${NC}"
-    echo "Sample UIDs:"
-    echo "$UID_RESPONSE" | grep -o '"uid":"[^"]*' | head -3 | cut -d'"' -f4
+    echo -e "${GREEN}✓ UIDs verified successfully: $UID_COUNT UIDs found${NC}"
+    echo "Sample UID codes:"
+    echo "$UID_RESPONSE" | grep -o '"uid_code":"[^"]*' | head -5 | cut -d'"' -f4
 else
-    echo -e "${YELLOW}ΓÜá No UIDs found (may need manual verification)${NC}"
+    echo -e "${YELLOW}⚠ No UIDs found${NC}"
     echo "Response: $UID_RESPONSE"
 fi
 echo ""
