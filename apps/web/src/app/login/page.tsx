@@ -104,7 +104,7 @@ export default function LoginPage() {
             Forgot your password?
           </Link>
           <div className="text-sm" style={{ color: '#6F4E37' }}>
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
             <Link href="/register" className="font-semibold hover:underline" style={{ color: '#8B6F47' }}>
               Register here
             </Link>

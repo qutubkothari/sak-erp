@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, CheckCircle, Globe, Building2, Languages, Package, Factory } from 'lucide-react';
+import { ArrowRight, CheckCircle, Building2, Languages, Package, Factory } from 'lucide-react';
 
 export default function Home() {
   return (

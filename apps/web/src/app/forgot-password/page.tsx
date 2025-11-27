@@ -41,7 +41,7 @@ export default function ForgotPasswordPage() {
             Check Your Email
           </h1>
           <p className="mb-8" style={{ color: '#6F4E37' }}>
-            We've sent password reset instructions to <strong>{email}</strong>
+            We&apos;ve sent password reset instructions to <strong>{email}</strong>
           </p>
 
           <Link 
