@@ -9,6 +9,11 @@ DROP TABLE IF EXISTS uids CASCADE;
 DROP TABLE IF EXISTS grn_items CASCADE;
 DROP TABLE IF EXISTS grn CASCADE;
 
+-- Ensure enums are dropped so we can recreate with correct values
+DROP TYPE IF EXISTS uid_event_type CASCADE;
+DROP TYPE IF EXISTS uid_status CASCADE;
+DROP TYPE IF EXISTS grn_status CASCADE;
+
 -- Step 1: Create GRN status enum
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'grn_status') THEN
