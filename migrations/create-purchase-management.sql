@@ -3,6 +3,32 @@
 -- Date: 2025-11-27
 -- Per FRS Section 3.3
 
+-- First, fix existing items and warehouses tables if they exist with old column names
+DO $$
+BEGIN
+    -- Check and fix items table columns
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'items' AND column_name = 'item_code') THEN
+        ALTER TABLE items RENAME COLUMN item_code TO code;
+        RAISE NOTICE 'Renamed items.item_code to items.code';
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'items' AND column_name = 'item_name') THEN
+        ALTER TABLE items RENAME COLUMN item_name TO name;
+        RAISE NOTICE 'Renamed items.item_name to items.name';
+    END IF;
+
+    -- Check and fix warehouses table columns
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'warehouses' AND column_name = 'warehouse_code') THEN
+        ALTER TABLE warehouses RENAME COLUMN warehouse_code TO code;
+        RAISE NOTICE 'Renamed warehouses.warehouse_code to warehouses.code';
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'warehouses' AND column_name = 'warehouse_name') THEN
+        ALTER TABLE warehouses RENAME COLUMN warehouse_name TO name;
+        RAISE NOTICE 'Renamed warehouses.warehouse_name to warehouses.name';
+    END IF;
+END $$;
+
 -- Create vendor status enum
 DO $$ BEGIN
     CREATE TYPE vendor_status AS ENUM ('ACTIVE', 'INACTIVE', 'BLOCKED', 'PENDING_APPROVAL');
