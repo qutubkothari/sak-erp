@@ -1,17 +1,23 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { SupabaseService } from '../../supabase/supabase.service';
+import { createClient, this.supabase } from '@supabase/supabase-js';
 import { Request } from 'express';
 
 @Injectable()
 export class InventoryService {
-  constructor(private readonly supabase: SupabaseService) {}
+  private supabase: this.supabase;
+
+  constructor() {
+    this.supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_KEY
+    );
+  }
 
   // Get current stock levels with filters
   async getStockLevels(req: Request, filters?: any) {
-    const supabaseClient = this.supabase.getClient();
     const { tenantId } = req.user as any;
 
-    let query = supabaseClient
+    let query = this.supabase
       .from('inventory_stock')
       .select(`
         *,
@@ -45,10 +51,10 @@ export class InventoryService {
 
   // Get stock movements history
   async getStockMovements(req: Request, filters?: any) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId } = req.user as any;
 
-    let query = supabaseClient
+    let query = this.supabase
       .from('stock_movements')
       .select(`
         *,
@@ -88,7 +94,7 @@ export class InventoryService {
 
   // Create stock movement (generic)
   async createStockMovement(req: Request, movementData: any) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId, userId } = req.user as any;
 
     // Generate movement number
@@ -115,7 +121,7 @@ export class InventoryService {
     };
 
     // Insert movement
-    const { data: movementRecord, error: movementError } = await supabaseClient
+    const { data: movementRecord, error: movementError } = await this.supabase
       .from('stock_movements')
       .insert(movement)
       .select()
@@ -134,7 +140,7 @@ export class InventoryService {
 
   // Update stock levels after movement
   private async updateStockLevels(req: Request, movementData: any) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId } = req.user as any;
 
     // Decrease from source warehouse
@@ -170,11 +176,11 @@ export class InventoryService {
     quantityChange: number,
     category?: string
   ) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId } = req.user as any;
 
     // Get current stock
-    const { data: currentStock } = await supabaseClient
+    const { data: currentStock } = await this.supabase
       .from('inventory_stock')
       .select('*')
       .eq('tenant_id', tenantId)
@@ -186,7 +192,7 @@ export class InventoryService {
     if (currentStock) {
       // Update existing stock
       const newQuantity = parseFloat(currentStock.quantity) + quantityChange;
-      await supabaseClient
+      await this.supabase
         .from('inventory_stock')
         .update({
           quantity: newQuantity,
@@ -197,7 +203,7 @@ export class InventoryService {
     } else {
       // Create new stock record (for receipts)
       if (quantityChange > 0) {
-        await supabaseClient.from('inventory_stock').insert({
+        await this.supabase.from('inventory_stock').insert({
           tenant_id: tenantId,
           item_id: itemId,
           warehouse_id: warehouseId,
@@ -212,11 +218,11 @@ export class InventoryService {
 
   // Generate movement number
   private async generateMovementNumber(req: Request, movementType: string): Promise<string> {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId } = req.user as any;
 
     const prefix = this.getMovementPrefix(movementType);
-    const { count } = await supabaseClient
+    const { count } = await this.supabase
       .from('stock_movements')
       .select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
@@ -226,7 +232,7 @@ export class InventoryService {
   }
 
   private getMovementPrefix(movementType: string): string {
-    const prefixes = {
+    const prefixes: Record<string, string> = {
       GRN_RECEIPT: 'RCP-',
       PRODUCTION_ISSUE: 'ISS-',
       PRODUCTION_RETURN: 'RET-',
@@ -245,11 +251,11 @@ export class InventoryService {
 
   // Reserve stock for production/sales
   async reserveStock(req: Request, reservationData: any) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId, userId } = req.user as any;
 
     // Check available quantity
-    const { data: stock } = await supabaseClient
+    const { data: stock } = await this.supabase
       .from('inventory_stock')
       .select('available_quantity')
       .eq('tenant_id', tenantId)
@@ -274,7 +280,7 @@ export class InventoryService {
       expires_at: reservationData.expires_at,
     };
 
-    const { data, error } = await supabaseClient
+    const { data, error } = await this.supabase
       .from('stock_reservations')
       .insert(reservation)
       .select()
@@ -283,7 +289,7 @@ export class InventoryService {
     if (error) throw new BadRequestException(error.message);
 
     // Update stock reserved_quantity
-    await supabaseClient.rpc('increment_reserved_quantity', {
+    await this.supabase.rpc('increment_reserved_quantity', {
       p_tenant_id: tenantId,
       p_item_id: reservationData.item_id,
       p_warehouse_id: reservationData.warehouse_id,
@@ -295,10 +301,10 @@ export class InventoryService {
 
   // Release stock reservation
   async releaseReservation(req: Request, reservationId: string) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId } = req.user as any;
 
-    const { data: reservation } = await supabaseClient
+    const { data: reservation } = await this.supabase
       .from('stock_reservations')
       .select('*')
       .eq('id', reservationId)
@@ -308,13 +314,13 @@ export class InventoryService {
     if (!reservation) throw new NotFoundException('Reservation not found');
 
     // Update reservation
-    await supabaseClient
+    await this.supabase
       .from('stock_reservations')
       .update({ released: true, released_at: new Date().toISOString() })
       .eq('id', reservationId);
 
     // Decrease stock reserved_quantity
-    await supabaseClient.rpc('decrement_reserved_quantity', {
+    await this.supabase.rpc('decrement_reserved_quantity', {
       p_tenant_id: tenantId,
       p_item_id: reservation.item_id,
       p_warehouse_id: reservation.warehouse_id,
@@ -326,10 +332,10 @@ export class InventoryService {
 
   // Check and create low stock alerts
   private async checkLowStockAlerts(req: Request, itemId: string, warehouseId: string) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId } = req.user as any;
 
-    const { data: stock } = await supabaseClient
+    const { data: stock } = await this.supabase
       .from('inventory_stock')
       .select('*, items:item_id(item_code, item_name)')
       .eq('tenant_id', tenantId)
@@ -339,7 +345,7 @@ export class InventoryService {
 
     if (stock && parseFloat(stock.available_quantity) <= parseFloat(stock.reorder_point)) {
       // Check if alert already exists
-      const { data: existingAlert } = await supabaseClient
+      const { data: existingAlert } = await this.supabase
         .from('inventory_alerts')
         .select('id')
         .eq('tenant_id', tenantId)
@@ -350,7 +356,7 @@ export class InventoryService {
         .maybeSingle();
 
       if (!existingAlert) {
-        await supabaseClient.from('inventory_alerts').insert({
+        await this.supabase.from('inventory_alerts').insert({
           tenant_id: tenantId,
           alert_type: 'LOW_STOCK',
           item_id: itemId,
@@ -366,10 +372,10 @@ export class InventoryService {
 
   // Get inventory alerts
   async getAlerts(req: Request, acknowledged?: boolean) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId } = req.user as any;
 
-    let query = supabaseClient
+    let query = this.supabase
       .from('inventory_alerts')
       .select(`
         *,
@@ -390,10 +396,10 @@ export class InventoryService {
 
   // Acknowledge alert
   async acknowledgeAlert(req: Request, alertId: string) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId, userId } = req.user as any;
 
-    const { error } = await supabaseClient
+    const { error } = await this.supabase
       .from('inventory_alerts')
       .update({
         acknowledged: true,
@@ -409,7 +415,7 @@ export class InventoryService {
 
   // Demo inventory management
   async issueDemoStock(req: Request, demoData: any) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId, userId } = req.user as any;
 
     // Generate demo ID
@@ -429,7 +435,7 @@ export class InventoryService {
       status: 'ISSUED',
     };
 
-    const { data, error } = await supabaseClient
+    const { data, error } = await this.supabase
       .from('demo_inventory')
       .insert(demo)
       .select()
@@ -455,10 +461,10 @@ export class InventoryService {
 
   // Return demo stock
   async returnDemoStock(req: Request, demoId: string, returnData: any) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId } = req.user as any;
 
-    const { data: demo } = await supabaseClient
+    const { data: demo } = await this.supabase
       .from('demo_inventory')
       .select('*')
       .eq('demo_id', demoId)
@@ -468,7 +474,7 @@ export class InventoryService {
     if (!demo) throw new NotFoundException('Demo record not found');
 
     // Update demo record
-    const { data: updatedDemo, error } = await supabaseClient
+    const { data: updatedDemo, error } = await this.supabase
       .from('demo_inventory')
       .update({
         status: 'RETURNED',
@@ -500,10 +506,10 @@ export class InventoryService {
 
   // Convert demo to sale
   async convertDemoToSale(req: Request, demoId: string, salesOrderId: string) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId } = req.user as any;
 
-    const { data: demo } = await supabaseClient
+    const { data: demo } = await this.supabase
       .from('demo_inventory')
       .select('*')
       .eq('demo_id', demoId)
@@ -513,7 +519,7 @@ export class InventoryService {
     if (!demo) throw new NotFoundException('Demo record not found');
 
     // Update demo record
-    const { error } = await supabaseClient
+    const { error } = await this.supabase
       .from('demo_inventory')
       .update({
         status: 'SOLD',
@@ -543,10 +549,10 @@ export class InventoryService {
 
   // Get demo inventory
   async getDemoInventory(req: Request, filters?: any) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId } = req.user as any;
 
-    let query = supabaseClient
+    let query = this.supabase
       .from('demo_inventory')
       .select(`
         *,
@@ -569,10 +575,10 @@ export class InventoryService {
   }
 
   private async generateDemoId(req: Request): Promise<string> {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId } = req.user as any;
 
-    const { count } = await supabaseClient
+    const { count } = await this.supabase
       .from('demo_inventory')
       .select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenantId);
@@ -582,10 +588,10 @@ export class InventoryService {
 
   // Get warehouses
   async getWarehouses(req: Request) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId } = req.user as any;
 
-    const { data, error } = await supabaseClient
+    const { data, error } = await this.supabase
       .from('warehouses')
       .select('*')
       .eq('tenant_id', tenantId)
@@ -598,7 +604,7 @@ export class InventoryService {
 
   // Create warehouse
   async createWarehouse(req: Request, warehouseData: any) {
-    const supabaseClient = this.supabase.getClient();
+    
     const { tenantId } = req.user as any;
 
     const warehouse = {
@@ -611,7 +617,7 @@ export class InventoryService {
       is_active: true,
     };
 
-    const { data, error } = await supabaseClient
+    const { data, error } = await this.supabase
       .from('warehouses')
       .insert(warehouse)
       .select()
