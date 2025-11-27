@@ -16,8 +16,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
-    await this.$connect();
-    console.log('✅ Prisma connected to Supabase PostgreSQL');
+    // Temporarily disabled for troubleshooting
+    // await this.$connect();
+    console.log('⚠️ Prisma connection disabled for troubleshooting');
   }
 
   async onModuleDestroy() {
