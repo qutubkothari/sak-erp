@@ -1,0 +1,129 @@
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { ServiceService } from '../services/service.service';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+
+@Controller('api/v1/service')
+@UseGuards(JwtAuthGuard)
+export class ServiceController {
+  constructor(private readonly serviceService: ServiceService) {}
+
+  // ==================== Service Tickets ====================
+
+  @Post('tickets')
+  async createServiceTicket(@Request() req, @Body() body: any) {
+    return this.serviceService.createServiceTicket(
+      req.user.tenantId,
+      req.user.userId,
+      body,
+    );
+  }
+
+  @Get('tickets')
+  async getServiceTickets(@Request() req, @Query() query: any) {
+    return this.serviceService.getServiceTickets(req.user.tenantId, query);
+  }
+
+  @Get('tickets/:id')
+  async getServiceTicketById(@Request() req, @Param('id') id: string) {
+    return this.serviceService.getServiceTicketById(req.user.tenantId, id);
+  }
+
+  @Put('tickets/:id')
+  async updateServiceTicket(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() body: any,
+  ) {
+    return this.serviceService.updateServiceTicket(
+      req.user.tenantId,
+      id,
+      body,
+    );
+  }
+
+  @Post('tickets/:id/close')
+  async closeServiceTicket(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() body: any,
+  ) {
+    return this.serviceService.closeServiceTicket(
+      req.user.tenantId,
+      id,
+      req.user.userId,
+      body,
+    );
+  }
+
+  // ==================== Warranty Validation ====================
+
+  @Get('warranty/validate/:uid')
+  async validateWarranty(@Request() req, @Param('uid') uid: string) {
+    return this.serviceService.validateWarrantyForUID(req.user.tenantId, uid);
+  }
+
+  // ==================== Technicians ====================
+
+  @Post('technicians')
+  async createTechnician(@Request() req, @Body() body: any) {
+    return this.serviceService.createTechnician(req.user.tenantId, body);
+  }
+
+  @Get('technicians')
+  async getTechnicians(@Request() req, @Query('active_only') activeOnly?: string) {
+    return this.serviceService.getTechnicians(
+      req.user.tenantId,
+      activeOnly !== 'false',
+    );
+  }
+
+  // ==================== Service Assignments ====================
+
+  @Post('assignments')
+  async assignTechnician(@Request() req, @Body() body: any) {
+    return this.serviceService.assignTechnician(
+      req.user.tenantId,
+      req.user.userId,
+      body,
+    );
+  }
+
+  @Get('assignments/technician/:technicianId')
+  async getAssignmentsByTechnician(
+    @Param('technicianId') technicianId: string,
+    @Query('status') status?: string,
+  ) {
+    return this.serviceService.getAssignmentsByTechnician(technicianId, status);
+  }
+
+  @Put('assignments/:id')
+  async updateAssignment(@Param('id') id: string, @Body() body: any) {
+    return this.serviceService.updateAssignment(id, body);
+  }
+
+  // ==================== Service Parts Used ====================
+
+  @Post('parts')
+  async addServicePart(@Request() req, @Body() body: any) {
+    return this.serviceService.addServicePart(req.user.tenantId, body);
+  }
+
+  @Get('parts/ticket/:ticketId')
+  async getServicePartsByTicket(@Param('ticketId') ticketId: string) {
+    return this.serviceService.getServicePartsByTicket(ticketId);
+  }
+
+  // ==================== Service History ====================
+
+  @Get('history/:uid')
+  async getServiceHistoryByUID(@Request() req, @Param('uid') uid: string) {
+    return this.serviceService.getServiceHistoryByUID(req.user.tenantId, uid);
+  }
+
+  // ==================== Reports ====================
+
+  @Get('reports')
+  async getServiceReports(@Request() req, @Query() query: any) {
+    return this.serviceService.getServiceReports(req.user.tenantId, query);
+  }
+}
