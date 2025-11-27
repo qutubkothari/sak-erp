@@ -195,8 +195,8 @@ export class UidService {
         node.purchaseDetails = {
           poNumber: po.poNumber,
           date: po.orderDate.toISOString(),
-          price: (canViewPrice ? parseFloat(uidRecord.unitPrice?.toString() || '0') : null) as number | null,
-        };
+          price: canViewPrice ? parseFloat(uidRecord.unitPrice?.toString() || '0') : undefined,
+        } as any;
       }
     }
 
