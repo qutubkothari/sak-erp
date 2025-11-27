@@ -30,19 +30,42 @@ EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
 
--- Create warehouses table
-CREATE TABLE IF NOT EXISTS warehouses (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    tenant_id UUID NOT NULL,
-    warehouse_code VARCHAR(50) UNIQUE NOT NULL,
-    warehouse_name VARCHAR(200) NOT NULL,
-    location VARCHAR(200),
-    plant_code VARCHAR(50),
-    is_active BOOLEAN DEFAULT true,
-    manager_id UUID,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
+-- Create or update warehouses table
+DO $$ 
+BEGIN
+    -- Create table if it doesn't exist
+    IF NOT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'warehouses') THEN
+        CREATE TABLE warehouses (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            tenant_id UUID NOT NULL,
+            warehouse_code VARCHAR(50) UNIQUE NOT NULL,
+            warehouse_name VARCHAR(200) NOT NULL,
+            location VARCHAR(200),
+            plant_code VARCHAR(50),
+            is_active BOOLEAN DEFAULT true,
+            manager_id UUID,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
+    ELSE
+        -- Add missing columns if table exists
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'warehouses' AND column_name = 'warehouse_code') THEN
+            ALTER TABLE warehouses ADD COLUMN warehouse_code VARCHAR(50) UNIQUE;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'warehouses' AND column_name = 'warehouse_name') THEN
+            ALTER TABLE warehouses ADD COLUMN warehouse_name VARCHAR(200) NOT NULL DEFAULT 'Main Warehouse';
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'warehouses' AND column_name = 'plant_code') THEN
+            ALTER TABLE warehouses ADD COLUMN plant_code VARCHAR(50);
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'warehouses' AND column_name = 'is_active') THEN
+            ALTER TABLE warehouses ADD COLUMN is_active BOOLEAN DEFAULT true;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'warehouses' AND column_name = 'manager_id') THEN
+            ALTER TABLE warehouses ADD COLUMN manager_id UUID;
+        END IF;
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_warehouses_tenant ON warehouses(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_warehouses_code ON warehouses(warehouse_code);
