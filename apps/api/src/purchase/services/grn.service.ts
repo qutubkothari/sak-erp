@@ -71,7 +71,6 @@ export class GrnService {
         expiry_date: item.expiryDate,
         rate: item.rate,
         amount: (item.receivedQty || 0) * (item.rate || 0),
-        generate_uids: item.generateUids !== false, // Default true
         remarks: item.remarks,
       }));
 
