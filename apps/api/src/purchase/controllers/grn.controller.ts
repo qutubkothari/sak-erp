@@ -19,7 +19,7 @@ export class GrnController {
   constructor(private readonly grnService: GrnService) {}
 
   @Post()
-  async create(@Request() req, @Body() body: any) {
+  async create(@Request() req: any, @Body() body: any) {
     return this.grnService.create(req.user.tenantId, req.user.userId, body);
   }
 

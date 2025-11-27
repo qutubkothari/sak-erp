@@ -19,7 +19,7 @@ export class PurchaseRequisitionsController {
   constructor(private readonly prService: PurchaseRequisitionsService) {}
 
   @Post()
-  async create(@Request() req, @Body() body: any) {
+  async create(@Request() req: any, @Body() body: any) {
     return this.prService.create(req.user.tenantId, req.user.userId, body);
   }
 

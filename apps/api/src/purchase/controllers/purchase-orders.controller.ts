@@ -19,7 +19,7 @@ export class PurchaseOrdersController {
   constructor(private readonly poService: PurchaseOrdersService) {}
 
   @Post()
-  async create(@Request() req, @Body() body: any) {
+  async create(@Request() req: any, @Body() body: any) {
     return this.poService.create(req.user.tenantId, req.user.userId, body);
   }
 

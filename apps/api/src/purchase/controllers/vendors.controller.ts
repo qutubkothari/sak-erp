@@ -19,7 +19,7 @@ export class VendorsController {
   constructor(private readonly vendorsService: VendorsService) {}
 
   @Post()
-  async create(@Request() req, @Body() body: any) {
+  async create(@Request() req: any, @Body() body: any) {
     return this.vendorsService.create(req.user.tenantId, body);
   }
 
