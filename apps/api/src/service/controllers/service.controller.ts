@@ -10,7 +10,7 @@ export class ServiceController {
   // ==================== Service Tickets ====================
 
   @Post('tickets')
-  async createServiceTicket(@Request() req, @Body() body: any) {
+  async createServiceTicket(@Request() req: any, @Body() body: any) {
     return this.serviceService.createServiceTicket(
       req.user.tenantId,
       req.user.userId,
@@ -19,18 +19,18 @@ export class ServiceController {
   }
 
   @Get('tickets')
-  async getServiceTickets(@Request() req, @Query() query: any) {
+  async getServiceTickets(@Request() req: any, @Query() query: any) {
     return this.serviceService.getServiceTickets(req.user.tenantId, query);
   }
 
   @Get('tickets/:id')
-  async getServiceTicketById(@Request() req, @Param('id') id: string) {
+  async getServiceTicketById(@Request() req: any, @Param('id') id: string) {
     return this.serviceService.getServiceTicketById(req.user.tenantId, id);
   }
 
   @Put('tickets/:id')
   async updateServiceTicket(
-    @Request() req,
+    @Request() req: any,
     @Param('id') id: string,
     @Body() body: any,
   ) {
@@ -43,7 +43,7 @@ export class ServiceController {
 
   @Post('tickets/:id/close')
   async closeServiceTicket(
-    @Request() req,
+    @Request() req: any,
     @Param('id') id: string,
     @Body() body: any,
   ) {
@@ -58,19 +58,19 @@ export class ServiceController {
   // ==================== Warranty Validation ====================
 
   @Get('warranty/validate/:uid')
-  async validateWarranty(@Request() req, @Param('uid') uid: string) {
+  async validateWarranty(@Request() req: any, @Param('uid') uid: string) {
     return this.serviceService.validateWarrantyForUID(req.user.tenantId, uid);
   }
 
   // ==================== Technicians ====================
 
   @Post('technicians')
-  async createTechnician(@Request() req, @Body() body: any) {
+  async createTechnician(@Request() req: any, @Body() body: any) {
     return this.serviceService.createTechnician(req.user.tenantId, body);
   }
 
   @Get('technicians')
-  async getTechnicians(@Request() req, @Query('active_only') activeOnly?: string) {
+  async getTechnicians(@Request() req: any, @Query('active_only') activeOnly?: string) {
     return this.serviceService.getTechnicians(
       req.user.tenantId,
       activeOnly !== 'false',
@@ -80,7 +80,7 @@ export class ServiceController {
   // ==================== Service Assignments ====================
 
   @Post('assignments')
-  async assignTechnician(@Request() req, @Body() body: any) {
+  async assignTechnician(@Request() req: any, @Body() body: any) {
     return this.serviceService.assignTechnician(
       req.user.tenantId,
       req.user.userId,
@@ -104,7 +104,7 @@ export class ServiceController {
   // ==================== Service Parts Used ====================
 
   @Post('parts')
-  async addServicePart(@Request() req, @Body() body: any) {
+  async addServicePart(@Request() req: any, @Body() body: any) {
     return this.serviceService.addServicePart(req.user.tenantId, body);
   }
 
@@ -116,14 +116,14 @@ export class ServiceController {
   // ==================== Service History ====================
 
   @Get('history/:uid')
-  async getServiceHistoryByUID(@Request() req, @Param('uid') uid: string) {
+  async getServiceHistoryByUID(@Request() req: any, @Param('uid') uid: string) {
     return this.serviceService.getServiceHistoryByUID(req.user.tenantId, uid);
   }
 
   // ==================== Reports ====================
 
   @Get('reports')
-  async getServiceReports(@Request() req, @Query() query: any) {
+  async getServiceReports(@Request() req: any, @Query() query: any) {
     return this.serviceService.getServiceReports(req.user.tenantId, query);
   }
 }

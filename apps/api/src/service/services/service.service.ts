@@ -7,8 +7,8 @@ export class ServiceService {
 
   constructor() {
     this.supabase = new SupabaseClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_KEY,
+      process.env.SUPABASE_URL || '',
+      process.env.SUPABASE_KEY || '',
     );
   }
 
@@ -375,15 +375,16 @@ export class ServiceService {
     };
 
     // Calculate warranty end date
+    let replacementWarrantyEnd: string | undefined;
     if (partData.replacement_warranty_start) {
       const startDate = new Date(partData.replacement_warranty_start);
       startDate.setMonth(startDate.getMonth() + partData.replacement_warranty_months);
-      partData['replacement_warranty_end'] = startDate.toISOString().split('T')[0];
+      replacementWarrantyEnd = startDate.toISOString().split('T')[0];
     }
 
     const { data: part, error } = await this.supabase
       .from('service_parts_used')
-      .insert(partData)
+      .insert({ ...partData, replacement_warranty_end: replacementWarrantyEnd })
       .select()
       .single();
 
