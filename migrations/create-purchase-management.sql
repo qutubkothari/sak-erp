@@ -167,8 +167,8 @@ CREATE INDEX IF NOT EXISTS idx_po_items_code ON purchase_order_items(item_code);
 CREATE TABLE IF NOT EXISTS items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL,
-    item_code VARCHAR(100) UNIQUE NOT NULL,
-    item_name VARCHAR(200) NOT NULL,
+    code VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(200) NOT NULL,
     description TEXT,
     category VARCHAR(100),
     uom VARCHAR(20),
@@ -183,15 +183,15 @@ CREATE TABLE IF NOT EXISTS items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_items_tenant ON items(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_items_code ON items(item_code);
+CREATE INDEX IF NOT EXISTS idx_items_code ON items(code);
 CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
 
 -- Create warehouses table (if not exists - for reference)
 CREATE TABLE IF NOT EXISTS warehouses (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL,
-    warehouse_code VARCHAR(50) UNIQUE NOT NULL,
-    warehouse_name VARCHAR(200) NOT NULL,
+    code VARCHAR(50) UNIQUE NOT NULL,
+    name VARCHAR(200) NOT NULL,
     location VARCHAR(200),
     address TEXT,
     is_active BOOLEAN DEFAULT true,
@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS warehouses (
 );
 
 CREATE INDEX IF NOT EXISTS idx_warehouses_tenant ON warehouses(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_warehouses_code ON warehouses(warehouse_code);
+CREATE INDEX IF NOT EXISTS idx_warehouses_code ON warehouses(code);
 
 -- Add comments
 COMMENT ON TABLE vendors IS 'Vendor master for purchase management with quality ratings';
