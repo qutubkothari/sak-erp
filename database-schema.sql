@@ -566,9 +566,207 @@ FROM tenant, (VALUES
 ) AS roles(code, name, description, permissions)
 ON CONFLICT (tenant_id, code) DO NOTHING;
 
+-- ============================================================================
+-- DOCUMENT MANAGEMENT SYSTEM
+-- ============================================================================
+
+-- Document Categories
+CREATE TABLE document_categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    parent_id UUID REFERENCES document_categories(id),
+    is_active BOOLEAN DEFAULT true,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(tenant_id, code)
+);
+
+CREATE INDEX idx_document_categories_tenant ON document_categories(tenant_id);
+CREATE INDEX idx_document_categories_parent ON document_categories(parent_id);
+
+-- Documents Master Table
+CREATE TABLE documents (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    category_id UUID REFERENCES document_categories(id),
+    document_number VARCHAR(100) NOT NULL,
+    title VARCHAR(500) NOT NULL,
+    description TEXT,
+    document_type VARCHAR(50) NOT NULL, -- 'DRAWING', 'MANUAL', 'REPORT', 'CERTIFICATE', 'SPECIFICATION', 'SOP', 'TEMPLATE'
+    file_url TEXT NOT NULL,
+    file_name VARCHAR(500) NOT NULL,
+    file_size BIGINT,
+    file_type VARCHAR(100),
+    current_revision VARCHAR(50) DEFAULT '1.0',
+    status VARCHAR(50) DEFAULT 'DRAFT', -- 'DRAFT', 'PENDING_REVIEW', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'OBSOLETE'
+    
+    -- Linking to other entities
+    related_entity_type VARCHAR(50), -- 'ITEM', 'BOM', 'PO', 'PRODUCTION_ORDER', 'SERVICE_TICKET', 'VENDOR', 'CUSTOMER'
+    related_entity_id UUID,
+    uid_reference VARCHAR(100), -- Link to UID if applicable
+    
+    -- Metadata
+    tags TEXT[],
+    keywords TEXT[],
+    is_confidential BOOLEAN DEFAULT false,
+    access_level VARCHAR(50) DEFAULT 'PUBLIC', -- 'PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'RESTRICTED'
+    
+    -- Approval tracking
+    created_by UUID REFERENCES users(id),
+    reviewed_by UUID REFERENCES users(id),
+    approved_by UUID REFERENCES users(id),
+    reviewed_at TIMESTAMP,
+    approved_at TIMESTAMP,
+    rejection_reason TEXT,
+    
+    -- Archival
+    is_archived BOOLEAN DEFAULT false,
+    archived_at TIMESTAMP,
+    archived_by UUID REFERENCES users(id),
+    
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(tenant_id, document_number)
+);
+
+CREATE INDEX idx_documents_tenant ON documents(tenant_id);
+CREATE INDEX idx_documents_category ON documents(category_id);
+CREATE INDEX idx_documents_type ON documents(document_type);
+CREATE INDEX idx_documents_status ON documents(status);
+CREATE INDEX idx_documents_related ON documents(related_entity_type, related_entity_id);
+CREATE INDEX idx_documents_uid ON documents(uid_reference);
+CREATE INDEX idx_documents_number ON documents(document_number);
+
+-- Document Revisions
+CREATE TABLE document_revisions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    revision_number VARCHAR(50) NOT NULL,
+    file_url TEXT NOT NULL,
+    file_name VARCHAR(500) NOT NULL,
+    file_size BIGINT,
+    change_description TEXT,
+    revision_type VARCHAR(50), -- 'MINOR', 'MAJOR', 'CORRECTION'
+    status VARCHAR(50) DEFAULT 'ACTIVE', -- 'ACTIVE', 'SUPERSEDED', 'OBSOLETE'
+    
+    created_by UUID REFERENCES users(id),
+    approved_by UUID REFERENCES users(id),
+    approved_at TIMESTAMP,
+    
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(tenant_id, document_id, revision_number)
+);
+
+CREATE INDEX idx_document_revisions_tenant ON document_revisions(tenant_id);
+CREATE INDEX idx_document_revisions_document ON document_revisions(document_id);
+CREATE INDEX idx_document_revisions_status ON document_revisions(status);
+
+-- Document Approval Workflow
+CREATE TABLE document_approvals (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    revision_id UUID REFERENCES document_revisions(id),
+    
+    approval_sequence INTEGER NOT NULL,
+    approver_role_id UUID REFERENCES roles(id),
+    approver_user_id UUID REFERENCES users(id),
+    
+    status VARCHAR(50) DEFAULT 'PENDING', -- 'PENDING', 'APPROVED', 'REJECTED', 'SKIPPED'
+    comments TEXT,
+    responded_at TIMESTAMP,
+    
+    is_mandatory BOOLEAN DEFAULT true,
+    sla_hours INTEGER DEFAULT 48,
+    due_date TIMESTAMP,
+    escalation_user_id UUID REFERENCES users(id),
+    
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_document_approvals_tenant ON document_approvals(tenant_id);
+CREATE INDEX idx_document_approvals_document ON document_approvals(document_id);
+CREATE INDEX idx_document_approvals_approver ON document_approvals(approver_user_id);
+CREATE INDEX idx_document_approvals_status ON document_approvals(status);
+CREATE INDEX idx_document_approvals_due_date ON document_approvals(due_date);
+
+-- Document Access Log
+CREATE TABLE document_access_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id),
+    action VARCHAR(50) NOT NULL, -- 'VIEW', 'DOWNLOAD', 'PRINT', 'SHARE', 'EDIT', 'DELETE'
+    ip_address VARCHAR(50),
+    user_agent TEXT,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_document_access_logs_tenant ON document_access_logs(tenant_id);
+CREATE INDEX idx_document_access_logs_document ON document_access_logs(document_id);
+CREATE INDEX idx_document_access_logs_user ON document_access_logs(user_id);
+CREATE INDEX idx_document_access_logs_action ON document_access_logs(action);
+CREATE INDEX idx_document_access_logs_created ON document_access_logs(created_at);
+
+-- Document Relationships (for linking related documents)
+CREATE TABLE document_relationships (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    parent_document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    child_document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    relationship_type VARCHAR(50) NOT NULL, -- 'SUPERSEDES', 'REFERENCES', 'AMENDMENT', 'RELATED'
+    description TEXT,
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(tenant_id, parent_document_id, child_document_id, relationship_type)
+);
+
+CREATE INDEX idx_document_relationships_tenant ON document_relationships(tenant_id);
+CREATE INDEX idx_document_relationships_parent ON document_relationships(parent_document_id);
+CREATE INDEX idx_document_relationships_child ON document_relationships(child_document_id);
+
+-- Add updated_at triggers
+CREATE TRIGGER update_document_categories_updated_at BEFORE UPDATE ON document_categories FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_documents_updated_at BEFORE UPDATE ON documents FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_document_revisions_updated_at BEFORE UPDATE ON document_revisions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_document_approvals_updated_at BEFORE UPDATE ON document_approvals FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Insert default document categories
+WITH tenant AS (SELECT id FROM tenants WHERE subdomain = 'sak-admin' LIMIT 1)
+INSERT INTO document_categories (tenant_id, code, name, description)
+SELECT 
+    tenant.id,
+    code,
+    name,
+    description
+FROM tenant, (VALUES
+    ('DRAWINGS', 'Engineering Drawings', 'Technical drawings and CAD files'),
+    ('MANUALS', 'User Manuals', 'Product manuals and operating instructions'),
+    ('REPORTS', 'Technical Reports', 'Test reports, inspection reports, and analysis'),
+    ('CERTIFICATES', 'Certificates', 'Quality certificates, calibration certificates, compliance'),
+    ('SOP', 'Standard Operating Procedures', 'Process documentation and SOPs'),
+    ('SPECIFICATIONS', 'Technical Specifications', 'Product specifications and datasheets'),
+    ('TEMPLATES', 'Document Templates', 'Standard forms and templates'),
+    ('SERVICE', 'Service Documents', 'Service reports, warranty documents, and maintenance logs')
+) AS cats(code, name, description)
+ON CONFLICT (tenant_id, code) DO NOTHING;
+
 COMMENT ON TABLE tenants IS 'Multi-tenant support - each tenant represents an organization';
 COMMENT ON TABLE uid_registry IS 'Universal ID tracking for complete traceability from raw material to finished product';
 COMMENT ON TABLE items IS 'Master item catalog - raw materials, components, assemblies, finished goods';
 COMMENT ON TABLE purchase_orders IS 'Purchase orders to vendors with approval workflow';
 COMMENT ON TABLE stock_entries IS 'Real-time inventory levels across warehouses';
 COMMENT ON TABLE production_orders IS 'Manufacturing orders with BOM and routing';
+COMMENT ON TABLE documents IS 'Central document management with version control and approval workflow';
+COMMENT ON TABLE document_revisions IS 'Track all document revisions with complete audit trail';
