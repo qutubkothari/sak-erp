@@ -43,21 +43,28 @@ export class PurchaseOrdersService {
 
     // Insert items
     if (data.items && data.items.length > 0) {
-      const items = data.items.map((item: any) => ({
-        po_id: po.id,
-        pr_item_id: item.prItemId,
-        item_code: item.itemCode,
-        item_name: item.itemName,
-        description: item.description,
-        uom: item.uom,
-        ordered_qty: item.orderedQty,
-        rate: item.rate,
-        tax_percent: item.taxPercent || 0,
-        discount_percent: item.discountPercent || 0,
-        amount: item.amount,
-        delivery_date: item.deliveryDate,
-        remarks: item.remarks,
-      }));
+      const items = data.items.map((item: any) => {
+        const baseAmount = (item.orderedQty || 0) * (item.rate || 0);
+        const taxAmount = baseAmount * ((item.taxPercent || 0) / 100);
+        const discountAmount = baseAmount * ((item.discountPercent || 0) / 100);
+        const finalAmount = baseAmount + taxAmount - discountAmount;
+        
+        return {
+          po_id: po.id,
+          pr_item_id: item.prItemId,
+          item_code: item.itemCode,
+          item_name: item.itemName,
+          description: item.description,
+          uom: item.uom,
+          ordered_qty: item.orderedQty,
+          rate: item.rate,
+          tax_percent: item.taxPercent || 0,
+          discount_percent: item.discountPercent || 0,
+          amount: item.amount || finalAmount,
+          delivery_date: item.deliveryDate,
+          remarks: item.remarks,
+        };
+      });
 
       const { error: itemsError } = await this.supabase
         .from('purchase_order_items')
