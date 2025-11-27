@@ -8,6 +8,7 @@ interface Vendor {
   code: string;
   name: string;
   legal_name: string;
+  tax_id?: string;
   category: string;
   contact_person: string;
   email: string;
