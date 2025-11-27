@@ -16,8 +16,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
-    await this.$connect();
-    console.log('✅ Prisma connected to Supabase PostgreSQL');
+    // Temporarily skip database connection - connectivity issue from EC2 to Supabase
+    // await this.$connect();
+    console.log('⚠️  Prisma service initialized (Database connection skipped - pending connectivity fix)');
   }
 
   async onModuleDestroy() {
