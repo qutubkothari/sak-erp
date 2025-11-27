@@ -164,12 +164,7 @@ export class ProductionService {
 
     // Link component UIDs to finished product UID using UID service
     for (const componentUid of componentUids) {
-      await this.uidService.linkUIDs(mockReq, {
-        parentUid: finishedUid,
-        childUid: componentUid,
-        relationship: 'ASSEMBLY',
-        notes: `Assembled in ${order.order_number}`,
-      });
+      await this.uidService.linkUIDs(mockReq, finishedUid, componentUid);
     }
 
     // Create assembly record
@@ -229,12 +224,13 @@ export class ProductionService {
 
       if (assembly) {
         const mockReq = { user: { tenantId, email: 'system@qc.auto' } };
-        await this.uidService.updateLifecycle(mockReq, assembly.finished_product_uid, {
-          stage: 'QC_PASSED',
-          location: 'Finished Goods Warehouse',
-          reference: `QC Approval`,
-          notes: qcNotes,
-        });
+        await this.uidService.updateLifecycle(
+          mockReq,
+          assembly.finished_product_uid,
+          'QC_PASSED',
+          'Finished Goods Warehouse',
+          'QC Approval'
+        );
 
         await this.logStage(assembly.production_order_id, 'QC', qcBy, 'QC inspection completed');
       }

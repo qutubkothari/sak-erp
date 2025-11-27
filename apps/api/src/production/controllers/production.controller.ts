@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { ProductionService } from '../services/production.service';
-import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 @Controller('api/v1/production')
 @UseGuards(JwtAuthGuard)
@@ -8,27 +8,27 @@ export class ProductionController {
   constructor(private readonly productionService: ProductionService) {}
 
   @Post()
-  create(@Request() req, @Body() createDto: any) {
+  create(@Request() req: any, @Body() createDto: any) {
     return this.productionService.create(req.user.tenantId, req.user.userId, createDto);
   }
 
   @Get()
-  findAll(@Request() req, @Query() filters: any) {
+  findAll(@Request() req: any, @Query() filters: any) {
     return this.productionService.findAll(req.user.tenantId, filters);
   }
 
   @Get(':id')
-  findOne(@Request() req, @Param('id') id: string) {
+  findOne(@Request() req: any, @Param('id') id: string) {
     return this.productionService.findOne(req.user.tenantId, id);
   }
 
   @Put(':id/start')
-  startProduction(@Request() req, @Param('id') id: string) {
+  startProduction(@Request() req: any, @Param('id') id: string) {
     return this.productionService.startProduction(req.user.tenantId, id, req.user.userId);
   }
 
   @Post('assembly/complete')
-  completeAssembly(@Request() req, @Body() data: any) {
+  completeAssembly(@Request() req: any, @Body() data: any) {
     return this.productionService.completeAssembly(req.user.tenantId, {
       ...data,
       assembledBy: req.user.userId,
@@ -36,7 +36,7 @@ export class ProductionController {
   }
 
   @Put('assembly/:id/qc')
-  approveQC(@Request() req, @Param('id') id: string, @Body() data: any) {
+  approveQC(@Request() req: any, @Param('id') id: string, @Body() data: any) {
     return this.productionService.approveQC(req.user.tenantId, id, {
       ...data,
       qcBy: req.user.userId,
@@ -44,7 +44,7 @@ export class ProductionController {
   }
 
   @Put(':id/complete')
-  complete(@Request() req, @Param('id') id: string) {
+  complete(@Request() req: any, @Param('id') id: string) {
     return this.productionService.complete(req.user.tenantId, id, req.user.userId);
   }
 }
