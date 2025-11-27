@@ -226,6 +226,70 @@ class ApiClient {
   isAuthenticated(): boolean {
     return !!this.getToken();
   }
+
+  /**
+   * Generic GET request
+   */
+  async get<T = any>(endpoint: string, params?: Record<string, any>): Promise<T> {
+    let url = endpoint;
+    if (params) {
+      const queryString = new URLSearchParams(
+        Object.entries(params).reduce((acc, [key, value]) => {
+          if (value !== undefined && value !== null) {
+            acc[key] = String(value);
+          }
+          return acc;
+        }, {} as Record<string, string>)
+      ).toString();
+      if (queryString) {
+        url = `${endpoint}?${queryString}`;
+      }
+    }
+    const response = await this.request<T>(url, { method: 'GET' });
+    if (!response.success) {
+      throw new Error(response.error || 'Request failed');
+    }
+    return response.data as T;
+  }
+
+  /**
+   * Generic POST request
+   */
+  async post<T = any>(endpoint: string, data?: any): Promise<T> {
+    const response = await this.request<T>(endpoint, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+    if (!response.success) {
+      throw new Error(response.error || 'Request failed');
+    }
+    return response.data as T;
+  }
+
+  /**
+   * Generic PUT request
+   */
+  async put<T = any>(endpoint: string, data?: any): Promise<T> {
+    const response = await this.request<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+    if (!response.success) {
+      throw new Error(response.error || 'Request failed');
+    }
+    return response.data as T;
+  }
+
+  /**
+   * Generic DELETE request
+   */
+  async delete<T = any>(endpoint: string): Promise<T> {
+    const response = await this.request<T>(endpoint, { method: 'DELETE' });
+    if (!response.success) {
+      throw new Error(response.error || 'Request failed');
+    }
+    return response.data as T;
+  }
 }
 
 // Export singleton instance
