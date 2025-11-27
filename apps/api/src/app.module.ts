@@ -37,14 +37,14 @@ import { AuditModule } from './audit/audit.module';
       envFilePath: ['.env.local', '.env'],
     }),
 
-    // GraphQL
-    GraphQLModule.forRoot<ApolloDriverConfig>({
-      driver: ApolloDriver,
-      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
-      sortSchema: true,
-      playground: true,
-      context: ({ req, res }: { req: any; res: any }) => ({ req, res }),
-    }),
+    // GraphQL - Disabled for now (using REST API)
+    // GraphQLModule.forRoot<ApolloDriverConfig>({
+    //   driver: ApolloDriver,
+    //   autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+    //   sortSchema: true,
+    //   playground: true,
+    //   context: ({ req, res }: { req: any; res: any }) => ({ req, res }),
+    // }),
 
     // Rate Limiting
     ThrottlerModule.forRoot([
