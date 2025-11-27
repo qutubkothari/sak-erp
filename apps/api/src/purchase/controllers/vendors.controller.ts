@@ -13,7 +13,7 @@ import {
 import { VendorsService } from '../services/vendors.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@Controller('api/v1/purchase/vendors')
+@Controller('purchase/vendors')
 @UseGuards(JwtAuthGuard)
 export class VendorsController {
   constructor(private readonly vendorsService: VendorsService) {}

@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param, Query, Request, UseGua
 import { HrService } from '../services/hr.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@Controller('api/v1/hr')
+@Controller('hr')
 @UseGuards(JwtAuthGuard)
 export class HrController {
   constructor(private readonly hrService: HrService) {}

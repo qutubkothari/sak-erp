@@ -12,7 +12,7 @@ import {
 import { UidSupabaseService } from '../services/uid-supabase.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@Controller('api/v1/uid')
+@Controller('uid')
 @UseGuards(JwtAuthGuard)
 export class UidSupabaseController {
   constructor(private readonly uidService: UidSupabaseService) {}

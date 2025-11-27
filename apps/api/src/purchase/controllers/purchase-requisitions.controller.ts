@@ -13,7 +13,7 @@ import {
 import { PurchaseRequisitionsService } from '../services/purchase-requisitions.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@Controller('api/v1/purchase/requisitions')
+@Controller('purchase/requisitions')
 @UseGuards(JwtAuthGuard)
 export class PurchaseRequisitionsController {
   constructor(private readonly prService: PurchaseRequisitionsService) {}

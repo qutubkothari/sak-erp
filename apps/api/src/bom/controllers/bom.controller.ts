@@ -13,7 +13,7 @@ import {
 import { BomService } from '../services/bom.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@Controller('api/v1/bom')
+@Controller('bom')
 @UseGuards(JwtAuthGuard)
 export class BomController {
   constructor(private readonly bomService: BomService) {}

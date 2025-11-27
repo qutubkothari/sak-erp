@@ -14,7 +14,7 @@ import { DocumentsService } from '../services/documents.service';
 import { DocumentRevisionsService } from '../services/document-revisions.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@Controller('api/v1/documents')
+@Controller('documents')
 @UseGuards(JwtAuthGuard)
 export class DocumentsController {
   constructor(

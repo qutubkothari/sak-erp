@@ -12,7 +12,7 @@ import {
 import { DocumentCategoriesService } from '../services/document-categories.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@Controller('api/v1/document-categories')
+@Controller('document-categories')
 @UseGuards(JwtAuthGuard)
 export class DocumentCategoriesController {
   constructor(

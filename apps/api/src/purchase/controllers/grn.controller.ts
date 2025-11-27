@@ -13,7 +13,7 @@ import {
 import { GrnService } from '../services/grn.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@Controller('api/v1/purchase/grn')
+@Controller('purchase/grn')
 @UseGuards(JwtAuthGuard)
 export class GrnController {
   constructor(private readonly grnService: GrnService) {}

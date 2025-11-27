@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Body, Param, Query, Request, UseGuards } fr
 import { SalesService } from '../services/sales.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@Controller('api/v1/sales')
+@Controller('sales')
 @UseGuards(JwtAuthGuard)
 export class SalesController {
   constructor(private readonly salesService: SalesService) {}

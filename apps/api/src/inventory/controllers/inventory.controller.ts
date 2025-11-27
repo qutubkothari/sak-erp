@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Body, Param, Query, Request, UseGuards } fr
 import { InventoryService } from '../services/inventory.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@Controller('api/v1/inventory')
+@Controller('inventory')
 @UseGuards(JwtAuthGuard)
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}

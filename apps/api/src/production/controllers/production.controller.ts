@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, Request } fr
 import { ProductionService } from '../services/production.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@Controller('api/v1/production')
+@Controller('production')
 @UseGuards(JwtAuthGuard)
 export class ProductionController {
   constructor(private readonly productionService: ProductionService) {}
