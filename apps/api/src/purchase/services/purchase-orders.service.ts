@@ -82,14 +82,10 @@ export class PurchaseOrdersService {
       .select(`
         *,
         vendor:vendors(id, code, name, contact_person, email),
-        created_by_user:users(id, first_name, last_name, email),
-        purchase_order_items(
-          *,
-          item:items(id, code, name, uom)
-        )
+        purchase_order_items(*)
       `)
       .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false});
 
     if (filters?.status) {
       query = query.eq('status', filters.status);
@@ -115,11 +111,7 @@ export class PurchaseOrdersService {
       .select(`
         *,
         vendor:vendors(id, code, name, contact_person, email, phone, address),
-        created_by_user:users(id, first_name, last_name, email),
-        purchase_order_items(
-          *,
-          item:items(id, code, name, uom)
-        )
+        purchase_order_items(*)
       `)
       .eq('tenant_id', tenantId)
       .eq('id', id)
