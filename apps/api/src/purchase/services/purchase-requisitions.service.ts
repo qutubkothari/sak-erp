@@ -63,12 +63,7 @@ export class PurchaseRequisitionsService {
       .from('purchase_requisitions')
       .select(`
         *,
-        requested_by_user:users!purchase_requisitions_requested_by_fkey(id, first_name, last_name, email),
-        approved_by_user:users!purchase_requisitions_approved_by_fkey(id, first_name, last_name, email),
-        purchase_requisition_items(
-          *,
-          item:items(id, code, name, uom)
-        )
+        purchase_requisition_items(*)
       `)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false });
@@ -96,12 +91,7 @@ export class PurchaseRequisitionsService {
       .from('purchase_requisitions')
       .select(`
         *,
-        requested_by_user:users!purchase_requisitions_requested_by_fkey(id, first_name, last_name, email),
-        approved_by_user:users!purchase_requisitions_approved_by_fkey(id, first_name, last_name, email),
-        purchase_requisition_items(
-          *,
-          item:items(id, code, name, uom)
-        )
+        purchase_requisition_items(*)
       `)
       .eq('tenant_id', tenantId)
       .eq('id', id)
