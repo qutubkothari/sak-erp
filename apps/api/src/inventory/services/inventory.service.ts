@@ -1,10 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { createClient, this.supabase } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Request } from 'express';
 
 @Injectable()
 export class InventoryService {
-  private supabase: this.supabase;
+  private supabase: SupabaseClient;
 
   constructor() {
     this.supabase = createClient(
