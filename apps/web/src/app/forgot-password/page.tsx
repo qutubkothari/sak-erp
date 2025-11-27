@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { apiClient } from '../../../lib/api-client';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -15,11 +16,16 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      // TODO: Implement API call
-      console.log('Password reset for:', email);
-      setSuccess(true);
+      const response = await apiClient.requestPasswordReset({ email });
+
+      if (response.success) {
+        setSuccess(true);
+      } else {
+        setError(response.error || 'Failed to send reset email. Please try again.');
+      }
     } catch (err) {
-      setError('Failed to send reset email. Please try again.');
+      console.error('Password reset error:', err);
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -2,8 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { apiClient } from '../../../lib/api-client';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -15,11 +18,17 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // TODO: Implement API call
-      console.log('Login:', { email, password });
-      setError('API not yet connected. Coming soon!');
+      const response = await apiClient.login({ email, password });
+
+      if (response.success) {
+        // Redirect to dashboard on successful login
+        router.push('/dashboard');
+      } else {
+        setError(response.error || 'Login failed. Please check your credentials.');
+      }
     } catch (err) {
-      setError('Login failed. Please try again.');
+      console.error('Login error:', err);
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }

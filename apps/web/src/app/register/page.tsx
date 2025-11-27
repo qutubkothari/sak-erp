@@ -2,8 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { apiClient } from '../../../lib/api-client';
 
 export default function RegisterPage() {
+  const router = useRouter();
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -39,11 +42,22 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      // TODO: Implement API call
-      console.log('Register:', formData);
-      setError('API not yet connected. Coming soon!');
+      const response = await apiClient.register({
+        name: `${formData.firstName} ${formData.lastName}`,
+        email: formData.email,
+        password: formData.password,
+        companyName: formData.company,
+      });
+
+      if (response.success) {
+        // Redirect to dashboard on successful registration
+        router.push('/dashboard');
+      } else {
+        setError(response.error || 'Registration failed. Please try again.');
+      }
     } catch (err) {
-      setError('Registration failed. Please try again.');
+      console.error('Registration error:', err);
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
