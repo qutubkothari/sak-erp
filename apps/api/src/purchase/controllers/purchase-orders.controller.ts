@@ -24,27 +24,27 @@ export class PurchaseOrdersController {
   }
 
   @Get()
-  async findAll(@Request() req, @Query() query: any) {
+  async findAll(@Request() req: any, @Query() query: any) {
     return this.poService.findAll(req.user.tenantId, query);
   }
 
   @Get(':id')
-  async findOne(@Request() req, @Param('id') id: string) {
+  async findOne(@Request() req: any, @Param('id') id: string) {
     return this.poService.findOne(req.user.tenantId, id);
   }
 
   @Put(':id')
-  async update(@Request() req, @Param('id') id: string, @Body() body: any) {
+  async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.poService.update(req.user.tenantId, id, body);
   }
 
   @Post(':id/status')
-  async updateStatus(@Request() req, @Param('id') id: string, @Body() body: { status: string }) {
+  async updateStatus(@Request() req: any, @Param('id') id: string, @Body() body: { status: string }) {
     return this.poService.updateStatus(req.user.tenantId, id, body.status);
   }
 
   @Delete(':id')
-  async delete(@Request() req, @Param('id') id: string) {
+  async delete(@Request() req: any, @Param('id') id: string) {
     return this.poService.delete(req.user.tenantId, id);
   }
 }

@@ -24,37 +24,37 @@ export class PurchaseRequisitionsController {
   }
 
   @Get()
-  async findAll(@Request() req, @Query() query: any) {
+  async findAll(@Request() req: any, @Query() query: any) {
     return this.prService.findAll(req.user.tenantId, query);
   }
 
   @Get(':id')
-  async findOne(@Request() req, @Param('id') id: string) {
+  async findOne(@Request() req: any, @Param('id') id: string) {
     return this.prService.findOne(req.user.tenantId, id);
   }
 
   @Put(':id')
-  async update(@Request() req, @Param('id') id: string, @Body() body: any) {
+  async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.prService.update(req.user.tenantId, id, body);
   }
 
   @Post(':id/submit')
-  async submit(@Request() req, @Param('id') id: string) {
+  async submit(@Request() req: any, @Param('id') id: string) {
     return this.prService.submit(req.user.tenantId, id);
   }
 
   @Post(':id/approve')
-  async approve(@Request() req, @Param('id') id: string) {
+  async approve(@Request() req: any, @Param('id') id: string) {
     return this.prService.approve(req.user.tenantId, id, req.user.userId);
   }
 
   @Post(':id/reject')
-  async reject(@Request() req, @Param('id') id: string) {
+  async reject(@Request() req: any, @Param('id') id: string) {
     return this.prService.reject(req.user.tenantId, id, req.user.userId);
   }
 
   @Delete(':id')
-  async delete(@Request() req, @Param('id') id: string) {
+  async delete(@Request() req: any, @Param('id') id: string) {
     return this.prService.delete(req.user.tenantId, id);
   }
 }

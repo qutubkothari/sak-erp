@@ -24,27 +24,27 @@ export class GrnController {
   }
 
   @Get()
-  async findAll(@Request() req, @Query() query: any) {
+  async findAll(@Request() req: any, @Query() query: any) {
     return this.grnService.findAll(req.user.tenantId, query);
   }
 
   @Get(':id')
-  async findOne(@Request() req, @Param('id') id: string) {
+  async findOne(@Request() req: any, @Param('id') id: string) {
     return this.grnService.findOne(req.user.tenantId, id);
   }
 
   @Put(':id')
-  async update(@Request() req, @Param('id') id: string, @Body() body: any) {
+  async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.grnService.update(req.user.tenantId, id, body);
   }
 
   @Post(':id/submit')
-  async submit(@Request() req, @Param('id') id: string) {
+  async submit(@Request() req: any, @Param('id') id: string) {
     return this.grnService.submit(req.user.tenantId, id);
   }
 
   @Delete(':id')
-  async delete(@Request() req, @Param('id') id: string) {
+  async delete(@Request() req: any, @Param('id') id: string) {
     return this.grnService.delete(req.user.tenantId, id);
   }
 }
