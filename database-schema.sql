@@ -310,6 +310,51 @@ CREATE TABLE purchase_order_items (
 
 CREATE INDEX idx_po_items_po ON purchase_order_items(po_id);
 
+-- GRN (Goods Receipt Note)
+CREATE TYPE grn_status AS ENUM ('DRAFT', 'COMPLETED', 'CANCELLED');
+
+CREATE TABLE grns (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    grn_number VARCHAR(50) UNIQUE NOT NULL,
+    po_id UUID REFERENCES purchase_orders(id),
+    vendor_id UUID NOT NULL REFERENCES vendors(id),
+    receipt_date DATE NOT NULL,
+    invoice_number VARCHAR(50),
+    invoice_date DATE,
+    warehouse_id UUID REFERENCES warehouses(id),
+    status grn_status DEFAULT 'DRAFT',
+    notes TEXT,
+    received_by UUID NOT NULL REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_grn_tenant ON grns(tenant_id);
+CREATE INDEX idx_grn_po ON grns(po_id);
+CREATE INDEX idx_grn_vendor ON grns(vendor_id);
+CREATE INDEX idx_grn_status ON grns(status);
+CREATE INDEX idx_grn_number ON grns(grn_number);
+
+CREATE TABLE grn_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    grn_id UUID NOT NULL REFERENCES grns(id) ON DELETE CASCADE,
+    item_id UUID NOT NULL REFERENCES items(id),
+    po_item_id UUID REFERENCES purchase_order_items(id),
+    ordered_quantity DECIMAL(12,2),
+    received_quantity DECIMAL(12,2) NOT NULL,
+    accepted_quantity DECIMAL(12,2) NOT NULL,
+    rejected_quantity DECIMAL(12,2) DEFAULT 0,
+    unit_price DECIMAL(15,2),
+    batch_number VARCHAR(50),
+    expiry_date DATE,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_grn_items_grn ON grn_items(grn_id);
+CREATE INDEX idx_grn_items_item ON grn_items(item_id);
+
 -- ============================================================================
 -- INVENTORY MODULE
 -- ============================================================================
