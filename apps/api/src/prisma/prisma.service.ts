@@ -16,8 +16,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
-    await this.$connect();
-    console.log('✅ Database connected');
+    // Skip database connection for now - using Supabase REST API
+    // await this.$connect();
+    console.log('✅ Prisma service initialized (Supabase REST API mode)');
   }
 
   async onModuleDestroy() {
