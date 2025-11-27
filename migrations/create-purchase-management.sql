@@ -208,9 +208,21 @@ CREATE TABLE IF NOT EXISTS items (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_items_tenant ON items(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_items_code ON items(code);
-CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
+-- Create indexes only if the columns exist
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'items' AND column_name = 'tenant_id') THEN
+        CREATE INDEX IF NOT EXISTS idx_items_tenant ON items(tenant_id);
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'items' AND column_name = 'code') THEN
+        CREATE INDEX IF NOT EXISTS idx_items_code ON items(code);
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'items' AND column_name = 'category') THEN
+        CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
+    END IF;
+END $$;
 
 -- Create warehouses table (if not exists - for reference)
 CREATE TABLE IF NOT EXISTS warehouses (
@@ -224,8 +236,17 @@ CREATE TABLE IF NOT EXISTS warehouses (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_warehouses_tenant ON warehouses(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_warehouses_code ON warehouses(code);
+-- Create indexes only if the columns exist
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'warehouses' AND column_name = 'tenant_id') THEN
+        CREATE INDEX IF NOT EXISTS idx_warehouses_tenant ON warehouses(tenant_id);
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'warehouses' AND column_name = 'code') THEN
+        CREATE INDEX IF NOT EXISTS idx_warehouses_code ON warehouses(code);
+    END IF;
+END $$;
 
 -- Add comments
 COMMENT ON TABLE vendors IS 'Vendor master for purchase management with quality ratings';
