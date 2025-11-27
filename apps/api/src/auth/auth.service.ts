@@ -38,13 +38,30 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
+    // Get or use default tenant if not provided
+    let tenantId = dto.tenantId;
+    if (!tenantId) {
+      // Get the default tenant (first active tenant)
+      const { data: defaultTenant, error: tenantError } = await this.supabase
+        .from('tenants')
+        .select('id')
+        .eq('is_active', true)
+        .limit(1)
+        .single();
+      
+      if (tenantError || !defaultTenant) {
+        throw new Error('No active tenant found. Please contact administrator.');
+      }
+      tenantId = defaultTenant.id;
+    }
+
     // Check if user already exists
     const { data: existingUser, error: checkError } = await this.supabase
       .from('users')
       .select('id')
       .eq('email', dto.email)
-      .eq('tenant_id', dto.tenantId)
-      .single();
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
 
     if (existingUser) {
       throw new ConflictException('User with this email already exists');
@@ -59,9 +76,9 @@ export class AuthService {
       const { data: defaultRole, error: roleError } = await this.supabase
         .from('roles')
         .select('id')
-        .eq('tenant_id', dto.tenantId)
+        .eq('tenant_id', tenantId)
         .eq('name', 'USER')
-        .single();
+        .maybeSingle();
       
       if (roleError && roleError.code !== 'PGRST116') {
         throw new Error(`Failed to fetch default role: ${roleError.message}`);
@@ -74,11 +91,12 @@ export class AuthService {
       .from('users')
       .insert({
         email: dto.email,
-        password_hash: hashedPassword,
+        password: hashedPassword,
         first_name: dto.firstName,
         last_name: dto.lastName,
-        tenant_id: dto.tenantId,
-        status: 'ACTIVE',
+        tenant_id: tenantId,
+        role_id: roleId,
+        is_active: true,
       })
       .select('id, email, first_name, last_name, tenant_id')
       .single();
@@ -87,36 +105,18 @@ export class AuthService {
       throw new Error(`Failed to create user: ${createError.message}`);
     }
 
-    // Create user role association if roleId exists
-    if (roleId) {
-      const { error: userRoleError } = await this.supabase
-        .from('user_roles')
-        .insert({
-          user_id: newUser.id,
-          role_id: roleId,
-        });
-
-      if (userRoleError) {
-        // Rollback user creation if role assignment fails
-        await this.supabase.from('users').delete().eq('id', newUser.id);
-        throw new Error(`Failed to assign role: ${userRoleError.message}`);
-      }
-    }
-
-    // Fetch user with roles for response
-    const { data: userWithRoles, error: fetchError } = await this.supabase
+    // Fetch user with role for response
+    const { data: userWithRole, error: fetchError } = await this.supabase
       .from('users')
       .select(`
         id,
         email,
         first_name,
         last_name,
-        user_roles (
-          role:roles (
-            id,
-            name,
-            permissions
-          )
+        role:roles (
+          id,
+          name,
+          permissions
         )
       `)
       .eq('id', newUser.id)
@@ -128,17 +128,15 @@ export class AuthService {
 
     // Transform to match expected format
     const user = {
-      id: userWithRoles.id,
-      email: userWithRoles.email,
-      firstName: userWithRoles.first_name,
-      lastName: userWithRoles.last_name,
-      roles: userWithRoles.user_roles?.map((ur: any) => ({
-        role: ur.role
-      })) || [],
+      id: userWithRole.id,
+      email: userWithRole.email,
+      firstName: userWithRole.first_name,
+      lastName: userWithRole.last_name,
+      roles: userWithRole.role ? [{ role: userWithRole.role }] : [],
     };
 
     // Generate tokens
-    const tokens = await this.generateTokens(user.id, user.email, dto.tenantId);
+    const tokens = await this.generateTokens(user.id, user.email, tenantId);
 
     return {
       user,
@@ -147,45 +145,54 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
+    // Get or use default tenant if not provided
+    let tenantId = dto.tenantId;
+    if (!tenantId) {
+      const { data: defaultTenant } = await this.supabase
+        .from('tenants')
+        .select('id')
+        .eq('is_active', true)
+        .limit(1)
+        .single();
+      tenantId = defaultTenant?.id;
+    }
+
+    if (!tenantId) {
+      throw new UnauthorizedException('No active tenant found');
+    }
+
     // Find user
     const { data: user, error: userError } = await this.supabase
       .from('users')
       .select(`
         id,
         email,
-        password_hash,
-        status,
+        password,
+        is_active,
         tenant_id,
         first_name,
         last_name,
-        user_roles (
-          role:roles (
-            id,
-            name,
-            permissions
-          )
-        ),
-        tenant:tenants (
+        role:roles (
           id,
           name,
-          domain
+          permissions
         )
       `)
       .eq('email', dto.email)
-      .eq('tenant_id', dto.tenantId)
-      .single();
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
 
     if (userError || !user) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     // Check if user is active
-    if (user.status !== 'ACTIVE') {
+    if (!user.is_active) {
       throw new UnauthorizedException('Account is deactivated');
     }
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(dto.password, user.password_hash);
+    const isPasswordValid = await bcrypt.compare(dto.password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -197,20 +204,17 @@ export class AuthService {
       .eq('id', user.id);
 
     // Generate tokens
-    const tokens = await this.generateTokens(user.id, user.email, dto.tenantId);
+    const tokens = await this.generateTokens(user.id, user.email, tenantId);
 
     // Remove password from response and transform to camelCase
-    const { password_hash, ...userWithoutPassword } = user;
+    const { password, ...userWithoutPassword } = user;
     const transformedUser = {
       ...userWithoutPassword,
       firstName: user.first_name,
       lastName: user.last_name,
       tenantId: user.tenant_id,
-      passwordHash: undefined,
-      password_hash: undefined,
-      roles: user.user_roles?.map((ur: any) => ({
-        role: ur.role
-      })) || [],
+      isActive: user.is_active,
+      roles: user.role ? [{ role: user.role }] : [],
     };
 
     return {
@@ -227,11 +231,11 @@ export class AuthService {
 
       const { data: user, error: userError } = await this.supabase
         .from('users')
-        .select('id, email, status, tenant_id')
+        .select('id, email, is_active, tenant_id')
         .eq('id', payload.sub)
         .single();
 
-      if (userError || !user || user.status !== 'ACTIVE') {
+      if (userError || !user || !user.is_active) {
         throw new UnauthorizedException('Invalid token');
       }
 
@@ -254,20 +258,18 @@ export class AuthService {
         email,
         first_name,
         last_name,
-        status,
+        is_active,
         tenant_id,
-        user_roles (
-          role:roles (
-            id,
-            name,
-            permissions
-          )
+        role:roles (
+          id,
+          name,
+          permissions
         )
       `)
       .eq('id', userId)
       .eq('tenant_id', tenantId)
-      .eq('status', 'ACTIVE')
-      .single();
+      .eq('is_active', true)
+      .maybeSingle();
 
     if (userError || !user) {
       return null;
@@ -279,11 +281,9 @@ export class AuthService {
       email: user.email,
       firstName: user.first_name,
       lastName: user.last_name,
-      status: user.status,
+      isActive: user.is_active,
       tenantId: user.tenant_id,
-      roles: user.user_roles?.map((ur: any) => ({
-        role: ur.role
-      })) || [],
+      roles: user.role ? [{ role: user.role }] : [],
     };
 
     return result;
@@ -312,7 +312,7 @@ export class AuthService {
   async changePassword(userId: string, oldPassword: string, newPassword: string) {
     const { data: user, error: userError } = await this.supabase
       .from('users')
-      .select('id, password_hash')
+      .select('id, password')
       .eq('id', userId)
       .single();
 
@@ -320,7 +320,7 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    const isPasswordValid = await bcrypt.compare(oldPassword, user.password_hash);
+    const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Current password is incorrect');
     }
@@ -329,7 +329,7 @@ export class AuthService {
 
     const { error: updateError } = await this.supabase
       .from('users')
-      .update({ password_hash: hashedPassword })
+      .update({ password: hashedPassword })
       .eq('id', userId);
 
     if (updateError) {
@@ -345,7 +345,7 @@ export class AuthService {
       .select('id, email')
       .eq('email', email)
       .eq('tenant_id', tenantId)
-      .single();
+      .maybeSingle();
 
     if (userError || !user) {
       // Don't reveal if user exists
@@ -376,7 +376,7 @@ export class AuthService {
 
       const { error: updateError } = await this.supabase
         .from('users')
-        .update({ password_hash: hashedPassword })
+        .update({ password: hashedPassword })
         .eq('id', payload.sub);
 
       if (updateError) {
