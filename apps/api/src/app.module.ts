@@ -22,6 +22,7 @@ import { ProductionModule } from './production/production.module';
 import { QualityModule } from './quality/quality.module';
 import { SalesModule } from './sales/sales.module';
 import { ServiceModule } from './service/service.module';
+import { BomModule } from './bom/bom.module';
 
 // Support Modules
 import { WorkflowModule } from './workflow/workflow.module';
@@ -76,6 +77,7 @@ import { AuditModule } from './audit/audit.module';
     QualityModule,
     SalesModule,
     ServiceModule,
+    BomModule,
 
     // Support
     WorkflowModule,

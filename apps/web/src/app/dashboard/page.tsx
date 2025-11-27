@@ -88,6 +88,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
               { name: 'Purchase Management', icon: '📦', path: '/dashboard/purchase' },
+              { name: 'BOM Management', icon: '📋', path: '/dashboard/bom' },
               { name: 'Inventory & Stores', icon: '🏪', path: '/dashboard/inventory' },
               { name: 'Production Planning', icon: '⚙️', path: '/dashboard/production' },
               { name: 'Quality Control', icon: '✅', path: '/dashboard/quality' },
@@ -105,8 +106,11 @@ export default function DashboardPage() {
                   backgroundColor: 'white',
                 }}
                 onClick={() => {
-                  // TODO: Navigate to module
-                  alert(`${module.name} - Coming Soon!`);
+                  if (module.path === '/dashboard/purchase' || module.path === '/dashboard/bom') {
+                    router.push(module.path);
+                  } else {
+                    alert(`${module.name} - Coming Soon!`);
+                  }
                 }}
               >
                 <span className="text-3xl">{module.icon}</span>

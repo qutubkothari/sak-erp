@@ -267,6 +267,7 @@ CREATE TABLE purchase_requisition_items (
     estimated_price DECIMAL(15,2),
     specifications TEXT,
     notes TEXT,
+    drawing_url TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -305,6 +306,8 @@ CREATE TABLE purchase_order_items (
     tax_rate DECIMAL(5,2),
     total_price DECIMAL(15,2) NOT NULL,
     specifications TEXT,
+    drawing_url TEXT,
+    drawing_mandatory BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -423,6 +426,7 @@ CREATE TABLE bom_items (
     scrap_percentage DECIMAL(5,2),
     sequence INTEGER,
     notes TEXT,
+    drawing_url TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
