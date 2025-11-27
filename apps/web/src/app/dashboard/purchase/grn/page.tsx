@@ -24,6 +24,7 @@ interface GRN {
     received_quantity: number;
     accepted_quantity: number;
     rejected_quantity: number;
+    uid?: string; // Auto-generated UID for traceability
   }>;
 }
 
@@ -250,7 +251,7 @@ export default function GRNPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Receipt Date</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Invoice</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Warehouse</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Items</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Items / UIDs</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Actions</th>
                 </tr>
@@ -275,8 +276,8 @@ export default function GRNPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {grn.warehouse?.name || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {grn.grn_items.length} items
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      <div className="font-medium">{grn.grn_items.length} items</div>
                       <div className="text-xs text-gray-400">
                         Accepted: {grn.grn_items.reduce((sum, item) => sum + item.accepted_quantity, 0)}
                         {grn.grn_items.some((i) => i.rejected_quantity > 0) && (
@@ -285,6 +286,11 @@ export default function GRNPage() {
                           </span>
                         )}
                       </div>
+                      {grn.grn_items.some(item => item.uid) && (
+                        <div className="text-xs text-blue-600 mt-1 font-mono">
+                          ✓ {grn.grn_items.filter(item => item.uid).length} UIDs Generated
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(grn.status)}`}>
