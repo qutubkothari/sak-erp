@@ -83,7 +83,7 @@ export class UidService {
     }
 
     // Calculate assembly level (max parent level + 1)
-    const maxParentLevel = Math.max(...parents.map(p => (p.assemblyLevel as number) || 0));
+    const maxParentLevel = Math.max(...parents.map((p: any) => (p.assemblyLevel as number) || 0));
     const assemblyLevel = maxParentLevel + 1;
 
     // Get tenant and plant codes for UID generation
@@ -195,7 +195,7 @@ export class UidService {
         node.purchaseDetails = {
           poNumber: po.poNumber,
           date: po.orderDate.toISOString(),
-          price: canViewPrice ? parseFloat(uidRecord.unitPrice?.toString() || '0') : null,
+          price: (canViewPrice ? parseFloat(uidRecord.unitPrice?.toString() || '0') : null) as number | null,
         };
       }
     }
@@ -262,7 +262,7 @@ export class UidService {
       const parentUids = Array.isArray(uidRecord.parentUids) ? uidRecord.parentUids : [];
       
       const suppliers = await Promise.all(
-        parentUids.map(async (parentUid) => {
+        parentUids.map(async (parentUid: string) => {
           return this.traceFaultyPartToSupplier(parentUid as string, tenantId);
         }),
       );
@@ -366,7 +366,7 @@ export class UidService {
     // Check if user has OWNER, MANAGER, or ACCOUNTS role
     const canViewPriceRoles = ['OWNER', 'MANAGER', 'ACCOUNTANT', 'ADMIN'];
     
-    return user.roles.some((userRole) =>
+    return user.roles.some((userRole: any) =>
       canViewPriceRoles.includes(userRole.role.code),
     );
   }

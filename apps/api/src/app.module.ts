@@ -43,7 +43,7 @@ import { AuditModule } from './audit/audit.module';
       autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
       sortSchema: true,
       playground: true,
-      context: ({ req, res }) => ({ req, res }),
+      context: ({ req, res }: { req: any; res: any }) => ({ req, res }),
     }),
 
     // Rate Limiting
