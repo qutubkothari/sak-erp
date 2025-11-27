@@ -24,31 +24,84 @@ EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
 
--- Create customers table
-CREATE TABLE IF NOT EXISTS customers (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    tenant_id UUID NOT NULL,
-    customer_code VARCHAR(50) UNIQUE NOT NULL,
-    customer_name VARCHAR(200) NOT NULL,
-    customer_type VARCHAR(50) DEFAULT 'REGULAR', -- REGULAR, DISTRIBUTOR, DEALER, PROSPECT
-    contact_person VARCHAR(200),
-    email VARCHAR(200),
-    phone VARCHAR(50),
-    mobile VARCHAR(50),
-    gst_number VARCHAR(50),
-    pan_number VARCHAR(50),
-    billing_address TEXT,
-    shipping_address TEXT,
-    city VARCHAR(100),
-    state VARCHAR(100),
-    country VARCHAR(100) DEFAULT 'India',
-    pincode VARCHAR(20),
-    credit_limit DECIMAL(15,2) DEFAULT 0,
-    credit_days INTEGER DEFAULT 30,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
+-- Create or update customers table
+DO $$ 
+BEGIN
+    -- Create table if it doesn't exist
+    IF NOT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'customers') THEN
+        CREATE TABLE customers (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            tenant_id UUID NOT NULL,
+            customer_code VARCHAR(50) UNIQUE NOT NULL,
+            customer_name VARCHAR(200) NOT NULL,
+            customer_type VARCHAR(50) DEFAULT 'REGULAR',
+            contact_person VARCHAR(200),
+            email VARCHAR(200),
+            phone VARCHAR(50),
+            mobile VARCHAR(50),
+            gst_number VARCHAR(50),
+            pan_number VARCHAR(50),
+            billing_address TEXT,
+            shipping_address TEXT,
+            city VARCHAR(100),
+            state VARCHAR(100),
+            country VARCHAR(100) DEFAULT 'India',
+            pincode VARCHAR(20),
+            credit_limit DECIMAL(15,2) DEFAULT 0,
+            credit_days INTEGER DEFAULT 30,
+            is_active BOOLEAN DEFAULT true,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
+    ELSE
+        -- Add missing columns if table exists
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'customer_code') THEN
+            ALTER TABLE customers ADD COLUMN customer_code VARCHAR(50) UNIQUE;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'customer_name') THEN
+            ALTER TABLE customers ADD COLUMN customer_name VARCHAR(200) NOT NULL DEFAULT 'Unknown Customer';
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'customer_type') THEN
+            ALTER TABLE customers ADD COLUMN customer_type VARCHAR(50) DEFAULT 'REGULAR';
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'contact_person') THEN
+            ALTER TABLE customers ADD COLUMN contact_person VARCHAR(200);
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'gst_number') THEN
+            ALTER TABLE customers ADD COLUMN gst_number VARCHAR(50);
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'pan_number') THEN
+            ALTER TABLE customers ADD COLUMN pan_number VARCHAR(50);
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'billing_address') THEN
+            ALTER TABLE customers ADD COLUMN billing_address TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'shipping_address') THEN
+            ALTER TABLE customers ADD COLUMN shipping_address TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'city') THEN
+            ALTER TABLE customers ADD COLUMN city VARCHAR(100);
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'state') THEN
+            ALTER TABLE customers ADD COLUMN state VARCHAR(100);
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'country') THEN
+            ALTER TABLE customers ADD COLUMN country VARCHAR(100) DEFAULT 'India';
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'pincode') THEN
+            ALTER TABLE customers ADD COLUMN pincode VARCHAR(20);
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'credit_limit') THEN
+            ALTER TABLE customers ADD COLUMN credit_limit DECIMAL(15,2) DEFAULT 0;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'credit_days') THEN
+            ALTER TABLE customers ADD COLUMN credit_days INTEGER DEFAULT 30;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'is_active') THEN
+            ALTER TABLE customers ADD COLUMN is_active BOOLEAN DEFAULT true;
+        END IF;
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_customers_tenant ON customers(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_customers_code ON customers(customer_code);
