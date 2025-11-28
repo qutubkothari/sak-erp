@@ -94,19 +94,27 @@ function PurchaseOrdersContent() {
   const loadPRData = async (prId: string) => {
     try {
       setLoadingPR(true);
+      console.log('Loading PR data for ID:', prId);
       const prData = await apiClient.get(`/purchase/requisitions/${prId}`);
+      console.log('PR Data received:', prData);
+      console.log('PR Items:', prData.purchase_requisition_items);
       
       // Map PR items to PO items
-      const poItems = prData.purchase_requisition_items?.map((item: any) => ({
-        itemId: item.item_id || '',
-        itemCode: item.item_code || '',
-        itemName: item.item_name || '',
-        quantity: item.requested_qty || 0,
-        unitPrice: item.estimated_rate || 0,
-        taxRate: 18, // Default GST rate
-        totalPrice: (item.requested_qty || 0) * (item.estimated_rate || 0),
-        specifications: item.remarks || '',
-      })) || [];
+      const poItems = prData.purchase_requisition_items?.map((item: any) => {
+        console.log('Mapping PR item:', item);
+        return {
+          itemId: item.item_id || '',
+          itemCode: item.item_code || '',
+          itemName: item.item_name || '',
+          quantity: item.requested_qty || 0,
+          unitPrice: item.estimated_rate || 0,
+          taxRate: 18, // Default GST rate
+          totalPrice: (item.requested_qty || 0) * (item.estimated_rate || 0),
+          specifications: item.remarks || '',
+        };
+      }) || [];
+
+      console.log('Mapped PO Items:', poItems);
 
       setFormData({
         ...formData,
