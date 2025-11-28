@@ -23,4 +23,52 @@ export class MasterDataService {
     if (error) throw new Error(error.message);
     return data || [];
   }
+
+  async getWarehouses(tenantId: string) {
+    const { data, error } = await this.supabase
+      .from('warehouses')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  async getUnitsOfMeasure(tenantId: string) {
+    const { data, error } = await this.supabase
+      .from('units_of_measure')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  async getItemCategories(tenantId: string) {
+    const { data, error } = await this.supabase
+      .from('item_categories')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  async getPaymentTerms(tenantId: string) {
+    const { data, error } = await this.supabase
+      .from('payment_terms')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .order('days', { ascending: true });
+
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
 }
