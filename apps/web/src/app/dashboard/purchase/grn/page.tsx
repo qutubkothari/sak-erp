@@ -24,7 +24,32 @@ interface GRN {
     received_quantity: number;
     accepted_quantity: number;
     rejected_quantity: number;
-    uid?: string; // Auto-generated UID for traceability
+    uid?: string;
+  }>;
+}
+
+interface UIDRecord {
+  uid: string;
+  entity_type: string;
+  status: string;
+  location: string;
+  batch_number: string;
+  created_at: string;
+}
+
+interface PurchaseTrail {
+  uid: string;
+  item: { code: string; name: string };
+  supplier: { name: string; contact_person: string } | null;
+  purchase_order: { po_number: string; order_date: string; total_amount: number } | null;
+  grn: { grn_number: string; received_date: string; received_quantity: number } | null;
+  batch_number: string | null;
+  location: string | null;
+  lifecycle: Array<{
+    stage: string;
+    timestamp: string;
+    location: string;
+    reference: string;
   }>;
 }
 
@@ -35,6 +60,12 @@ export default function GRNPage() {
   const [showModal, setShowModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  const [showUIDsModal, setShowUIDsModal] = useState(false);
+  const [selectedGRNUIDs, setSelectedGRNUIDs] = useState<UIDRecord[]>([]);
+  const [loadingUIDs, setLoadingUIDs] = useState(false);
+  const [showTrailModal, setShowTrailModal] = useState(false);
+  const [purchaseTrail, setPurchaseTrail] = useState<PurchaseTrail | null>(null);
+  const [loadingTrail, setLoadingTrail] = useState(false);
 
   const [formData, setFormData] = useState({
     poId: '',
@@ -105,6 +136,63 @@ export default function GRNPage() {
     } catch (error) {
       console.error('Error creating GRN:', error);
     }
+  };
+
+  const fetchGRNUIDs = async (grnId: string) => {
+    try {
+      setLoadingUIDs(true);
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`/api/v1/purchase/grn/${grnId}/uids`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedGRNUIDs(data);
+        setShowUIDsModal(true);
+      } else {
+        alert('No UIDs found for this GRN. UIDs are auto-generated when GRN is submitted.');
+      }
+    } catch (error) {
+      console.error('Error fetching UIDs:', error);
+      alert('Failed to fetch UIDs');
+    } finally {
+      setLoadingUIDs(false);
+    }
+  };
+
+  const fetchPurchaseTrail = async (uid: string) => {
+    try {
+      setLoadingTrail(true);
+      const token = localStorage.getItem('accessToken');
+      
+      const response = await fetch(`/api/v1/uid/${uid}/purchase-trail`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPurchaseTrail(data);
+        setShowTrailModal(true);
+      } else {
+        alert('Purchase trail not found for this UID');
+      }
+    } catch (error) {
+      console.error('Error fetching purchase trail:', error);
+      alert('Failed to fetch purchase trail');
+    } finally {
+      setLoadingTrail(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const handleAddItem = () => {
@@ -299,6 +387,14 @@ export default function GRNPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <button className="text-amber-600 hover:text-amber-900 mr-3">View</button>
+                      {grn.status === 'COMPLETED' && (
+                        <button 
+                          onClick={() => fetchGRNUIDs(grn.id)}
+                          className="text-green-600 hover:text-green-900 mr-3"
+                        >
+                          🔍 UIDs
+                        </button>
+                      )}
                       <button className="text-blue-600 hover:text-blue-900">Edit</button>
                     </td>
                   </tr>
@@ -507,6 +603,121 @@ export default function GRNPage() {
               >
                 Create GRN
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UIDs Modal */}
+      {showUIDsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-2xl font-bold text-gray-900">Generated UIDs</h2>
+              <button
+                onClick={() => setShowUIDsModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6">
+              {selectedGRNUIDs.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">No UIDs found</p>
+              ) : (
+                <div className="grid gap-3">
+                  {selectedGRNUIDs.map((uidRecord) => (
+                    <div
+                      key={uidRecord.uid}
+                      className="border border-gray-200 rounded-lg p-4 hover:bg-blue-50 cursor-pointer transition-colors"
+                      onClick={() => fetchPurchaseTrail(uidRecord.uid)}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="font-mono text-sm font-semibold text-blue-600">
+                            {uidRecord.uid}
+                          </div>
+                          <div className="text-sm text-gray-600 mt-1">
+                            Type: {uidRecord.entity_type} | Status: {uidRecord.status}
+                          </div>
+                          {uidRecord.batch_number && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              Batch: {uidRecord.batch_number}
+                            </div>
+                          )}
+                          <div className="text-xs text-gray-500 mt-1">
+                            Location: {uidRecord.location || 'N/A'}
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {formatDate(uidRecord.created_at)}
+                        </div>
+                      </div>
+                      <div className="mt-2 text-xs text-blue-600">
+                        Click to view purchase trail →
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Purchase Trail Modal - Same as BOM page */}
+      {showTrailModal && purchaseTrail && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Purchase Trail</h2>
+                  <p className="text-gray-600 mt-1">UID: {purchaseTrail.uid}</p>
+                </div>
+                <button onClick={() => setShowTrailModal(false)} className="text-2xl text-gray-500">×</button>
+              </div>
+            </div>
+            <div className="p-6 space-y-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-semibold text-blue-900 mb-2">📦 Item</h3>
+                <div className="text-sm"><span className="text-gray-600">Code:</span> {purchaseTrail.item.code} | <span className="text-gray-600">Name:</span> {purchaseTrail.item.name}</div>
+              </div>
+              {purchaseTrail.supplier && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-green-900 mb-2">🏭 Supplier</h3>
+                  <div className="text-sm">{purchaseTrail.supplier.name} - {purchaseTrail.supplier.contact_person}</div>
+                </div>
+              )}
+              {purchaseTrail.purchase_order && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-purple-900 mb-2">📋 PO</h3>
+                  <div className="text-sm">{purchaseTrail.purchase_order.po_number} | {formatDate(purchaseTrail.purchase_order.order_date)} | ₹{purchaseTrail.purchase_order.total_amount.toLocaleString()}</div>
+                </div>
+              )}
+              {purchaseTrail.grn && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-amber-900 mb-2">📥 GRN</h3>
+                  <div className="text-sm">{purchaseTrail.grn.grn_number} | {formatDate(purchaseTrail.grn.received_date)} | Qty: {purchaseTrail.grn.received_quantity}</div>
+                </div>
+              )}
+              {purchaseTrail.lifecycle?.length > 0 && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-gray-900 mb-4">🕐 Timeline</h3>
+                  <div className="space-y-3">
+                    {purchaseTrail.lifecycle.map((event, i) => (
+                      <div key={i} className="flex gap-3">
+                        <div className="w-2 h-2 bg-amber-600 rounded-full mt-1"></div>
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{event.stage}</p>
+                          <p className="text-xs text-gray-600">{event.location} - {event.reference}</p>
+                          <p className="text-xs text-gray-400">{formatDate(event.timestamp)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

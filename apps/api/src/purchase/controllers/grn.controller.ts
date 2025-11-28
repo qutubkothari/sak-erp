@@ -40,7 +40,7 @@ export class GrnController {
 
   @Post(':id/submit')
   async submit(@Request() req: any, @Param('id') id: string) {
-    return this.grnService.submit(req.user.tenantId, id);
+    return this.grnService.submit(req.user.tenantId, id, req.user.userId);
   }
 
   @Delete(':id')

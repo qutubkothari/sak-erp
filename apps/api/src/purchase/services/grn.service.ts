@@ -187,7 +187,11 @@ export class GrnService {
     return this.findOne(tenantId, id);
   }
 
-  async submit(tenantId: string, id: string) {
+  async submit(tenantId: string, id: string, userId: string) {
+    // Get GRN details with items
+    const grn = await this.findOne(tenantId, id);
+    
+    // Update GRN status
     const { error } = await this.supabase
       .from('grn')
       .update({
@@ -198,7 +202,93 @@ export class GrnService {
       .eq('id', id);
 
     if (error) throw new BadRequestException(error.message);
+
+    // Auto-generate UIDs for accepted items
+    if (grn.grn_items && grn.grn_items.length > 0) {
+      for (const item of grn.grn_items) {
+        if (item.accepted_qty > 0) {
+          await this.generateUIDsForItem(tenantId, userId, grn, item);
+        }
+      }
+    }
+
     return this.findOne(tenantId, id);
+  }
+
+  private async generateUIDsForItem(tenantId: string, userId: string, grn: any, grnItem: any) {
+    try {
+      const acceptedQty = grnItem.accepted_qty || 0;
+      const uidsCreated = [];
+
+      // Get item details
+      const { data: item } = await this.supabase
+        .from('items')
+        .select('id, code, name, category')
+        .eq('code', grnItem.item_code)
+        .single();
+
+      if (!item) return; // Skip if item not found
+
+      // Determine entity type based on item category
+      let entityType = 'RM'; // Raw Material
+      if (item.category?.includes('COMPONENT')) entityType = 'CP';
+      else if (item.category?.includes('FINISHED')) entityType = 'FG';
+      else if (item.category?.includes('ASSEMBLY')) entityType = 'SA';
+
+      // Generate UIDs for accepted quantity
+      for (let i = 0; i < acceptedQty; i++) {
+        // Generate UID using the UID service
+        const uid = await this.uidService.generateUID(
+          'SAIF', // tenant code - you may want to fetch this from tenant table
+          'MFG',  // plant code
+          entityType,
+        );
+
+        // Create UID record with complete purchase trail
+        const { error: uidError } = await this.supabase
+          .from('uid_registry')
+          .insert({
+            tenant_id: tenantId,
+            uid: uid,
+            entity_type: entityType,
+            entity_id: item.id,
+            supplier_id: grn.vendor_id,
+            purchase_order_id: grn.po_id,
+            grn_id: grn.id,
+            batch_number: grnItem.batch_number,
+            location: grn.warehouse?.name || 'Warehouse',
+            status: 'ACTIVE',
+            lifecycle: JSON.stringify([
+              {
+                stage: 'RECEIVED',
+                timestamp: new Date().toISOString(),
+                location: grn.warehouse?.name || 'Warehouse',
+                reference: `GRN ${grn.grn_number}`,
+                user: userId,
+              },
+            ]),
+            metadata: JSON.stringify({
+              item_code: grnItem.item_code,
+              item_name: grnItem.item_name,
+              grn_item_id: grnItem.id,
+              manufacturing_date: grnItem.manufacturing_date,
+              expiry_date: grnItem.expiry_date,
+              invoice_number: grn.invoice_number,
+            }),
+          });
+
+        if (!uidError) {
+          uidsCreated.push(uid);
+        }
+      }
+
+      console.log(`Generated ${uidsCreated.length} UIDs for GRN ${grn.grn_number}, Item: ${grnItem.item_code}`);
+      return uidsCreated;
+    } catch (error) {
+      console.error('Error generating UIDs:', error);
+      // Don't throw - allow GRN to be submitted even if UID generation fails
+      return [];
+    }
   }
 
   async delete(tenantId: string, id: string) {
@@ -256,20 +346,14 @@ export class GrnService {
 
   async getUIDsByGRN(tenantId: string, grnId: string) {
     const { data, error } = await this.supabase
-      .from('uids')
-      .select(`
-        *,
-        grn_item:grn_items!inner(
-          grn_id,
-          item_code,
-          item_name
-        )
-      `)
+      .from('uid_registry')
+      .select('*')
       .eq('tenant_id', tenantId)
-      .eq('grn_item.grn_id', grnId);
+      .eq('grn_id', grnId)
+      .order('created_at', { ascending: false });
 
     if (error) throw new BadRequestException(error.message);
-    return data;
+    return data || [];
   }
 
   private async updateGRNTotals(grnId: string) {
