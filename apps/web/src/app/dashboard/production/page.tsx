@@ -52,7 +52,7 @@ export default function ProductionPage() {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const params = new URLSearchParams();
       if (filterStatus !== 'ALL') params.append('status', filterStatus);
 
@@ -70,7 +70,7 @@ export default function ProductionPage() {
 
   const handleCreate = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch('/api/v1/production', {
         method: 'POST',
         headers: {
@@ -101,7 +101,7 @@ export default function ProductionPage() {
 
   const handleStartProduction = async (orderId: string) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       await fetch(`/api/v1/production/${orderId}/start`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` },
@@ -114,7 +114,7 @@ export default function ProductionPage() {
 
   const handleCompleteAssembly = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch('/api/v1/production/assembly/complete', {
         method: 'POST',
         headers: {

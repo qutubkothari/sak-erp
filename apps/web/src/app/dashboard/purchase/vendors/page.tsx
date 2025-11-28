@@ -51,7 +51,7 @@ export default function VendorsPage() {
   const fetchVendors = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const params = new URLSearchParams();
       if (filterCategory !== 'ALL') params.append('category', filterCategory);
       if (searchTerm) params.append('search', searchTerm);
@@ -70,7 +70,7 @@ export default function VendorsPage() {
 
   const handleSubmit = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const url = editingVendor
         ? `/api/v1/purchase/vendors/${editingVendor.id}`
         : '/api/v1/purchase/vendors';
@@ -118,7 +118,7 @@ export default function VendorsPage() {
     if (!confirm('Are you sure you want to delete this vendor?')) return;
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch(`/api/v1/purchase/vendors/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },

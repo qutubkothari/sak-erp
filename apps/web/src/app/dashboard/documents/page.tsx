@@ -101,7 +101,7 @@ export default function DocumentsPage() {
 
   const fetchDocuments = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const queryParams = new URLSearchParams();
       
       if (filters.search) queryParams.append('search', filters.search);
@@ -131,7 +131,7 @@ export default function DocumentsPage() {
 
   const fetchCategories = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch(
         'http://35.154.55.38:4000/api/v1/document-categories',
         {
@@ -153,7 +153,7 @@ export default function DocumentsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       
       const payload = {
         ...formData,
@@ -184,7 +184,7 @@ export default function DocumentsPage() {
     if (!selectedDocument) return;
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch(
         `http://35.154.55.38:4000/api/v1/documents/${selectedDocument.id}/revisions`,
         {
@@ -218,7 +218,7 @@ export default function DocumentsPage() {
     if (!confirm('Are you sure you want to delete this document?')) return;
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch(
         `http://35.154.55.38:4000/api/v1/documents/${id}`,
         {
@@ -239,7 +239,7 @@ export default function DocumentsPage() {
 
   const handleArchive = async (id: string) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch(
         `http://35.154.55.38:4000/api/v1/documents/${id}/archive`,
         {

@@ -53,7 +53,7 @@ export default function PurchaseOrdersPage() {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const params = new URLSearchParams();
       if (filterStatus !== 'ALL') params.append('status', filterStatus);
       if (searchTerm) params.append('search', searchTerm);
@@ -72,7 +72,7 @@ export default function PurchaseOrdersPage() {
 
   const handleCreateOrder = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch('/api/v1/purchase/orders', {
         method: 'POST',
         headers: {

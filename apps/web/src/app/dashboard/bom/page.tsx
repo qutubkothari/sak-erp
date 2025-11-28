@@ -57,7 +57,7 @@ export default function BOMPage() {
   const fetchBOMs = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       
       if (!token) {
         console.error('No token found - user not logged in');
@@ -72,7 +72,7 @@ export default function BOMPage() {
       if (!response.ok) {
         if (response.status === 401) {
           console.error('Unauthorized - redirecting to login');
-          localStorage.removeItem('token');
+          localStorage.removeItem('accessToken');
           router.push('/login');
           return;
         }
@@ -92,7 +92,7 @@ export default function BOMPage() {
 
   const handleCreateBOM = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch('/api/v1/bom', {
         method: 'POST',
         headers: {
@@ -117,7 +117,7 @@ export default function BOMPage() {
     if (!quantity || isNaN(Number(quantity))) return;
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch(`/api/v1/bom/${bomId}/generate-pr`, {
         method: 'POST',
         headers: {

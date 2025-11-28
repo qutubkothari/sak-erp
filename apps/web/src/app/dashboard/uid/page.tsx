@@ -58,7 +58,7 @@ export default function UIDTrackingPage() {
 
   const fetchUIDs = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const queryParams = new URLSearchParams();
       
       if (filters.status) queryParams.append('status', filters.status);
@@ -89,7 +89,7 @@ export default function UIDTrackingPage() {
     if (!searchUID.trim()) return;
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch(
         `http://35.154.55.38:4000/api/v1/uid/search/${encodeURIComponent(searchUID)}`,
         {
