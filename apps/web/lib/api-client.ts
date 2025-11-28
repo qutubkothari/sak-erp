@@ -3,7 +3,7 @@
  * Handles all HTTP requests to the backend API
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://35.154.55.38/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://13.205.17.214:4000/api/v1';
 
 interface ApiResponse<T = any> {
   success: boolean;
