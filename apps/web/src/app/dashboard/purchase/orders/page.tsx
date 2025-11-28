@@ -463,6 +463,15 @@ function PurchaseOrdersContent() {
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    {/* Column Headers */}
+                    <div className="grid grid-cols-6 gap-4 px-4 pb-2 border-b border-gray-300">
+                      <div className="col-span-2 text-sm font-semibold text-gray-700">Item</div>
+                      <div className="text-sm font-semibold text-gray-700">Quantity</div>
+                      <div className="text-sm font-semibold text-gray-700">Unit Price</div>
+                      <div className="text-sm font-semibold text-gray-700">Tax %</div>
+                      <div className="text-sm font-semibold text-gray-700">Total Price</div>
+                    </div>
+                    
                     {formData.items.map((item, index) => (
                       <div key={index} className="border border-gray-300 rounded-lg p-4">
                         <div className="grid grid-cols-6 gap-4">
@@ -508,6 +517,7 @@ function PurchaseOrdersContent() {
                               onChange={(e) => handleUpdateItem(index, 'quantity', parseFloat(e.target.value))}
                               placeholder="Qty"
                               className="w-full border border-gray-300 rounded px-3 py-2"
+                              required
                             />
                           </div>
                           <div>
