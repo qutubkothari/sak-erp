@@ -500,7 +500,7 @@ export default function ProductionPage() {
                       <div className="text-xs font-semibold text-orange-900 mb-2">BOM Components:</div>
                       {selectedBOM.items.map((item, idx) => (
                         <div key={idx} className="text-xs text-orange-800">
-                          • {comp.item.code} - {comp.item.name} × {comp.quantity} {comp.uom}
+                          • {item.item.code} - {item.item.name} × {item.quantity} {item.uom}
                         </div>
                       ))}
                     </div>
