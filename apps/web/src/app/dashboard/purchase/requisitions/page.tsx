@@ -240,7 +240,6 @@ export default function PurchaseRequisitionsPage() {
           remarks: item.specifications || null, // Changed from specifications
         })),
       };
-      
       await apiClient.post('/purchase/requisitions', prData);
       alert(`Purchase Requisition ${status === 'DRAFT' ? 'saved as draft' : 'submitted'} successfully!`);
       setShowCreateForm(false);
