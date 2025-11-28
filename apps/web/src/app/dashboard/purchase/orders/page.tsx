@@ -28,6 +28,7 @@ function PurchaseOrdersContent() {
   
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<Array<{ id: string; name: string; contact_person: string }>>([]);
+  const [items, setItems] = useState<Array<{ id: string; item_code: string; item_name: string; unit: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('ALL');
@@ -44,6 +45,8 @@ function PurchaseOrdersContent() {
     notes: '',
     items: [] as Array<{
       itemId: string;
+      itemCode: string;
+      itemName: string;
       quantity: number;
       unitPrice: number;
       taxRate: number;
@@ -55,6 +58,7 @@ function PurchaseOrdersContent() {
   useEffect(() => {
     fetchOrders();
     fetchVendors();
+    fetchItems();
     // Check if PR ID is provided in URL
     if (prId) {
       loadPRData(prId);
@@ -71,6 +75,19 @@ function PurchaseOrdersContent() {
       setVendors(data || []);
     } catch (error) {
       console.error('Error fetching vendors:', error);
+    }
+  };
+
+  const fetchItems = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://13.205.17.214:4000/api/v1/inventory/items', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      setItems(data || []);
+    } catch (error) {
+      console.error('Error fetching items:', error);
     }
   };
 
@@ -161,9 +178,11 @@ function PurchaseOrdersContent() {
         ...formData.items,
         {
           itemId: '',
+          itemCode: '',
+          itemName: '',
           quantity: 1,
           unitPrice: 0,
-          taxRate: 0,
+          taxRate: 18,
           totalPrice: 0,
           specifications: '',
         },
@@ -173,7 +192,21 @@ function PurchaseOrdersContent() {
 
   const handleUpdateItem = (index: number, field: string, value: any) => {
     const updatedItems = [...formData.items];
-    updatedItems[index] = { ...updatedItems[index], [field]: value };
+    
+    // If selecting an item from dropdown, populate itemCode and itemName
+    if (field === 'itemId' && value) {
+      const selectedItem = items.find(item => item.id === value);
+      if (selectedItem) {
+        updatedItems[index] = {
+          ...updatedItems[index],
+          itemId: value,
+          itemCode: selectedItem.item_code,
+          itemName: selectedItem.item_name,
+        };
+      }
+    } else {
+      updatedItems[index] = { ...updatedItems[index], [field]: value };
+    }
 
     // Recalculate total price
     if (field === 'quantity' || field === 'unitPrice' || field === 'taxRate') {
@@ -426,13 +459,19 @@ function PurchaseOrdersContent() {
                       <div key={index} className="border border-gray-300 rounded-lg p-4">
                         <div className="grid grid-cols-6 gap-4">
                           <div className="col-span-2">
-                            <input
-                              type="text"
+                            <select
                               value={item.itemId}
                               onChange={(e) => handleUpdateItem(index, 'itemId', e.target.value)}
-                              placeholder="Item"
                               className="w-full border border-gray-300 rounded px-3 py-2"
-                            />
+                              required
+                            >
+                              <option value="">Select Item</option>
+                              {items.map((masterItem) => (
+                                <option key={masterItem.id} value={masterItem.id}>
+                                  {masterItem.item_code} - {masterItem.item_name}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                           <div>
                             <input
