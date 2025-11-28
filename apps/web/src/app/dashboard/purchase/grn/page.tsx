@@ -595,7 +595,7 @@ export default function GRNPage() {
                     <option value="">Select Purchase Order...</option>
                     {purchaseOrders.map(po => (
                       <option key={po.id} value={po.id}>
-                        {po.po_number} - {po.vendor.name} ({new Date(po.order_date).toLocaleDateString()})
+                        {po.po_number} - {po.vendor.name} ({new Date(po.po_date).toLocaleDateString()})
                       </option>
                     ))}
                   </select>
