@@ -179,6 +179,12 @@ export default function InventoryPage() {
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex space-x-8">
           <button
+            onClick={() => router.push('/dashboard/inventory/items')}
+            className="py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-amber-600 hover:border-amber-300"
+          >
+            Items Master
+          </button>
+          <button
             onClick={() => setActiveTab('stock')}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'stock'

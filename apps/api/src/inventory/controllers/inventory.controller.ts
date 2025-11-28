@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
 import { InventoryService } from '../services/inventory.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
@@ -81,5 +81,31 @@ export class InventoryController {
   @Post('warehouses')
   async createWarehouse(@Request() req: any, @Body() warehouseData: any) {
     return this.inventoryService.createWarehouse(req, warehouseData);
+  }
+
+  // Items CRUD
+  @Get('items')
+  async getItems(@Request() req: any) {
+    return this.inventoryService.getItems(req);
+  }
+
+  @Get('items/:id')
+  async getItem(@Request() req: any, @Param('id') id: string) {
+    return this.inventoryService.getItem(req, id);
+  }
+
+  @Post('items')
+  async createItem(@Request() req: any, @Body() itemData: any) {
+    return this.inventoryService.createItem(req, itemData);
+  }
+
+  @Put('items/:id')
+  async updateItem(@Request() req: any, @Param('id') id: string, @Body() itemData: any) {
+    return this.inventoryService.updateItem(req, id, itemData);
+  }
+
+  @Delete('items/:id')
+  async deleteItem(@Request() req: any, @Param('id') id: string) {
+    return this.inventoryService.deleteItem(req, id);
   }
 }
