@@ -54,16 +54,9 @@ export class BomService {
   async findAll(tenantId: string, filters?: any) {
     let query = this.supabase
       .from('bom_headers')
-      .select(`
-        *,
-        item:items(id, code, name, type, uom),
-        bom_items(
-          *,
-          item:items(id, code, name, type, uom)
-        )
-      `)
+      .select('*')
       .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false});
 
     if (filters?.itemId) {
       query = query.eq('item_id', filters.itemId);
@@ -82,14 +75,7 @@ export class BomService {
   async findOne(tenantId: string, id: string) {
     const { data, error } = await this.supabase
       .from('bom_headers')
-      .select(`
-        *,
-        item:items(id, code, name, type, uom),
-        bom_items(
-          *,
-          item:items(id, code, name, type, uom)
-        )
-      `)
+      .select('*')
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();

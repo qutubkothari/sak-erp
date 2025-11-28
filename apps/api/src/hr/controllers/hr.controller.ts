@@ -9,34 +9,34 @@ export class HrController {
 
   // Employee CRUD
   @Post('employees')
-  createEmployee(@Body() body: any) {
-    return this.hrService.createEmployee(body);
+  createEmployee(@Request() req: any, @Body() body: any) {
+    return this.hrService.createEmployee(req.user.tenantId, body);
   }
   @Get('employees')
-  getEmployees() {
-    return this.hrService.getEmployees();
+  getEmployees(@Request() req: any) {
+    return this.hrService.getEmployees(req.user.tenantId);
   }
   @Get('employees/:id')
-  getEmployee(@Param('id') id: string) {
-    return this.hrService.getEmployee(id);
+  getEmployee(@Request() req: any, @Param('id') id: string) {
+    return this.hrService.getEmployee(req.user.tenantId, id);
   }
   @Put('employees/:id')
-  updateEmployee(@Param('id') id: string, @Body() body: any) {
-    return this.hrService.updateEmployee(id, body);
+  updateEmployee(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.hrService.updateEmployee(req.user.tenantId, id, body);
   }
   @Delete('employees/:id')
-  deleteEmployee(@Param('id') id: string) {
-    return this.hrService.deleteEmployee(id);
+  deleteEmployee(@Request() req: any, @Param('id') id: string) {
+    return this.hrService.deleteEmployee(req.user.tenantId, id);
   }
 
   // Attendance
   @Post('attendance')
-  recordAttendance(@Body() body: any) {
-    return this.hrService.recordAttendance(body);
+  recordAttendance(@Request() req: any, @Body() body: any) {
+    return this.hrService.recordAttendance(req.user.tenantId, body);
   }
   @Get('attendance')
-  getAttendance(@Query('employeeId') employeeId: string, @Query('month') month?: string) {
-    return this.hrService.getAttendance(employeeId, month);
+  getAttendance(@Request() req: any, @Query('employeeId') employeeId: string, @Query('month') month?: string) {
+    return this.hrService.getAttendance(req.user.tenantId, employeeId, month);
   }
 
   // Leave Requests
