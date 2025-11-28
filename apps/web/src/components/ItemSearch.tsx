@@ -48,7 +48,7 @@ export default function ItemSearch({ value, onSelect, placeholder, className }: 
       setLoading(true);
       try {
         const token = localStorage.getItem('accessToken');
-        const response = await fetch(`/api/v1/items/search?q=${encodeURIComponent(searchQuery)}`, {
+        const response = await fetch(`http://13.205.17.214:4000/api/v1/inventory/items/search?q=${encodeURIComponent(searchQuery)}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
