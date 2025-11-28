@@ -721,22 +721,22 @@ export default function PurchaseRequisitionsPage() {
                   </p>
                 </div>
                 <div>
-                  <label className=\"block text-sm font-medium text-gray-700\">Department</label>
-                  <p className=\"mt-1 text-sm text-gray-900\">{selectedPR.department}</p>
+                  <label className="block text-sm font-medium text-gray-700">Department</label>
+                  <p className="mt-1 text-sm text-gray-900">{selectedPR.department}</p>
                 </div>
                 <div>
-                  <label className=\"block text-sm font-medium text-gray-700\">Required Date</label>
-                  <p className=\"mt-1 text-sm text-gray-900\">
+                  <label className="block text-sm font-medium text-gray-700">Required Date</label>
+                  <p className="mt-1 text-sm text-gray-900">
                     {new Date(selectedPR.required_date).toLocaleDateString()}
                   </p>
                 </div>
                 <div>
-                  <label className=\"block text-sm font-medium text-gray-700\">Priority</label>
-                  <p className=\"mt-1 text-sm text-gray-900\">{selectedPR.priority || 'MEDIUM'}</p>
+                  <label className="block text-sm font-medium text-gray-700">Priority</label>
+                  <p className="mt-1 text-sm text-gray-900">{selectedPR.priority || 'MEDIUM'}</p>
                 </div>
                 <div>
-                  <label className=\"block text-sm font-medium text-gray-700\">Created</label>
-                  <p className=\"mt-1 text-sm text-gray-900\">
+                  <label className="block text-sm font-medium text-gray-700">Created</label>
+                  <p className="mt-1 text-sm text-gray-900">
                     {new Date(selectedPR.created_at).toLocaleDateString()}
                   </p>
                 </div>
@@ -744,15 +744,15 @@ export default function PurchaseRequisitionsPage() {
 
               {selectedPR.purpose && (
                 <div>
-                  <label className=\"block text-sm font-medium text-gray-700\">Purpose</label>
-                  <p className=\"mt-1 text-sm text-gray-900\">{selectedPR.purpose}</p>
+                  <label className="block text-sm font-medium text-gray-700">Purpose</label>
+                  <p className="mt-1 text-sm text-gray-900">{selectedPR.purpose}</p>
                 </div>
               )}
 
               {/* Items */}
               <div>
-                <h3 className=\"text-lg font-semibold text-gray-900 mb-3\">Items Requested</h3>
-                <div className=\"border border-gray-200 rounded-lg overflow-hidden\">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Items Requested</h3>
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <table className=\"min-w-full divide-y divide-gray-200\">
                     <thead className=\"bg-gray-50\">
                       <tr>
