@@ -270,7 +270,7 @@ export class ProductionService {
       .select(`
         item_id,
         quantity,
-        item:items(id, code, name, uom, category)
+        item:items!inner(id, code, name, uom, category)
       `)
       .eq('bom_id', bomId);
 
@@ -282,6 +282,8 @@ export class ProductionService {
     const result: Record<string, any[]> = {};
 
     for (const bomItem of bomItems) {
+      const item = Array.isArray(bomItem.item) ? bomItem.item[0] : bomItem.item;
+      
       const { data: uids, error: uidError } = await this.supabase
         .from('uid_registry')
         .select('*')
@@ -297,8 +299,8 @@ export class ProductionService {
         result[bomItem.item_id] = uids.map(uid => ({
           uid: uid.uid,
           item_id: uid.entity_id,
-          item_code: bomItem.item.code,
-          item_name: bomItem.item.name,
+          item_code: item.code,
+          item_name: item.name,
           batch_number: uid.batch_number,
           received_date: uid.received_date,
           expiry_date: uid.expiry_date,
