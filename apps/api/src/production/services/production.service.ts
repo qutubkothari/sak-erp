@@ -294,13 +294,6 @@ export class ProductionService {
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
-        ),
-        production_assemblies(*, assembled_by_user:users(first_name, last_name)),
-        production_stage_logs(*, entered_by_user:users(first_name, last_name))
-      `)
-      .eq('tenant_id', tenantId)
-      .eq('id', id)
-      .single();
 
     if (error) throw new NotFoundException('Production order not found');
     return data;
