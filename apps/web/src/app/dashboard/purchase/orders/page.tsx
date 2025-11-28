@@ -459,19 +459,37 @@ function PurchaseOrdersContent() {
                       <div key={index} className="border border-gray-300 rounded-lg p-4">
                         <div className="grid grid-cols-6 gap-4">
                           <div className="col-span-2">
-                            <select
-                              value={item.itemId}
-                              onChange={(e) => handleUpdateItem(index, 'itemId', e.target.value)}
-                              className="w-full border border-gray-300 rounded px-3 py-2"
-                              required
-                            >
-                              <option value="">Select Item</option>
-                              {items.map((masterItem) => (
-                                <option key={masterItem.id} value={masterItem.id}>
-                                  {masterItem.code} - {masterItem.name}
-                                </option>
-                              ))}
-                            </select>
+                            {item.itemCode && item.itemName ? (
+                              <div className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50">
+                                <div className="font-medium text-sm">{item.itemCode} - {item.itemName}</div>
+                                <select
+                                  value={item.itemId}
+                                  onChange={(e) => handleUpdateItem(index, 'itemId', e.target.value)}
+                                  className="w-full border-0 bg-transparent text-xs mt-1 p-0"
+                                >
+                                  <option value="">Change item...</option>
+                                  {items.map((masterItem) => (
+                                    <option key={masterItem.id} value={masterItem.id}>
+                                      {masterItem.code} - {masterItem.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            ) : (
+                              <select
+                                value={item.itemId}
+                                onChange={(e) => handleUpdateItem(index, 'itemId', e.target.value)}
+                                className="w-full border border-gray-300 rounded px-3 py-2"
+                                required
+                              >
+                                <option value="">Select Item</option>
+                                {items.map((masterItem) => (
+                                  <option key={masterItem.id} value={masterItem.id}>
+                                    {masterItem.code} - {masterItem.name}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
                           </div>
                           <div>
                             <input
