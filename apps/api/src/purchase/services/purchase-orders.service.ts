@@ -95,7 +95,7 @@ export class PurchaseOrdersService {
     }
 
     if (filters?.search) {
-      query = query.or(`po_number.ilike.%${filters.search}%,notes.ilike.%${filters.search}%`);
+      query = query.or(`po_number.ilike.%${filters.search}%,remarks.ilike.%${filters.search}%`);
     }
 
     query = query.order('created_at', { ascending: false });
@@ -127,11 +127,11 @@ export class PurchaseOrdersService {
       .from('purchase_orders')
       .update({
         vendor_id: data.vendorId,
-        order_date: data.orderDate,
-        expected_delivery: data.expectedDelivery,
+        po_date: data.poDate || data.orderDate,
+        delivery_date: data.deliveryDate || data.expectedDelivery,
         payment_terms: data.paymentTerms,
         delivery_address: data.deliveryAddress,
-        notes: data.notes,
+        remarks: data.remarks || data.notes,
         total_amount: data.totalAmount,
         updated_at: new Date().toISOString(),
       })
@@ -150,12 +150,17 @@ export class PurchaseOrdersService {
       if (data.items.length > 0) {
         const items = data.items.map((item: any) => ({
           po_id: id,
-          item_id: item.itemId,
-          quantity: item.quantity,
-          unit_price: item.unitPrice,
-          tax_rate: item.taxRate || 0,
-          total_price: item.totalPrice,
-          specifications: item.specifications,
+          item_code: item.itemCode,
+          item_name: item.itemName,
+          description: item.description,
+          uom: item.uom,
+          ordered_qty: item.orderedQty || item.quantity,
+          rate: item.rate || item.unitPrice,
+          tax_percent: item.taxPercent || item.taxRate || 0,
+          discount_percent: item.discountPercent || 0,
+          amount: item.amount || item.totalPrice,
+          delivery_date: item.deliveryDate,
+          remarks: item.remarks || item.specifications,
         }));
 
         await this.supabase
