@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '../../../../lib/api-client';
 
 interface Document {
   id: string;
@@ -43,7 +44,7 @@ const documentTypes = [
 
 const statusColors: Record<string, string> = {
   DRAFT: 'bg-gray-100 text-gray-800',
-  PENDING_REVIEW: 'bg-blue-100 text-blue-800',
+  PENDING_REVIEW: 'bg-amber-100 text-amber-800',
   PENDING_APPROVAL: 'bg-yellow-100 text-yellow-800',
   APPROVED: 'bg-green-100 text-green-800',
   REJECTED: 'bg-red-100 text-red-800',
@@ -101,7 +102,6 @@ export default function DocumentsPage() {
 
   const fetchDocuments = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
       const queryParams = new URLSearchParams();
       
       if (filters.search) queryParams.append('search', filters.search);
@@ -109,19 +109,8 @@ export default function DocumentsPage() {
       if (filters.status) queryParams.append('status', filters.status);
       if (filters.category_id) queryParams.append('category_id', filters.category_id);
 
-      const response = await fetch(
-        `/documents?${queryParams}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setDocuments(data);
-      }
+      const data = await apiClient.get<Document[]>(`/documents?${queryParams}`);
+      setDocuments(data);
     } catch (error) {
       console.error('Error fetching documents:', error);
     } finally {
@@ -131,20 +120,8 @@ export default function DocumentsPage() {
 
   const fetchCategories = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        '/api/v1/document-categories',
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setCategories(data);
-      }
+      const data = await apiClient.get<Category[]>('/document-categories');
+      setCategories(data);
     } catch (error) {
       console.error('Error fetching categories:', error);
     }
@@ -153,27 +130,15 @@ export default function DocumentsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('accessToken');
-      
       const payload = {
         ...formData,
         tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : [],
       };
 
-      const response = await fetch('/api/v1/documents', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        setShowModal(false);
-        resetForm();
-        fetchDocuments();
-      }
+      await apiClient.post('/documents', payload);
+      setShowModal(false);
+      resetForm();
+      fetchDocuments();
     } catch (error) {
       console.error('Error creating document:', error);
     }
@@ -184,31 +149,17 @@ export default function DocumentsPage() {
     if (!selectedDocument) return;
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        `/documents/${selectedDocument.id}/revisions`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(revisionData),
-        }
-      );
-
-      if (response.ok) {
-        setShowRevisionModal(false);
-        setRevisionData({
-          revision_number: '',
-          file_url: '',
-          file_name: '',
-          file_size: 0,
-          change_description: '',
-          revision_type: 'MINOR',
-        });
-        fetchDocuments();
-      }
+      await apiClient.post(`/documents/${selectedDocument.id}/revisions`, revisionData);
+      setShowRevisionModal(false);
+      setRevisionData({
+        revision_number: '',
+        file_url: '',
+        file_name: '',
+        file_size: 0,
+        change_description: '',
+        revision_type: 'MINOR',
+      });
+      fetchDocuments();
     } catch (error) {
       console.error('Error adding revision:', error);
     }
@@ -218,20 +169,8 @@ export default function DocumentsPage() {
     if (!confirm('Are you sure you want to delete this document?')) return;
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        `/documents/${id}`,
-        {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        fetchDocuments();
-      }
+      await apiClient.delete(`/documents/${id}`);
+      fetchDocuments();
     } catch (error) {
       console.error('Error deleting document:', error);
     }
@@ -239,20 +178,8 @@ export default function DocumentsPage() {
 
   const handleArchive = async (id: string) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        `/documents/${id}/archive`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        fetchDocuments();
-      }
+      await apiClient.post(`/documents/${id}/archive`, {});
+      fetchDocuments();
     } catch (error) {
       console.error('Error archiving document:', error);
     }
@@ -334,13 +261,13 @@ export default function DocumentsPage() {
             placeholder="Search documents..."
             value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
           />
           
           <select
             value={filters.document_type}
             onChange={(e) => setFilters({ ...filters, document_type: e.target.value })}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
           >
             <option value="">All Types</option>
             {documentTypes.map((type) => (
@@ -353,7 +280,7 @@ export default function DocumentsPage() {
           <select
             value={filters.status}
             onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
           >
             <option value="">All Status</option>
             <option value="DRAFT">Draft</option>
@@ -365,7 +292,7 @@ export default function DocumentsPage() {
           <select
             value={filters.category_id}
             onChange={(e) => setFilters({ ...filters, category_id: e.target.value })}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
           >
             <option value="">All Categories</option>
             {categories.map((cat) => (
@@ -555,7 +482,7 @@ export default function DocumentsPage() {
                   required
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
@@ -567,7 +494,7 @@ export default function DocumentsPage() {
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
@@ -580,7 +507,7 @@ export default function DocumentsPage() {
                     required
                     value={formData.document_type}
                     onChange={(e) => setFormData({ ...formData, document_type: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                   >
                     {documentTypes.map((type) => (
                       <option key={type.value} value={type.value}>
@@ -597,7 +524,7 @@ export default function DocumentsPage() {
                   <select
                     value={formData.category_id}
                     onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                   >
                     <option value="">Select Category</option>
                     {categories.map((cat) => (
@@ -619,7 +546,7 @@ export default function DocumentsPage() {
                   value={formData.file_url}
                   onChange={(e) => setFormData({ ...formData, file_url: e.target.value })}
                   placeholder="https://example.com/document.pdf"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
@@ -634,7 +561,7 @@ export default function DocumentsPage() {
                     value={formData.file_name}
                     onChange={(e) => setFormData({ ...formData, file_name: e.target.value })}
                     placeholder="document.pdf"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
 
@@ -646,7 +573,7 @@ export default function DocumentsPage() {
                     type="number"
                     value={formData.file_size}
                     onChange={(e) => setFormData({ ...formData, file_size: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
               </div>
@@ -660,7 +587,7 @@ export default function DocumentsPage() {
                   value={formData.tags}
                   onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
                   placeholder="engineering, mechanical, rev1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
@@ -671,7 +598,7 @@ export default function DocumentsPage() {
                 <select
                   value={formData.access_level}
                   onChange={(e) => setFormData({ ...formData, access_level: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                 >
                   <option value="PUBLIC">Public</option>
                   <option value="INTERNAL">Internal</option>
@@ -721,7 +648,7 @@ export default function DocumentsPage() {
                   value={revisionData.revision_number}
                   onChange={(e) => setRevisionData({ ...revisionData, revision_number: e.target.value })}
                   placeholder="2.0"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
@@ -734,7 +661,7 @@ export default function DocumentsPage() {
                   required
                   value={revisionData.file_url}
                   onChange={(e) => setRevisionData({ ...revisionData, file_url: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
@@ -747,7 +674,7 @@ export default function DocumentsPage() {
                   required
                   value={revisionData.file_name}
                   onChange={(e) => setRevisionData({ ...revisionData, file_name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
@@ -758,7 +685,7 @@ export default function DocumentsPage() {
                 <select
                   value={revisionData.revision_type}
                   onChange={(e) => setRevisionData({ ...revisionData, revision_type: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                 >
                   <option value="MINOR">Minor</option>
                   <option value="MAJOR">Major</option>
@@ -775,7 +702,7 @@ export default function DocumentsPage() {
                   value={revisionData.change_description}
                   onChange={(e) => setRevisionData({ ...revisionData, change_description: e.target.value })}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 

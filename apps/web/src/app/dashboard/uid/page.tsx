@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '../../../../lib/api-client';
 
 interface UIDRecord {
   id: string;
@@ -60,26 +61,14 @@ export default function UIDTrackingPage() {
 
   const fetchUIDs = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
       const queryParams = new URLSearchParams();
       
       if (filters.status) queryParams.append('status', filters.status);
       if (filters.entity_type) queryParams.append('entity_type', filters.entity_type);
       if (filters.location) queryParams.append('location', filters.location);
 
-      const response = await fetch(
-        `/uid?${queryParams}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setUids(data);
-      }
+      const data = await apiClient.get<UIDRecord[]>(`/uid?${queryParams}`);
+      setUids(data);
     } catch (error) {
       console.error('Error fetching UIDs:', error);
     } finally {
@@ -91,23 +80,9 @@ export default function UIDTrackingPage() {
     if (!searchUID.trim()) return;
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        `/uid/search/${encodeURIComponent(searchUID)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setSelectedUID(data);
-        setShowTraceModal(true);
-      } else {
-        alert('UID not found');
-      }
+      const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(searchUID)}`);
+      setSelectedUID(data);
+      setShowTraceModal(true);
     } catch (error) {
       console.error('Error searching UID:', error);
       alert('Error searching for UID');
