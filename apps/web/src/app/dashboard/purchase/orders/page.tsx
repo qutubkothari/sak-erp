@@ -173,24 +173,42 @@ function PurchaseOrdersContent() {
         return;
       }
       
-      // Check if all items have itemId
-      const invalidItems = formData.items.filter(item => !item.itemId);
+      // Check if all items have itemId (or at least itemCode for pre-filled items)
+      const invalidItems = formData.items.filter(item => !item.itemId && !item.itemCode);
       if (invalidItems.length > 0) {
         alert('Please select items for all rows');
         return;
       }
       
       console.log('FormData before transformation:', formData);
+      console.log('Items validation:', formData.items.map(item => ({
+        itemId: item.itemId,
+        itemCode: item.itemCode,
+        itemName: item.itemName
+      })));
       
       // Transform items to match API expected field names
-      const transformedItems = formData.items.map(item => ({
-        item_id: item.itemId,
-        ordered_qty: item.quantity,
-        unit_price: item.unitPrice,
-        tax_rate: item.taxRate,
-        total_price: item.totalPrice,
-        specifications: item.specifications || '',
-      }));
+      // If itemId is missing but itemCode exists, find itemId from items list
+      const transformedItems = formData.items.map(item => {
+        let finalItemId = item.itemId;
+        
+        // If no itemId but has itemCode, look it up
+        if (!finalItemId && item.itemCode) {
+          const foundItem = items.find(i => i.code === item.itemCode);
+          if (foundItem) {
+            finalItemId = foundItem.id;
+          }
+        }
+        
+        return {
+          item_id: finalItemId,
+          ordered_qty: item.quantity,
+          unit_price: item.unitPrice,
+          tax_rate: item.taxRate,
+          total_price: item.totalPrice,
+          specifications: item.specifications || '',
+        };
+      });
       
       const payload = {
         vendor_id: formData.vendorId,
