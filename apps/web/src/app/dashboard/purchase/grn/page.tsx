@@ -188,7 +188,7 @@ export default function GRNPage() {
       if (filterStatus !== 'ALL') params.append('status', filterStatus);
       if (searchTerm) params.append('search', searchTerm);
 
-      const response = await fetch(`/api/v1/purchase/grn?${params}`, {
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/grn?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
@@ -203,7 +203,7 @@ export default function GRNPage() {
   const handleCreateGRN = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/purchase/grn', {
+      const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/grn', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -216,12 +216,17 @@ export default function GRNPage() {
       });
 
       if (response.ok) {
+        alert('GRN created successfully!');
         setShowModal(false);
         fetchGRNs();
         resetForm();
+      } else {
+        const errorData = await response.json();
+        alert(`Failed to create GRN: ${errorData.message || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error creating GRN:', error);
+      alert('Failed to create GRN. Please try again.');
     }
   };
 
@@ -229,7 +234,7 @@ export default function GRNPage() {
     try {
       setLoadingUIDs(true);
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/v1/purchase/grn/${grnId}/uids`, {
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/grn/${grnId}/uids`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -253,7 +258,7 @@ export default function GRNPage() {
       setLoadingTrail(true);
       const token = localStorage.getItem('accessToken');
       
-      const response = await fetch(`/api/v1/uid/${uid}/purchase-trail`, {
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/uid/${uid}/purchase-trail`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
