@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 
 interface StockLevel {
@@ -159,9 +160,17 @@ export default function InventoryPage() {
     }
   };
 
+  const router = useRouter();
+
   return (
     <div className="p-6">
       <div className="mb-6">
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="text-blue-600 hover:text-blue-800 text-sm mb-2"
+        >
+          ← Back to Dashboard
+        </button>
         <h1 className="text-2xl font-bold text-gray-900">Inventory Management</h1>
         <p className="text-gray-600">Stock levels, movements, alerts, and demo inventory</p>
       </div>

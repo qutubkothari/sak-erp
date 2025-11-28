@@ -53,16 +53,33 @@ export default function ProductionPage() {
     try {
       setLoading(true);
       const token = localStorage.getItem('accessToken');
+
+      if (!token) {
+        router.push('/login');
+        return;
+      }
       const params = new URLSearchParams();
       if (filterStatus !== 'ALL') params.append('status', filterStatus);
 
       const response = await fetch(`/api/v1/production?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (response.status === 401) {
+        localStorage.removeItem('accessToken');
+        router.push('/login');
+        return;
+      }
+
       const data = await response.json();
-      setOrders(data);
+      const ordersData = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data)
+          ? data.data
+          : [];
+      setOrders(ordersData);
     } catch (error) {
       console.error('Error fetching production orders:', error);
+      setOrders([]);
     } finally {
       setLoading(false);
     }
