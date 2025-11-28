@@ -193,24 +193,24 @@ export default function ProductionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-8">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <button
             onClick={() => router.push('/dashboard')}
-            className="text-indigo-800 hover:text-indigo-900 mb-4 flex items-center gap-2"
+            className="text-orange-800 hover:text-orange-900 mb-4 flex items-center gap-2"
           >
             ← Back to Dashboard
           </button>
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-4xl font-bold text-indigo-900 mb-2">Production Management</h1>
-              <p className="text-indigo-600">Manufacturing orders with UID assembly tracking</p>
+              <h1 className="text-4xl font-bold text-orange-900 mb-2">Production Management</h1>
+              <p className="text-orange-700">Manufacturing orders with UID assembly tracking</p>
             </div>
             <button
               onClick={() => setShowModal(true)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium shadow-lg"
+              className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg font-medium shadow-lg"
             >
               + Create Production Order
             </button>
@@ -249,16 +249,16 @@ export default function ProductionPage() {
             </div>
           ) : (
             <table className="w-full">
-              <thead className="bg-indigo-50">
+              <thead className="bg-orange-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-indigo-900 uppercase">Order #</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-indigo-900 uppercase">Item</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-indigo-900 uppercase">Quantity</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-indigo-900 uppercase">Progress</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-indigo-900 uppercase">UIDs</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-indigo-900 uppercase">Priority</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-indigo-900 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-indigo-900 uppercase">Actions</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-orange-900 uppercase">Order #</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-orange-900 uppercase">Item</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-orange-900 uppercase">Quantity</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-orange-900 uppercase">Progress</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-orange-900 uppercase">UIDs</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-orange-900 uppercase">Priority</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-orange-900 uppercase">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-orange-900 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -280,7 +280,7 @@ export default function ProductionPage() {
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
                         <div
-                          className="bg-indigo-600 h-2 rounded-full"
+                          className="bg-orange-600 h-2 rounded-full"
                           style={{
                             width: `${(order.produced_quantity / order.quantity) * 100}%`,
                           }}
@@ -310,7 +310,7 @@ export default function ProductionPage() {
                       {order.status === 'DRAFT' && (
                         <button
                           onClick={() => handleStartProduction(order.id)}
-                          className="text-indigo-600 hover:text-indigo-900 font-medium"
+                          className="text-orange-600 hover:text-orange-900 font-medium"
                         >
                           Start
                         </button>
@@ -436,7 +436,7 @@ export default function ProductionPage() {
               </button>
               <button
                 onClick={handleCreate}
-                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
               >
                 Create Order
               </button>
@@ -480,7 +480,7 @@ export default function ProductionPage() {
                 ))}
                 <button
                   onClick={addComponentUid}
-                  className="text-indigo-600 hover:text-indigo-800 font-medium text-sm mt-2"
+                  className="text-orange-600 hover:text-orange-800 font-medium text-sm mt-2"
                 >
                   + Add Component UID
                 </button>
