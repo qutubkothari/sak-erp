@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '@/lib/api-client';
 
 interface PRItem {
   id: string;
@@ -9,6 +10,14 @@ interface PRItem {
   quantity: number;
   estimatedPrice?: number;
   specifications?: string;
+}
+
+interface Item {
+  id: string;
+  code: string;
+  name: string;
+  uom: string;
+  standard_cost?: number;
 }
 
 export default function PurchaseRequisitionsPage() {
@@ -28,6 +37,41 @@ export default function PurchaseRequisitionsPage() {
     estimatedPrice: '',
     specifications: '',
   });
+
+  const [masterItems, setMasterItems] = useState<Item[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [useManualEntry, setUseManualEntry] = useState(false);
+
+  useEffect(() => {
+    if (showCreateForm) {
+      fetchMasterItems();
+    }
+  }, [showCreateForm]);
+
+  const fetchMasterItems = async () => {
+    try {
+      const response = await apiClient.get('/inventory/items');
+      setMasterItems(response.data || []);
+    } catch (error) {
+      console.error('Error fetching items:', error);
+    }
+  };
+
+  const filteredItems = masterItems.filter(item =>
+    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.code.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const selectItem = (item: Item) => {
+    setItemForm({
+      ...itemForm,
+      itemName: `${item.code} - ${item.name}`,
+      estimatedPrice: item.standard_cost?.toString() || '',
+    });
+    setSearchTerm('');
+    setShowSearchResults(false);
+  };
 
   const addItem = () => {
     if (!itemForm.itemName || !itemForm.quantity) return;
@@ -49,6 +93,7 @@ export default function PurchaseRequisitionsPage() {
       estimatedPrice: '',
       specifications: '',
     });
+    setUseManualEntry(false);
   };
 
   const removeItem = (id: string) => {
@@ -148,16 +193,76 @@ export default function PurchaseRequisitionsPage() {
                 <div className="mb-6">
                   <h3 className="text-lg font-bold text-gray-900 mb-4">Items</h3>
                   
+                  {/* Toggle between search and manual entry */}
+                  <div className="flex gap-2 mb-4">
+                    <button
+                      onClick={() => setUseManualEntry(false)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        !useManualEntry
+                          ? 'bg-amber-800 text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      Search Existing Items
+                    </button>
+                    <button
+                      onClick={() => setUseManualEntry(true)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        useManualEntry
+                          ? 'bg-amber-800 text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      Add New Item
+                    </button>
+                  </div>
+                  
                   {/* Add Item Form */}
                   <div className="bg-gray-50 rounded-lg p-4 mb-4">
                     <div className="grid grid-cols-4 gap-3 mb-3">
-                      <input
-                        type="text"
-                        value={itemForm.itemName}
-                        onChange={(e) => setItemForm({ ...itemForm, itemName: e.target.value })}
-                        placeholder="Item Name *"
-                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-                      />
+                      {/* Item Name/Search */}
+                      <div className="relative">
+                        {!useManualEntry ? (
+                          <>
+                            <input
+                              type="text"
+                              value={itemForm.itemName || searchTerm}
+                              onChange={(e) => {
+                                setSearchTerm(e.target.value);
+                                setShowSearchResults(true);
+                                setItemForm({ ...itemForm, itemName: '' });
+                              }}
+                              onFocus={() => setShowSearchResults(true)}
+                              placeholder="Search items... *"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                            />
+                            {showSearchResults && searchTerm && filteredItems.length > 0 && (
+                              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                {filteredItems.map((item) => (
+                                  <button
+                                    key={item.id}
+                                    onClick={() => selectItem(item)}
+                                    className="w-full text-left px-4 py-2 hover:bg-amber-50 border-b last:border-b-0"
+                                  >
+                                    <div className="font-medium">{item.code} - {item.name}</div>
+                                    <div className="text-sm text-gray-500">
+                                      UOM: {item.uom} {item.standard_cost && `• ₹${item.standard_cost}`}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <input
+                            type="text"
+                            value={itemForm.itemName}
+                            onChange={(e) => setItemForm({ ...itemForm, itemName: e.target.value })}
+                            placeholder="Item Name *"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                          />
+                        )}
+                      </div>
                       <input
                         type="number"
                         value={itemForm.quantity}
