@@ -468,12 +468,14 @@ function PurchaseOrdersContent() {
                         <div className="grid grid-cols-6 gap-4">
                           <div className="col-span-2">
                             {item.itemCode && item.itemName ? (
-                              <div className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50">
-                                <div className="font-medium text-sm">{item.itemCode} - {item.itemName}</div>
+                              <div className="space-y-1">
+                                <div className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50">
+                                  <div className="font-medium text-sm">{item.itemCode} - {item.itemName}</div>
+                                </div>
                                 <select
                                   value={item.itemId}
                                   onChange={(e) => handleUpdateItem(index, 'itemId', e.target.value)}
-                                  className="w-full border-0 bg-transparent text-xs mt-1 p-0"
+                                  className="w-full border border-gray-300 rounded px-3 py-2 text-xs"
                                 >
                                   <option value="">Change item...</option>
                                   {items.map((masterItem) => (
