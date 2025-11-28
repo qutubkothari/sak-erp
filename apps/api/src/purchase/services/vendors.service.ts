@@ -119,20 +119,18 @@ export class VendorsService {
   private async generateVendorCode(tenantId: string): Promise<string> {
     const prefix = 'VEN';
 
-    const { data } = await this.supabase
+    // Get the count of all vendors to generate a unique code
+    const { count, error } = await this.supabase
       .from('vendors')
-      .select('code')
-      .eq('tenant_id', tenantId)
-      .like('code', `${prefix}%`)
-      .order('code', { ascending: false })
-      .limit(1)
-      .single();
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId);
 
-    if (!data) {
-      return `${prefix}001`;
+    if (error) {
+      // Fallback to timestamp-based code if count fails
+      return `${prefix}${Date.now().toString().slice(-6)}`;
     }
 
-    const lastNumber = parseInt(data.code.replace(prefix, '') || '0');
-    return `${prefix}${String(lastNumber + 1).padStart(3, '0')}`;
+    const nextNumber = (count || 0) + 1;
+    return `${prefix}${String(nextNumber).padStart(3, '0')}`;
   }
 }
