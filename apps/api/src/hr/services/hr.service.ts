@@ -76,8 +76,7 @@ export class HrService {
   async getAttendance(tenantId: string, employeeId?: string, month?: string) {
     let query = this.supabase
       .from('attendance_records')
-      .select('*')
-      .eq('tenant_id', tenantId);
+      .select('*');
     
     if (employeeId) {
       query = query.eq('employee_id', employeeId);
