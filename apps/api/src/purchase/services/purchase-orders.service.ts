@@ -84,8 +84,7 @@ export class PurchaseOrdersService {
         vendor:vendors(id, code, name, contact_person, email),
         purchase_order_items(*)
       `)
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false});
+      .eq('tenant_id', tenantId);
 
     if (filters?.status) {
       query = query.eq('status', filters.status);
@@ -98,6 +97,8 @@ export class PurchaseOrdersService {
     if (filters?.search) {
       query = query.or(`po_number.ilike.%${filters.search}%,notes.ilike.%${filters.search}%`);
     }
+
+    query = query.order('created_at', { ascending: false });
 
     const { data, error } = await query;
 
