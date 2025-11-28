@@ -6,6 +6,7 @@ import { apiClient } from '../../../../../lib/api-client';
 
 interface PRItem {
   id: string;
+  itemCode?: string;
   itemName: string;
   quantity: number;
   estimatedPrice?: number;
@@ -169,10 +170,13 @@ export default function PurchaseRequisitionsPage() {
       return;
     }
 
+    const selectedItem = masterItems.find(item => item.id === selectedItemId);
+
     setItems([
       ...items,
       {
         id: Date.now().toString(),
+        itemCode: selectedItem?.code || '',
         itemName: useManualEntry ? itemForm.itemName : searchTerm,
         quantity: parseFloat(itemForm.quantity),
         estimatedPrice: itemForm.estimatedPrice ? parseFloat(itemForm.estimatedPrice) : undefined,
