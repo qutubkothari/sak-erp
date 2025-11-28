@@ -222,12 +222,8 @@ export default function HrPage() {
     try {
       const userId = localStorage.getItem('userId');
       await apiClient.put(`/hr/leaves/${leaveId}/approve`, { approverId: userId });
-      });
-
-      if (response.ok) {
-        fetchData();
-        alert('Leave approved successfully');
-      }
+      fetchData();
+      alert('Leave approved successfully');
     } catch (error) {
       console.error('Error approving leave:', error);
       alert('Failed to approve leave');
@@ -236,21 +232,10 @@ export default function HrPage() {
 
   const handleRejectLeave = async (leaveId: string) => {
     try {
-      const token = localStorage.getItem('access_token');
-      const userId = localStorage.getItem('user_id');
-      const response = await fetch(`/hr/leaves/${leaveId}/reject`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ approverId: userId })
-      });
-
-      if (response.ok) {
-        fetchData();
-        alert('Leave rejected successfully');
-      }
+      const userId = localStorage.getItem('userId');
+      await apiClient.put(`/hr/leaves/${leaveId}/reject`, { approverId: userId });
+      fetchData();
+      alert('Leave rejected successfully');
     } catch (error) {
       console.error('Error rejecting leave:', error);
       alert('Failed to reject leave');
