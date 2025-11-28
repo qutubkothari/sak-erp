@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 
@@ -21,7 +21,7 @@ interface PurchaseOrder {
   }>;
 }
 
-export default function PurchaseOrdersPage() {
+function PurchaseOrdersContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prId = searchParams?.get('prId');
@@ -517,5 +517,13 @@ export default function PurchaseOrdersPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PurchaseOrdersPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center">Loading...</div>}>
+      <PurchaseOrdersContent />
+    </Suspense>
   );
 }
