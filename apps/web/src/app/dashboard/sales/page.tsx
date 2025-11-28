@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 
 type TabType = 'customers' | 'quotations' | 'orders' | 'dispatch' | 'warranties';
@@ -423,9 +424,17 @@ export default function SalesPage() {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
+  const router = useRouter();
+
   return (
     <div className="p-6">
       <div className="mb-6">
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="text-amber-600 hover:text-amber-800 text-sm mb-2"
+        >
+          ← Back to Dashboard
+        </button>
         <h1 className="text-2xl font-bold text-gray-900">Sales & Dispatch Management</h1>
         <p className="text-sm text-gray-600 mt-1">
           Manage customers, quotations, sales orders, dispatch, and warranties
@@ -453,7 +462,7 @@ export default function SalesPage() {
               onClick={() => setActiveTab(tab.id as TabType)}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === tab.id
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-amber-500 text-amber-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
@@ -470,7 +479,7 @@ export default function SalesPage() {
             <h2 className="text-lg font-semibold">Customer List</h2>
             <button
               onClick={() => setShowCustomerForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
             >
               + Add Customer
             </button>
@@ -666,7 +675,7 @@ export default function SalesPage() {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
                     >
                       {loading ? 'Creating...' : 'Create Customer'}
                     </button>
@@ -685,7 +694,7 @@ export default function SalesPage() {
             <h2 className="text-lg font-semibold">Quotations</h2>
             <button
               onClick={() => setShowQuotationForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
             >
               + Create Quotation
             </button>
@@ -742,7 +751,7 @@ export default function SalesPage() {
                         {quotation.status === 'APPROVED' && (
                           <button
                             onClick={() => handleConvertToSO(quotation.id)}
-                            className="text-blue-600 hover:text-blue-900"
+                            className="text-amber-600 hover:text-amber-900"
                           >
                             Convert to SO
                           </button>
@@ -815,7 +824,7 @@ export default function SalesPage() {
                       <button
                         type="button"
                         onClick={addQuotationItem}
-                        className="text-sm text-blue-600 hover:text-blue-700"
+                        className="text-sm text-amber-600 hover:text-amber-700"
                       >
                         + Add Item
                       </button>
@@ -883,7 +892,7 @@ export default function SalesPage() {
                     <button
                       type="submit"
                       disabled={loading || quotationForm.items.length === 0}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
                     >
                       {loading ? 'Creating...' : 'Create Quotation'}
                     </button>
@@ -950,7 +959,7 @@ export default function SalesPage() {
                               setDispatchForm({ ...dispatchForm, sales_order_id: order.id });
                               setShowDispatchForm(true);
                             }}
-                            className="text-blue-600 hover:text-blue-900"
+                            className="text-amber-600 hover:text-amber-900"
                           >
                             Create Dispatch
                           </button>
@@ -1017,7 +1026,7 @@ export default function SalesPage() {
                       <button
                         type="button"
                         onClick={addDispatchItem}
-                        className="text-sm text-blue-600 hover:text-blue-700"
+                        className="text-sm text-amber-600 hover:text-amber-700"
                       >
                         + Add Item
                       </button>
@@ -1088,7 +1097,7 @@ export default function SalesPage() {
                     <button
                       type="submit"
                       disabled={loading || dispatchForm.items.length === 0}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
                     >
                       {loading ? 'Creating...' : 'Create Dispatch'}
                     </button>

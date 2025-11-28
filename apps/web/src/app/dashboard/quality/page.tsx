@@ -227,13 +227,21 @@ export default function QualityPage() {
 
   return (
     <div className="p-6">
+      <div className="mb-6">
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="text-amber-600 hover:text-amber-800 text-sm mb-2"
+        >
+          ← Back to Dashboard
+        </button>
+      </div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Quality & Inspection Management</h1>
         <div className="space-x-2">
           {activeTab === 'inspections' && (
             <button
               onClick={() => setShowInspectionForm(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700"
             >
               + New Inspection
             </button>
@@ -254,25 +262,25 @@ export default function QualityPage() {
         <div className="flex space-x-8">
           <button
             onClick={() => setActiveTab('inspections')}
-            className={`pb-4 px-2 ${activeTab === 'inspections' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-gray-600'}`}
+            className={`pb-4 px-2 ${activeTab === 'inspections' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}
           >
             Inspections
           </button>
           <button
             onClick={() => setActiveTab('ncr')}
-            className={`pb-4 px-2 ${activeTab === 'ncr' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-gray-600'}`}
+            className={`pb-4 px-2 ${activeTab === 'ncr' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}
           >
             NCR
           </button>
           <button
             onClick={() => setActiveTab('vendors')}
-            className={`pb-4 px-2 ${activeTab === 'vendors' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-gray-600'}`}
+            className={`pb-4 px-2 ${activeTab === 'vendors' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}
           >
             Vendor Ratings
           </button>
           <button
             onClick={() => setActiveTab('dashboard')}
-            className={`pb-4 px-2 ${activeTab === 'dashboard' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-gray-600'}`}
+            className={`pb-4 px-2 ${activeTab === 'dashboard' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}
           >
             Dashboard
           </button>
@@ -302,7 +310,7 @@ export default function QualityPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {inspections.map((inspection) => (
                   <tr key={inspection.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{inspection.inspection_number}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-amber-600">{inspection.inspection_number}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <span className="px-2 py-1 text-xs rounded bg-purple-100 text-purple-800">
                         {inspection.inspection_type}
@@ -333,7 +341,7 @@ export default function QualityPage() {
                             });
                             setShowCompleteForm(true);
                           }}
-                          className="text-blue-600 hover:text-blue-800"
+                          className="text-amber-600 hover:text-amber-800"
                         >
                           Complete
                         </button>
@@ -434,7 +442,7 @@ export default function QualityPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="bg-white rounded-lg shadow p-6">
               <div className="text-sm text-gray-600 mb-2">Total Inspections</div>
-              <div className="text-3xl font-bold text-blue-600">{dashboard.total_inspections}</div>
+              <div className="text-3xl font-bold text-amber-600">{dashboard.total_inspections}</div>
             </div>
             <div className="bg-white rounded-lg shadow p-6">
               <div className="text-sm text-gray-600 mb-2">Pass Rate</div>
@@ -617,7 +625,7 @@ export default function QualityPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700"
                 >
                   Create Inspection
                 </button>

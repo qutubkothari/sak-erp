@@ -135,7 +135,7 @@ export default function InventoryPage() {
       case 'CRITICAL': return 'text-red-600 bg-red-50';
       case 'HIGH': return 'text-orange-600 bg-orange-50';
       case 'MEDIUM': return 'text-yellow-600 bg-yellow-50';
-      default: return 'text-blue-600 bg-blue-50';
+      default: return 'text-amber-600 bg-amber-50';
     }
   };
 
@@ -167,7 +167,7 @@ export default function InventoryPage() {
       <div className="mb-6">
         <button
           onClick={() => router.push('/dashboard')}
-          className="text-blue-600 hover:text-blue-800 text-sm mb-2"
+          className="text-amber-600 hover:text-amber-800 text-sm mb-2"
         >
           ← Back to Dashboard
         </button>
@@ -182,7 +182,7 @@ export default function InventoryPage() {
             onClick={() => setActiveTab('stock')}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'stock'
-                ? 'border-blue-500 text-blue-600'
+                ? 'border-amber-500 text-amber-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
@@ -192,7 +192,7 @@ export default function InventoryPage() {
             onClick={() => setActiveTab('movements')}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'movements'
-                ? 'border-blue-500 text-blue-600'
+                ? 'border-amber-500 text-amber-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
@@ -202,7 +202,7 @@ export default function InventoryPage() {
             onClick={() => setActiveTab('alerts')}
             className={`py-4 px-1 border-b-2 font-medium text-sm relative ${
               activeTab === 'alerts'
-                ? 'border-blue-500 text-blue-600'
+                ? 'border-amber-500 text-amber-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
@@ -217,7 +217,7 @@ export default function InventoryPage() {
             onClick={() => setActiveTab('demo')}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'demo'
-                ? 'border-blue-500 text-blue-600'
+                ? 'border-amber-500 text-amber-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
@@ -390,7 +390,7 @@ export default function InventoryPage() {
                     </td>
                     <td className="px-6 py-4">
                       {movement.uid ? (
-                        <span className="text-sm font-mono text-blue-600">{movement.uid}</span>
+                        <span className="text-sm font-mono text-amber-600">{movement.uid}</span>
                       ) : (
                         <span className="text-sm text-gray-400">-</span>
                       )}
@@ -422,7 +422,7 @@ export default function InventoryPage() {
                 className={`bg-white rounded-lg shadow p-6 border-l-4 ${
                   alert.severity === 'CRITICAL' ? 'border-red-500' :
                   alert.severity === 'HIGH' ? 'border-orange-500' :
-                  alert.severity === 'MEDIUM' ? 'border-yellow-500' : 'border-blue-500'
+                  alert.severity === 'MEDIUM' ? 'border-yellow-500' : 'border-amber-500'
                 }`}
               >
                 <div className="flex items-start justify-between">
@@ -444,7 +444,7 @@ export default function InventoryPage() {
                   </div>
                   <button
                     onClick={() => acknowledgeAlert(alert.id)}
-                    className="ml-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    className="ml-4 px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700"
                   >
                     Acknowledge
                   </button>
@@ -495,7 +495,7 @@ export default function InventoryPage() {
                       <div className="text-sm text-gray-500">{demo.items.item_code}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm font-mono text-blue-600">{demo.uid}</span>
+                      <span className="text-sm font-mono text-amber-600">{demo.uid}</span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">{demo.customer_name}</div>

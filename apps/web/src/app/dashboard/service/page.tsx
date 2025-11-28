@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 
 type TabType = 'tickets' | 'technicians' | 'warranty-check' | 'reports';
@@ -222,9 +223,17 @@ export default function ServicePage() {
     return colors[priority] || 'bg-gray-100 text-gray-800';
   };
 
+  const router = useRouter();
+
   return (
     <div className="p-6">
       <div className="mb-6">
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="text-amber-600 hover:text-amber-800 text-sm mb-2"
+        >
+          ← Back to Dashboard
+        </button>
         <h1 className="text-2xl font-bold text-gray-900">Service & Warranty Management</h1>
         <p className="text-sm text-gray-600 mt-1">
           Manage service tickets, technicians, and warranty validations
@@ -251,7 +260,7 @@ export default function ServicePage() {
               onClick={() => setActiveTab(tab.id as TabType)}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === tab.id
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-amber-500 text-amber-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
@@ -268,7 +277,7 @@ export default function ServicePage() {
             <h2 className="text-lg font-semibold">Service Tickets</h2>
             <button
               onClick={() => setShowTicketForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
             >
               + Create Ticket
             </button>
@@ -452,7 +461,7 @@ export default function ServicePage() {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
                     >
                       {loading ? 'Creating...' : 'Create Ticket'}
                     </button>
@@ -471,7 +480,7 @@ export default function ServicePage() {
             <h2 className="text-lg font-semibold">Technicians</h2>
             <button
               onClick={() => setShowTechnicianForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
             >
               + Add Technician
             </button>
@@ -586,7 +595,7 @@ export default function ServicePage() {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
                     >
                       {loading ? 'Adding...' : 'Add Technician'}
                     </button>
@@ -616,7 +625,7 @@ export default function ServicePage() {
                 <button
                   onClick={handleWarrantyCheck}
                   disabled={loading}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
                 >
                   {loading ? 'Checking...' : 'Check Warranty'}
                 </button>

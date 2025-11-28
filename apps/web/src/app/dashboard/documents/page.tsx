@@ -296,6 +296,12 @@ export default function DocumentsPage() {
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-6">
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="text-amber-600 hover:text-amber-800 text-sm mb-2"
+        >
+          ← Back to Dashboard
+        </button>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           Document Management
         </h1>
@@ -309,7 +315,7 @@ export default function DocumentsPage() {
         <div className="flex gap-2">
           <button
             onClick={() => setShowModal(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+            className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 transition-colors flex items-center gap-2"
           >
             <span>+</span> Upload Document
           </button>
@@ -404,7 +410,7 @@ export default function DocumentsPage() {
               {doc.tags && doc.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-3">
                   {doc.tags.slice(0, 3).map((tag, idx) => (
-                    <span key={idx} className="px-2 py-1 bg-blue-50 text-blue-600 text-xs rounded">
+                    <span key={idx} className="px-2 py-1 bg-amber-50 text-amber-600 text-xs rounded">
                       {tag}
                     </span>
                   ))}
@@ -416,7 +422,7 @@ export default function DocumentsPage() {
                   href={doc.file_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 bg-blue-50 text-blue-600 px-3 py-2 rounded text-sm hover:bg-blue-100 transition-colors text-center"
+                  className="flex-1 bg-amber-50 text-amber-600 px-3 py-2 rounded text-sm hover:bg-amber-100 transition-colors text-center"
                 >
                   View
                 </a>
@@ -501,7 +507,7 @@ export default function DocumentsPage() {
                       href={doc.file_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-900"
+                      className="text-amber-600 hover:text-amber-900"
                     >
                       View
                     </a>
@@ -677,7 +683,7 @@ export default function DocumentsPage() {
               <div className="flex gap-2 pt-4">
                 <button
                   type="submit"
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                  className="flex-1 bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700"
                 >
                   Upload Document
                 </button>

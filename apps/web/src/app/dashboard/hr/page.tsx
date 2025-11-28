@@ -321,13 +321,21 @@ export default function HrPage() {
 
   return (
     <div className="p-6">
+      <div className="mb-6">
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="text-amber-600 hover:text-amber-800 text-sm mb-2"
+        >
+          ← Back to Dashboard
+        </button>
+      </div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">HR & Payroll Management</h1>
         <div className="space-x-2">
           {activeTab === 'employees' && (
             <button
               onClick={() => setShowEmployeeForm(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700"
             >
               + New Employee
             </button>
@@ -356,25 +364,25 @@ export default function HrPage() {
         <div className="flex space-x-8">
           <button
             onClick={() => setActiveTab('employees')}
-            className={`pb-4 px-2 ${activeTab === 'employees' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-gray-600'}`}
+            className={`pb-4 px-2 ${activeTab === 'employees' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}
           >
             Employees
           </button>
           <button
             onClick={() => setActiveTab('attendance')}
-            className={`pb-4 px-2 ${activeTab === 'attendance' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-gray-600'}`}
+            className={`pb-4 px-2 ${activeTab === 'attendance' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}
           >
             Attendance
           </button>
           <button
             onClick={() => setActiveTab('leaves')}
-            className={`pb-4 px-2 ${activeTab === 'leaves' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-gray-600'}`}
+            className={`pb-4 px-2 ${activeTab === 'leaves' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}
           >
             Leave Requests
           </button>
           <button
             onClick={() => setActiveTab('payroll')}
-            className={`pb-4 px-2 ${activeTab === 'payroll' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-gray-600'}`}
+            className={`pb-4 px-2 ${activeTab === 'payroll' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}
           >
             Payroll & Payslips
           </button>
@@ -401,7 +409,7 @@ export default function HrPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {employees.map((employee) => (
                   <tr key={employee.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{employee.employee_code}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-amber-600">{employee.employee_code}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{employee.employee_name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{employee.designation}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{employee.department}</td>
@@ -648,7 +656,7 @@ export default function HrPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700"
                 >
                   Create Employee
                 </button>
