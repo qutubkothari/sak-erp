@@ -28,7 +28,7 @@ function PurchaseOrdersContent() {
   
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<Array<{ id: string; name: string; contact_person: string }>>([]);
-  const [items, setItems] = useState<Array<{ id: string; item_code: string; item_name: string; unit: string }>>([]);
+  const [items, setItems] = useState<Array<{ id: string; code: string; name: string; uom: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('ALL');
@@ -200,8 +200,8 @@ function PurchaseOrdersContent() {
         updatedItems[index] = {
           ...updatedItems[index],
           itemId: value,
-          itemCode: selectedItem.item_code,
-          itemName: selectedItem.item_name,
+          itemCode: selectedItem.code,
+          itemName: selectedItem.name,
         };
       }
     } else {
@@ -468,7 +468,7 @@ function PurchaseOrdersContent() {
                               <option value="">Select Item</option>
                               {items.map((masterItem) => (
                                 <option key={masterItem.id} value={masterItem.id}>
-                                  {masterItem.item_code} - {masterItem.item_name}
+                                  {masterItem.code} - {masterItem.name}
                                 </option>
                               ))}
                             </select>
