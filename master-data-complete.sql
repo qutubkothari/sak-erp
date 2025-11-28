@@ -129,7 +129,10 @@ CROSS JOIN (
         ('Finance', 'FIN', 'Finance and accounting'),
         ('IT', 'IT', 'Information technology')
 ) AS dept(name, code, description)
-ON CONFLICT (tenant_id, code) DO NOTHING;
+WHERE NOT EXISTS (
+    SELECT 1 FROM departments d 
+    WHERE d.tenant_id = t.id AND d.code = dept.code
+);
 
 -- UNITS OF MEASURE SEED DATA
 INSERT INTO units_of_measure (tenant_id, code, name, category, description, is_active)
@@ -186,7 +189,10 @@ CROSS JOIN (
         ('ROLL', 'Roll', 'PACKAGING', 'Rolled items'),
         ('SHEET', 'Sheet', 'PACKAGING', 'Flat sheets')
 ) AS uom(code, name, category, description)
-ON CONFLICT (tenant_id, code) DO NOTHING;
+WHERE NOT EXISTS (
+    SELECT 1 FROM units_of_measure u 
+    WHERE u.tenant_id = t.id AND u.code = uom.code
+);
 
 -- ITEM CATEGORIES SEED DATA
 INSERT INTO item_categories (tenant_id, code, name, description, is_active)
@@ -212,7 +218,10 @@ CROSS JOIN (
         ('ELECT', 'Electronics', 'Electronic components'),
         ('MECH', 'Mechanical', 'Mechanical parts')
 ) AS cat(code, name, description)
-ON CONFLICT (tenant_id, code) DO NOTHING;
+WHERE NOT EXISTS (
+    SELECT 1 FROM item_categories c 
+    WHERE c.tenant_id = t.id AND c.code = cat.code
+);
 
 -- WAREHOUSES SEED DATA
 INSERT INTO warehouses (tenant_id, code, name, location, is_active)
@@ -233,7 +242,10 @@ CROSS JOIN (
         ('SHIP', 'Shipping Area', 'Ready for dispatch'),
         ('REC', 'Receiving Area', 'Incoming goods area')
 ) AS wh(code, name, location)
-ON CONFLICT (tenant_id, code) DO NOTHING;
+WHERE NOT EXISTS (
+    SELECT 1 FROM warehouses w 
+    WHERE w.tenant_id = t.id AND w.code = wh.code
+);
 
 -- PAYMENT TERMS SEED DATA
 INSERT INTO payment_terms (tenant_id, code, name, days, description, is_active)
@@ -258,7 +270,10 @@ CROSS JOIN (
         ('ADV', 'Advance Payment', -1, 'Payment in advance'),
         ('2-10-30', '2/10 Net 30', 30, '2% discount if paid in 10 days, else net 30')
 ) AS pt(code, name, days, description)
-ON CONFLICT (tenant_id, code) DO NOTHING;
+WHERE NOT EXISTS (
+    SELECT 1 FROM payment_terms p 
+    WHERE p.tenant_id = t.id AND p.code = pt.code
+);
 
 -- =====================================================
 -- DISABLE RLS FOR EASIER ACCESS (Development)

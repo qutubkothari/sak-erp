@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 
 interface PurchaseOrder {
@@ -38,6 +38,8 @@ interface Item {
 
 export default function PurchaseOrdersPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const prId = searchParams?.get('prId');
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -45,6 +47,7 @@ export default function PurchaseOrdersPage() {
   const [showModal, setShowModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  const [prData, setPrData] = useState<any>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -74,6 +77,44 @@ export default function PurchaseOrdersPage() {
       fetchItems();
     }
   }, [showModal]);
+
+  useEffect(() => {
+    if (prId) {
+      fetchPRAndOpenModal(prId);
+    }
+  }, [prId]);
+
+  const fetchPRAndOpenModal = async (prId: string) => {
+    try {
+      const pr = await apiClient.get(`/purchase/requisitions/${prId}`);
+      setPrData(pr);
+      
+      // Pre-populate form with PR data
+      const prItems = pr.items?.map((item: any) => ({
+        itemId: item.itemId || '',
+        quantity: item.quantity || 0,
+        unitPrice: item.estimatedPrice || 0,
+        taxRate: 0,
+        totalPrice: (item.quantity || 0) * (item.estimatedPrice || 0),
+        specifications: item.specifications || ''
+      })) || [];
+
+      setFormData({
+        vendorId: '',
+        orderDate: new Date().toISOString().split('T')[0],
+        expectedDelivery: pr.required_date || '',
+        paymentTerms: 'NET_30',
+        deliveryAddress: '',
+        notes: `Created from PR: ${pr.pr_number}\nPurpose: ${pr.purpose || ''}`,
+        items: prItems
+      });
+
+      setShowModal(true);
+    } catch (error) {
+      console.error('Error fetching PR:', error);
+      alert('Failed to load PR data');
+    }
+  };
 
   const fetchVendors = async () => {
     try {
@@ -322,11 +363,20 @@ export default function PurchaseOrdersPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-2xl font-bold text-gray-900">Create Purchase Order</h2>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {prData ? `Create PO from PR: ${prData.pr_number}` : 'Create Purchase Order'}
+              </h2>
+              {prData && (
+                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <span className="font-semibold">Department:</span> {prData.department} | 
+                    <span className="font-semibold ml-2">Required Date:</span> {new Date(prData.required_date).toLocaleDateString()}
+                  </p>
+                </div>
+              )}
             </div>
 
-            <div className="p-6 space-y-6">
-              {/* Order Details */}
+            <div className="p-6 space-y-6">\n              {/* Order Details */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Vendor *</label>
