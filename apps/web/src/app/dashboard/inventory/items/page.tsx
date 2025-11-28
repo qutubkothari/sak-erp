@@ -20,9 +20,24 @@ interface Item {
   created_at: string;
 }
 
+interface Category {
+  id: string;
+  code: string;
+  name: string;
+}
+
+interface UOM {
+  id: string;
+  code: string;
+  name: string;
+  category?: string;
+}
+
 export default function ItemsPage() {
   const router = useRouter();
   const [items, setItems] = useState<Item[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [uomList, setUomList] = useState<UOM[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
@@ -33,8 +48,8 @@ export default function ItemsPage() {
     code: '',
     name: '',
     description: '',
-    category: 'RAW_MATERIAL',
-    uom: 'PCS',
+    category: '',
+    uom: '',
     standard_cost: '',
     selling_price: '',
     reorder_level: '',
@@ -43,24 +58,29 @@ export default function ItemsPage() {
     is_active: true,
   });
 
-  const categories = [
-    'RAW_MATERIAL',
-    'COMPONENT',
-    'SUBASSEMBLY',
-    'FINISHED_GOODS',
-    'CONSUMABLE',
-    'PACKING_MATERIAL',
-    'SPARE_PART',
-  ];
-
-  const uomOptions = [
-    'PCS', 'KG', 'GRAM', 'LITER', 'METER', 'CM', 'MM',
-    'BOX', 'SET', 'PACK', 'ROLL', 'SHEET', 'FEET', 'INCH'
-  ];
-
   useEffect(() => {
     fetchItems();
+    fetchCategories();
+    fetchUOM();
   }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const data = await apiClient.get('/master/categories');
+      setCategories(data);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
+  const fetchUOM = async () => {
+    try {
+      const data = await apiClient.get('/master/uom');
+      setUomList(data);
+    } catch (error) {
+      console.error('Error fetching UOM:', error);
+    }
+  };
 
   const fetchItems = async () => {
     try {
@@ -140,8 +160,8 @@ export default function ItemsPage() {
       code: '',
       name: '',
       description: '',
-      category: 'RAW_MATERIAL',
-      uom: 'PCS',
+      category: categories[0]?.code || '',
+      uom: uomList[0]?.code || '',
       standard_cost: '',
       selling_price: '',
       reorder_level: '',
@@ -343,8 +363,9 @@ export default function ItemsPage() {
                       onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                     >
+                      <option value="">Select Category</option>
                       {categories.map(cat => (
-                        <option key={cat} value={cat}>{cat.replace(/_/g, ' ')}</option>
+                        <option key={cat.id} value={cat.code}>{cat.name}</option>
                       ))}
                     </select>
                   </div>
@@ -359,8 +380,11 @@ export default function ItemsPage() {
                       onChange={(e) => setFormData({ ...formData, uom: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                     >
-                      {uomOptions.map(uom => (
-                        <option key={uom} value={uom}>{uom}</option>
+                      <option value="">Select UOM</option>
+                      {uomList.map(uom => (
+                        <option key={uom.id} value={uom.code}>
+                          {uom.name} ({uom.code}) {uom.category ? `- ${uom.category}` : ''}
+                        </option>
                       ))}
                     </select>
                   </div>
