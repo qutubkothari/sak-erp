@@ -34,6 +34,7 @@ function PurchaseOrdersContent() {
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [loadingPR, setLoadingPR] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -154,22 +155,28 @@ function PurchaseOrdersContent() {
   };
 
   const handleCreateOrder = async () => {
+    if (submitting) return; // Prevent duplicate submissions
+    
     try {
+      setSubmitting(true);
       const token = localStorage.getItem('accessToken');
       
       // Validate required fields
       if (!formData.vendorId) {
         alert('Please select a vendor');
+        setSubmitting(false);
         return;
       }
       
       if (!formData.orderDate) {
         alert('Please select an order date');
+        setSubmitting(false);
         return;
       }
       
       if (formData.items.length === 0) {
         alert('Please add at least one item');
+        setSubmitting(false);
         return;
       }
       
@@ -177,6 +184,7 @@ function PurchaseOrdersContent() {
       const invalidItems = formData.items.filter(item => !item.itemId && !item.itemCode);
       if (invalidItems.length > 0) {
         alert('Please select items for all rows');
+        setSubmitting(false);
         return;
       }
       
@@ -248,6 +256,8 @@ function PurchaseOrdersContent() {
     } catch (error) {
       console.error('Error creating order:', error);
       alert('Failed to create PO. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -657,9 +667,10 @@ function PurchaseOrdersContent() {
               </button>
               <button
                 onClick={handleCreateOrder}
-                className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                disabled={submitting}
+                className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Create Purchase Order
+                {submitting ? 'Creating...' : 'Create Purchase Order'}
               </button>
             </div>
           </div>
