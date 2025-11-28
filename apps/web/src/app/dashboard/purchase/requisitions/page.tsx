@@ -33,6 +33,29 @@ interface Requisition {
   created_at: string;
 }
 
+interface PRDetailItem {
+  id: string;
+  item_code: string;
+  item_name: string;
+  requested_qty: number;
+  estimated_rate: number;
+  total_amount: number;
+  remarks?: string;
+}
+
+interface PRDetail {
+  id: string;
+  pr_number: string;
+  department: string;
+  request_date: string;
+  required_date: string;
+  status: string;
+  priority: string;
+  purpose?: string;
+  requested_by: string;
+  items: PRDetailItem[];
+}
+
 export default function PurchaseRequisitionsPage() {
   const router = useRouter();
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -42,6 +65,9 @@ export default function PurchaseRequisitionsPage() {
   const [loadingRequisitions, setLoadingRequisitions] = useState(true);
   const [filterStatus, setFilterStatus] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPR, setSelectedPR] = useState<PRDetail | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [formData, setFormData] = useState({
     department: '',
     requiredDate: '',
@@ -165,6 +191,48 @@ export default function PurchaseRequisitionsPage() {
 
   const removeItem = (id: string) => {
     setItems(items.filter(item => item.id !== id));
+  };
+
+  const handleViewDetails = async (prId: string) => {
+    setLoadingDetail(true);
+    setShowDetailModal(true);
+    try {
+      const response = await apiClient.get(`/purchase/requisitions/${prId}`);
+      setSelectedPR(response.data);
+    } catch (error) {
+      console.error('Error fetching PR details:', error);
+      alert('Failed to load PR details');
+      setShowDetailModal(false);
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const handleApprove = async (prId: string) => {
+    if (!confirm('Are you sure you want to approve this PR?')) return;
+    try {
+      await apiClient.post(`/purchase/requisitions/${prId}/approve`, {});
+      alert('PR approved successfully!');
+      setShowDetailModal(false);
+      fetchRequisitions();
+    } catch (error) {
+      console.error('Error approving PR:', error);
+      alert('Failed to approve PR');
+    }
+  };
+
+  const handleReject = async (prId: string) => {
+    const reason = prompt('Please enter rejection reason:');
+    if (!reason) return;
+    try {
+      await apiClient.post(`/purchase/requisitions/${prId}/reject`, { reason });
+      alert('PR rejected successfully!');
+      setShowDetailModal(false);
+      fetchRequisitions();
+    } catch (error) {
+      console.error('Error rejecting PR:', error);
+      alert('Failed to reject PR');
+    }
   };
 
   const handleSubmit = async (status: 'DRAFT' | 'SUBMITTED') => {
@@ -593,7 +661,10 @@ export default function PurchaseRequisitionsPage() {
                           {new Date(req.created_at).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4 text-sm">
-                          <button className="text-amber-600 hover:text-amber-900 font-medium">
+                          <button 
+                            onClick={() => handleViewDetails(req.id)}
+                            className="text-amber-600 hover:text-amber-900 font-medium"
+                          >
                             View Details
                           </button>
                         </td>
@@ -604,6 +675,148 @@ export default function PurchaseRequisitionsPage() {
             </div>
           )}
         </div>
+
+        {/* PR Detail Modal */}
+        {showDetailModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
+              {loadingDetail ? (
+                <div className="p-8 text-center">
+                  <p className="text-gray-600">Loading PR details...</p>
+                </div>
+              ) : selectedPR ? (
+                <div className="p-6">
+                  {/* Header */}
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-900">Purchase Requisition Details</h2>
+                      <p className="text-gray-600 mt-1">PR Number: {selectedPR.pr_number}</p>
+                    </div>
+                    <button
+                      onClick={() => setShowDetailModal(false)}
+                      className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  {/* PR Info */}
+                  <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-sm text-gray-600">Department</p>
+                      <p className="font-semibold">{selectedPR.department}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Status</p>
+                      <span className={`inline-block px-3 py-1 text-sm font-semibold rounded-full ${
+                        selectedPR.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                        selectedPR.status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
+                        selectedPR.status === 'DRAFT' ? 'bg-yellow-100 text-yellow-800' :
+                        selectedPR.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {selectedPR.status}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Required Date</p>
+                      <p className="font-semibold">{new Date(selectedPR.required_date).toLocaleDateString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Priority</p>
+                      <p className="font-semibold">{selectedPR.priority}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-sm text-gray-600">Purpose</p>
+                      <p className="font-semibold">{selectedPR.purpose || 'N/A'}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-sm text-gray-600">Requested By</p>
+                      <p className="font-semibold">{selectedPR.requested_by}</p>
+                    </div>
+                  </div>
+
+                  {/* Items Table */}
+                  <div className="mb-6">
+                    <h3 className="text-lg font-bold mb-3">Items</h3>
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-sm font-semibold">Item Code</th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold">Item Name</th>
+                            <th className="px-4 py-2 text-right text-sm font-semibold">Quantity</th>
+                            <th className="px-4 py-2 text-right text-sm font-semibold">Est. Rate</th>
+                            <th className="px-4 py-2 text-right text-sm font-semibold">Total</th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold">Remarks</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedPR.items.map((item) => (
+                            <tr key={item.id} className="border-t">
+                              <td className="px-4 py-2 text-sm">{item.item_code}</td>
+                              <td className="px-4 py-2 text-sm">{item.item_name}</td>
+                              <td className="px-4 py-2 text-sm text-right">{item.requested_qty}</td>
+                              <td className="px-4 py-2 text-sm text-right">₹{item.estimated_rate.toFixed(2)}</td>
+                              <td className="px-4 py-2 text-sm text-right font-semibold">₹{item.total_amount.toFixed(2)}</td>
+                              <td className="px-4 py-2 text-sm text-gray-600">{item.remarks || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-gray-50 border-t-2">
+                          <tr>
+                            <td colSpan={4} className="px-4 py-3 text-right font-bold">Total Amount:</td>
+                            <td className="px-4 py-3 text-right font-bold text-lg">
+                              ₹{selectedPR.items.reduce((sum, item) => sum + item.total_amount, 0).toFixed(2)}
+                            </td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex justify-end gap-3">
+                    {selectedPR.status === 'SUBMITTED' && (
+                      <>
+                        <button
+                          onClick={() => handleReject(selectedPR.id)}
+                          className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          onClick={() => handleApprove(selectedPR.id)}
+                          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                          Approve
+                        </button>
+                      </>
+                    )}
+                    {selectedPR.status === 'APPROVED' && (
+                      <button
+                        onClick={() => {
+                          setShowDetailModal(false);
+                          router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
+                        }}
+                        className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors"
+                      >
+                        Create PO from this PR
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowDetailModal(false)}
+                      className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
