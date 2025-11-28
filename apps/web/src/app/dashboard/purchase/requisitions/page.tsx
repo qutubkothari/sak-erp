@@ -198,9 +198,9 @@ export default function PurchaseRequisitionsPage() {
     setLoadingDetail(true);
     setShowDetailModal(true);
     try {
-      const response = await apiClient.get(`/purchase/requisitions/${prId}`);
-      console.log('PR Details Response:', response.data);
-      setSelectedPR(response.data);
+      const data = await apiClient.get(`/purchase/requisitions/${prId}`);
+      console.log('PR Details Response:', data);
+      setSelectedPR(data);
     } catch (error) {
       console.error('Error fetching PR details:', error);
       alert('Failed to load PR details');
