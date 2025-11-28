@@ -243,15 +243,16 @@ export default function PurchaseRequisitionsPage() {
     try {
       const prData = {
         department: formData.department,
-        required_date: formData.requiredDate,
+        requiredDate: formData.requiredDate,
         priority: formData.priority,
         purpose: formData.notes || null,
         status: status,
         items: items.map(item => ({
-          item_name: item.itemName,
-          quantity: item.quantity,
-          estimated_price: item.estimatedPrice || 0,
-          specifications: item.specifications || null,
+          itemCode: item.itemCode,
+          itemName: item.itemName,
+          requestedQty: item.quantity,
+          estimatedRate: item.estimatedPrice || 0,
+          remarks: item.specifications || null,
         })),
       };
       
