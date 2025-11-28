@@ -580,7 +580,7 @@ export class InventoryService {
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
-      .order('warehouse_name');
+      .order('name');
 
     if (error) throw new BadRequestException(error.message);
     return data;
@@ -593,12 +593,12 @@ export class InventoryService {
 
     const warehouse = {
       tenant_id: tenantId,
-      warehouse_code: warehouseData.warehouse_code,
-      warehouse_name: warehouseData.warehouse_name,
-      location: warehouseData.location,
-      plant_code: warehouseData.plant_code,
-      manager_id: warehouseData.manager_id,
+      code: warehouseData.code || warehouseData.warehouse_code,
+      name: warehouseData.name || warehouseData.warehouse_name,
+      type: warehouseData.type,
+      plant_id: warehouseData.plant_id,
       is_active: true,
+      metadata: warehouseData.metadata || {},
     };
 
     const { data, error } = await this.supabase
