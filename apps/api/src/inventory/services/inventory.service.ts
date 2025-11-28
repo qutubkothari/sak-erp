@@ -610,4 +610,113 @@ export class InventoryService {
     if (error) throw new BadRequestException(error.message);
     return data;
   }
+
+  // Get all items
+  async getItems(req: Request) {
+    const { tenantId } = req.user as any;
+
+    const { data, error } = await this.supabase
+      .from('items')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('item_code', { ascending: true });
+
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  // Get single item
+  async getItem(req: Request, id: string) {
+    const { tenantId } = req.user as any;
+
+    const { data, error } = await this.supabase
+      .from('items')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .single();
+
+    if (error) throw new NotFoundException('Item not found');
+    return data;
+  }
+
+  // Create item
+  async createItem(req: Request, itemData: any) {
+    const { tenantId } = req.user as any;
+
+    const item = {
+      tenant_id: tenantId,
+      item_code: itemData.item_code,
+      item_name: itemData.item_name,
+      description: itemData.description,
+      category: itemData.category,
+      uom: itemData.uom,
+      standard_cost: itemData.standard_cost,
+      selling_price: itemData.selling_price,
+      reorder_point: itemData.reorder_point,
+      max_stock_level: itemData.max_stock_level,
+      lead_time_days: itemData.lead_time_days,
+      preferred_vendor_id: itemData.preferred_vendor_id,
+      is_active: true,
+    };
+
+    const { data, error } = await this.supabase
+      .from('items')
+      .insert(item)
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  // Update item
+  async updateItem(req: Request, id: string, itemData: any) {
+    const { tenantId } = req.user as any;
+
+    const updates = {
+      item_code: itemData.item_code,
+      item_name: itemData.item_name,
+      description: itemData.description,
+      category: itemData.category,
+      uom: itemData.uom,
+      standard_cost: itemData.standard_cost,
+      selling_price: itemData.selling_price,
+      reorder_point: itemData.reorder_point,
+      max_stock_level: itemData.max_stock_level,
+      lead_time_days: itemData.lead_time_days,
+      preferred_vendor_id: itemData.preferred_vendor_id,
+      is_active: itemData.is_active,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await this.supabase
+      .from('items')
+      .update(updates)
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Item not found');
+    return data;
+  }
+
+  // Delete item
+  async deleteItem(req: Request, id: string) {
+    const { tenantId } = req.user as any;
+
+    const { data, error } = await this.supabase
+      .from('items')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Item not found');
+    return { message: 'Item deleted successfully', data };
+  }
 }
