@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '../../../../../lib/api-client';
 
 interface Vendor {
   id: string;
@@ -51,16 +52,12 @@ export default function VendorsPage() {
   const fetchVendors = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
       const params = new URLSearchParams();
       if (filterCategory !== 'ALL') params.append('category', filterCategory);
       if (searchTerm) params.append('search', searchTerm);
 
-      const response = await fetch(`/api/v1/purchase/vendors?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      setVendors(data);
+      const data = await apiClient.get<Vendor[]>(`/purchase/vendors?${params}`);
+      setVendors(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching vendors:', error);
     } finally {
@@ -70,26 +67,14 @@ export default function VendorsPage() {
 
   const handleSubmit = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const url = editingVendor
-        ? `/api/v1/purchase/vendors/${editingVendor.id}`
-        : '/api/v1/purchase/vendors';
-      const method = editingVendor ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        setShowModal(false);
-        fetchVendors();
-        resetForm();
+      if (editingVendor) {
+        await apiClient.put(`/purchase/vendors/${editingVendor.id}`, formData);
+      } else {
+        await apiClient.post('/purchase/vendors', formData);
       }
+      setShowModal(false);
+      fetchVendors();
+      resetForm();
     } catch (error) {
       console.error('Error saving vendor:', error);
     }
@@ -118,15 +103,8 @@ export default function VendorsPage() {
     if (!confirm('Are you sure you want to delete this vendor?')) return;
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/v1/purchase/vendors/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        fetchVendors();
-      }
+      await apiClient.delete(`/purchase/vendors/${id}`);
+      fetchVendors();
     } catch (error) {
       console.error('Error deleting vendor:', error);
     }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '../../../../lib/api-client';
 
 interface Employee {
   id: string;
@@ -101,52 +102,45 @@ export default function HrPage() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      
       if (activeTab === 'employees') {
-        const response = await fetch('/api/v1/hr/employees', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await response.json();
-        setEmployees(data.data || []);
+        const data = await apiClient.get<any>('/hr/employees');
+        setEmployees(Array.isArray(data) ? data : (data.data || []));
       } else if (activeTab === 'attendance') {
         // Fetch all attendance records
-        const empResponse = await fetch('/api/v1/hr/employees', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const empData = await empResponse.json();
-        const allEmployees = empData.data || [];
+        const empData = await apiClient.get<any>('/hr/employees');
+        const allEmployees = Array.isArray(empData) ? empData : (empData.data || []);
         
         // Fetch attendance for each employee
         const attendancePromises = allEmployees.map(async (emp: Employee) => {
-          const attResponse = await fetch(`/hr/attendance?employeeId=${emp.id}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          const attData = await attResponse.json();
-          return (attData.data || []).map((record: any) => ({
-            ...record,
-            employee_name: emp.employee_name
-          }));
+          try {
+            const attData = await apiClient.get<any>(`/hr/attendance?employeeId=${emp.id}`);
+            const records = Array.isArray(attData) ? attData : (attData.data || []);
+            return records.map((record: any) => ({
+              ...record,
+              employee_name: emp.employee_name
+            }));
+          } catch {
+            return [];
+          }
         });
         
         const allAttendance = await Promise.all(attendancePromises);
         setAttendance(allAttendance.flat());
       } else if (activeTab === 'leaves') {
-        const empResponse = await fetch('/api/v1/hr/employees', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const empData = await empResponse.json();
-        const allEmployees = empData.data || [];
+        const empData = await apiClient.get<any>('/hr/employees');
+        const allEmployees = Array.isArray(empData) ? empData : (empData.data || []);
         
         const leavePromises = allEmployees.map(async (emp: Employee) => {
-          const leaveResponse = await fetch(`/hr/leaves?employeeId=${emp.id}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          const leaveData = await leaveResponse.json();
-          return (leaveData.data || []).map((leave: any) => ({
-            ...leave,
-            employee_name: emp.employee_name
-          }));
+          try {
+            const leaveData = await apiClient.get<any>(`/hr/leaves?employeeId=${emp.id}`);
+            const records = Array.isArray(leaveData) ? leaveData : (leaveData.data || []);
+            return records.map((leave: any) => ({
+              ...leave,
+              employee_name: emp.employee_name
+            }));
+          } catch {
+            return [];
+          }
         });
         
         const allLeaves = await Promise.all(leavePromises);
@@ -160,33 +154,22 @@ export default function HrPage() {
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('/api/v1/hr/employees', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(employeeForm)
+      await apiClient.post('/hr/employees', employeeForm);
+      setShowEmployeeForm(false);
+      setEmployeeForm({
+        employee_code: '',
+        employee_name: '',
+        designation: '',
+        department: '',
+        date_of_joining: new Date().toISOString().split('T')[0],
+        date_of_birth: '',
+        contact_number: '',
+        email: '',
+        address: '',
+        biometric_id: ''
       });
-
-      if (response.ok) {
-        setShowEmployeeForm(false);
-        setEmployeeForm({
-          employee_code: '',
-          employee_name: '',
-          designation: '',
-          department: '',
-          date_of_joining: new Date().toISOString().split('T')[0],
-          date_of_birth: '',
-          contact_number: '',
-          email: '',
-          address: '',
-          biometric_id: ''
-        });
-        fetchData();
-        alert('Employee created successfully');
-      }
+      fetchData();
+      alert('Employee created successfully');
     } catch (error) {
       console.error('Error creating employee:', error);
       alert('Failed to create employee');
@@ -196,29 +179,18 @@ export default function HrPage() {
   const handleRecordAttendance = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('/api/v1/hr/attendance', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(attendanceForm)
+      await apiClient.post('/hr/attendance', attendanceForm);
+      setShowAttendanceForm(false);
+      setAttendanceForm({
+        employee_id: '',
+        attendance_date: new Date().toISOString().split('T')[0],
+        check_in_time: '',
+        check_out_time: '',
+        status: 'PRESENT',
+        remarks: ''
       });
-
-      if (response.ok) {
-        setShowAttendanceForm(false);
-        setAttendanceForm({
-          employee_id: '',
-          attendance_date: new Date().toISOString().split('T')[0],
-          check_in_time: '',
-          check_out_time: '',
-          status: 'PRESENT',
-          remarks: ''
-        });
-        fetchData();
-        alert('Attendance recorded successfully');
-      }
+      fetchData();
+      alert('Attendance recorded successfully');
     } catch (error) {
       console.error('Error recording attendance:', error);
       alert('Failed to record attendance');
@@ -228,29 +200,18 @@ export default function HrPage() {
   const handleApplyLeave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('/api/v1/hr/leaves', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(leaveForm)
+      await apiClient.post('/hr/leaves', leaveForm);
+      setShowLeaveForm(false);
+      setLeaveForm({
+        employee_id: '',
+        leave_type: 'CASUAL',
+        start_date: new Date().toISOString().split('T')[0],
+        end_date: new Date().toISOString().split('T')[0],
+        total_days: 1,
+        reason: ''
       });
-
-      if (response.ok) {
-        setShowLeaveForm(false);
-        setLeaveForm({
-          employee_id: '',
-          leave_type: 'CASUAL',
-          start_date: new Date().toISOString().split('T')[0],
-          end_date: new Date().toISOString().split('T')[0],
-          total_days: 1,
-          reason: ''
-        });
-        fetchData();
-        alert('Leave request submitted successfully');
-      }
+      fetchData();
+      alert('Leave request submitted successfully');
     } catch (error) {
       console.error('Error applying leave:', error);
       alert('Failed to submit leave request');
@@ -259,15 +220,8 @@ export default function HrPage() {
 
   const handleApproveLeave = async (leaveId: string) => {
     try {
-      const token = localStorage.getItem('access_token');
-      const userId = localStorage.getItem('user_id');
-      const response = await fetch(`/hr/leaves/${leaveId}/approve`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ approverId: userId })
+      const userId = localStorage.getItem('userId');
+      await apiClient.put(`/hr/leaves/${leaveId}/approve`, { approverId: userId });
       });
 
       if (response.ok) {
