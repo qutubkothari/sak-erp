@@ -50,9 +50,11 @@ interface PRDetail {
   request_date: string;
   required_date: string;
   status: string;
-  priority: string;
+  priority?: string;
   purpose?: string;
   requested_by: string;
+  approved_by?: string;
+  approved_at?: string;
   purchase_requisition_items: PRDetailItem[];
 }
 
@@ -730,16 +732,28 @@ export default function PurchaseRequisitionsPage() {
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Priority</p>
-                      <p className="font-semibold">{selectedPR.priority}</p>
+                      <p className="font-semibold">{selectedPR.priority || 'MEDIUM'}</p>
                     </div>
                     <div className="col-span-2">
                       <p className="text-sm text-gray-600">Purpose</p>
                       <p className="font-semibold">{selectedPR.purpose || 'N/A'}</p>
                     </div>
-                    <div className="col-span-2">
+                    <div>
                       <p className="text-sm text-gray-600">Requested By</p>
-                      <p className="font-semibold">{selectedPR.requested_by}</p>
+                      <p className="font-semibold text-xs">{selectedPR.requested_by}</p>
                     </div>
+                    {selectedPR.approved_by && (
+                      <div>
+                        <p className="text-sm text-gray-600">Approved By</p>
+                        <p className="font-semibold text-xs">{selectedPR.approved_by}</p>
+                      </div>
+                    )}
+                    {selectedPR.approved_at && (
+                      <div>
+                        <p className="text-sm text-gray-600">Approved At</p>
+                        <p className="font-semibold">{new Date(selectedPR.approved_at).toLocaleDateString()}</p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Items Table */}
@@ -758,26 +772,36 @@ export default function PurchaseRequisitionsPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedPR.purchase_requisition_items?.map((item) => (
-                            <tr key={item.id} className="border-t">
-                              <td className="px-4 py-2 text-sm">{item.item_code || '-'}</td>
-                              <td className="px-4 py-2 text-sm">{item.item_name}</td>
-                              <td className="px-4 py-2 text-sm text-right">{item.requested_qty}</td>
-                              <td className="px-4 py-2 text-sm text-right">₹{(item.estimated_rate || 0).toFixed(2)}</td>
-                              <td className="px-4 py-2 text-sm text-right font-semibold">₹{((item.requested_qty || 0) * (item.estimated_rate || 0)).toFixed(2)}</td>
-                              <td className="px-4 py-2 text-sm text-gray-600">{item.remarks || '-'}</td>
+                          {selectedPR.purchase_requisition_items && selectedPR.purchase_requisition_items.length > 0 ? (
+                            selectedPR.purchase_requisition_items.map((item) => (
+                              <tr key={item.id} className="border-t">
+                                <td className="px-4 py-2 text-sm">{item.item_code || '-'}</td>
+                                <td className="px-4 py-2 text-sm">{item.item_name}</td>
+                                <td className="px-4 py-2 text-sm text-right">{item.requested_qty}</td>
+                                <td className="px-4 py-2 text-sm text-right">₹{(item.estimated_rate || 0).toFixed(2)}</td>
+                                <td className="px-4 py-2 text-sm text-right font-semibold">₹{((item.requested_qty || 0) * (item.estimated_rate || 0)).toFixed(2)}</td>
+                                <td className="px-4 py-2 text-sm text-gray-600">{item.remarks || '-'}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                                No items found in this requisition
+                              </td>
                             </tr>
-                          ))}
+                          )}
                         </tbody>
-                        <tfoot className="bg-gray-50 border-t-2">
-                          <tr>
-                            <td colSpan={4} className="px-4 py-3 text-right font-bold">Total Amount:</td>
-                            <td className="px-4 py-3 text-right font-bold text-lg">
-                              ₹{selectedPR.purchase_requisition_items?.reduce((sum, item) => sum + ((item.requested_qty || 0) * (item.estimated_rate || 0)), 0).toFixed(2)}
-                            </td>
-                            <td></td>
-                          </tr>
-                        </tfoot>
+                        {selectedPR.purchase_requisition_items && selectedPR.purchase_requisition_items.length > 0 && (
+                          <tfoot className="bg-gray-50 border-t-2">
+                            <tr>
+                              <td colSpan={4} className="px-4 py-3 text-right font-bold">Total Amount:</td>
+                              <td className="px-4 py-3 text-right font-bold text-lg">
+                                ₹{selectedPR.purchase_requisition_items.reduce((sum, item) => sum + ((item.requested_qty || 0) * (item.estimated_rate || 0)), 0).toFixed(2)}
+                              </td>
+                              <td></td>
+                            </tr>
+                          </tfoot>
+                        )}
                       </table>
                     </div>
                   </div>
