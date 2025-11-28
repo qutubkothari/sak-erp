@@ -35,7 +35,7 @@ export class HrController {
     return this.hrService.recordAttendance(req.user.tenantId, body);
   }
   @Get('attendance')
-  getAttendance(@Request() req: any, @Query('employeeId') employeeId: string, @Query('month') month?: string) {
+  getAttendance(@Request() req: any, @Query('employeeId') employeeId?: string, @Query('month') month?: string) {
     return this.hrService.getAttendance(req.user.tenantId, employeeId, month);
   }
 
