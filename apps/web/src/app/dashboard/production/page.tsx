@@ -190,6 +190,8 @@ export default function ProductionPage() {
         fetchOrders();
         setFormData({
           itemId: '',
+          itemCode: '',
+          itemName: '',
           bomId: '',
           quantity: 1,
           plantCode: 'KOL',
