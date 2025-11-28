@@ -156,10 +156,27 @@ function PurchaseOrdersContent() {
   const handleCreateOrder = async () => {
     try {
       const token = localStorage.getItem('accessToken');
+      
+      // Transform items to match API expected field names
+      const transformedItems = formData.items.map(item => ({
+        item_id: item.itemId,
+        ordered_qty: item.quantity,
+        unit_price: item.unitPrice,
+        tax_rate: item.taxRate,
+        total_price: item.totalPrice,
+        specifications: item.specifications || '',
+      }));
+      
       const payload = {
-        ...formData,
+        vendor_id: formData.vendorId,
+        order_date: formData.orderDate,
+        expected_delivery: formData.expectedDelivery,
+        payment_terms: formData.paymentTerms,
+        delivery_address: formData.deliveryAddress,
+        notes: formData.notes,
         status: 'DRAFT',
-        totalAmount: formData.items.reduce((sum, item) => sum + item.totalPrice, 0),
+        total_amount: formData.items.reduce((sum, item) => sum + item.totalPrice, 0),
+        items: transformedItems,
       };
       
       console.log('Creating PO with payload:', payload);
