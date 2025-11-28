@@ -1,11 +1,46 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
 import { InventoryService } from '../services/inventory.service';
+import { ItemsService } from '../../items/services/items.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 @Controller('inventory')
 @UseGuards(JwtAuthGuard)
 export class InventoryController {
-  constructor(private readonly inventoryService: InventoryService) {}
+  constructor(
+    private readonly inventoryService: InventoryService,
+    private readonly itemsService: ItemsService,
+  ) {}
+
+  // Items Master
+  @Get('items')
+  async getItems(@Request() req: any, @Query('search') search?: string) {
+    return this.itemsService.findAll(req.user.tenantId, search);
+  }
+
+  @Get('items/search')
+  async searchItems(@Request() req: any, @Query('q') query: string) {
+    return this.itemsService.search(req.user.tenantId, query);
+  }
+
+  @Get('items/:id')
+  async getItem(@Request() req: any, @Param('id') id: string) {
+    return this.itemsService.findOne(req.user.tenantId, id);
+  }
+
+  @Post('items')
+  async createItem(@Request() req: any, @Body() body: any) {
+    return this.itemsService.create(req.user.tenantId, body);
+  }
+
+  @Put('items/:id')
+  async updateItem(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.itemsService.update(req.user.tenantId, id, body);
+  }
+
+  @Delete('items/:id')
+  async deleteItem(@Request() req: any, @Param('id') id: string) {
+    return this.itemsService.delete(req.user.tenantId, id);
+  }
 
   // Stock levels
   @Get('stock')
