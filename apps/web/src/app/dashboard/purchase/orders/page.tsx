@@ -157,6 +157,31 @@ function PurchaseOrdersContent() {
     try {
       const token = localStorage.getItem('accessToken');
       
+      // Validate required fields
+      if (!formData.vendorId) {
+        alert('Please select a vendor');
+        return;
+      }
+      
+      if (!formData.orderDate) {
+        alert('Please select an order date');
+        return;
+      }
+      
+      if (formData.items.length === 0) {
+        alert('Please add at least one item');
+        return;
+      }
+      
+      // Check if all items have itemId
+      const invalidItems = formData.items.filter(item => !item.itemId);
+      if (invalidItems.length > 0) {
+        alert('Please select items for all rows');
+        return;
+      }
+      
+      console.log('FormData before transformation:', formData);
+      
       // Transform items to match API expected field names
       const transformedItems = formData.items.map(item => ({
         item_id: item.itemId,
