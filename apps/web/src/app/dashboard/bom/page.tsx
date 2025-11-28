@@ -58,13 +58,33 @@ export default function BOMPage() {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
+      
+      if (!token) {
+        console.error('No token found - user not logged in');
+        router.push('/login');
+        return;
+      }
+      
       const response = await fetch('/api/v1/bom', {
         headers: { Authorization: `Bearer ${token}` },
       });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.error('Unauthorized - redirecting to login');
+          localStorage.removeItem('token');
+          router.push('/login');
+          return;
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
-      setBoms(data);
+      // Ensure data is an array
+      setBoms(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching BOMs:', error);
+      setBoms([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
