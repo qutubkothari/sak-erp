@@ -53,7 +53,7 @@ interface PRDetail {
   priority: string;
   purpose?: string;
   requested_by: string;
-  items: PRDetailItem[];
+  purchase_requisition_items: PRDetailItem[];
 }
 
 export default function PurchaseRequisitionsPage() {
