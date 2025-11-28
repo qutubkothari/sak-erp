@@ -194,10 +194,12 @@ export default function PurchaseRequisitionsPage() {
   };
 
   const handleViewDetails = async (prId: string) => {
+    setSelectedPR(null);
     setLoadingDetail(true);
     setShowDetailModal(true);
     try {
       const response = await apiClient.get(`/purchase/requisitions/${prId}`);
+      console.log('PR Details Response:', response.data);
       setSelectedPR(response.data);
     } catch (error) {
       console.error('Error fetching PR details:', error);
@@ -682,7 +684,11 @@ export default function PurchaseRequisitionsPage() {
             <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
               {loadingDetail ? (
                 <div className="p-8 text-center">
-                  <p className="text-gray-600">Loading PR details...</p>
+                  <div className="animate-pulse">
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mx-auto mb-4"></div>
+                    <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto"></div>
+                  </div>
+                  <p className="text-gray-600 mt-4">Loading PR details...</p>
                 </div>
               ) : selectedPR ? (
                 <div className="p-6">
@@ -813,7 +819,17 @@ export default function PurchaseRequisitionsPage() {
                     </button>
                   </div>
                 </div>
-              ) : null}
+              ) : (
+                <div className="p-8 text-center">
+                  <p className="text-gray-600">No data available</p>
+                  <button
+                    onClick={() => setShowDetailModal(false)}
+                    className="mt-4 px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
