@@ -13,7 +13,7 @@ import { PrismaModule } from '../prisma/prisma.module';
     JwtModule.register({
       global: true,
       secret: process.env.JWT_SECRET || 'default-secret',
-      signOptions: { expiresIn: '15m' },
+      signOptions: { expiresIn: '24h' },
     }),
   ],
   controllers: [AuthController],
