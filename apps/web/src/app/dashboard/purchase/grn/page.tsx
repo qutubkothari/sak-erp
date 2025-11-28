@@ -62,7 +62,7 @@ interface PurchaseOrder {
     name: string;
     code: string;
   };
-  order_date: string;
+  po_date: string;
   status: string;
   purchase_order_items: Array<{
     id: string;
