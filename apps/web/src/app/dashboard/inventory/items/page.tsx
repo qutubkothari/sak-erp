@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import DrawingManager from '../../../../components/DrawingManager';
 
 interface Item {
   id: string;
@@ -28,6 +29,8 @@ export default function ItemsPage() {
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [showDrawingManager, setShowDrawingManager] = useState(false);
+  const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<Item | null>(null);
 
   const [formData, setFormData] = useState({
     code: '',
@@ -266,6 +269,15 @@ export default function ItemsPage() {
                       Edit
                     </button>
                     <button
+                      onClick={() => {
+                        setSelectedItemForDrawing(item);
+                        setShowDrawingManager(true);
+                      }}
+                      className="text-blue-600 hover:text-blue-900 mr-3"
+                    >
+                      Drawings
+                    </button>
+                    <button
                       onClick={() => handleDelete(item.id)}
                       className="text-red-600 hover:text-red-900"
                     >
@@ -473,6 +485,20 @@ export default function ItemsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Drawing Manager Modal */}
+      {showDrawingManager && selectedItemForDrawing && (
+        <DrawingManager
+          itemId={selectedItemForDrawing.id}
+          itemCode={selectedItemForDrawing.code}
+          itemName={selectedItemForDrawing.name}
+          onClose={() => {
+            setShowDrawingManager(false);
+            setSelectedItemForDrawing(null);
+          }}
+          mandatory={false}
+        />
       )}
     </div>
   );

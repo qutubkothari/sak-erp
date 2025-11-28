@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import DrawingManager from '../../../../components/DrawingManager';
 
 interface PurchaseOrder {
   id: string;
@@ -35,6 +36,9 @@ function PurchaseOrdersContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loadingPR, setLoadingPR] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showDrawingManager, setShowDrawingManager] = useState(false);
+  const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string } | null>(null);
+  const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -186,6 +190,47 @@ function PurchaseOrdersContent() {
         alert('Please select items for all rows');
         setSubmitting(false);
         return;
+      }
+
+      // Check for drawings for each item
+      for (let i = 0; i < formData.items.length; i++) {
+        const item = formData.items[i];
+        let itemId = item.itemId;
+        
+        // If no itemId but has itemCode, look it up
+        if (!itemId && item.itemCode) {
+          const foundItem = items.find(it => it.code === item.itemCode);
+          if (foundItem) {
+            itemId = foundItem.id;
+          }
+        }
+
+        if (itemId) {
+          // Check if item has drawings
+          const drawingsResponse = await fetch(`http://13.205.17.214:4000/api/v1/inventory/items/${itemId}/drawings`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          if (drawingsResponse.ok) {
+            const drawings = await drawingsResponse.json();
+            const activeDrawings = drawings.filter((d: any) => d.is_active);
+            
+            if (activeDrawings.length === 0) {
+              // No drawings - force upload
+              alert(`Item "${item.itemName}" has no design drawings. Please upload a drawing before creating PO.`);
+              setSubmitting(false);
+              
+              // Find the full item details
+              const fullItem = items.find(it => it.id === itemId);
+              if (fullItem) {
+                setSelectedItemForDrawing(fullItem);
+                setPendingItemIndex(i);
+                setShowDrawingManager(true);
+              }
+              return;
+            }
+          }
+        }
       }
       
       console.log('FormData before transformation:', formData);
@@ -675,6 +720,23 @@ function PurchaseOrdersContent() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Drawing Manager Modal - Mandatory for PO items */}
+      {showDrawingManager && selectedItemForDrawing && (
+        <DrawingManager
+          itemId={selectedItemForDrawing.id}
+          itemCode={selectedItemForDrawing.code}
+          itemName={selectedItemForDrawing.name}
+          onClose={() => {
+            setShowDrawingManager(false);
+            setSelectedItemForDrawing(null);
+            setPendingItemIndex(null);
+            // After closing, user needs to try creating PO again
+            alert('Drawing uploaded! Please try creating the PO again.');
+          }}
+          mandatory={true}
+        />
       )}
     </div>
   );
