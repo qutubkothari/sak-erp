@@ -20,11 +20,28 @@ interface Item {
   standard_cost?: number;
 }
 
+interface Requisition {
+  id: string;
+  pr_number: string;
+  department: string;
+  request_date: string;
+  required_date: string;
+  status: string;
+  priority?: string;
+  purpose?: string;
+  requested_by: string;
+  created_at: string;
+}
+
 export default function PurchaseRequisitionsPage() {
   const router = useRouter();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [items, setItems] = useState<PRItem[]>([]);
+  const [requisitions, setRequisitions] = useState<Requisition[]>([]);
+  const [loadingRequisitions, setLoadingRequisitions] = useState(true);
+  const [filterStatus, setFilterStatus] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({
     department: '',
     requiredDate: '',
@@ -47,6 +64,10 @@ export default function PurchaseRequisitionsPage() {
   const [itemsLoadError, setItemsLoadError] = useState<string | null>(null);
 
   useEffect(() => {
+    fetchRequisitions();
+  }, []);
+
+  useEffect(() => {
     if (showCreateForm) {
       fetchMasterItems();
     }
@@ -63,6 +84,19 @@ export default function PurchaseRequisitionsPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const fetchRequisitions = async () => {
+    try {
+      setLoadingRequisitions(true);
+      const response = await apiClient.get('/purchase/requisitions');
+      console.log('Requisitions API response:', response);
+      setRequisitions(Array.isArray(response) ? response : []);
+    } catch (error: any) {
+      console.error('Error fetching requisitions:', error);
+    } finally {
+      setLoadingRequisitions(false);
+    }
+  };
 
   const fetchMasterItems = async () => {
     try {
@@ -134,12 +168,31 @@ export default function PurchaseRequisitionsPage() {
   };
 
   const handleSubmit = async (status: 'DRAFT' | 'SUBMITTED') => {
-    // TODO: Implement API call to create PR
-    console.log('Creating PR:', { ...formData, items, status });
-    alert(`Purchase Requisition ${status === 'DRAFT' ? 'saved as draft' : 'submitted'} successfully!`);
-    setShowCreateForm(false);
-    setItems([]);
-    setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', notes: '' });
+    try {
+      const prData = {
+        department: formData.department,
+        required_date: formData.requiredDate,
+        priority: formData.priority,
+        purpose: formData.notes || null,
+        status: status,
+        items: items.map(item => ({
+          item_name: item.itemName,
+          quantity: item.quantity,
+          estimated_price: item.estimatedPrice || 0,
+          specifications: item.specifications || null,
+        })),
+      };
+      
+      await apiClient.post('/purchase/requisitions', prData);
+      alert(`Purchase Requisition ${status === 'DRAFT' ? 'saved as draft' : 'submitted'} successfully!`);
+      setShowCreateForm(false);
+      setItems([]);
+      setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', notes: '' });
+      fetchRequisitions(); // Refresh the list
+    } catch (error: any) {
+      console.error('Error creating PR:', error);
+      alert('Failed to create purchase requisition. Please try again.');
+    }
   };
 
   return (
@@ -467,7 +520,11 @@ export default function PurchaseRequisitionsPage() {
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-bold text-gray-900">All Requisitions</h3>
               <div className="flex gap-2">
-                <select className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+                <select 
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                >
                   <option value="">All Status</option>
                   <option value="DRAFT">Draft</option>
                   <option value="SUBMITTED">Submitted</option>
@@ -476,6 +533,8 @@ export default function PurchaseRequisitionsPage() {
                 </select>
                 <input
                   type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search..."
                   className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                 />
@@ -483,10 +542,67 @@ export default function PurchaseRequisitionsPage() {
             </div>
           </div>
 
-          <div className="p-6 text-center text-gray-500">
-            <p className="text-lg mb-2">No purchase requisitions yet</p>
-            <p className="text-sm">Click &ldquo;New Requisition&rdquo; to create your first purchase request</p>
-          </div>
+          {loadingRequisitions ? (
+            <div className="p-6 text-center text-gray-500">
+              <p>Loading requisitions...</p>
+            </div>
+          ) : requisitions.length === 0 ? (
+            <div className="p-6 text-center text-gray-500">
+              <p className="text-lg mb-2">No purchase requisitions yet</p>
+              <p className="text-sm">Click &ldquo;New Requisition&rdquo; to create your first purchase request</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">PR Number</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Required Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {requisitions
+                    .filter(req => !filterStatus || req.status === filterStatus)
+                    .filter(req => !searchQuery || 
+                      req.pr_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      req.department.toLowerCase().includes(searchQuery.toLowerCase())
+                    )
+                    .map((req) => (
+                      <tr key={req.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{req.pr_number}</td>
+                        <td className="px-6 py-4 text-sm text-gray-700">{req.department}</td>
+                        <td className="px-6 py-4 text-sm text-gray-700">
+                          {new Date(req.required_date).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                            req.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                            req.status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
+                            req.status === 'DRAFT' ? 'bg-yellow-100 text-yellow-800' :
+                            req.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {req.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-700">
+                          {new Date(req.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <button className="text-amber-600 hover:text-amber-900 font-medium">
+                            View Details
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>
