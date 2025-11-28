@@ -17,6 +17,11 @@ export class ProductionController {
     return this.productionService.findAll(req.user.tenantId, filters);
   }
 
+  @Get('available-uids/:bomId')
+  getAvailableUIDs(@Request() req: any, @Param('bomId') bomId: string) {
+    return this.productionService.getAvailableUIDs(req.user.tenantId, bomId);
+  }
+
   @Get(':id')
   findOne(@Request() req: any, @Param('id') id: string) {
     return this.productionService.findOne(req.user.tenantId, id);

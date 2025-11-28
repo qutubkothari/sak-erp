@@ -261,12 +261,69 @@ export class ProductionService {
   }
 
   /**
+   * Get available UIDs for BOM components (FIFO sorted)
+   */
+  async getAvailableUIDs(tenantId: string, bomId: string) {
+    // Get BOM items
+    const { data: bomItems, error: bomError } = await this.supabase
+      .from('bom_items')
+      .select(`
+        item_id,
+        quantity,
+        item:items(id, code, name, uom, category)
+      `)
+      .eq('bom_id', bomId);
+
+    if (bomError || !bomItems) {
+      throw new BadRequestException('Failed to fetch BOM items');
+    }
+
+    // For each BOM item, get available UIDs sorted FIFO
+    const result: Record<string, any[]> = {};
+
+    for (const bomItem of bomItems) {
+      const { data: uids, error: uidError } = await this.supabase
+        .from('uid_registry')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('entity_id', bomItem.item_id)
+        .eq('entity_type', 'RM') // Raw Material
+        .eq('status', 'AVAILABLE')
+        .order('received_date', { ascending: true }) // FIFO: oldest first
+        .order('expiry_date', { ascending: true, nullsFirst: false })
+        .order('batch_number', { ascending: true });
+
+      if (!uidError && uids) {
+        result[bomItem.item_id] = uids.map(uid => ({
+          uid: uid.uid,
+          item_id: uid.entity_id,
+          item_code: bomItem.item.code,
+          item_name: bomItem.item.name,
+          batch_number: uid.batch_number,
+          received_date: uid.received_date,
+          expiry_date: uid.expiry_date,
+          location: uid.location,
+          status: uid.status,
+        }));
+      } else {
+        result[bomItem.item_id] = [];
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * Get all production orders
    */
   async findAll(tenantId: string, filters?: any) {
     let query = this.supabase
       .from('production_orders')
-      .select('*')
+      .select(`
+        *,
+        item:items(id, code, name, uom),
+        production_assemblies(id, finished_product_uid, qc_status)
+      `)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false });
 
@@ -290,7 +347,11 @@ export class ProductionService {
   async findOne(tenantId: string, id: string) {
     const { data, error } = await this.supabase
       .from('production_orders')
-      .select('*')
+      .select(`
+        *,
+        item:items(id, code, name, description, uom),
+        production_assemblies(id, finished_product_uid, qc_status, assembly_date)
+      `)
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
