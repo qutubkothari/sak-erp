@@ -37,6 +37,11 @@ export class UidSupabaseController {
     return this.uidService.getUIDWithHierarchy(req, uid);
   }
 
+  @Get(':uid/purchase-trail')
+  getPurchaseTrail(@Request() req: any, @Param('uid') uid: string) {
+    return this.uidService.getPurchaseTrail(req, uid);
+  }
+
   @Post(':uid/lifecycle')
   updateLifecycle(
     @Request() req: any,

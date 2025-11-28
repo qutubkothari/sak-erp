@@ -28,12 +28,45 @@ interface BOM {
   created_at: string;
 }
 
+interface PurchaseTrail {
+  uid: string;
+  item: {
+    code: string;
+    name: string;
+  };
+  supplier: {
+    name: string;
+    contact_person: string;
+  } | null;
+  purchase_order: {
+    po_number: string;
+    order_date: string;
+    total_amount: number;
+  } | null;
+  grn: {
+    grn_number: string;
+    received_date: string;
+    received_quantity: number;
+  } | null;
+  batch_number: string | null;
+  location: string | null;
+  lifecycle: Array<{
+    stage: string;
+    timestamp: string;
+    location: string;
+    reference: string;
+  }>;
+}
+
 export default function BOMPage() {
   const router = useRouter();
   const [boms, setBoms] = useState<BOM[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [selectedBom, setSelectedBom] = useState<BOM | null>(null);
+  const [showTrailModal, setShowTrailModal] = useState(false);
+  const [purchaseTrail, setPurchaseTrail] = useState<PurchaseTrail | null>(null);
+  const [loadingTrail, setLoadingTrail] = useState(false);
 
   const [formData, setFormData] = useState({
     itemId: '',
@@ -136,6 +169,40 @@ export default function BOMPage() {
     } catch (error) {
       console.error('Error generating PR:', error);
     }
+  };
+
+  const fetchPurchaseTrail = async (uid: string) => {
+    try {
+      setLoadingTrail(true);
+      const token = localStorage.getItem('accessToken');
+      
+      const response = await fetch(`/api/v1/uid/${uid}/purchase-trail`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPurchaseTrail(data);
+        setShowTrailModal(true);
+      } else {
+        alert('Purchase trail not found for this UID');
+      }
+    } catch (error) {
+      console.error('Error fetching purchase trail:', error);
+      alert('Failed to fetch purchase trail');
+    } finally {
+      setLoadingTrail(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const handleAddItem = () => {
@@ -441,6 +508,160 @@ export default function BOMPage() {
                 className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
               >
                 Create BOM
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Purchase Trail Modal */}
+      {showTrailModal && purchaseTrail && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Purchase Trail</h2>
+                  <p className="text-gray-600 mt-1">Complete traceability for UID: {purchaseTrail.uid}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowTrailModal(false);
+                    setPurchaseTrail(null);
+                  }}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <span className="text-2xl">×</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Item Information */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-semibold text-blue-900 mb-2">📦 Item Information</h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600">Item Code:</span>
+                    <span className="ml-2 font-medium">{purchaseTrail.item.code}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Item Name:</span>
+                    <span className="ml-2 font-medium">{purchaseTrail.item.name}</span>
+                  </div>
+                  {purchaseTrail.batch_number && (
+                    <div>
+                      <span className="text-gray-600">Batch Number:</span>
+                      <span className="ml-2 font-medium">{purchaseTrail.batch_number}</span>
+                    </div>
+                  )}
+                  {purchaseTrail.location && (
+                    <div>
+                      <span className="text-gray-600">Current Location:</span>
+                      <span className="ml-2 font-medium">{purchaseTrail.location}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Supplier Information */}
+              {purchaseTrail.supplier && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-green-900 mb-2">🏭 Supplier Information</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-600">Supplier Name:</span>
+                      <span className="ml-2 font-medium">{purchaseTrail.supplier.name}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Contact Person:</span>
+                      <span className="ml-2 font-medium">{purchaseTrail.supplier.contact_person}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Purchase Order Information */}
+              {purchaseTrail.purchase_order && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-purple-900 mb-2">📋 Purchase Order</h3>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-600">PO Number:</span>
+                      <span className="ml-2 font-medium">{purchaseTrail.purchase_order.po_number}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Order Date:</span>
+                      <span className="ml-2 font-medium">{formatDate(purchaseTrail.purchase_order.order_date)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Total Amount:</span>
+                      <span className="ml-2 font-medium">₹{purchaseTrail.purchase_order.total_amount.toLocaleString('en-IN')}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* GRN Information */}
+              {purchaseTrail.grn && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-amber-900 mb-2">📥 Goods Receipt Note</h3>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-600">GRN Number:</span>
+                      <span className="ml-2 font-medium">{purchaseTrail.grn.grn_number}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Received Date:</span>
+                      <span className="ml-2 font-medium">{formatDate(purchaseTrail.grn.received_date)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Quantity:</span>
+                      <span className="ml-2 font-medium">{purchaseTrail.grn.received_quantity}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Lifecycle Timeline */}
+              {purchaseTrail.lifecycle && purchaseTrail.lifecycle.length > 0 && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-gray-900 mb-4">🕐 Lifecycle Timeline</h3>
+                  <div className="space-y-3">
+                    {purchaseTrail.lifecycle.map((event, index) => (
+                      <div key={index} className="flex gap-4">
+                        <div className="flex flex-col items-center">
+                          <div className="w-3 h-3 bg-amber-600 rounded-full"></div>
+                          {index < purchaseTrail.lifecycle.length - 1 && (
+                            <div className="w-0.5 h-full bg-amber-300 my-1"></div>
+                          )}
+                        </div>
+                        <div className="flex-1 pb-4">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium text-gray-900">{event.stage}</p>
+                              <p className="text-sm text-gray-600">{event.location}</p>
+                              <p className="text-xs text-gray-500">{event.reference}</p>
+                            </div>
+                            <span className="text-xs text-gray-500">{formatDate(event.timestamp)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => {
+                  setShowTrailModal(false);
+                  setPurchaseTrail(null);
+                }}
+                className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+              >
+                Close
               </button>
             </div>
           </div>

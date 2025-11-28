@@ -302,6 +302,84 @@ export class UidSupabaseService {
   }
 
   /**
+   * Get Purchase Trail for UID
+   */
+  async getPurchaseTrail(req: any, uid: string) {
+    const tenantId = req.user.tenantId;
+
+    // Get UID record
+    const { data: uidRecord, error: uidError } = await this.supabase
+      .from('uid_registry')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('uid', uid)
+      .single();
+
+    if (uidError) throw new Error('UID not found');
+
+    // Get item details
+    const { data: item } = await this.supabase
+      .from('items')
+      .select('code, name')
+      .eq('id', uidRecord.entity_id)
+      .single();
+
+    // Get supplier details
+    let supplier = null;
+    if (uidRecord.supplier_id) {
+      const { data } = await this.supabase
+        .from('vendors')
+        .select('name, contact_person')
+        .eq('id', uidRecord.supplier_id)
+        .single();
+      supplier = data;
+    }
+
+    // Get purchase order details
+    let purchase_order = null;
+    if (uidRecord.purchase_order_id) {
+      const { data } = await this.supabase
+        .from('purchase_orders')
+        .select('po_number, order_date, total_amount')
+        .eq('id', uidRecord.purchase_order_id)
+        .single();
+      purchase_order = data;
+    }
+
+    // Get GRN details
+    let grn = null;
+    if (uidRecord.grn_id) {
+      const { data } = await this.supabase
+        .from('grn')
+        .select('grn_number, received_date, received_quantity')
+        .eq('id', uidRecord.grn_id)
+        .single();
+      grn = data;
+    }
+
+    // Parse lifecycle
+    let lifecycle = [];
+    try {
+      lifecycle = typeof uidRecord.lifecycle === 'string' 
+        ? JSON.parse(uidRecord.lifecycle) 
+        : uidRecord.lifecycle || [];
+    } catch {
+      lifecycle = [];
+    }
+
+    return {
+      uid: uidRecord.uid,
+      item: item || { code: 'N/A', name: 'Unknown Item' },
+      supplier,
+      purchase_order,
+      grn,
+      batch_number: uidRecord.batch_number,
+      location: uidRecord.location,
+      lifecycle,
+    };
+  }
+
+  /**
    * Generate checksum
    */
   private generateChecksum(input: string): string {
