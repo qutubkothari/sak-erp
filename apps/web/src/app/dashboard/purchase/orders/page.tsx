@@ -189,6 +189,7 @@ function PurchaseOrdersContent() {
       
       // Transform items to match API expected field names
       // If itemId is missing but itemCode exists, find itemId from items list
+      // API expects camelCase field names, NOT snake_case
       const transformedItems = formData.items.map(item => {
         let finalItemId = item.itemId;
         
@@ -201,28 +202,27 @@ function PurchaseOrdersContent() {
         }
         
         return {
-          item_id: finalItemId,
-          ordered_qty: item.quantity,
-          unit_price: item.unitPrice,
-          tax_rate: item.taxRate,
-          total_price: item.totalPrice,
-          specifications: item.specifications || '',
+          itemCode: item.itemCode || '',
+          itemName: item.itemName || '',
+          orderedQty: item.quantity,
+          rate: item.unitPrice,
+          taxPercent: item.taxRate,
+          amount: item.totalPrice,
+          remarks: item.specifications || '',
         };
       });
-      
+
       const payload = {
-        vendor_id: formData.vendorId,
-        order_date: formData.orderDate,
-        expected_delivery: formData.expectedDelivery,
-        payment_terms: formData.paymentTerms,
-        delivery_address: formData.deliveryAddress,
-        notes: formData.notes,
+        vendorId: formData.vendorId,
+        poDate: formData.orderDate,
+        deliveryDate: formData.expectedDelivery,
+        paymentTerms: formData.paymentTerms,
+        deliveryAddress: formData.deliveryAddress,
+        remarks: formData.notes,
         status: 'DRAFT',
-        total_amount: formData.items.reduce((sum, item) => sum + item.totalPrice, 0),
+        totalAmount: formData.items.reduce((sum, item) => sum + item.totalPrice, 0),
         items: transformedItems,
-      };
-      
-      console.log('Creating PO with payload:', payload);
+      };      console.log('Creating PO with payload:', payload);
       
       const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders', {
         method: 'POST',
