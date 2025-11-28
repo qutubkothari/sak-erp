@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { apiClient } from '../../../../../lib/api-client';
 
 interface PurchaseOrder {
   id: string;
@@ -22,11 +23,16 @@ interface PurchaseOrder {
 
 export default function PurchaseOrdersPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const prId = searchParams?.get('prId');
+  
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [vendors, setVendors] = useState<Array<{ id: string; name: string; contact_person: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  const [loadingPR, setLoadingPR] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -48,7 +54,59 @@ export default function PurchaseOrdersPage() {
 
   useEffect(() => {
     fetchOrders();
-  }, [filterStatus]);
+    fetchVendors();
+    // Check if PR ID is provided in URL
+    if (prId) {
+      loadPRData(prId);
+    }
+  }, [filterStatus, prId]);
+
+  const fetchVendors = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/vendors', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      setVendors(data || []);
+    } catch (error) {
+      console.error('Error fetching vendors:', error);
+    }
+  };
+
+  const loadPRData = async (prId: string) => {
+    try {
+      setLoadingPR(true);
+      const prData = await apiClient.get(`/purchase/requisitions/${prId}`);
+      
+      // Map PR items to PO items
+      const poItems = prData.purchase_requisition_items?.map((item: any) => ({
+        itemId: item.item_id || '',
+        itemCode: item.item_code || '',
+        itemName: item.item_name || '',
+        quantity: item.requested_qty || 0,
+        unitPrice: item.estimated_rate || 0,
+        taxRate: 18, // Default GST rate
+        totalPrice: (item.requested_qty || 0) * (item.estimated_rate || 0),
+        specifications: item.remarks || '',
+      })) || [];
+
+      setFormData({
+        ...formData,
+        notes: `Generated from PR: ${prData.pr_number}\nDepartment: ${prData.department}\nPriority: ${prData.priority || 'MEDIUM'}`,
+        items: poItems,
+      });
+
+      // Open modal automatically
+      setShowModal(true);
+      alert(`PO form pre-filled with ${poItems.length} items from PR ${prData.pr_number}`);
+    } catch (error) {
+      console.error('Error loading PR data:', error);
+      alert('Failed to load PR data. Please try again.');
+    } finally {
+      setLoadingPR(false);
+    }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -287,13 +345,19 @@ export default function PurchaseOrdersPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Vendor *</label>
-                  <input
-                    type="text"
+                  <select
                     value={formData.vendorId}
                     onChange={(e) => setFormData({ ...formData, vendorId: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    placeholder="Select vendor..."
-                  />
+                    required
+                  >
+                    <option value="">Select Vendor</option>
+                    {vendors.map((vendor) => (
+                      <option key={vendor.id} value={vendor.id}>
+                        {vendor.name} - {vendor.contact_person}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
