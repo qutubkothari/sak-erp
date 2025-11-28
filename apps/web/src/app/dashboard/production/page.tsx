@@ -149,7 +149,7 @@ export default function ProductionPage() {
       const params = new URLSearchParams();
       if (filterStatus !== 'ALL') params.append('status', filterStatus);
 
-      const response = await fetch(`/api/v1/production?${params}`, {
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/production?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.status === 401) {
@@ -176,7 +176,7 @@ export default function ProductionPage() {
   const handleCreate = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/production', {
+      const response = await fetch('http://13.205.17.214:4000/api/v1/production', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -207,8 +207,8 @@ export default function ProductionPage() {
   const handleStartProduction = async (orderId: string) => {
     try {
       const token = localStorage.getItem('accessToken');
-      await fetch(`/api/v1/production/${orderId}/start`, {
-        method: 'PUT',
+      await fetch(`http://13.205.17.214:4000/api/v1/production/${orderId}/start`, {
+        method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
       fetchOrders();
@@ -220,7 +220,7 @@ export default function ProductionPage() {
   const handleCompleteAssembly = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/production/assembly/complete', {
+      const response = await fetch('http://13.205.17.214:4000/api/v1/production/assembly/complete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -262,7 +262,7 @@ export default function ProductionPage() {
   const getStatusColor = (status: string) => {
     const colors = {
       DRAFT: 'bg-gray-100 text-gray-800',
-      RELEASED: 'bg-blue-100 text-blue-800',
+      RELEASED: 'bg-orange-100 text-orange-800',
       IN_PROGRESS: 'bg-yellow-100 text-yellow-800',
       QC: 'bg-purple-100 text-purple-800',
       COMPLETED: 'bg-green-100 text-green-800',
@@ -275,7 +275,7 @@ export default function ProductionPage() {
     const colors = {
       HIGH: 'text-red-600',
       NORMAL: 'text-gray-600',
-      LOW: 'text-blue-600',
+      LOW: 'text-orange-600',
     };
     return colors[priority as keyof typeof colors] || 'text-gray-600';
   };
@@ -438,7 +438,7 @@ export default function ProductionPage() {
                           Complete Assembly
                         </button>
                       )}
-                      <button className="text-blue-600 hover:text-blue-900 font-medium">View</button>
+                      <button className="text-orange-600 hover:text-orange-900 font-medium">View</button>
                     </td>
                   </tr>
                 ))}
@@ -494,10 +494,10 @@ export default function ProductionPage() {
                     ))}
                   </select>
                   {selectedBOM && (
-                    <div className="mt-2 p-3 bg-blue-50 rounded border border-blue-200">
-                      <div className="text-xs font-semibold text-blue-900 mb-2">BOM Components:</div>
-                      {selectedBOM.items.map((comp, idx) => (
-                        <div key={idx} className="text-xs text-blue-800">
+                    <div className="mt-2 p-3 bg-orange-50 rounded border border-orange-200">
+                      <div className="text-xs font-semibold text-orange-900 mb-2">BOM Components:</div>
+                      {selectedBOM.items.map((item, idx) => (
+                        <div key={idx} className="text-xs text-orange-800">
                           • {comp.item.code} - {comp.item.name} × {comp.quantity} {comp.uom}
                         </div>
                       ))}
@@ -638,7 +638,7 @@ export default function ProductionPage() {
                           >
                             <div className="flex justify-between items-center">
                               <div className="flex-1">
-                                <div className="font-mono text-sm font-semibold text-blue-600">
+                                <div className="font-mono text-sm font-semibold text-orange-600">
                                   {uid.uid}
                                 </div>
                                 <div className="text-xs text-gray-600 mt-1">
@@ -673,8 +673,8 @@ export default function ProductionPage() {
                 </p>
               </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <p className="text-sm text-orange-800">
                   <strong>📦 Assembly Process:</strong><br/>
                   1. System validates all component UIDs are available<br/>
                   2. Generates new Finished Goods UID<br/>
