@@ -38,14 +38,14 @@ export class PurchaseRequisitionsService {
     if (data.items && data.items.length > 0) {
       const items = data.items.map((item: any) => ({
         pr_id: pr.id,
-        item_code: item.itemCode,
-        item_name: item.itemName,
-        description: item.description,
+        item_code: item.itemCode || item.itemId || item.item_code,
+        item_name: item.itemName || item.item_name,
+        description: item.description || item.specifications,
         uom: item.uom,
-        requested_qty: item.requestedQty,
-        estimated_rate: item.estimatedRate,
+        requested_qty: item.requestedQty || item.quantity,
+        estimated_rate: item.estimatedRate || item.estimatedPrice,
         required_date: item.requiredDate,
-        remarks: item.remarks,
+        remarks: item.remarks || item.specifications,
       }));
 
       const { error: itemsError } = await this.supabase
