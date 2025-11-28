@@ -26,6 +26,7 @@ import { ServiceModule } from './service/service.module';
 import { BomModule } from './bom/bom.module';
 import { DocumentsModule } from './documents/documents.module';
 import { HrModule } from './hr/hr.module';
+import { MasterModule } from './master/master.module';
 
 // Support Modules
 import { WorkflowModule } from './workflow/workflow.module';
@@ -84,6 +85,7 @@ import { AuditModule } from './audit/audit.module';
     BomModule,
     HrModule,
     DocumentsModule,
+    MasterModule,
 
     // Support
     WorkflowModule,

@@ -20,6 +20,13 @@ interface Item {
   standard_cost?: number;
 }
 
+interface Department {
+  id: string;
+  name: string;
+  code: string;
+  description?: string;
+}
+
 interface Requisition {
   id: string;
   pr_number: string;
@@ -42,6 +49,7 @@ export default function PurchaseRequisitionsPage() {
   const [loadingRequisitions, setLoadingRequisitions] = useState(true);
   const [filterStatus, setFilterStatus] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [formData, setFormData] = useState({
     department: '',
     requiredDate: '',
@@ -70,6 +78,7 @@ export default function PurchaseRequisitionsPage() {
   useEffect(() => {
     if (showCreateForm) {
       fetchMasterItems();
+      fetchDepartments();
     }
   }, [showCreateForm]);
 
@@ -95,6 +104,15 @@ export default function PurchaseRequisitionsPage() {
       console.error('Error fetching requisitions:', error);
     } finally {
       setLoadingRequisitions(false);
+    }
+  };
+
+  const fetchDepartments = async () => {
+    try {
+      const response = await apiClient.get('/master/departments');
+      setDepartments(Array.isArray(response) ? response : []);
+    } catch (error: any) {
+      console.error('Error fetching departments:', error);
     }
   };
 
@@ -239,13 +257,19 @@ export default function PurchaseRequisitionsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Department *
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={formData.department}
                       onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                      placeholder="e.g., Production, Maintenance"
-                    />
+                      required
+                    >
+                      <option value="">Select Department</option>
+                      {departments.map((dept) => (
+                        <option key={dept.id} value={dept.name}>
+                          {dept.name} ({dept.code})
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
