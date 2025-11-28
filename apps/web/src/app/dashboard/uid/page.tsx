@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface UIDRecord {
   id: string;
@@ -29,7 +30,7 @@ interface UIDRecord {
 
 const statusColors: Record<string, string> = {
   ACTIVE: 'bg-green-100 text-green-800',
-  IN_PRODUCTION: 'bg-blue-100 text-blue-800',
+  IN_PRODUCTION: 'bg-amber-100 text-amber-800',
   IN_TRANSIT: 'bg-yellow-100 text-yellow-800',
   SOLD: 'bg-purple-100 text-purple-800',
   IN_SERVICE: 'bg-orange-100 text-orange-800',
@@ -38,6 +39,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function UIDTrackingPage() {
+  const router = useRouter();
   const [uids, setUids] = useState<UIDRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchUID, setSearchUID] = useState('');
@@ -137,6 +139,14 @@ export default function UIDTrackingPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {/* Back Button */}
+      <button
+        onClick={() => router.push('/dashboard')}
+        className="mb-4 flex items-center gap-2 text-amber-600 hover:text-amber-800 font-medium"
+      >
+        ← Back to Dashboard
+      </button>
+
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -148,7 +158,7 @@ export default function UIDTrackingPage() {
       </div>
 
       {/* Search Bar */}
-      <div className="mb-6 bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-xl shadow">
+      <div className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 p-6 rounded-xl shadow">
         <h2 className="text-lg font-semibold mb-3 text-gray-800">🔎 Track Any UID</h2>
         <div className="flex gap-3">
           <input
@@ -157,11 +167,11 @@ export default function UIDTrackingPage() {
             value={searchUID}
             onChange={(e) => setSearchUID(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && searchForUID()}
-            className="flex-1 px-4 py-3 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+            className="flex-1 px-4 py-3 border-2 border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-lg"
           />
           <button
             onClick={searchForUID}
-            className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            className="bg-amber-600 text-white px-8 py-3 rounded-lg hover:bg-amber-700 transition-colors font-medium"
           >
             Search
           </button>
@@ -174,12 +184,12 @@ export default function UIDTrackingPage() {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Total UIDs', value: uids.length, color: 'blue', icon: '🏷️' },
+          { label: 'Total UIDs', value: uids.length, color: 'amber', icon: '🏷️' },
           { label: 'Active', value: uids.filter(u => u.status === 'ACTIVE').length, color: 'green', icon: '✅' },
-          { label: 'In Production', value: uids.filter(u => u.status === 'IN_PRODUCTION').length, color: 'purple', icon: '⚙️' },
+          { label: 'In Production', value: uids.filter(u => u.status === 'IN_PRODUCTION').length, color: 'amber', icon: '⚙️' },
           { label: 'Sold', value: uids.filter(u => u.status === 'SOLD').length, color: 'orange', icon: '🚚' },
         ].map((stat, idx) => (
-          <div key={idx} className="bg-white p-5 rounded-lg shadow border-l-4 border-blue-500">
+          <div key={idx} className="bg-white p-5 rounded-lg shadow border-l-4 border-amber-500">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">{stat.label}</p>
@@ -196,7 +206,7 @@ export default function UIDTrackingPage() {
         <select
           value={filters.status}
           onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
         >
           <option value="">All Status</option>
           <option value="ACTIVE">Active</option>
@@ -210,7 +220,7 @@ export default function UIDTrackingPage() {
         <select
           value={filters.entity_type}
           onChange={(e) => setFilters({ ...filters, entity_type: e.target.value })}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
         >
           <option value="">All Types</option>
           <option value="RAW_MATERIAL">Raw Material</option>
@@ -224,7 +234,7 @@ export default function UIDTrackingPage() {
           placeholder="Filter by location..."
           value={filters.location}
           onChange={(e) => setFilters({ ...filters, location: e.target.value })}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
         />
       </div>
 
@@ -246,7 +256,7 @@ export default function UIDTrackingPage() {
             {uids.map((uid) => (
               <tr key={uid.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4">
-                  <div className="font-mono text-sm font-medium text-blue-600">{uid.uid}</div>
+                  <div className="font-mono text-sm font-medium text-amber-600">{uid.uid}</div>
                   {uid.batch_number && (
                     <div className="text-xs text-gray-500">Batch: {uid.batch_number}</div>
                   )}
@@ -262,7 +272,7 @@ export default function UIDTrackingPage() {
                   <span className="flex items-center gap-1">
                     <span>L{uid.assembly_level}</span>
                     {uid.parent_uids && uid.parent_uids.length > 0 && (
-                      <span className="text-xs text-blue-600">⬆{uid.parent_uids.length}</span>
+                      <span className="text-xs text-amber-600">⬆{uid.parent_uids.length}</span>
                     )}
                     {uid.child_uids && uid.child_uids.length > 0 && (
                       <span className="text-xs text-green-600">⬇{uid.child_uids.length}</span>
@@ -278,7 +288,7 @@ export default function UIDTrackingPage() {
                       setSelectedUID(uid);
                       setShowTraceModal(true);
                     }}
-                    className="text-blue-600 hover:text-blue-900 font-medium"
+                    className="text-amber-600 hover:text-amber-900 font-medium"
                   >
                     Trace
                   </button>
@@ -323,7 +333,7 @@ export default function UIDTrackingPage() {
               </p>
               <button
                 onClick={() => window.print()}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 mr-2"
+                className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 mr-2"
               >
                 Print Label
               </button>
@@ -345,7 +355,7 @@ export default function UIDTrackingPage() {
             <div className="flex justify-between items-start mb-6">
               <div>
                 <h2 className="text-2xl font-bold">UID Traceability Report</h2>
-                <p className="font-mono text-lg text-blue-600 mt-1">{selectedUID.uid}</p>
+                <p className="font-mono text-lg text-amber-600 mt-1">{selectedUID.uid}</p>
               </div>
               <button
                 onClick={() => setShowTraceModal(false)}
@@ -386,7 +396,7 @@ export default function UIDTrackingPage() {
                     <p className="text-sm text-gray-600 mb-2">⬆ Parent Components ({selectedUID.parent_uids.length})</p>
                     <div className="flex flex-wrap gap-2">
                       {selectedUID.parent_uids.map((parentUID, idx) => (
-                        <span key={idx} className="px-3 py-1 bg-blue-50 text-blue-700 rounded text-sm font-mono">
+                        <span key={idx} className="px-3 py-1 bg-amber-50 text-amber-700 rounded text-sm font-mono">
                           {parentUID}
                         </span>
                       ))}
@@ -414,10 +424,10 @@ export default function UIDTrackingPage() {
                 <h3 className="font-semibold text-lg mb-3">🕐 Lifecycle Timeline</h3>
                 <div className="space-y-3">
                   {selectedUID.lifecycle.map((event, idx) => (
-                    <div key={idx} className="flex gap-4 border-l-2 border-blue-300 pl-4 pb-3">
+                    <div key={idx} className="flex gap-4 border-l-2 border-amber-300 pl-4 pb-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-blue-600">{event.stage}</span>
+                          <span className="font-medium text-amber-600">{event.stage}</span>
                           <span className="text-xs text-gray-500">{formatDate(event.timestamp)}</span>
                         </div>
                         <p className="text-sm text-gray-600 mt-1">
@@ -461,7 +471,7 @@ export default function UIDTrackingPage() {
             <div className="mt-6 flex gap-2">
               <button
                 onClick={() => window.print()}
-                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                className="flex-1 bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700"
               >
                 Print Report
               </button>
