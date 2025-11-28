@@ -752,13 +752,13 @@ export default function PurchaseRequisitionsPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedPR.items.map((item) => (
+                          {selectedPR.purchase_requisition_items?.map((item) => (
                             <tr key={item.id} className="border-t">
-                              <td className="px-4 py-2 text-sm">{item.item_code}</td>
+                              <td className="px-4 py-2 text-sm">{item.item_code || '-'}</td>
                               <td className="px-4 py-2 text-sm">{item.item_name}</td>
                               <td className="px-4 py-2 text-sm text-right">{item.requested_qty}</td>
-                              <td className="px-4 py-2 text-sm text-right">₹{item.estimated_rate.toFixed(2)}</td>
-                              <td className="px-4 py-2 text-sm text-right font-semibold">₹{item.total_amount.toFixed(2)}</td>
+                              <td className="px-4 py-2 text-sm text-right">₹{(item.estimated_rate || 0).toFixed(2)}</td>
+                              <td className="px-4 py-2 text-sm text-right font-semibold">₹{((item.requested_qty || 0) * (item.estimated_rate || 0)).toFixed(2)}</td>
                               <td className="px-4 py-2 text-sm text-gray-600">{item.remarks || '-'}</td>
                             </tr>
                           ))}
@@ -767,7 +767,7 @@ export default function PurchaseRequisitionsPage() {
                           <tr>
                             <td colSpan={4} className="px-4 py-3 text-right font-bold">Total Amount:</td>
                             <td className="px-4 py-3 text-right font-bold text-lg">
-                              ₹{selectedPR.items.reduce((sum, item) => sum + item.total_amount, 0).toFixed(2)}
+                              ₹{selectedPR.purchase_requisition_items?.reduce((sum, item) => sum + ((item.requested_qty || 0) * (item.estimated_rate || 0)), 0).toFixed(2)}
                             </td>
                             <td></td>
                           </tr>
