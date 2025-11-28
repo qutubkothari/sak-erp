@@ -26,6 +26,7 @@ interface GRN {
     accepted_quantity: number;
     rejected_quantity: number;
     uid?: string;
+    batch_number?: string;
   }>;
 }
 
@@ -546,9 +547,22 @@ export default function GRNPage() {
                           </span>
                         )}
                       </div>
-                      {grn.grn_items.some(item => item.uid) && (
-                        <div className="text-xs text-blue-600 mt-1 font-mono">
-                          ✓ {grn.grn_items.filter(item => item.uid).length} UIDs Generated
+                      {/* Display UIDs if available */}
+                      {grn.grn_items.some(item => item.uid) ? (
+                        <div className="mt-2 space-y-1">
+                          {grn.grn_items.filter(item => item.uid).map((item, idx) => (
+                            <div key={idx} className="text-xs">
+                              <span className="font-mono text-blue-600 font-semibold">{item.uid}</span>
+                              <span className="text-gray-500 ml-2">
+                                {item.item?.code || item.item?.name}
+                                {item.batch_number && ` • Batch: ${item.batch_number}`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-gray-400 mt-1">
+                          ⚠️ UIDs pending generation
                         </div>
                       )}
                     </td>

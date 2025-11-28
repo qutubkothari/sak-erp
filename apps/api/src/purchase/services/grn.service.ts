@@ -109,7 +109,10 @@ export class GrnService {
         purchase_order:purchase_orders(id, po_number, po_date),
         vendor:vendors(id, code, name, contact_person),
         warehouse:warehouses(id, code, name),
-        grn_items(*)
+        grn_items(
+          *,
+          item:items(id, code, name)
+        )
       `)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false });
@@ -144,7 +147,10 @@ export class GrnService {
         purchase_order:purchase_orders(id, po_number, po_date),
         vendor:vendors(id, code, name, contact_person, email, phone),
         warehouse:warehouses(id, code, name),
-        grn_items(*)
+        grn_items(
+          *,
+          item:items(id, code, name)
+        )
       `)
       .eq('tenant_id', tenantId)
       .eq('id', id)
