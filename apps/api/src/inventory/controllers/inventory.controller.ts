@@ -117,4 +117,38 @@ export class InventoryController {
   async createWarehouse(@Request() req: any, @Body() warehouseData: any) {
     return this.inventoryService.createWarehouse(req, warehouseData);
   }
+
+  // Item Drawings/Documents
+  @Get('items/:id/drawings')
+  async getItemDrawings(@Request() req: any, @Param('id') itemId: string) {
+    return this.itemsService.getDrawings(req.user.tenantId, itemId);
+  }
+
+  @Post('items/:id/drawings')
+  async uploadItemDrawing(
+    @Request() req: any,
+    @Param('id') itemId: string,
+    @Body() drawingData: any
+  ) {
+    return this.itemsService.uploadDrawing(req.user.tenantId, req.user.sub, itemId, drawingData);
+  }
+
+  @Put('items/:id/drawings/:drawingId')
+  async updateItemDrawing(
+    @Request() req: any,
+    @Param('id') itemId: string,
+    @Param('drawingId') drawingId: string,
+    @Body() drawingData: any
+  ) {
+    return this.itemsService.updateDrawing(req.user.tenantId, itemId, drawingId, drawingData);
+  }
+
+  @Delete('items/:id/drawings/:drawingId')
+  async deleteItemDrawing(
+    @Request() req: any,
+    @Param('id') itemId: string,
+    @Param('drawingId') drawingId: string
+  ) {
+    return this.itemsService.deleteDrawing(req.user.tenantId, itemId, drawingId);
+  }
 }

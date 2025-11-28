@@ -80,7 +80,6 @@ export default function BOMPage() {
       scrapPercentage: number;
       sequence: number;
       notes: string;
-      drawingUrl: string;
     }>,
   });
 
@@ -216,7 +215,6 @@ export default function BOMPage() {
           scrapPercentage: 0,
           sequence: formData.items.length + 1,
           notes: '',
-          drawingUrl: '',
         },
       ],
     });
@@ -445,16 +443,6 @@ export default function BOMPage() {
                               value={item.scrapPercentage}
                               onChange={(e) => handleUpdateItem(index, 'scrapPercentage', parseFloat(e.target.value))}
                               className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                            />
-                          </div>
-                          <div className="col-span-3">
-                            <label className="text-xs text-gray-600">Drawing URL *</label>
-                            <input
-                              type="text"
-                              value={item.drawingUrl}
-                              onChange={(e) => handleUpdateItem(index, 'drawingUrl', e.target.value)}
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                              placeholder="Drawing link..."
                             />
                           </div>
                           <div className="col-span-1 flex items-end">

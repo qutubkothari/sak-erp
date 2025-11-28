@@ -135,4 +135,94 @@ export class ItemsService {
 
     return { message: 'Item deleted successfully' };
   }
+
+  // Drawing/Document Management
+  async getDrawings(tenantId: string, itemId: string) {
+    const { data, error } = await this.supabase
+      .from('item_drawings')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .order('version', { ascending: false });
+
+    if (error) {
+      throw new Error(`Failed to fetch drawings: ${error.message}`);
+    }
+
+    return data || [];
+  }
+
+  async uploadDrawing(tenantId: string, userId: string, itemId: string, drawingData: any) {
+    // Get current max version for this item
+    const { data: existingDrawings } = await this.supabase
+      .from('item_drawings')
+      .select('version')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .order('version', { ascending: false })
+      .limit(1);
+
+    const nextVersion = existingDrawings && existingDrawings.length > 0
+      ? existingDrawings[0].version + 1
+      : 1;
+
+    const { data, error } = await this.supabase
+      .from('item_drawings')
+      .insert({
+        tenant_id: tenantId,
+        item_id: itemId,
+        file_name: drawingData.fileName,
+        file_url: drawingData.fileUrl,
+        file_type: drawingData.fileType,
+        file_size: drawingData.fileSize,
+        version: nextVersion,
+        revision_notes: drawingData.revisionNotes,
+        is_active: true,
+        uploaded_by: userId,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to upload drawing: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  async updateDrawing(tenantId: string, itemId: string, drawingId: string, drawingData: any) {
+    const { data, error } = await this.supabase
+      .from('item_drawings')
+      .update({
+        revision_notes: drawingData.revisionNotes,
+        is_active: drawingData.isActive,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .eq('id', drawingId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to update drawing: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  async deleteDrawing(tenantId: string, itemId: string, drawingId: string) {
+    const { error } = await this.supabase
+      .from('item_drawings')
+      .update({ is_active: false })
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .eq('id', drawingId);
+
+    if (error) {
+      throw new Error(`Failed to delete drawing: ${error.message}`);
+    }
+
+    return { message: 'Drawing deleted successfully' };
+  }
 }
