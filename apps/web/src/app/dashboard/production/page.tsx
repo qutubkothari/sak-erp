@@ -2,6 +2,31 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import ItemSearch from '@/components/ItemSearch';
+
+interface BOM {
+  id: string;
+  version: string;
+  description: string;
+  status: string;
+  items: Array<{
+    item: { id: string; code: string; name: string; };
+    quantity: number;
+    uom: string;
+  }>;
+}
+
+interface AvailableUID {
+  uid: string;
+  item_id: string;
+  item_code: string;
+  item_name: string;
+  batch_number: string;
+  received_date: string;
+  expiry_date: string;
+  location: string;
+  status: string;
+}
 
 interface ProductionOrder {
   id: string;
@@ -28,9 +53,17 @@ export default function ProductionPage() {
   const [showAssemblyModal, setShowAssemblyModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState('ALL');
+  
+  // New state for BOM and UID selection
+  const [availableBOMs, setAvailableBOMs] = useState<BOM[]>([]);
+  const [selectedBOM, setSelectedBOM] = useState<BOM | null>(null);
+  const [availableUIDs, setAvailableUIDs] = useState<Record<string, AvailableUID[]>>({});
+  const [selectedUIDs, setSelectedUIDs] = useState<Record<string, string>>({});
 
   const [formData, setFormData] = useState({
     itemId: '',
+    itemCode: '',
+    itemName: '',
     bomId: '',
     quantity: 1,
     plantCode: 'KOL',
@@ -44,6 +77,61 @@ export default function ProductionPage() {
     productionOrderId: '',
     componentUids: [''],
   });
+
+  // Fetch BOMs when item is selected
+  const fetchBOMsForItem = async (itemId: string) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/bom?productId=${itemId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableBOMs(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error('Error fetching BOMs:', error);
+      setAvailableBOMs([]);
+    }
+  };
+
+  // Fetch available UIDs for BOM components (FIFO sorted)
+  const fetchAvailableUIDsForBOM = async (bomId: string) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/production/available-uids/${bomId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Data format: { itemId: UID[] } sorted by received_date (FIFO)
+        setAvailableUIDs(data);
+      }
+    } catch (error) {
+      console.error('Error fetching available UIDs:', error);
+    }
+  };
+
+  const handleItemSelect = (item: any) => {
+    setFormData({ 
+      ...formData, 
+      itemId: item.id,
+      itemCode: item.code,
+      itemName: item.name
+    });
+    fetchBOMsForItem(item.id);
+  };
+
+  const handleBOMSelect = (bomId: string) => {
+    const bom = availableBOMs.find(b => b.id === bomId);
+    setSelectedBOM(bom || null);
+    setFormData({ ...formData, bomId });
+    if (bomId) {
+      fetchAvailableUIDsForBOM(bomId);
+    }
+  };
 
   useEffect(() => {
     fetchOrders();
@@ -317,8 +405,32 @@ export default function ProductionPage() {
                       )}
                       {(order.status === 'RELEASED' || order.status === 'IN_PROGRESS') && (
                         <button
-                          onClick={() => {
+                          onClick={async () => {
+                            setSelectedOrder(order.id);
                             setAssemblyData({ ...assemblyData, productionOrderId: order.id });
+                            
+                            // Fetch the production order's BOM details
+                            const token = localStorage.getItem('accessToken');
+                            const response = await fetch(`http://13.205.17.214:4000/api/v1/production/${order.id}`, {
+                              headers: { Authorization: `Bearer ${token}` },
+                            });
+                            if (response.ok) {
+                              const orderDetails = await response.json();
+                              if (orderDetails.bomId) {
+                                // Fetch BOM details
+                                const bomResponse = await fetch(`http://13.205.17.214:4000/api/v1/bom/${orderDetails.bomId}`, {
+                                  headers: { Authorization: `Bearer ${token}` },
+                                });
+                                if (bomResponse.ok) {
+                                  const bomData = await bomResponse.json();
+                                  setSelectedBOM(bomData);
+                                  setFormData({ ...formData, bomId: orderDetails.bomId, quantity: orderDetails.quantity });
+                                  // Fetch available UIDs
+                                  await fetchAvailableUIDsForBOM(orderDetails.bomId);
+                                }
+                              }
+                            }
+                            
                             setShowAssemblyModal(true);
                           }}
                           className="text-green-600 hover:text-green-900 font-medium"
@@ -346,25 +458,51 @@ export default function ProductionPage() {
 
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Item ID *</label>
-                  <input
-                    type="text"
-                    value={formData.itemId}
-                    onChange={(e) => setFormData({ ...formData, itemId: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    placeholder="Select item to manufacture"
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Item to Manufacture *
+                  </label>
+                  <ItemSearch
+                    value={formData.itemCode}
+                    onSelect={handleItemSelect}
+                    placeholder="Search for finished goods to manufacture..."
                   />
+                  {formData.itemName && (
+                    <div className="mt-2 text-sm text-green-600">
+                      ✓ Selected: {formData.itemCode} - {formData.itemName}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">BOM ID</label>
-                  <input
-                    type="text"
+                
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Bill of Materials (BOM) *
+                  </label>
+                  <select
                     value={formData.bomId}
-                    onChange={(e) => setFormData({ ...formData, bomId: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    placeholder="Bill of Materials"
-                  />
+                    onChange={(e) => handleBOMSelect(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-orange-500"
+                    disabled={!formData.itemId}
+                  >
+                    <option value="">
+                      {!formData.itemId ? 'Select an item first...' : 'Select BOM...'}
+                    </option>
+                    {availableBOMs.map(bom => (
+                      <option key={bom.id} value={bom.id}>
+                        v{bom.version} - {bom.description} ({bom.items.length} components)
+                      </option>
+                    ))}
+                  </select>
+                  {selectedBOM && (
+                    <div className="mt-2 p-3 bg-blue-50 rounded border border-blue-200">
+                      <div className="text-xs font-semibold text-blue-900 mb-2">BOM Components:</div>
+                      {selectedBOM.items.map((comp, idx) => (
+                        <div key={idx} className="text-xs text-blue-800">
+                          • {comp.item.code} - {comp.item.name} × {comp.quantity} {comp.uom}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Quantity *</label>
@@ -448,48 +586,102 @@ export default function ProductionPage() {
       {/* Complete Assembly Modal */}
       {showAssemblyModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900">Complete Assembly</h2>
               <p className="text-sm text-gray-600 mt-2">
-                Link component UIDs to create finished product with full traceability
+                Select component UIDs to create finished product with full traceability (FIFO recommended)
               </p>
             </div>
 
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Component UIDs</label>
-                {assemblyData.componentUids.map((uid, index) => (
-                  <div key={index} className="flex gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={uid}
-                      onChange={(e) => updateComponentUid(index, e.target.value)}
-                      className="flex-1 border border-gray-300 rounded-lg px-4 py-2 font-mono text-sm"
-                      placeholder="UID-SAIF-KOL-RM-000001-A7"
-                    />
-                    {assemblyData.componentUids.length > 1 && (
-                      <button
-                        onClick={() => removeComponentUid(index)}
-                        className="text-red-600 hover:text-red-800 px-3"
-                      >
-                        ✕
-                      </button>
-                    )}
+            <div className="p-6 space-y-6">
+              {/* BOM Components with FIFO UID Selection */}
+              {selectedBOM && selectedBOM.items.map((component, idx) => {
+                const uids = availableUIDs[component.item.id] || [];
+                const requiredQty = component.quantity * formData.quantity;
+                
+                return (
+                  <div key={idx} className="border border-gray-300 rounded-lg p-4 bg-gray-50">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <div className="font-semibold text-gray-900">
+                          {component.item.code} - {component.item.name}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Required: {requiredQty} {component.uom}
+                        </div>
+                      </div>
+                      <span className={`px-2 py-1 text-xs rounded ${
+                        uids.length >= requiredQty 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {uids.length} available
+                      </span>
+                    </div>
+
+                    {/* UID Selection - FIFO Sorted */}
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {uids.length === 0 ? (
+                        <div className="text-center py-4 text-red-600">
+                          ⚠️ No UIDs available in inventory. Cannot proceed with assembly.
+                        </div>
+                      ) : (
+                        uids.slice(0, Math.ceil(requiredQty)).map((uid, uidIdx) => (
+                          <div
+                            key={uidIdx}
+                            className={`p-3 border rounded ${
+                              uidIdx < requiredQty
+                                ? 'border-green-500 bg-green-50'
+                                : 'border-gray-300 bg-white'
+                            }`}
+                          >
+                            <div className="flex justify-between items-center">
+                              <div className="flex-1">
+                                <div className="font-mono text-sm font-semibold text-blue-600">
+                                  {uid.uid}
+                                </div>
+                                <div className="text-xs text-gray-600 mt-1">
+                                  Batch: {uid.batch_number} | 
+                                  Received: {new Date(uid.received_date).toLocaleDateString()} |
+                                  Location: {uid.location}
+                                  {uid.expiry_date && (
+                                    <span className="ml-2 text-red-600">
+                                      Expiry: {new Date(uid.expiry_date).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {uidIdx < requiredQty && (
+                                <span className="ml-3 px-2 py-1 bg-green-600 text-white text-xs rounded">
+                                  ✓ Will be used
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
-                ))}
-                <button
-                  onClick={addComponentUid}
-                  className="text-orange-600 hover:text-orange-800 font-medium text-sm mt-2"
-                >
-                  + Add Component UID
-                </button>
+                );
+              })}
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <p className="text-sm text-amber-800">
+                  <strong>🔄 FIFO Logic:</strong> System automatically selects oldest stock first (by received date).
+                  Inventory will be reduced automatically upon completion.
+                </p>
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> System will auto-generate a finished product UID and link all component UIDs
-                  to it for complete assembly traceability.
+                  <strong>📦 Assembly Process:</strong><br/>
+                  1. System validates all component UIDs are available<br/>
+                  2. Generates new Finished Goods UID<br/>
+                  3. Links all component UIDs to FG UID<br/>
+                  4. Reduces inventory quantities automatically<br/>
+                  5. Marks component UIDs as CONSUMED<br/>
+                  6. Creates complete traceability record
                 </p>
               </div>
             </div>
@@ -503,9 +695,10 @@ export default function ProductionPage() {
               </button>
               <button
                 onClick={handleCompleteAssembly}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                disabled={!selectedBOM || Object.keys(availableUIDs).length === 0}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400"
               >
-                Complete Assembly
+                Complete Assembly & Generate FG UID
               </button>
             </div>
           </div>
