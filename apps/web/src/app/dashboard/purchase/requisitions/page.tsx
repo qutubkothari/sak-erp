@@ -68,10 +68,12 @@ export default function PurchaseRequisitionsPage() {
     try {
       setItemsLoadError(null);
       const response = await apiClient.get('/inventory/items');
-      setMasterItems(response.data || []);
+      console.log('Items API response:', response);
+      // apiClient.get already unwraps the data, so response is the array directly
+      setMasterItems(Array.isArray(response) ? response : []);
     } catch (error: any) {
       console.error('Error fetching items:', error);
-      if (error.message && error.message.includes('401')) {
+      if (error.message && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
         setItemsLoadError('Session expired. Please refresh the page and login again.');
       } else {
         setItemsLoadError('Failed to load items. Please try again.');
