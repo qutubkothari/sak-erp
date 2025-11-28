@@ -53,6 +53,34 @@ interface PurchaseTrail {
   }>;
 }
 
+interface PurchaseOrder {
+  id: string;
+  po_number: string;
+  vendor_id: string;
+  vendor: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  order_date: string;
+  status: string;
+  purchase_order_items: Array<{
+    id: string;
+    item_id: string;
+    item_code: string;
+    item_name: string;
+    ordered_qty: number;
+    rate: number;
+  }>;
+}
+
+interface Warehouse {
+  id: string;
+  code: string;
+  name: string;
+  location: string;
+}
+
 export default function GRNPage() {
   const router = useRouter();
   const [grns, setGrns] = useState<GRN[]>([]);
@@ -66,6 +94,9 @@ export default function GRNPage() {
   const [showTrailModal, setShowTrailModal] = useState(false);
   const [purchaseTrail, setPurchaseTrail] = useState<PurchaseTrail | null>(null);
   const [loadingTrail, setLoadingTrail] = useState(false);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
 
   const [formData, setFormData] = useState({
     poId: '',
@@ -77,6 +108,8 @@ export default function GRNPage() {
     notes: '',
     items: [] as Array<{
       itemId: string;
+      itemCode?: string;
+      itemName?: string;
       poItemId: string;
       orderedQuantity: number;
       receivedQuantity: number;
@@ -91,7 +124,61 @@ export default function GRNPage() {
 
   useEffect(() => {
     fetchGRNs();
+    fetchPurchaseOrders();
+    fetchWarehouses();
   }, [filterStatus]);
+
+  const fetchPurchaseOrders = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders?status=SENT', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      setPurchaseOrders(data);
+    } catch (error) {
+      console.error('Error fetching purchase orders:', error);
+    }
+  };
+
+  const fetchWarehouses = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://13.205.17.214:4000/api/v1/inventory/warehouses', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      setWarehouses(data);
+    } catch (error) {
+      console.error('Error fetching warehouses:', error);
+    }
+  };
+
+  const handlePOChange = (poId: string) => {
+    const po = purchaseOrders.find(p => p.id === poId);
+    if (po) {
+      setSelectedPO(po);
+      setFormData({
+        ...formData,
+        poId: po.id,
+        vendorId: po.vendor_id,
+        items: po.purchase_order_items.map(item => ({
+          itemId: item.item_id,
+          itemCode: item.item_code,
+          itemName: item.item_name,
+          poItemId: item.id,
+          orderedQuantity: item.ordered_qty,
+          receivedQuantity: item.ordered_qty,
+          acceptedQuantity: item.ordered_qty,
+          rejectedQuantity: 0,
+          unitPrice: item.rate,
+          batchNumber: '',
+          expiryDate: '',
+          notes: '',
+        })),
+      });
+    }
+  };
 
   const fetchGRNs = async () => {
     try {
@@ -246,6 +333,7 @@ export default function GRNPage() {
   };
 
   const resetForm = () => {
+    setSelectedPO(null);
     setFormData({
       poId: '',
       vendorId: '',
@@ -418,21 +506,27 @@ export default function GRNPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Purchase Order *</label>
-                  <input
-                    type="text"
+                  <select
                     value={formData.poId}
-                    onChange={(e) => setFormData({ ...formData, poId: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    placeholder="Select PO..."
-                  />
+                    onChange={(e) => handlePOChange(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-amber-500"
+                    required
+                  >
+                    <option value="">Select Purchase Order...</option>
+                    {purchaseOrders.map(po => (
+                      <option key={po.id} value={po.id}>
+                        {po.po_number} - {po.vendor.name} ({new Date(po.order_date).toLocaleDateString()})
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Vendor *</label>
                   <input
                     type="text"
-                    value={formData.vendorId}
-                    onChange={(e) => setFormData({ ...formData, vendorId: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    value={selectedPO ? `${selectedPO.vendor.name} (${selectedPO.vendor.code})` : ''}
+                    readOnly
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-gray-50"
                     placeholder="Auto-filled from PO"
                   />
                 </div>
@@ -447,13 +541,19 @@ export default function GRNPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Warehouse *</label>
-                  <input
-                    type="text"
+                  <select
                     value={formData.warehouseId}
                     onChange={(e) => setFormData({ ...formData, warehouseId: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    placeholder="Select warehouse..."
-                  />
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-amber-500"
+                    required
+                  >
+                    <option value="">Select Warehouse...</option>
+                    {warehouses.map(warehouse => (
+                      <option key={warehouse.id} value={warehouse.id}>
+                        {warehouse.name} ({warehouse.code}) - {warehouse.location}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Invoice Number</label>
@@ -478,68 +578,58 @@ export default function GRNPage() {
               {/* Items */}
               <div>
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Items</h3>
-                  <button
-                    onClick={handleAddItem}
-                    className="text-amber-600 hover:text-amber-800 font-medium"
-                  >
-                    + Add Item
-                  </button>
+                  <h3 className="text-lg font-semibold text-gray-900">Items {formData.items.length > 0 && `(${formData.items.length})`}</h3>
                 </div>
 
                 {formData.items.length === 0 ? (
                   <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
-                    <p className="text-gray-500">No items added. Click &ldquo;Add Item&rdquo; to get started.</p>
+                    <p className="text-gray-500">Select a Purchase Order to auto-fill items</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
                     {formData.items.map((item, index) => (
-                      <div key={index} className="border border-gray-300 rounded-lg p-4">
+                      <div key={index} className="border border-gray-300 rounded-lg p-4 bg-gray-50">
                         <div className="grid grid-cols-8 gap-3">
                           <div className="col-span-2">
-                            <label className="text-xs text-gray-600">Item</label>
-                            <input
-                              type="text"
-                              value={item.itemId}
-                              onChange={(e) => handleUpdateItem(index, 'itemId', e.target.value)}
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                              placeholder="Select item"
-                            />
+                            <label className="text-xs text-gray-600 font-semibold">Item</label>
+                            <div className="text-sm font-medium text-gray-900 mt-1">
+                              {item.itemCode} - {item.itemName}
+                            </div>
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600">Ordered</label>
+                            <label className="text-xs text-gray-600 font-semibold">Ordered</label>
                             <input
                               type="number"
                               value={item.orderedQuantity}
-                              onChange={(e) => handleUpdateItem(index, 'orderedQuantity', parseFloat(e.target.value))}
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                              readOnly
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600">Received</label>
+                            <label className="text-xs text-gray-600 font-semibold">Received *</label>
                             <input
                               type="number"
                               value={item.receivedQuantity}
                               onChange={(e) => handleUpdateItem(index, 'receivedQuantity', parseFloat(e.target.value))}
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600">Accepted</label>
+                            <label className="text-xs text-gray-600 font-semibold">Accepted *</label>
                             <input
                               type="number"
                               value={item.acceptedQuantity}
                               onChange={(e) => handleUpdateItem(index, 'acceptedQuantity', parseFloat(e.target.value))}
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-green-50"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-green-50 focus:ring-2 focus:ring-green-500"
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600">Rejected</label>
+                            <label className="text-xs text-gray-600 font-semibold">Rejected</label>
                             <input
                               type="number"
                               value={item.rejectedQuantity}
                               onChange={(e) => handleUpdateItem(index, 'rejectedQuantity', parseFloat(e.target.value))}
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-red-50"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-red-50 focus:ring-2 focus:ring-red-500"
                             />
                           </div>
                           <div>
