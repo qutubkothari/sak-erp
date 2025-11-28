@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '../../../lib/api-client';
 
 interface Inspection {
   id: string;
@@ -106,31 +107,17 @@ export default function QualityPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('access_token');
-      
       if (activeTab === 'inspections') {
-        const response = await fetch('http://35.154.55.38:4000/api/v1/quality/inspections', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await response.json();
+        const data = await apiClient.get('/quality/inspections');
         setInspections(data);
       } else if (activeTab === 'ncr') {
-        const response = await fetch('http://35.154.55.38:4000/api/v1/quality/ncr', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await response.json();
+        const data = await apiClient.get('/quality/ncr');
         setNcrs(data);
       } else if (activeTab === 'vendors') {
-        const response = await fetch('http://35.154.55.38:4000/api/v1/quality/vendor-ratings', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await response.json();
+        const data = await apiClient.get('/quality/vendor-ratings');
         setVendorRatings(data);
       } else if (activeTab === 'dashboard') {
-        const response = await fetch('http://35.154.55.38:4000/api/v1/quality/dashboard', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await response.json();
+        const data = await apiClient.get('/quality/dashboard');
         setDashboard(data);
       }
     } catch (error) {
@@ -143,32 +130,21 @@ export default function QualityPage() {
   const handleCreateInspection = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('http://35.154.55.38:4000/api/v1/quality/inspections', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(inspectionForm)
+      await apiClient.post('/quality/inspections', inspectionForm);
+      setShowInspectionForm(false);
+      setInspectionForm({
+        inspection_type: 'INCOMING',
+        reference_type: 'GRN',
+        reference_id: '',
+        item_id: '',
+        uid: '',
+        quantity_inspected: 0,
+        inspector_id: '',
+        inspection_date: new Date().toISOString().split('T')[0],
+        remarks: ''
       });
-
-      if (response.ok) {
-        setShowInspectionForm(false);
-        setInspectionForm({
-          inspection_type: 'INCOMING',
-          reference_type: 'GRN',
-          reference_id: '',
-          item_id: '',
-          uid: '',
-          quantity_inspected: 0,
-          inspector_id: '',
-          inspection_date: new Date().toISOString().split('T')[0],
-          remarks: ''
-        });
-        fetchData();
-        alert('Inspection created successfully');
-      }
+      fetchData();
+      alert('Inspection created successfully');
     } catch (error) {
       console.error('Error creating inspection:', error);
       alert('Failed to create inspection');
@@ -178,31 +154,20 @@ export default function QualityPage() {
   const handleCompleteInspection = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`http://35.154.55.38:4000/api/v1/quality/inspections/${completeInspectionId}/complete`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(completeForm)
+      await apiClient.post(`/quality/inspections/${completeInspectionId}/complete`, completeForm);
+      setShowCompleteForm(false);
+      setCompleteInspectionId('');
+      setCompleteForm({
+        inspection_status: 'PASSED',
+        quantity_accepted: 0,
+        quantity_rejected: 0,
+        quantity_on_hold: 0,
+        inspector_remarks: '',
+        generate_ncr: false,
+        ncr_description: ''
       });
-
-      if (response.ok) {
-        setShowCompleteForm(false);
-        setCompleteInspectionId('');
-        setCompleteForm({
-          inspection_status: 'PASSED',
-          quantity_accepted: 0,
-          quantity_rejected: 0,
-          quantity_on_hold: 0,
-          inspector_remarks: '',
-          generate_ncr: false,
-          ncr_description: ''
-        });
-        fetchData();
-        alert('Inspection completed successfully');
-      }
+      fetchData();
+      alert('Inspection completed successfully');
     } catch (error) {
       console.error('Error completing inspection:', error);
       alert('Failed to complete inspection');
@@ -212,31 +177,20 @@ export default function QualityPage() {
   const handleCreateNcr = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('http://35.154.55.38:4000/api/v1/quality/ncr', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(ncrForm)
+      await apiClient.post('/quality/ncr', ncrForm);
+      setShowNcrForm(false);
+      setNcrForm({
+        related_to: 'INSPECTION',
+        reference_id: '',
+        issue_description: '',
+        severity: 'MEDIUM',
+        root_cause: '',
+        containment_action: '',
+        corrective_action: '',
+        preventive_action: ''
       });
-
-      if (response.ok) {
-        setShowNcrForm(false);
-        setNcrForm({
-          related_to: 'INSPECTION',
-          reference_id: '',
-          issue_description: '',
-          severity: 'MEDIUM',
-          root_cause: '',
-          containment_action: '',
-          corrective_action: '',
-          preventive_action: ''
-        });
-        fetchData();
-        alert('NCR created successfully');
-      }
+      fetchData();
+      alert('NCR created successfully');
     } catch (error) {
       console.error('Error creating NCR:', error);
       alert('Failed to create NCR');

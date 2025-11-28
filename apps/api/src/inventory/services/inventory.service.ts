@@ -35,7 +35,8 @@ export class InventoryService {
     }
 
     if (filters?.low_stock) {
-      query = query.filter('available_quantity', 'lte', 'reorder_point');
+      // Compare available_quantity with reorder_point column
+      query = query.lte('available_quantity', 'reorder_point');
     }
 
     const { data, error } = await query.order('updated_at', { ascending: false });

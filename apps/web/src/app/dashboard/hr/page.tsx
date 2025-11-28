@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '../../../lib/api-client';
 
 interface Employee {
   id: string;
@@ -104,14 +105,14 @@ export default function HrPage() {
       const token = localStorage.getItem('access_token');
       
       if (activeTab === 'employees') {
-        const response = await fetch('http://35.154.55.38:4000/api/v1/hr/employees', {
+        const response = await fetch('/api/v1/hr/employees', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await response.json();
         setEmployees(data.data || []);
       } else if (activeTab === 'attendance') {
         // Fetch all attendance records
-        const empResponse = await fetch('http://35.154.55.38:4000/api/v1/hr/employees', {
+        const empResponse = await fetch('/api/v1/hr/employees', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const empData = await empResponse.json();
@@ -119,7 +120,7 @@ export default function HrPage() {
         
         // Fetch attendance for each employee
         const attendancePromises = allEmployees.map(async (emp: Employee) => {
-          const attResponse = await fetch(`http://35.154.55.38:4000/api/v1/hr/attendance?employeeId=${emp.id}`, {
+          const attResponse = await fetch(`/hr/attendance?employeeId=${emp.id}`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           const attData = await attResponse.json();
@@ -132,14 +133,14 @@ export default function HrPage() {
         const allAttendance = await Promise.all(attendancePromises);
         setAttendance(allAttendance.flat());
       } else if (activeTab === 'leaves') {
-        const empResponse = await fetch('http://35.154.55.38:4000/api/v1/hr/employees', {
+        const empResponse = await fetch('/api/v1/hr/employees', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const empData = await empResponse.json();
         const allEmployees = empData.data || [];
         
         const leavePromises = allEmployees.map(async (emp: Employee) => {
-          const leaveResponse = await fetch(`http://35.154.55.38:4000/api/v1/hr/leaves?employeeId=${emp.id}`, {
+          const leaveResponse = await fetch(`/hr/leaves?employeeId=${emp.id}`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           const leaveData = await leaveResponse.json();
@@ -161,7 +162,7 @@ export default function HrPage() {
     e.preventDefault();
     try {
       const token = localStorage.getItem('access_token');
-      const response = await fetch('http://35.154.55.38:4000/api/v1/hr/employees', {
+      const response = await fetch('/api/v1/hr/employees', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -197,7 +198,7 @@ export default function HrPage() {
     e.preventDefault();
     try {
       const token = localStorage.getItem('access_token');
-      const response = await fetch('http://35.154.55.38:4000/api/v1/hr/attendance', {
+      const response = await fetch('/api/v1/hr/attendance', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -229,7 +230,7 @@ export default function HrPage() {
     e.preventDefault();
     try {
       const token = localStorage.getItem('access_token');
-      const response = await fetch('http://35.154.55.38:4000/api/v1/hr/leaves', {
+      const response = await fetch('/api/v1/hr/leaves', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -261,7 +262,7 @@ export default function HrPage() {
     try {
       const token = localStorage.getItem('access_token');
       const userId = localStorage.getItem('user_id');
-      const response = await fetch(`http://35.154.55.38:4000/api/v1/hr/leaves/${leaveId}/approve`, {
+      const response = await fetch(`/hr/leaves/${leaveId}/approve`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -284,7 +285,7 @@ export default function HrPage() {
     try {
       const token = localStorage.getItem('access_token');
       const userId = localStorage.getItem('user_id');
-      const response = await fetch(`http://35.154.55.38:4000/api/v1/hr/leaves/${leaveId}/reject`, {
+      const response = await fetch(`/hr/leaves/${leaveId}/reject`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

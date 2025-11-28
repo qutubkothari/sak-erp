@@ -66,7 +66,7 @@ export default function UIDTrackingPage() {
       if (filters.location) queryParams.append('location', filters.location);
 
       const response = await fetch(
-        `http://35.154.55.38:4000/api/v1/uid?${queryParams}`,
+        `/uid?${queryParams}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -91,7 +91,7 @@ export default function UIDTrackingPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `http://35.154.55.38:4000/api/v1/uid/search/${encodeURIComponent(searchUID)}`,
+        `/uid/search/${encodeURIComponent(searchUID)}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,

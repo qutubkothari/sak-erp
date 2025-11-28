@@ -168,7 +168,7 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get<Customer[]>('/api/v1/sales/customers');
+      const data = await apiClient.get<Customer[]>('/sales/customers');
       setCustomers(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch customers');
@@ -181,7 +181,7 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get<Quotation[]>('/api/v1/sales/quotations');
+      const data = await apiClient.get<Quotation[]>('/sales/quotations');
       setQuotations(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch quotations');
@@ -194,7 +194,7 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get<SalesOrder[]>('/api/v1/sales/orders');
+      const data = await apiClient.get<SalesOrder[]>('/sales/orders');
       setOrders(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch sales orders');

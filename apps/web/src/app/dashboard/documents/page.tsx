@@ -110,7 +110,7 @@ export default function DocumentsPage() {
       if (filters.category_id) queryParams.append('category_id', filters.category_id);
 
       const response = await fetch(
-        `http://35.154.55.38:4000/api/v1/documents?${queryParams}`,
+        `/documents?${queryParams}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -133,7 +133,7 @@ export default function DocumentsPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        'http://35.154.55.38:4000/api/v1/document-categories',
+        '/api/v1/document-categories',
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -160,7 +160,7 @@ export default function DocumentsPage() {
         tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : [],
       };
 
-      const response = await fetch('http://35.154.55.38:4000/api/v1/documents', {
+      const response = await fetch('/api/v1/documents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -186,7 +186,7 @@ export default function DocumentsPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `http://35.154.55.38:4000/api/v1/documents/${selectedDocument.id}/revisions`,
+        `/documents/${selectedDocument.id}/revisions`,
         {
           method: 'POST',
           headers: {
@@ -220,7 +220,7 @@ export default function DocumentsPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `http://35.154.55.38:4000/api/v1/documents/${id}`,
+        `/documents/${id}`,
         {
           method: 'DELETE',
           headers: {
@@ -241,7 +241,7 @@ export default function DocumentsPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `http://35.154.55.38:4000/api/v1/documents/${id}/archive`,
+        `/documents/${id}/archive`,
         {
           method: 'POST',
           headers: {
