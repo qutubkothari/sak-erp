@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '../../../../../lib/api-client';
 
 interface PurchaseOrder {
   id: string;
@@ -20,9 +21,26 @@ interface PurchaseOrder {
   }>;
 }
 
+interface Vendor {
+  id: string;
+  vendor_code: string;
+  name: string;
+  contact_person?: string;
+}
+
+interface Item {
+  id: string;
+  item_code: string;
+  item_name: string;
+  standard_cost?: number;
+  uom: string;
+}
+
 export default function PurchaseOrdersPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('ALL');
@@ -49,6 +67,31 @@ export default function PurchaseOrdersPage() {
   useEffect(() => {
     fetchOrders();
   }, [filterStatus]);
+
+  useEffect(() => {
+    if (showModal) {
+      fetchVendors();
+      fetchItems();
+    }
+  }, [showModal]);
+
+  const fetchVendors = async () => {
+    try {
+      const data = await apiClient.get('/purchase/vendors');
+      setVendors(data);
+    } catch (error) {
+      console.error('Error fetching vendors:', error);
+    }
+  };
+
+  const fetchItems = async () => {
+    try {
+      const data = await apiClient.get('/inventory/items');
+      setItems(data);
+    } catch (error) {
+      console.error('Error fetching items:', error);
+    }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -287,13 +330,19 @@ export default function PurchaseOrdersPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Vendor *</label>
-                  <input
-                    type="text"
+                  <select
+                    required
                     value={formData.vendorId}
                     onChange={(e) => setFormData({ ...formData, vendorId: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    placeholder="Select vendor..."
-                  />
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="">Select Vendor</option>
+                    {vendors.map(vendor => (
+                      <option key={vendor.id} value={vendor.id}>
+                        {vendor.name} ({vendor.vendor_code})
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
@@ -362,13 +411,24 @@ export default function PurchaseOrdersPage() {
                       <div key={index} className="border border-gray-300 rounded-lg p-4">
                         <div className="grid grid-cols-6 gap-4">
                           <div className="col-span-2">
-                            <input
-                              type="text"
+                            <select
                               value={item.itemId}
-                              onChange={(e) => handleUpdateItem(index, 'itemId', e.target.value)}
-                              placeholder="Item"
-                              className="w-full border border-gray-300 rounded px-3 py-2"
-                            />
+                              onChange={(e) => {
+                                const selectedItem = items.find(i => i.id === e.target.value);
+                                handleUpdateItem(index, 'itemId', e.target.value);
+                                if (selectedItem?.standard_cost) {
+                                  handleUpdateItem(index, 'unitPrice', selectedItem.standard_cost);
+                                }
+                              }}
+                              className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-amber-500"
+                            >
+                              <option value="">Select Item</option>
+                              {items.map(itm => (
+                                <option key={itm.id} value={itm.id}>
+                                  {itm.item_name} ({itm.item_code}) - {itm.uom}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                           <div>
                             <input
