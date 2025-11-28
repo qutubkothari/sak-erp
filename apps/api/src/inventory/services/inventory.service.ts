@@ -19,12 +19,7 @@ export class InventoryService {
 
     let query = this.supabase
       .from('inventory_stock')
-      .select(`
-        *,
-        items:item_id(id, item_code, item_name, uom),
-        warehouses:warehouse_id(id, warehouse_code, warehouse_name),
-        storage_locations:location_id(id, location_code, location_name)
-      `)
+      .select('*')
       .eq('tenant_id', tenantId);
 
     if (filters?.warehouse_id) {
@@ -56,12 +51,7 @@ export class InventoryService {
 
     let query = this.supabase
       .from('stock_movements')
-      .select(`
-        *,
-        items:item_id(id, item_code, item_name),
-        from_warehouse:from_warehouse_id(warehouse_code, warehouse_name),
-        to_warehouse:to_warehouse_id(warehouse_code, warehouse_name)
-      `)
+      .select('*')
       .eq('tenant_id', tenantId);
 
     if (filters?.movement_type) {
@@ -337,7 +327,7 @@ export class InventoryService {
 
     const { data: stock } = await this.supabase
       .from('inventory_stock')
-      .select('*, items:item_id(item_code, item_name)')
+      .select('*')
       .eq('tenant_id', tenantId)
       .eq('item_id', itemId)
       .eq('warehouse_id', warehouseId)
@@ -363,7 +353,7 @@ export class InventoryService {
           warehouse_id: warehouseId,
           current_quantity: stock.available_quantity,
           threshold_quantity: stock.reorder_point,
-          message: `Low stock alert: ${stock.items.item_name} (${stock.items.item_code}) - Available: ${stock.available_quantity}, Reorder Point: ${stock.reorder_point}`,
+          message: `Low stock alert: Item ${itemId} - Available: ${stock.available_quantity}, Reorder Point: ${stock.reorder_point}`,
           severity: parseFloat(stock.available_quantity) <= 0 ? 'CRITICAL' : 'HIGH',
         });
       }
@@ -377,11 +367,7 @@ export class InventoryService {
 
     let query = this.supabase
       .from('inventory_alerts')
-      .select(`
-        *,
-        items:item_id(item_code, item_name),
-        warehouses:warehouse_id(warehouse_code, warehouse_name)
-      `)
+      .select('*')
       .eq('tenant_id', tenantId);
 
     if (acknowledged !== undefined) {
@@ -554,10 +540,7 @@ export class InventoryService {
 
     let query = this.supabase
       .from('demo_inventory')
-      .select(`
-        *,
-        items:item_id(item_code, item_name)
-      `)
+      .select('*')
       .eq('tenant_id', tenantId);
 
     if (filters?.status) {

@@ -266,17 +266,7 @@ export class ProductionService {
   async findAll(tenantId: string, filters?: any) {
     let query = this.supabase
       .from('production_orders')
-      .select(`
-        *,
-        item:items(id, code, name, uom),
-        bom:bom_headers(id, version),
-        created_by_user:users(id, first_name, last_name, email),
-        production_order_components(
-          *,
-          item:items(id, code, name)
-        ),
-        production_assemblies(id, finished_product_uid, qc_status)
-      `)
+      .select('*')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false });
 
@@ -300,14 +290,10 @@ export class ProductionService {
   async findOne(tenantId: string, id: string) {
     const { data, error } = await this.supabase
       .from('production_orders')
-      .select(`
-        *,
-        item:items(id, code, name, uom, type),
-        bom:bom_headers(id, version, bom_items(*, item:items(code, name))),
-        created_by_user:users(id, first_name, last_name, email),
-        production_order_components(
-          *,
-          item:items(id, code, name, uom)
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .single();
         ),
         production_assemblies(*, assembled_by_user:users(first_name, last_name)),
         production_stage_logs(*, entered_by_user:users(first_name, last_name))
