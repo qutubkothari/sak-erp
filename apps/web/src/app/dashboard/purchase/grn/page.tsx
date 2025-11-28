@@ -132,12 +132,28 @@ export default function GRNPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders?status=SENT', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Failed to fetch purchase orders:', response.status, errorData);
+        if (response.status === 401) {
+          console.error('Authentication failed - token may be expired');
+        }
+        setPurchaseOrders([]);
+        return;
+      }
+      
       const data = await response.json();
-      setPurchaseOrders(data);
+      console.log('Purchase orders fetched:', data);
+      setPurchaseOrders(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching purchase orders:', error);
+      setPurchaseOrders([]);
     }
   };
 
@@ -145,12 +161,28 @@ export default function GRNPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch('http://13.205.17.214:4000/api/v1/inventory/warehouses', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Failed to fetch warehouses:', response.status, errorData);
+        if (response.status === 401) {
+          console.error('Authentication failed - token may be expired');
+        }
+        setWarehouses([]);
+        return;
+      }
+      
       const data = await response.json();
-      setWarehouses(data);
+      console.log('Warehouses fetched:', data);
+      setWarehouses(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching warehouses:', error);
+      setWarehouses([]);
     }
   };
 
