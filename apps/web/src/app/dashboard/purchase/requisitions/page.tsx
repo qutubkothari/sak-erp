@@ -44,6 +44,7 @@ export default function PurchaseRequisitionsPage() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [useManualEntry, setUseManualEntry] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [itemsLoadError, setItemsLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (showCreateForm) {
@@ -65,10 +66,16 @@ export default function PurchaseRequisitionsPage() {
 
   const fetchMasterItems = async () => {
     try {
+      setItemsLoadError(null);
       const response = await apiClient.get('/inventory/items');
       setMasterItems(response.data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching items:', error);
+      if (error.message && error.message.includes('401')) {
+        setItemsLoadError('Session expired. Please refresh the page and login again.');
+      } else {
+        setItemsLoadError('Failed to load items. Please try again.');
+      }
     }
   };
 
@@ -277,7 +284,17 @@ export default function PurchaseRequisitionsPage() {
                             </div>
                             {showDropdown && searchTerm && (
                               <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-72 overflow-y-auto">
-                                {filteredItems.length > 0 ? (
+                                {itemsLoadError ? (
+                                  <div className="px-4 py-6 text-center">
+                                    <div className="text-red-600 font-semibold mb-2">⚠️ {itemsLoadError}</div>
+                                    <button
+                                      onClick={() => window.location.href = '/login'}
+                                      className="mt-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm"
+                                    >
+                                      Go to Login
+                                    </button>
+                                  </div>
+                                ) : filteredItems.length > 0 ? (
                                   <>
                                     <div className="sticky top-0 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 border-b">
                                       {filteredItems.length} item{filteredItems.length !== 1 ? 's' : ''} found
