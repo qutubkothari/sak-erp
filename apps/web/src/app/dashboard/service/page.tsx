@@ -99,7 +99,7 @@ export default function ServicePage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get<ServiceTicket[]>('/api/v1/service/tickets');
+      const data = await apiClient.get<ServiceTicket[]>('/service/tickets');
       setTickets(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch service tickets');
@@ -112,7 +112,7 @@ export default function ServicePage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get<Technician[]>('/api/v1/service/technicians');
+      const data = await apiClient.get<Technician[]>('/service/technicians');
       setTechnicians(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch technicians');
@@ -125,7 +125,7 @@ export default function ServicePage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get<any>('/api/v1/service/reports');
+      const data = await apiClient.get<any>('/service/reports');
       setReports(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch reports');
@@ -139,7 +139,7 @@ export default function ServicePage() {
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post('/api/v1/service/tickets', ticketForm);
+      await apiClient.post('/service/tickets', ticketForm);
       setShowTicketForm(false);
       setTicketForm({
         customer_id: '',
@@ -167,7 +167,7 @@ export default function ServicePage() {
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post('/api/v1/service/technicians', technicianForm);
+      await apiClient.post('/service/technicians', technicianForm);
       setShowTechnicianForm(false);
       setTechnicianForm({
         technician_name: '',
@@ -191,7 +191,7 @@ export default function ServicePage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get<WarrantyValidation>(`/api/v1/service/warranty/validate/${warrantyUID}`);
+      const data = await apiClient.get<WarrantyValidation>(`/service/warranty/validate/${warrantyUID}`);
       setWarrantyResult(data);
     } catch (err: any) {
       setError(err.message || 'Failed to validate warranty');
