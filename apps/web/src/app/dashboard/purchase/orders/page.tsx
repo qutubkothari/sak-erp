@@ -156,26 +156,38 @@ function PurchaseOrdersContent() {
   const handleCreateOrder = async () => {
     try {
       const token = localStorage.getItem('accessToken');
+      const payload = {
+        ...formData,
+        status: 'DRAFT',
+        totalAmount: formData.items.reduce((sum, item) => sum + item.totalPrice, 0),
+      };
+      
+      console.log('Creating PO with payload:', payload);
+      
       const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          ...formData,
-          status: 'DRAFT',
-          totalAmount: formData.items.reduce((sum, item) => sum + item.totalPrice, 0),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
+        const data = await response.json();
+        console.log('PO created successfully:', data);
         setShowModal(false);
         fetchOrders();
         resetForm();
+        alert('Purchase Order created successfully!');
+      } else {
+        const errorData = await response.json();
+        console.error('PO creation failed:', errorData);
+        alert(`Failed to create PO: ${errorData.message || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error creating order:', error);
+      alert('Failed to create PO. Please try again.');
     }
   };
 
