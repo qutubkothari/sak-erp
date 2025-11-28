@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 interface GRN {
   id: string;
   grn_number: string;
-  receipt_date: string;
+  grn_date: string;
   invoice_number: string;
+  invoice_date: string;
   status: string;
   vendor: {
     name: string;
@@ -524,10 +525,13 @@ export default function GRNPage() {
                       <div className="text-sm text-gray-500">{grn.vendor.code}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(grn.receipt_date).toLocaleDateString()}
+                      {new Date(grn.grn_date).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {grn.invoice_number || '-'}
+                      <div>{grn.invoice_number || '-'}</div>
+                      {grn.invoice_date && (
+                        <div className="text-xs text-gray-400">{new Date(grn.invoice_date).toLocaleDateString()}</div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {grn.warehouse?.name || '-'}

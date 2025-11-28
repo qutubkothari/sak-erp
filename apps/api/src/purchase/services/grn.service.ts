@@ -14,6 +14,20 @@ export class GrnService {
   }
 
   async create(tenantId: string, userId: string, data: any) {
+    // Check if GRN already exists for this PO
+    const { data: existingGRN } = await this.supabase
+      .from('grn')
+      .select('id, grn_number')
+      .eq('tenant_id', tenantId)
+      .eq('po_id', data.poId)
+      .maybeSingle();
+
+    if (existingGRN) {
+      throw new BadRequestException(
+        `GRN already exists for this Purchase Order (${existingGRN.grn_number}). Cannot create multiple receipts for the same PO.`
+      );
+    }
+
     // Generate GRN number
     const grnNumber = await this.generateGRNNumber(tenantId);
 
