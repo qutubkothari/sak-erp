@@ -234,6 +234,49 @@ export default function GRNPage() {
 
   const handleCreateGRN = async () => {
     try {
+      // Validate required fields
+      if (!formData.poId) {
+        alert('Please select a Purchase Order');
+        return;
+      }
+      
+      if (!formData.warehouseId) {
+        alert('Please select a Warehouse');
+        return;
+      }
+      
+      if (formData.items.length === 0) {
+        alert('No items to receive. Please select a PO with items.');
+        return;
+      }
+      
+      // Transform data to match API expectations
+      const payload = {
+        poId: formData.poId,
+        vendorId: formData.vendorId,
+        grnDate: formData.receiptDate,
+        invoiceNumber: formData.invoiceNumber,
+        invoiceDate: formData.invoiceDate,
+        warehouseId: formData.warehouseId,
+        remarks: formData.notes,
+        status: 'DRAFT',
+        items: formData.items.map(item => ({
+          poItemId: item.poItemId,
+          itemCode: item.itemCode,
+          itemName: item.itemName,
+          orderedQty: item.orderedQuantity,
+          receivedQty: item.receivedQuantity,
+          acceptedQty: item.acceptedQuantity,
+          rejectedQty: item.rejectedQuantity,
+          rate: item.unitPrice,
+          batchNumber: item.batchNumber,
+          expiryDate: item.expiryDate || null,
+          remarks: item.notes,
+        })),
+      };
+      
+      console.log('Creating GRN with payload:', payload);
+      
       const token = localStorage.getItem('accessToken');
       const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/grn', {
         method: 'POST',
@@ -241,19 +284,19 @@ export default function GRNPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          ...formData,
-          status: 'DRAFT',
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
+        const data = await response.json();
+        console.log('GRN created successfully:', data);
         alert('GRN created successfully!');
         setShowModal(false);
         fetchGRNs();
         resetForm();
       } else {
         const errorData = await response.json();
+        console.error('GRN creation failed:', errorData);
         alert(`Failed to create GRN: ${errorData.message || 'Unknown error'}`);
       }
     } catch (error) {
