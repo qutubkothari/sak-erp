@@ -18,6 +18,7 @@ import { UserModule } from './user/user.module';
 // Business Modules
 import { PurchaseModule } from './purchase/purchase.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { ItemsModule } from './items/items.module';
 import { ProductionModule } from './production/production.module';
 import { QualityModule } from './quality/quality.module';
 import { SalesModule } from './sales/sales.module';
@@ -75,6 +76,7 @@ import { AuditModule } from './audit/audit.module';
     // Business
     PurchaseModule,
     InventoryModule,
+    ItemsModule,
     ProductionModule,
     QualityModule,
     SalesModule,

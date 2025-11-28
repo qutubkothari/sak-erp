@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import ItemSearch from '../../../components/ItemSearch';
 
 interface BOM {
   id: string;
@@ -286,12 +287,12 @@ export default function BOMPage() {
                   <div>
                     <h4 className="font-semibold text-blue-900 mb-1">How to fill this form:</h4>
                     <ul className="text-sm text-blue-800 space-y-1">
-                      <li>• <strong>Finished Product:</strong> Enter the Item ID/Code of the product you want to manufacture</li>
-                      <li>• <strong>Components:</strong> Enter the Item ID/Code of raw materials or sub-assemblies needed</li>
+                      <li>• <strong>Finished Product:</strong> Search and select the finished product you want to manufacture</li>
+                      <li>• <strong>Components:</strong> Search and select raw materials or sub-assemblies needed</li>
                       <li>• <strong>Quantity:</strong> How many units of this component are needed to make 1 finished product</li>
                     </ul>
                     <p className="text-xs text-blue-700 mt-2">
-                      📝 Note: You need to have items created in your database first. Use their IDs or codes here.
+                      ✨ Start typing to search items by name or code
                     </p>
                   </div>
                 </div>
@@ -302,20 +303,12 @@ export default function BOMPage() {
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Finished Product *
-                    <span className="ml-2 text-xs text-gray-500 font-normal">
-                      (Enter Item ID or Code from your inventory)
-                    </span>
                   </label>
-                  <input
-                    type="text"
+                  <ItemSearch
                     value={formData.itemId}
-                    onChange={(e) => setFormData({ ...formData, itemId: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                    placeholder="e.g., FG-001, PROD-123, or item UUID from database"
+                    onSelect={(item) => setFormData({ ...formData, itemId: item.id })}
+                    placeholder="Search by item name or code..."
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    💡 Tip: This should be the ID of the finished/assembled product
-                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Version</label>
@@ -360,15 +353,13 @@ export default function BOMPage() {
                         <div className="grid grid-cols-12 gap-3">
                           <div className="col-span-4">
                             <label className="text-xs text-gray-600 font-medium">
-                              Component * 
-                              <span className="ml-1 text-gray-400 font-normal">(Item ID/Code)</span>
+                              Component *
                             </label>
-                            <input
-                              type="text"
+                            <ItemSearch
                               value={item.itemId}
-                              onChange={(e) => handleUpdateItem(index, 'itemId', e.target.value)}
+                              onSelect={(selectedItem) => handleUpdateItem(index, 'itemId', selectedItem.id)}
+                              placeholder="Search item..."
                               className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
-                              placeholder="e.g., RM-001, COMP-123"
                             />
                           </div>
                           <div className="col-span-2">
