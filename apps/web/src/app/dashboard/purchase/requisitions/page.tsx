@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 
@@ -22,6 +22,7 @@ interface Item {
 
 export default function PurchaseRequisitionsPage() {
   const router = useRouter();
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [items, setItems] = useState<PRItem[]>([]);
   const [formData, setFormData] = useState({
@@ -40,14 +41,27 @@ export default function PurchaseRequisitionsPage() {
 
   const [masterItems, setMasterItems] = useState<Item[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
   const [useManualEntry, setUseManualEntry] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
   useEffect(() => {
     if (showCreateForm) {
       fetchMasterItems();
     }
   }, [showCreateForm]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const fetchMasterItems = async () => {
     try {
@@ -58,29 +72,37 @@ export default function PurchaseRequisitionsPage() {
     }
   };
 
-  const filteredItems = masterItems.filter(item =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.code.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredItems = masterItems.filter(item => {
+    const search = searchTerm.toLowerCase();
+    return (
+      item.name.toLowerCase().includes(search) ||
+      item.code.toLowerCase().includes(search) ||
+      (item.uom && item.uom.toLowerCase().includes(search))
+    );
+  });
 
   const selectItem = (item: Item) => {
+    setSelectedItemId(item.id);
     setItemForm({
       ...itemForm,
       itemName: `${item.code} - ${item.name}`,
       estimatedPrice: item.standard_cost?.toString() || '',
     });
-    setSearchTerm('');
-    setShowSearchResults(false);
+    setSearchTerm(`${item.code} - ${item.name}`);
+    setShowDropdown(false);
   };
 
   const addItem = () => {
-    if (!itemForm.itemName || !itemForm.quantity) return;
+    if ((!itemForm.itemName && !searchTerm) || !itemForm.quantity) {
+      alert('Please fill in required fields');
+      return;
+    }
 
     setItems([
       ...items,
       {
         id: Date.now().toString(),
-        itemName: itemForm.itemName,
+        itemName: useManualEntry ? itemForm.itemName : searchTerm,
         quantity: parseFloat(itemForm.quantity),
         estimatedPrice: itemForm.estimatedPrice ? parseFloat(itemForm.estimatedPrice) : undefined,
         specifications: itemForm.specifications,
@@ -93,6 +115,8 @@ export default function PurchaseRequisitionsPage() {
       estimatedPrice: '',
       specifications: '',
     });
+    setSearchTerm('');
+    setSelectedItemId(null);
     setUseManualEntry(false);
   };
 
@@ -221,35 +245,78 @@ export default function PurchaseRequisitionsPage() {
                   <div className="bg-gray-50 rounded-lg p-4 mb-4">
                     <div className="grid grid-cols-4 gap-3 mb-3">
                       {/* Item Name/Search */}
-                      <div className="relative">
+                      <div className="relative" ref={dropdownRef}>
                         {!useManualEntry ? (
                           <>
-                            <input
-                              type="text"
-                              value={itemForm.itemName || searchTerm}
-                              onChange={(e) => {
-                                setSearchTerm(e.target.value);
-                                setShowSearchResults(true);
-                                setItemForm({ ...itemForm, itemName: '' });
-                              }}
-                              onFocus={() => setShowSearchResults(true)}
-                              placeholder="Search items... *"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-                            />
-                            {showSearchResults && searchTerm && filteredItems.length > 0 && (
-                              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                                {filteredItems.map((item) => (
-                                  <button
-                                    key={item.id}
-                                    onClick={() => selectItem(item)}
-                                    className="w-full text-left px-4 py-2 hover:bg-amber-50 border-b last:border-b-0"
-                                  >
-                                    <div className="font-medium">{item.code} - {item.name}</div>
-                                    <div className="text-sm text-gray-500">
-                                      UOM: {item.uom} {item.standard_cost && `• ₹${item.standard_cost}`}
+                            <div className="relative">
+                              <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={(e) => {
+                                  setSearchTerm(e.target.value);
+                                  setShowDropdown(true);
+                                  setSelectedItemId(null);
+                                }}
+                                onFocus={() => setShowDropdown(true)}
+                                placeholder="🔍 Search items by name, code..."
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                                autoComplete="off"
+                              />
+                              {searchTerm && (
+                                <button
+                                  onClick={() => {
+                                    setSearchTerm('');
+                                    setSelectedItemId(null);
+                                    setItemForm({ ...itemForm, estimatedPrice: '' });
+                                  }}
+                                  className="absolute right-2 top-2.5 text-gray-400 hover:text-gray-600"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                            {showDropdown && searchTerm && (
+                              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-72 overflow-y-auto">
+                                {filteredItems.length > 0 ? (
+                                  <>
+                                    <div className="sticky top-0 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 border-b">
+                                      {filteredItems.length} item{filteredItems.length !== 1 ? 's' : ''} found
                                     </div>
-                                  </button>
-                                ))}
+                                    {filteredItems.map((item) => (
+                                      <button
+                                        key={item.id}
+                                        onClick={() => selectItem(item)}
+                                        className={`w-full text-left px-4 py-3 hover:bg-amber-50 border-b last:border-b-0 transition-colors ${
+                                          selectedItemId === item.id ? 'bg-amber-100' : ''
+                                        }`}
+                                      >
+                                        <div className="flex justify-between items-start">
+                                          <div className="flex-1">
+                                            <div className="font-semibold text-gray-900">{item.name}</div>
+                                            <div className="text-sm text-gray-600 mt-1">
+                                              <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-xs font-medium mr-2">
+                                                {item.code}
+                                              </span>
+                                              <span className="text-gray-500">UOM: {item.uom}</span>
+                                            </div>
+                                          </div>
+                                          {item.standard_cost && (
+                                            <div className="text-right ml-2">
+                                              <div className="text-xs text-gray-500">Std Cost</div>
+                                              <div className="font-semibold text-green-700">₹{item.standard_cost.toFixed(2)}</div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </>
+                                ) : (
+                                  <div className="px-4 py-8 text-center text-gray-500">
+                                    <div className="text-4xl mb-2">🔍</div>
+                                    <div className="font-medium">No items found</div>
+                                    <div className="text-sm mt-1">Try a different search term</div>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </>
