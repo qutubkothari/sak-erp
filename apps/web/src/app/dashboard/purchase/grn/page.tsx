@@ -131,7 +131,7 @@ export default function GRNPage() {
   const fetchPurchaseOrders = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders?status=SENT', {
+      const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders?status=APPROVED', {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
