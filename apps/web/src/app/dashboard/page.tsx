@@ -105,13 +105,7 @@ export default function DashboardPage() {
                   borderColor: '#E8DCC4',
                   backgroundColor: 'white',
                 }}
-                onClick={() => {
-                  if (module.path === '/dashboard/purchase' || module.path === '/dashboard/bom') {
-                    router.push(module.path);
-                  } else {
-                    alert(`${module.name} - Coming Soon!`);
-                  }
-                }}
+                onClick={() => router.push(module.path)}
               >
                 <span className="text-3xl">{module.icon}</span>
                 <span className="font-medium" style={{ color: '#6F4E37' }}>
@@ -122,10 +116,10 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Coming Soon Notice */}
+        {/* Module Status Notice */}
         <div className="mt-8 p-6 rounded-xl border-2" style={{ backgroundColor: '#E8DCC4', borderColor: '#8B6F47' }}>
           <p className="text-center font-medium" style={{ color: '#6F4E37' }}>
-            🚀 Dashboard modules are under development. Full functionality coming soon!
+            ✅ All modules are active and ready to use! Click any module above to get started.
           </p>
         </div>
       </main>
