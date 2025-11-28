@@ -99,7 +99,7 @@ export default function BOMPage() {
         return;
       }
       
-      const response = await fetch('/api/v1/bom', {
+      const response = await fetch('http://13.205.17.214:4000/api/v1/bom', {
         headers: { Authorization: `Bearer ${token}` },
       });
       
@@ -127,7 +127,7 @@ export default function BOMPage() {
   const handleCreateBOM = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/bom', {
+      const response = await fetch('http://13.205.17.214:4000/api/v1/bom', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -152,7 +152,7 @@ export default function BOMPage() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/v1/bom/${bomId}/generate-pr`, {
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/bom/${bomId}/generate-pr`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -176,7 +176,7 @@ export default function BOMPage() {
       setLoadingTrail(true);
       const token = localStorage.getItem('accessToken');
       
-      const response = await fetch(`/api/v1/uid/${uid}/purchase-trail`, {
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/uid/${uid}/purchase-trail`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
