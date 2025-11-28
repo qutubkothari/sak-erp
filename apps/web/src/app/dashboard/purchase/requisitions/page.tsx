@@ -316,13 +316,28 @@ export default function PurchaseRequisitionsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Department *
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={formData.department}
                       onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                      placeholder="e.g., Production, Maintenance"
-                    />
+                    >
+                      <option value="">Select Department</option>
+                      <option value="Production">Production</option>
+                      <option value="Maintenance">Maintenance</option>
+                      <option value="Quality Assurance">Quality Assurance</option>
+                      <option value="QA Testing">QA Testing</option>
+                      <option value="Engineering">Engineering</option>
+                      <option value="R&D">R&D</option>
+                      <option value="Warehouse">Warehouse</option>
+                      <option value="Logistics">Logistics</option>
+                      <option value="Procurement">Procurement</option>
+                      <option value="IT">IT</option>
+                      <option value="Admin">Admin</option>
+                      <option value="HR">HR</option>
+                      <option value="Finance">Finance</option>
+                      <option value="Sales">Sales</option>
+                      <option value="Marketing">Marketing</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
