@@ -619,7 +619,7 @@ export class InventoryService {
       .from('items')
       .select('*')
       .eq('tenant_id', tenantId)
-      .order('item_code', { ascending: true });
+      .order('code', { ascending: true });
 
     if (error) throw new BadRequestException(error.message);
     return data;
@@ -646,17 +646,16 @@ export class InventoryService {
 
     const item = {
       tenant_id: tenantId,
-      item_code: itemData.item_code,
-      item_name: itemData.item_name,
+      code: itemData.code || itemData.item_code,
+      name: itemData.name || itemData.item_name,
       description: itemData.description,
       category: itemData.category,
       uom: itemData.uom,
       standard_cost: itemData.standard_cost,
       selling_price: itemData.selling_price,
-      reorder_point: itemData.reorder_point,
-      max_stock_level: itemData.max_stock_level,
+      reorder_level: itemData.reorder_level || itemData.reorder_point,
+      reorder_quantity: itemData.reorder_quantity || itemData.max_stock_level,
       lead_time_days: itemData.lead_time_days,
-      preferred_vendor_id: itemData.preferred_vendor_id,
       is_active: true,
     };
 
@@ -675,17 +674,16 @@ export class InventoryService {
     const { tenantId } = req.user as any;
 
     const updates = {
-      item_code: itemData.item_code,
-      item_name: itemData.item_name,
+      code: itemData.code || itemData.item_code,
+      name: itemData.name || itemData.item_name,
       description: itemData.description,
       category: itemData.category,
       uom: itemData.uom,
       standard_cost: itemData.standard_cost,
       selling_price: itemData.selling_price,
-      reorder_point: itemData.reorder_point,
-      max_stock_level: itemData.max_stock_level,
+      reorder_level: itemData.reorder_level || itemData.reorder_point,
+      reorder_quantity: itemData.reorder_quantity || itemData.max_stock_level,
       lead_time_days: itemData.lead_time_days,
-      preferred_vendor_id: itemData.preferred_vendor_id,
       is_active: itemData.is_active,
       updated_at: new Date().toISOString(),
     };
