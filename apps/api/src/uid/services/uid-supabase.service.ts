@@ -380,6 +380,220 @@ export class UidSupabaseService {
   }
 
   /**
+   * Get complete trace data for a UID including timeline, components, vendor, quality, and customer
+   */
+  async getCompleteTrace(req: any, uid: string) {
+    const tenantId = req.user.tenantId;
+
+    // 1. Get main UID record with item details
+    const { data: uidRecord, error: uidError } = await this.supabase
+      .from('uid_registry')
+      .select(`
+        *,
+        item:items(id, code, name, description, category, uom)
+      `)
+      .eq('tenant_id', tenantId)
+      .eq('uid', uid)
+      .single();
+
+    if (uidError || !uidRecord) {
+      throw new Error('UID not found');
+    }
+
+    // Parse lifecycle
+    const lifecycle = Array.isArray(uidRecord.lifecycle)
+      ? uidRecord.lifecycle
+      : typeof uidRecord.lifecycle === 'string'
+      ? JSON.parse(uidRecord.lifecycle)
+      : [];
+
+    // 2. Get vendor details (from GRN if available)
+    let vendor = null;
+    const grnReference = lifecycle.find((event: any) => 
+      event.reference && event.reference.includes('GRN')
+    );
+    
+    if (grnReference) {
+      const grnNumber = grnReference.reference;
+      const { data: grn } = await this.supabase
+        .from('grn')
+        .select(`
+          id,
+          vendor:vendors(code, name, contact_person, email)
+        `)
+        .eq('tenant_id', tenantId)
+        .eq('grn_number', grnNumber)
+        .single();
+
+      if (grn && grn.vendor) {
+        const vendorData = Array.isArray(grn.vendor) ? grn.vendor[0] : grn.vendor;
+        vendor = {
+          code: vendorData.code,
+          name: vendorData.name,
+          contact: `${vendorData.contact_person} (${vendorData.email})`,
+        };
+      }
+    }
+
+    // 3. Get quality checkpoints
+    const quality_checkpoints = lifecycle
+      .filter((event: any) => 
+        event.stage.includes('QC') || 
+        event.stage.includes('QUALITY') || 
+        event.stage.includes('INSPECTION')
+      )
+      .map((event: any) => ({
+        stage: event.stage,
+        status: event.reference.includes('PASSED') ? 'PASSED' : 
+                event.reference.includes('FAILED') ? 'FAILED' : 'PENDING',
+        date: event.timestamp,
+        inspector: event.user,
+        notes: event.reference,
+      }));
+
+    // 4. Get components (child UIDs) with their details
+    const child_uids = Array.isArray(uidRecord.child_uids) 
+      ? uidRecord.child_uids 
+      : typeof uidRecord.child_uids === 'string' && uidRecord.child_uids
+      ? JSON.parse(uidRecord.child_uids)
+      : [];
+
+    let components = [];
+    if (child_uids.length > 0) {
+      const { data: childRecords } = await this.supabase
+        .from('uid_registry')
+        .select(`
+          uid,
+          batch_number,
+          received_date,
+          qc_status,
+          item:items(code, name)
+        `)
+        .in('uid', child_uids);
+
+      if (childRecords) {
+        components = childRecords.map((child: any) => {
+          const itemData = Array.isArray(child.item) ? child.item[0] : child.item;
+          return {
+            uid: child.uid,
+            item_code: itemData?.code || 'N/A',
+            item_name: itemData?.name || 'N/A',
+            batch_number: child.batch_number || 'N/A',
+            received_date: child.received_date || 'N/A',
+            qc_status: child.qc_status || 'PENDING',
+          };
+        });
+
+        // Get vendor names for components
+        for (const component of components) {
+          const { data: componentRecord } = await this.supabase
+            .from('uid_registry')
+            .select('lifecycle')
+            .eq('uid', component.uid)
+            .single();
+
+          if (componentRecord) {
+            const compLifecycle = Array.isArray(componentRecord.lifecycle)
+              ? componentRecord.lifecycle
+              : typeof componentRecord.lifecycle === 'string'
+              ? JSON.parse(componentRecord.lifecycle)
+              : [];
+            
+            const compGrnRef = compLifecycle.find((e: any) => 
+              e.reference && e.reference.includes('GRN')
+            );
+
+            if (compGrnRef) {
+              const { data: compGrn } = await this.supabase
+                .from('grn')
+                .select('vendor:vendors(name)')
+                .eq('tenant_id', tenantId)
+                .eq('grn_number', compGrnRef.reference)
+                .single();
+
+              if (compGrn && compGrn.vendor) {
+                const vendorData = Array.isArray(compGrn.vendor) ? compGrn.vendor[0] : compGrn.vendor;
+                component.vendor_name = vendorData?.name || null;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 5. Get parent products (where this UID is used)
+    const parent_uids = Array.isArray(uidRecord.parent_uids) 
+      ? uidRecord.parent_uids 
+      : typeof uidRecord.parent_uids === 'string' && uidRecord.parent_uids
+      ? JSON.parse(uidRecord.parent_uids)
+      : [];
+
+    let parent_products = [];
+    if (parent_uids.length > 0) {
+      const { data: parentRecords } = await this.supabase
+        .from('uid_registry')
+        .select(`
+          uid,
+          item:items(code, name)
+        `)
+        .in('uid', parent_uids);
+
+      if (parentRecords) {
+        parent_products = parentRecords.map((parent: any) => {
+          const itemData = Array.isArray(parent.item) ? parent.item[0] : parent.item;
+          return {
+            uid: parent.uid,
+            item_code: itemData?.code || 'N/A',
+            item_name: itemData?.name || 'N/A',
+          };
+        });
+      }
+    }
+
+    // 6. Get customer details (from sales order/delivery if available)
+    let customer = null;
+    const shipmentRef = lifecycle.find((event: any) => 
+      event.stage.includes('SHIPPED') || 
+      event.stage.includes('DELIVERED') ||
+      event.reference.includes('SO-') ||
+      event.reference.includes('INV-')
+    );
+
+    if (shipmentRef) {
+      // Try to extract invoice or SO number
+      const refNumber = shipmentRef.reference;
+      
+      // You can enhance this to fetch from sales_orders or invoices table
+      customer = {
+        name: 'Customer Name', // Placeholder - fetch from sales_orders
+        location: shipmentRef.location || 'Customer Location',
+        delivery_date: shipmentRef.timestamp,
+        invoice_number: refNumber,
+      };
+    }
+
+    const itemData = Array.isArray(uidRecord.item) ? uidRecord.item[0] : uidRecord.item;
+
+    return {
+      uid: uidRecord.uid,
+      entity_type: uidRecord.entity_type,
+      item: {
+        code: itemData?.code || 'N/A',
+        name: itemData?.name || 'N/A',
+        category: itemData?.category || 'N/A',
+      },
+      status: uidRecord.status,
+      location: uidRecord.location,
+      lifecycle,
+      components,
+      parent_products,
+      vendor,
+      quality_checkpoints,
+      customer,
+    };
+  }
+
+  /**
    * Generate checksum
    */
   private generateChecksum(input: string): string {

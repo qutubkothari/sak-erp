@@ -123,13 +123,21 @@ export default function UIDTrackingPage() {
       </button>
 
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          🔍 UID Tracking System
-        </h1>
-        <p className="text-gray-600">
-          Complete traceability from procurement to service - Every part has a story
-        </p>
+      <div className="mb-6 flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            🔍 UID Tracking System
+          </h1>
+          <p className="text-gray-600">
+            Complete traceability from procurement to service - Every part has a story
+          </p>
+        </div>
+        <button
+          onClick={() => router.push('/dashboard/uid/trace')}
+          className="bg-gradient-to-r from-orange-500 to-amber-500 text-white px-6 py-3 rounded-lg hover:from-orange-600 hover:to-amber-600 transition-colors font-semibold shadow-lg flex items-center gap-2"
+        >
+          🔍 Trace Product
+        </button>
       </div>
 
       {/* Search Bar */}

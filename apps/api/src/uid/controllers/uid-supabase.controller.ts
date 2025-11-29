@@ -83,4 +83,9 @@ export class UidSupabaseController {
       message: isValid ? 'UID format is valid' : 'Invalid UID format',
     };
   }
+
+  @Get('trace/:uid')
+  getCompleteTrace(@Request() req: any, @Param('uid') uid: string) {
+    return this.uidService.getCompleteTrace(req, uid);
+  }
 }
