@@ -458,7 +458,7 @@ export class UidSupabaseService {
       ? JSON.parse(uidRecord.child_uids)
       : [];
 
-    let components = [];
+    let components: any[] = [];
     if (child_uids.length > 0) {
       const { data: childRecords } = await this.supabase
         .from('uid_registry')
@@ -481,6 +481,7 @@ export class UidSupabaseService {
             batch_number: child.batch_number || 'N/A',
             received_date: child.received_date || 'N/A',
             qc_status: child.qc_status || 'PENDING',
+            vendor_name: null as string | null,
           };
         });
 
@@ -528,7 +529,7 @@ export class UidSupabaseService {
       ? JSON.parse(uidRecord.parent_uids)
       : [];
 
-    let parent_products = [];
+    let parent_products: any[] = [];
     if (parent_uids.length > 0) {
       const { data: parentRecords } = await this.supabase
         .from('uid_registry')
