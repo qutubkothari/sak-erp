@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 interface LifecycleEvent {
@@ -58,7 +58,7 @@ interface UIDTrace {
   } | null;
 }
 
-export default function TraceProductPage() {
+function TraceProductContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [searchUID, setSearchUID] = useState(searchParams?.get('uid') || '');
@@ -421,5 +421,17 @@ export default function TraceProductPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function TraceProductPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-lg">Loading...</div>
+      </div>
+    }>
+      <TraceProductContent />
+    </Suspense>
   );
 }
