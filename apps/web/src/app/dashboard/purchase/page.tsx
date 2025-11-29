@@ -1,9 +1,47 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { apiClient } from '../../../../lib/api-client';
 
 export default function PurchasePage() {
   const router = useRouter();
+  const [stats, setStats] = useState({
+    pendingPRs: 0,
+    activePOs: 0,
+    activeVendors: 0,
+    pendingGRNs: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch all statistics in parallel
+      const [prs, pos, vendors, grns] = await Promise.all([
+        apiClient.get('/purchase/requisitions').catch(() => []),
+        apiClient.get('/purchase/orders').catch(() => []),
+        apiClient.get('/purchase/vendors').catch(() => []),
+        apiClient.get('/purchase/grn').catch(() => []),
+      ]);
+
+      setStats({
+        pendingPRs: Array.isArray(prs) ? prs.filter((pr: any) => pr.status === 'PENDING' || pr.status === 'SUBMITTED').length : 0,
+        activePOs: Array.isArray(pos) ? pos.filter((po: any) => po.status === 'APPROVED' || po.status === 'PARTIAL').length : 0,
+        activeVendors: Array.isArray(vendors) ? vendors.filter((v: any) => v.is_active).length : 0,
+        pendingGRNs: Array.isArray(grns) ? grns.filter((grn: any) => grn.status === 'DRAFT' || grn.status === 'PENDING').length : 0,
+      });
+    } catch (error) {
+      console.error('Error fetching purchase stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const modules = [
     {
@@ -70,19 +108,27 @@ export default function PurchasePage() {
         <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
             <div className="text-sm text-gray-600">Pending PRs</div>
-            <div className="text-2xl font-bold text-gray-900">0</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {loading ? '...' : stats.pendingPRs}
+            </div>
           </div>
           <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
             <div className="text-sm text-gray-600">Active POs</div>
-            <div className="text-2xl font-bold text-gray-900">0</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {loading ? '...' : stats.activePOs}
+            </div>
           </div>
           <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
             <div className="text-sm text-gray-600">Active Vendors</div>
-            <div className="text-2xl font-bold text-gray-900">0</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {loading ? '...' : stats.activeVendors}
+            </div>
           </div>
           <div className="bg-white rounded-lg shadow p-4 border-l-4 border-orange-500">
             <div className="text-sm text-gray-600">Pending GRNs</div>
-            <div className="text-2xl font-bold text-gray-900">0</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {loading ? '...' : stats.pendingGRNs}
+            </div>
           </div>
         </div>
       </div>

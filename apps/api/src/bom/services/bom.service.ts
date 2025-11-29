@@ -13,6 +13,27 @@ export class BomService {
   }
 
   async create(tenantId: string, data: any) {
+    console.log('[BomService] create - Input data:', JSON.stringify(data, null, 2));
+    
+    // Check for duplicate BOM (same item + version)
+    const { data: existingBom, error: checkError } = await this.supabase
+      .from('bom_headers')
+      .select('id, version')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', data.itemId)
+      .eq('version', data.version || 1)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('[BomService] create - Error checking for duplicates:', checkError);
+    }
+
+    if (existingBom) {
+      throw new BadRequestException(
+        `A BOM already exists for this item with version ${data.version || 1}. Please use a different version number or update the existing BOM.`
+      );
+    }
+    
     const { data: bom, error } = await this.supabase
       .from('bom_headers')
       .insert({
@@ -28,9 +49,12 @@ export class BomService {
       .single();
 
     if (error) throw new BadRequestException(error.message);
+    console.log('[BomService] create - BOM header created:', bom.id);
 
     // Insert BOM items
     if (data.items && data.items.length > 0) {
+      console.log('[BomService] create - Component item IDs:', data.items.map((i: any) => i.itemId));
+      
       const items = data.items.map((item: any, index: number) => ({
         bom_id: bom.id,
         item_id: item.itemId,
@@ -52,19 +76,10 @@ export class BomService {
   }
 
   async findAll(tenantId: string, filters?: any) {
+    // Fetch BOM headers
     let query = this.supabase
       .from('bom_headers')
-      .select(`
-        *,
-        item:items(id, code, name, description, category, uom),
-        bom_items(
-          id,
-          quantity,
-          scrap_percentage,
-          sequence,
-          item:items(id, code, name, uom)
-        )
-      `)
+      .select('*')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false});
 
@@ -76,33 +91,131 @@ export class BomService {
       query = query.eq('is_active', filters.isActive);
     }
 
-    const { data, error } = await query;
-
+    const { data: headers, error } = await query;
     if (error) throw new BadRequestException(error.message);
-    return data;
+    
+    if (!headers || headers.length === 0) return [];
+
+    // Fetch all related items and bom_items in parallel
+    const itemIds = headers.map((h: any) => h.item_id);
+    const bomIds = headers.map((h: any) => h.id);
+
+    console.log('[BomService] findAll - fetching main items for IDs:', itemIds);
+    console.log('[BomService] findAll - fetching bom_items for BOM IDs:', bomIds);
+
+    const [itemsRes, bomItemsRes] = await Promise.all([
+      this.supabase.from('items').select('*').in('id', itemIds),
+      this.supabase.from('bom_items').select('*').in('bom_id', bomIds)
+    ]);
+
+    if (itemsRes.error) {
+      console.error('[BomService] Items query error:', itemsRes.error);
+      throw new BadRequestException(itemsRes.error.message);
+    }
+    if (bomItemsRes.error) {
+      console.error('[BomService] BOM items query error:', bomItemsRes.error);
+      throw new BadRequestException(bomItemsRes.error.message);
+    }
+
+    console.log('[BomService] Main items found:', itemsRes.data?.length);
+    console.log('[BomService] BOM items found:', bomItemsRes.data?.length);
+
+    // Fetch component items (items referenced by bom_items)
+    const componentItemIds = bomItemsRes.data?.map((bi: any) => bi.item_id) || [];
+    console.log('[BomService] findAll - fetching component items for IDs:', componentItemIds);
+    
+    let componentItems = [];
+    if (componentItemIds.length > 0) {
+      const { data: compItems, error: compError } = await this.supabase
+        .from('items')
+        .select('*')
+        .in('id', componentItemIds);
+      
+      if (compError) {
+        console.error('[BomService] Component items query error:', compError);
+      } else {
+        componentItems = compItems || [];
+        console.log('[BomService] Component items found:', componentItems.length);
+      }
+    }
+
+    // Create maps
+    const mainItemsMap = new Map(itemsRes.data?.map((i: any) => [i.id, i]));
+    const componentItemsMap = new Map(componentItems.map((i: any) => [i.id, i]));
+    const bomItemsMap = new Map();
+    
+    // Group bom_items by bom_id and attach component item details
+    bomItemsRes.data?.forEach((bi: any) => {
+      if (!bomItemsMap.has(bi.bom_id)) {
+        bomItemsMap.set(bi.bom_id, []);
+      }
+      bomItemsMap.get(bi.bom_id).push({
+        ...bi,
+        item: componentItemsMap.get(bi.item_id)
+      });
+    });
+
+    // Combine everything
+    return headers.map((h: any) => ({
+      ...h,
+      item: mainItemsMap.get(h.item_id),
+      bom_items: bomItemsMap.get(h.id) || []
+    }));
   }
 
   async findOne(tenantId: string, id: string) {
-    const { data, error } = await this.supabase
+    // Fetch BOM header
+    const { data: header, error } = await this.supabase
       .from('bom_headers')
-      .select(`
-        *,
-        item:items(id, code, name, description, category, uom),
-        bom_items(
-          id,
-          quantity,
-          scrap_percentage,
-          sequence,
-          notes,
-          item:items(id, code, name, uom, category)
-        )
-      `)
+      .select('*')
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
 
     if (error) throw new NotFoundException('BOM not found');
-    return data;
+
+    // Fetch item and bom_items
+    const [itemRes, bomItemsRes] = await Promise.all([
+      this.supabase.from('items').select('*').eq('id', header.item_id).single(),
+      this.supabase.from('bom_items').select('*').eq('bom_id', id)
+    ]);
+
+    if (itemRes.error) throw new BadRequestException(itemRes.error.message);
+    if (bomItemsRes.error) throw new BadRequestException(bomItemsRes.error.message);
+
+    // Fetch items for bom_items
+    const bomItemIds = bomItemsRes.data?.map((bi: any) => bi.item_id) || [];
+    console.log('[BomService] findOne - Component item IDs:', bomItemIds);
+    
+    const { data: bomItems, error: bomItemsItemsError } = await this.supabase
+      .from('items')
+      .select('*')
+      .in('id', bomItemIds);
+
+    console.log('[BomService] findOne - Fetched component items:', bomItems?.length || 0);
+    if (bomItemsItemsError) {
+      console.error('[BomService] findOne - Error fetching component items:', bomItemsItemsError);
+      throw new BadRequestException(bomItemsItemsError.message);
+    }
+
+    const itemsMap = new Map(bomItems?.map((i: any) => [i.id, i]));
+    console.log('[BomService] findOne - Items map size:', itemsMap.size);
+
+    const result = {
+      ...header,
+      item: itemRes.data,
+      bom_items: bomItemsRes.data?.map((bi: any) => {
+        const item = itemsMap.get(bi.item_id);
+        console.log('[BomService] findOne - Mapping bom_item:', bi.item_id, 'Found:', !!item);
+        return {
+          ...bi,
+          item
+        };
+      }) || []
+    };
+
+    console.log('[BomService] findOne - Final result bom_items count:', result.bom_items.length);
+    return result;
   }
 
   async update(tenantId: string, id: string, data: any) {
@@ -189,9 +302,9 @@ export class BomService {
     // Create Purchase Requisition
     const prData = {
       department: 'PRODUCTION',
+      purpose: `Manufacturing ${bom.item.code} - ${bom.item.name}`,
       requiredDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days from now
-      priority: 'MEDIUM',
-      notes: `Auto-generated from BOM ${bom.item.code} - ${bom.item.name} (Qty: ${quantity})`,
+      remarks: `Auto-generated from BOM for production quantity: ${quantity}`,
       items: itemsToOrder.map(item => ({
         itemId: item.itemId,
         quantity: item.quantity,
@@ -206,30 +319,43 @@ export class BomService {
       .insert({
         tenant_id: tenantId,
         pr_number: await this.generatePRNumber(tenantId),
+        request_date: new Date().toISOString().split('T')[0],
         department: prData.department,
+        purpose: prData.purpose,
         requested_by: userId,
         required_date: prData.requiredDate,
         status: 'DRAFT',
-        priority: prData.priority,
-        notes: prData.notes,
+        remarks: prData.remarks,
       })
       .select()
       .single();
 
-    if (error) throw new BadRequestException(error.message);
+    if (error) {
+      console.error('[BomService] PR creation error:', error);
+      throw new BadRequestException(error.message);
+    }
 
-    // Insert PR items
-    const prItems = prData.items.map((item: any) => ({
+    // Insert PR items with proper field names for purchase_requisition_items table
+    const prItems = itemsToOrder.map((item: any) => ({
       pr_id: pr.id,
-      item_id: item.itemId,
-      quantity: item.quantity,
-      specifications: item.specifications,
-      notes: `Drawing: ${item.drawingUrl || 'Not attached'}`,
+      item_code: item.itemCode,
+      item_name: item.itemName,
+      description: item.specifications || '',
+      uom: 'Nos', // Default UOM, could be fetched from item
+      requested_qty: item.quantity,
+      estimated_rate: 0,
+      required_date: prData.requiredDate,
+      remarks: `BOM: ${bom.item.code} (Qty: ${quantity}). Drawing: ${item.drawingUrl || 'Not attached'}`,
     }));
 
-    await this.supabase
+    const { error: itemsError } = await this.supabase
       .from('purchase_requisition_items')
       .insert(prItems);
+
+    if (itemsError) {
+      console.error('[BomService] PR items creation error:', itemsError);
+      throw new BadRequestException(itemsError.message);
+    }
 
     return {
       message: 'Purchase Requisition generated from BOM',

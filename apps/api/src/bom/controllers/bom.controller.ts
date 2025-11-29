@@ -25,7 +25,15 @@ export class BomController {
 
   @Get()
   async findAll(@Request() req: any, @Query() query: any) {
-    return this.bomService.findAll(req.user.tenantId, query);
+    console.log('[BomController] findAll called:', { tenantId: req.user.tenantId, query });
+    try {
+      const result = await this.bomService.findAll(req.user.tenantId, query);
+      console.log('[BomController] findAll success:', { count: result?.length });
+      return result;
+    } catch (error) {
+      console.error('[BomController] findAll error:', error);
+      throw error;
+    }
   }
 
   @Get(':id')

@@ -13,6 +13,24 @@ export class PurchaseOrdersService {
   }
 
   async create(tenantId: string, userId: string, data: any) {
+    // Check if PO already exists for this PR to prevent duplicates
+    if (data.prId) {
+      const { data: existingPOs, error: checkError } = await this.supabase
+        .from('purchase_orders')
+        .select('id, po_number')
+        .eq('tenant_id', tenantId)
+        .eq('pr_id', data.prId)
+        .limit(1);
+
+      if (checkError) throw new BadRequestException(checkError.message);
+      
+      if (existingPOs && existingPOs.length > 0) {
+        throw new BadRequestException(
+          `A Purchase Order (${existingPOs[0].po_number}) already exists for this PR. Cannot create duplicate PO.`
+        );
+      }
+    }
+
     // Generate PO number
     const poNumber = await this.generatePONumber(tenantId);
 
@@ -94,6 +112,10 @@ export class PurchaseOrdersService {
       query = query.eq('vendor_id', filters.vendorId);
     }
 
+    if (filters?.prId) {
+      query = query.eq('pr_id', filters.prId);
+    }
+
     if (filters?.search) {
       query = query.or(`po_number.ilike.%${filters.search}%,remarks.ilike.%${filters.search}%`);
     }
@@ -173,16 +195,25 @@ export class PurchaseOrdersService {
   }
 
   async updateStatus(tenantId: string, id: string, status: string) {
-    const { error } = await this.supabase
+    console.log('Updating PO status:', { tenantId, id, status });
+    
+    const { data, error } = await this.supabase
       .from('purchase_orders')
       .update({
         status,
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) throw new BadRequestException(error.message);
+    if (error) {
+      console.error('Status update error:', error);
+      throw new BadRequestException(error.message);
+    }
+    
+    console.log('Status updated successfully:', data);
     return this.findOne(tenantId, id);
   }
 

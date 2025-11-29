@@ -102,6 +102,10 @@ export class GrnService {
   }
 
   async findAll(tenantId: string, filters?: any) {
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
     let query = this.supabase
       .from('grn')
       .select(`
@@ -109,10 +113,7 @@ export class GrnService {
         purchase_order:purchase_orders(id, po_number, po_date),
         vendor:vendors(id, code, name, contact_person),
         warehouse:warehouses(id, code, name),
-        grn_items(
-          *,
-          item:items(id, code, name)
-        )
+        grn_items(*)
       `)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false });
@@ -135,8 +136,12 @@ export class GrnService {
 
     const { data, error } = await query;
 
-    if (error) throw new BadRequestException(error.message);
-    return data;
+    if (error) {
+      console.error('GRN findAll error:', error);
+      throw new BadRequestException(error.message);
+    }
+    
+    return data || [];
   }
 
   async findOne(tenantId: string, id: string) {
@@ -147,10 +152,7 @@ export class GrnService {
         purchase_order:purchase_orders(id, po_number, po_date),
         vendor:vendors(id, code, name, contact_person, email, phone),
         warehouse:warehouses(id, code, name),
-        grn_items(
-          *,
-          item:items(id, code, name)
-        )
+        grn_items(*)
       `)
       .eq('tenant_id', tenantId)
       .eq('id', id)
@@ -231,6 +233,50 @@ export class GrnService {
         }
       }
     }
+
+    return this.findOne(tenantId, id);
+  }
+
+  async updateStatus(tenantId: string, id: string, status: string, userId: string) {
+    // Accept both frontend values (APPROVED/REJECTED) and database values (DRAFT/COMPLETED/CANCELLED)
+    const validStatuses = ['DRAFT', 'COMPLETED', 'CANCELLED', 'APPROVED', 'REJECTED'];
+    if (!validStatuses.includes(status)) {
+      throw new BadRequestException(`Invalid status: ${status}. Must be one of: ${validStatuses.join(', ')}`);
+    }
+
+    // Get current GRN
+    const grn = await this.findOne(tenantId, id);
+
+    // Map frontend values to database enum values (grn_status only has: DRAFT, COMPLETED, CANCELLED)
+    let dbStatus = status;
+    if (status === 'APPROVED') {
+      dbStatus = 'COMPLETED';  // Approval means processing complete
+    } else if (status === 'REJECTED') {
+      dbStatus = 'CANCELLED';  // Rejection means cancelled
+    }
+
+    // If approved, auto-generate UIDs first, then update status
+    if (status === 'APPROVED') {
+      if (grn.grn_items && grn.grn_items.length > 0) {
+        for (const item of grn.grn_items) {
+          if (item.accepted_qty > 0) {
+            await this.generateUIDsForItem(tenantId, userId, grn, item);
+          }
+        }
+      }
+    }
+
+    // Update GRN status
+    const { error } = await this.supabase
+      .from('grn')
+      .update({
+        status: dbStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('tenant_id', tenantId)
+      .eq('id', id);
+
+    if (error) throw new BadRequestException(error.message);
 
     return this.findOne(tenantId, id);
   }

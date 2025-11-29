@@ -124,6 +124,10 @@ class ApiClient {
     if (typeof window === 'undefined') return;
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+    // Clear any cached user data to prevent tenant data leakage
+    localStorage.removeItem('user');
+    localStorage.removeItem('tenant');
+    localStorage.removeItem('tenantId');
   }
 
   /**
@@ -150,6 +154,9 @@ class ApiClient {
    * Login user
    */
   async login(data: LoginData): Promise<ApiResponse<LoginResponse>> {
+    // Clear any existing session data before login to prevent tenant mixing
+    this.clearTokens();
+    
     const response = await this.request<LoginResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),

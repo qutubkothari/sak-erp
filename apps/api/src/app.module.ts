@@ -19,6 +19,7 @@ import { UserModule } from './user/user.module';
 import { PurchaseModule } from './purchase/purchase.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { ItemsModule } from './items/items.module';
+import { CategoriesModule } from './categories/categories.module';
 import { ProductionModule } from './production/production.module';
 import { QualityModule } from './quality/quality.module';
 import { SalesModule } from './sales/sales.module';
@@ -26,6 +27,7 @@ import { ServiceModule } from './service/service.module';
 import { BomModule } from './bom/bom.module';
 import { DocumentsModule } from './documents/documents.module';
 import { HrModule } from './hr/hr.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 // Support Modules
 import { WorkflowModule } from './workflow/workflow.module';
@@ -77,6 +79,7 @@ import { AuditModule } from './audit/audit.module';
     PurchaseModule,
     InventoryModule,
     ItemsModule,
+    CategoriesModule,
     ProductionModule,
     QualityModule,
     SalesModule,
@@ -84,6 +87,7 @@ import { AuditModule } from './audit/audit.module';
     BomModule,
     HrModule,
     DocumentsModule,
+    DashboardModule,
 
     // Support
     WorkflowModule,

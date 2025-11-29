@@ -13,8 +13,9 @@ export class InventoryController {
 
   // Items Master
   @Get('items')
-  async getItems(@Request() req: any, @Query('search') search?: string) {
-    return this.itemsService.findAll(req.user.tenantId, search);
+  async getItems(@Request() req: any, @Query('search') search?: string, @Query('includeInactive') includeInactive?: string) {
+    const includeInactiveBool = includeInactive === 'true';
+    return this.itemsService.findAll(req.user.tenantId, search, includeInactiveBool);
   }
 
   @Get('items/search')

@@ -19,8 +19,12 @@ export class ItemsController {
   constructor(private readonly itemsService: ItemsService) {}
 
   @Get()
-  async findAll(@Request() req: any, @Query('search') search?: string) {
-    return this.itemsService.findAll(req.user.tenantId, search);
+  async findAll(@Request() req: any, @Query('search') search?: string, @Query('includeInactive') includeInactive?: string) {
+    const includeInactiveBool = includeInactive === 'true';
+    console.log('[ItemsController] findAll called:', { tenantId: req.user.tenantId, search, includeInactive, includeInactiveBool });
+    const result = await this.itemsService.findAll(req.user.tenantId, search, includeInactiveBool);
+    console.log('[ItemsController] findAll result:', { count: result.length });
+    return result;
   }
 
   @Get('search')
@@ -36,6 +40,11 @@ export class ItemsController {
   @Post()
   async create(@Request() req: any, @Body() body: any) {
     return this.itemsService.create(req.user.tenantId, body);
+  }
+
+  @Post('bulk')
+  async bulkCreate(@Request() req: any, @Body() body: { items: any[] }) {
+    return this.itemsService.bulkCreate(req.user.tenantId, body.items);
   }
 
   @Put(':id')

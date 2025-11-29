@@ -8,13 +8,22 @@ export class ItemsService {
     process.env.SUPABASE_KEY!,
   );
 
-  async findAll(tenantId: string, search?: string) {
+  async findAll(tenantId: string, search?: string, includeInactive?: boolean) {
+    console.log('[ItemsService] findAll called:', { tenantId, search, includeInactive });
+    
     let query = this.supabase
       .from('items')
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('is_active', true)
       .order('name', { ascending: true });
+
+    // Only filter by is_active if we're not including inactive items
+    if (!includeInactive) {
+      console.log('[ItemsService] Filtering for active items only');
+      query = query.eq('is_active', true);
+    } else {
+      console.log('[ItemsService] Including inactive items');
+    }
 
     if (search) {
       query = query.or(`code.ilike.%${search}%,name.ilike.%${search}%,description.ilike.%${search}%`);
@@ -23,9 +32,11 @@ export class ItemsService {
     const { data, error } = await query;
 
     if (error) {
+      console.error('[ItemsService] Query error:', error);
       throw new Error(`Failed to fetch items: ${error.message}`);
     }
 
+    console.log('[ItemsService] Query successful:', { count: data?.length || 0 });
     return data || [];
   }
 
@@ -67,6 +78,15 @@ export class ItemsService {
   }
 
   async create(tenantId: string, itemData: any) {
+    // Validate HSN code if provided
+    let validatedHsn = null;
+    if (itemData.hsnCode || itemData.hsn_code) {
+      const hsnStr = String(itemData.hsnCode || itemData.hsn_code).trim();
+      if (/^\d{4}$|^\d{6}$|^\d{8}$/.test(hsnStr)) {
+        validatedHsn = hsnStr;
+      }
+    }
+
     const { data, error } = await this.supabase
       .from('items')
       .insert({
@@ -80,6 +100,7 @@ export class ItemsService {
         min_stock: itemData.minStock,
         max_stock: itemData.maxStock,
         standard_cost: itemData.standardCost,
+        hsn_code: validatedHsn,
         is_active: true,
         metadata: itemData.metadata || {},
       })
@@ -93,22 +114,142 @@ export class ItemsService {
     return data;
   }
 
+  async bulkCreate(tenantId: string, items: any[]) {
+    const results = {
+      success: 0,
+      failed: 0,
+      errors: [] as any[],
+    };
+
+    // Map category names from user's format to database format
+    const categoryMap: any = {
+      'Services': 'SERVICE',
+      'Injection Moulding': 'COMPONENT',
+      'Machining': 'COMPONENT',
+      'Raw Material': 'RAW_MATERIAL',
+      'Products': 'FINISHED_GOODS',
+      'Sub Assemblies': 'SUBASSEMBLY',
+      'Consumables': 'CONSUMABLE',
+      'Packing Material': 'PACKING_MATERIAL',
+      'Spare Parts': 'SPARE_PART',
+    };
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      try {
+        // Map Excel column names to database fields - support multiple formats
+        const rawCode = item['Item Code'] || item.code || item.Code || item.CODE || item['Item code'] || item['item code'];
+        const rawName = item['Item Name'] || item.name || item.Name || item.NAME || item['Item name'] || item['item name'];
+        const rawCategory = item['Item Group'] || item.category || item.Category || item.CATEGORY || item['Item group'] || item['item group'];
+        const rawUom = item['Default Unit of Measure'] || item.uom || item.UOM || item.unit || item.Unit || item['Unit of Measure'];
+        const rawHsn = item['HSN/SAC'] || item.hsn || item.HSN || item.hsn_code || item['HSN Code'];
+
+        // Validate HSN code (must be 4, 6, or 8 digits)
+        let validatedHsn = null;
+        if (rawHsn) {
+          const hsnStr = String(rawHsn).trim();
+          if (/^\d{4}$|^\d{6}$|^\d{8}$/.test(hsnStr)) {
+            validatedHsn = hsnStr;
+          } else {
+            console.warn(`Invalid HSN code for row ${i + 1}: ${hsnStr}. Must be 4, 6, or 8 digits.`);
+          }
+        }
+
+        // Map category to database format
+        let mappedCategory = categoryMap[rawCategory] || rawCategory || 'RAW_MATERIAL';
+        // If still not a valid category, default to RAW_MATERIAL
+        if (!['RAW_MATERIAL', 'COMPONENT', 'SUBASSEMBLY', 'FINISHED_GOODS', 'CONSUMABLE', 'PACKING_MATERIAL', 'SPARE_PART', 'SERVICE'].includes(mappedCategory)) {
+          mappedCategory = 'RAW_MATERIAL';
+        }
+
+        const itemData = {
+          code: rawCode,
+          name: rawName || rawCode, // Use code as name if name is not provided
+          description: item.description || item.Description || item.DESCRIPTION || '',
+          category: mappedCategory,
+          uom: rawUom || 'PCS',
+          standard_cost: parseFloat(item.standard_cost || item.StandardCost || item.cost || item.Cost || 0),
+          selling_price: parseFloat(item.selling_price || item.SellingPrice || item.price || item.Price || 0),
+          reorder_level: parseInt(item.reorder_level || item.ReorderLevel || item.min_qty || 0),
+          reorder_quantity: parseInt(item.reorder_quantity || item.ReorderQuantity || item.order_qty || 0),
+          lead_time_days: parseInt(item.lead_time_days || item.LeadTimeDays || item.lead_time || 0),
+        };
+
+        const { error } = await this.supabase
+          .from('items')
+          .insert({
+            tenant_id: tenantId,
+            code: itemData.code,
+            name: itemData.name,
+            description: itemData.description,
+            category: itemData.category,
+            uom: itemData.uom,
+            standard_cost: itemData.standard_cost,
+            selling_price: itemData.selling_price,
+            reorder_level: itemData.reorder_level,
+            reorder_quantity: itemData.reorder_quantity,
+            lead_time_days: itemData.lead_time_days,
+            hsn_code: validatedHsn,
+            is_active: true,
+            metadata: {
+              item_group: rawCategory || null,
+            },
+          });
+
+        if (error) {
+          results.failed++;
+          results.errors.push({
+            row: i + 1,
+            item: itemData.name || itemData.code,
+            error: error.message,
+          });
+        } else {
+          results.success++;
+        }
+      } catch (err: any) {
+        results.failed++;
+        results.errors.push({
+          row: i + 1,
+          item: item.name || item.code || 'Unknown',
+          error: err.message,
+        });
+      }
+    }
+
+    return results;
+  }
+
   async update(tenantId: string, id: string, itemData: any) {
+    // Validate HSN code if provided
+    let validatedHsn = null;
+    if (itemData.hsnCode || itemData.hsn_code) {
+      const hsnStr = String(itemData.hsnCode || itemData.hsn_code).trim();
+      if (/^\d{4}$|^\d{6}$|^\d{8}$/.test(hsnStr)) {
+        validatedHsn = hsnStr;
+      }
+    }
+
+    const updateData: any = {
+      updated_at: new Date().toISOString(),
+    };
+
+    // Only update fields that are provided
+    if (itemData.code !== undefined) updateData.code = itemData.code;
+    if (itemData.name !== undefined) updateData.name = itemData.name;
+    if (itemData.description !== undefined) updateData.description = itemData.description;
+    if (itemData.category !== undefined) updateData.category = itemData.category;
+    if (itemData.uom !== undefined) updateData.uom = itemData.uom;
+    if (itemData.reorderLevel !== undefined) updateData.reorder_level = itemData.reorderLevel;
+    if (itemData.minStock !== undefined) updateData.min_stock = itemData.minStock;
+    if (itemData.maxStock !== undefined) updateData.max_stock = itemData.maxStock;
+    if (itemData.standardCost !== undefined) updateData.standard_cost = itemData.standardCost;
+    if (itemData.metadata !== undefined) updateData.metadata = itemData.metadata;
+    if (validatedHsn !== null) updateData.hsn_code = validatedHsn;
+    if (itemData.is_active !== undefined) updateData.is_active = itemData.is_active;
+
     const { data, error } = await this.supabase
       .from('items')
-      .update({
-        code: itemData.code,
-        name: itemData.name,
-        description: itemData.description,
-        category: itemData.category,
-        uom: itemData.uom,
-        reorder_level: itemData.reorderLevel,
-        min_stock: itemData.minStock,
-        max_stock: itemData.maxStock,
-        standard_cost: itemData.standardCost,
-        metadata: itemData.metadata,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .select()

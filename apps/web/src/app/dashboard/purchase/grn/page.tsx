@@ -10,6 +10,7 @@ interface GRN {
   invoice_number: string;
   invoice_date: string;
   status: string;
+  remarks?: string;
   vendor: {
     name: string;
     code: string;
@@ -18,13 +19,19 @@ interface GRN {
     po_number: string;
   };
   warehouse: {
+    id?: string;
     name: string;
   };
   grn_items: Array<{
-    item: { name: string; code: string };
-    received_quantity: number;
-    accepted_quantity: number;
-    rejected_quantity: number;
+    item_code?: string;
+    item_name?: string;
+    item?: { name: string; code: string };
+    received_qty?: number;
+    accepted_qty?: number;
+    rejected_qty?: number;
+    received_quantity?: number;
+    accepted_quantity?: number;
+    rejected_quantity?: number;
     uid?: string;
     batch_number?: string;
   }>;
@@ -99,6 +106,31 @@ export default function GRNPage() {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedGRN, setSelectedGRN] = useState<GRN | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editFormData, setEditFormData] = useState<{
+    invoiceNumber: string;
+    invoiceDate: string;
+    warehouseId: string;
+    notes: string;
+    items: Array<{
+      id?: string;
+      itemCode: string;
+      itemName: string;
+      receivedQty: number;
+      acceptedQty: number;
+      rejectedQty: number;
+      batchNumber: string;
+    }>;
+  }>({
+    invoiceNumber: '',
+    invoiceDate: '',
+    warehouseId: '',
+    notes: '',
+    items: [],
+  });
 
   const [formData, setFormData] = useState({
     poId: '',
@@ -133,7 +165,7 @@ export default function GRNPage() {
   const fetchPurchaseOrders = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders', {
+      const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders?status=APPROVED', {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -234,6 +266,48 @@ export default function GRNPage() {
     }
   };
 
+  const handleUpdateGRN = async () => {
+    if (!selectedGRN) return;
+    
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/grn/${selectedGRN.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          invoiceNumber: editFormData.invoiceNumber,
+          invoiceDate: editFormData.invoiceDate,
+          warehouseId: editFormData.warehouseId,
+          remarks: editFormData.notes,
+          items: editFormData.items.map(item => ({
+            itemCode: item.itemCode,
+            itemName: item.itemName,
+            receivedQty: item.receivedQty,
+            acceptedQty: item.acceptedQty,
+            rejectedQty: item.rejectedQty,
+            batchNumber: item.batchNumber,
+          })),
+        }),
+      });
+
+      if (response.ok) {
+        setAlertMessage({ type: 'success', message: 'GRN updated successfully!' });
+        setShowViewModal(false);
+        setEditMode(false);
+        fetchGRNs();
+      } else {
+        const errorData = await response.json();
+        setAlertMessage({ type: 'error', message: `Failed to update GRN: ${errorData.message || 'Unknown error'}` });
+      }
+    } catch (error) {
+      console.error('Error updating GRN:', error);
+      setAlertMessage({ type: 'error', message: 'Failed to update GRN. Please try again.' });
+    }
+  };
+
   const handleCreateGRN = async () => {
     try {
       // Validate required fields
@@ -292,18 +366,18 @@ export default function GRNPage() {
       if (response.ok) {
         const data = await response.json();
         console.log('GRN created successfully:', data);
-        alert('GRN created successfully!');
+        setAlertMessage({ type: 'success', message: 'GRN created successfully!' });
         setShowModal(false);
         fetchGRNs();
         resetForm();
       } else {
         const errorData = await response.json();
         console.error('GRN creation failed:', errorData);
-        alert(`Failed to create GRN: ${errorData.message || 'Unknown error'}`);
+        setAlertMessage({ type: 'error', message: `Failed to create GRN: ${errorData.message || 'Unknown error'}` });
       }
     } catch (error) {
       console.error('Error creating GRN:', error);
-      alert('Failed to create GRN. Please try again.');
+      setAlertMessage({ type: 'error', message: 'Failed to create GRN. Please try again.' });
     }
   };
 
@@ -320,11 +394,11 @@ export default function GRNPage() {
         setSelectedGRNUIDs(data);
         setShowUIDsModal(true);
       } else {
-        alert('No UIDs found for this GRN. UIDs are auto-generated when GRN is submitted.');
+        setAlertMessage({ type: 'info', message: 'No UIDs found for this GRN. UIDs are auto-generated when GRN is submitted.' });
       }
     } catch (error) {
       console.error('Error fetching UIDs:', error);
-      alert('Failed to fetch UIDs');
+      setAlertMessage({ type: 'error', message: 'Failed to fetch UIDs' });
     } finally {
       setLoadingUIDs(false);
     }
@@ -540,10 +614,10 @@ export default function GRNPage() {
                     <td className="px-6 py-4 text-sm text-gray-500">
                       <div className="font-medium">{grn.grn_items.length} items</div>
                       <div className="text-xs text-gray-400">
-                        Accepted: {grn.grn_items.reduce((sum, item) => sum + item.accepted_quantity, 0)}
-                        {grn.grn_items.some((i) => i.rejected_quantity > 0) && (
+                        Accepted: {grn.grn_items.reduce((sum, item) => sum + (Number(item.accepted_qty || item.accepted_quantity) || 0), 0)}
+                        {grn.grn_items.some((i) => (Number(i.rejected_qty || i.rejected_quantity) || 0) > 0) && (
                           <span className="text-red-600 ml-2">
-                            Rejected: {grn.grn_items.reduce((sum, item) => sum + item.rejected_quantity, 0)}
+                            Rejected: {grn.grn_items.reduce((sum, item) => sum + (Number(item.rejected_qty || item.rejected_quantity) || 0), 0)}
                           </span>
                         )}
                       </div>
@@ -554,7 +628,7 @@ export default function GRNPage() {
                             <div key={idx} className="text-xs">
                               <span className="font-mono text-blue-600 font-semibold">{item.uid}</span>
                               <span className="text-gray-500 ml-2">
-                                {item.item?.code || item.item?.name}
+                                {item.item_code || item.item?.code || item.item_name || item.item?.name}
                                 {item.batch_number && ` • Batch: ${item.batch_number}`}
                               </span>
                             </div>
@@ -572,7 +646,16 @@ export default function GRNPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <button className="text-amber-600 hover:text-amber-900 mr-3">View</button>
+                      <button 
+                        onClick={() => {
+                          setSelectedGRN(grn);
+                          setShowViewModal(true);
+                          setEditMode(false);
+                        }}
+                        className="text-amber-600 hover:text-amber-900 mr-3"
+                      >
+                        View
+                      </button>
                       {grn.status === 'COMPLETED' && (
                         <button 
                           onClick={() => fetchGRNUIDs(grn.id)}
@@ -581,7 +664,30 @@ export default function GRNPage() {
                           🔍 UIDs
                         </button>
                       )}
-                      <button className="text-blue-600 hover:text-blue-900">Edit</button>
+                      <button 
+                        onClick={() => {
+                          setSelectedGRN(grn);
+                          setEditFormData({
+                            invoiceNumber: grn.invoice_number || '',
+                            invoiceDate: grn.invoice_date || '',
+                            warehouseId: grn.warehouse?.id || '',
+                            notes: grn.remarks || '',
+                            items: grn.grn_items.map(item => ({
+                              itemCode: item.item_code || item.item?.code || '',
+                              itemName: item.item_name || item.item?.name || '',
+                              receivedQty: Number(item.received_qty || item.received_quantity) || 0,
+                              acceptedQty: Number(item.accepted_qty || item.accepted_quantity) || 0,
+                              rejectedQty: Number(item.rejected_qty || item.rejected_quantity) || 0,
+                              batchNumber: item.batch_number || '',
+                            })),
+                          });
+                          setShowViewModal(true);
+                          setEditMode(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-900"
+                      >
+                        Edit
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -796,6 +902,295 @@ export default function GRNPage() {
         </div>
       )}
 
+      {/* View/Edit Modal */}
+      {showViewModal && selectedGRN && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-2xl font-bold text-gray-900">
+                {editMode ? 'Edit GRN' : 'View GRN Details'}
+              </h2>
+              <button
+                onClick={() => {
+                  setShowViewModal(false);
+                  setSelectedGRN(null);
+                  setEditMode(false);
+                }}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* GRN Header Information */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">GRN Number</label>
+                  <p className="mt-1 text-gray-900 font-semibold">{selectedGRN.grn_number}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Status</label>
+                  <span className={`inline-block mt-1 px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedGRN.status)}`}>
+                    {selectedGRN.status}
+                  </span>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">PO Number</label>
+                  <p className="mt-1 text-gray-900">{selectedGRN.purchase_order?.po_number || '-'}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Vendor</label>
+                  <p className="mt-1 text-gray-900">{selectedGRN.vendor?.name} ({selectedGRN.vendor?.code})</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Receipt Date</label>
+                  <p className="mt-1 text-gray-900">{new Date(selectedGRN.grn_date).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Warehouse</label>
+                  {editMode ? (
+                    <select
+                      value={editFormData.warehouseId}
+                      onChange={(e) => setEditFormData({ ...editFormData, warehouseId: e.target.value })}
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                    >
+                      <option value="">Select Warehouse</option>
+                      {warehouses.map(wh => (
+                        <option key={wh.id} value={wh.id}>{wh.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="mt-1 text-gray-900">{selectedGRN.warehouse?.name || '-'}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Invoice Number</label>
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={editFormData.invoiceNumber}
+                      onChange={(e) => setEditFormData({ ...editFormData, invoiceNumber: e.target.value })}
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Enter invoice number"
+                    />
+                  ) : (
+                    <p className="mt-1 text-gray-900">{selectedGRN.invoice_number || '-'}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Invoice Date</label>
+                  {editMode ? (
+                    <input
+                      type="date"
+                      value={editFormData.invoiceDate}
+                      onChange={(e) => setEditFormData({ ...editFormData, invoiceDate: e.target.value })}
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                    />
+                  ) : (
+                    <p className="mt-1 text-gray-900">{selectedGRN.invoice_date ? new Date(selectedGRN.invoice_date).toLocaleDateString() : '-'}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Items</h3>
+                <table className="min-w-full border border-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Item Code</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Item Name</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Received</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Accepted</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Rejected</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Batch Number</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {editMode ? (
+                      editFormData.items.map((item, idx) => (
+                        <tr key={idx}>
+                          <td className="px-4 py-2 text-sm text-gray-900">{item.itemCode}</td>
+                          <td className="px-4 py-2 text-sm text-gray-900">{item.itemName}</td>
+                          <td className="px-4 py-2 text-sm text-gray-900 text-right">
+                            <input
+                              type="number"
+                              value={item.receivedQty}
+                              onChange={(e) => {
+                                const newItems = [...editFormData.items];
+                                newItems[idx].receivedQty = Number(e.target.value);
+                                setEditFormData({ ...editFormData, items: newItems });
+                              }}
+                              className="w-20 border border-gray-300 rounded px-2 py-1 text-right"
+                            />
+                          </td>
+                          <td className="px-4 py-2 text-sm text-green-600 text-right font-semibold">
+                            <input
+                              type="number"
+                              value={item.acceptedQty}
+                              onChange={(e) => {
+                                const newItems = [...editFormData.items];
+                                newItems[idx].acceptedQty = Number(e.target.value);
+                                setEditFormData({ ...editFormData, items: newItems });
+                              }}
+                              className="w-20 border border-gray-300 rounded px-2 py-1 text-right"
+                            />
+                          </td>
+                          <td className="px-4 py-2 text-sm text-red-600 text-right font-semibold">
+                            <input
+                              type="number"
+                              value={item.rejectedQty}
+                              onChange={(e) => {
+                                const newItems = [...editFormData.items];
+                                newItems[idx].rejectedQty = Number(e.target.value);
+                                setEditFormData({ ...editFormData, items: newItems });
+                              }}
+                              className="w-20 border border-gray-300 rounded px-2 py-1 text-right"
+                            />
+                          </td>
+                          <td className="px-4 py-2 text-sm">
+                            <input
+                              type="text"
+                              value={item.batchNumber}
+                              onChange={(e) => {
+                                const newItems = [...editFormData.items];
+                                newItems[idx].batchNumber = e.target.value;
+                                setEditFormData({ ...editFormData, items: newItems });
+                              }}
+                              className="w-32 border border-gray-300 rounded px-2 py-1"
+                              placeholder="Batch number"
+                            />
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      selectedGRN.grn_items.map((item, idx) => (
+                        <tr key={idx}>
+                          <td className="px-4 py-2 text-sm text-gray-900">{item.item_code || item.item?.code || '-'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-900">{item.item_name || item.item?.name || '-'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-900 text-right">{Number(item.received_qty || item.received_quantity) || 0}</td>
+                          <td className="px-4 py-2 text-sm text-green-600 text-right font-semibold">{Number(item.accepted_qty || item.accepted_quantity) || 0}</td>
+                          <td className="px-4 py-2 text-sm text-red-600 text-right font-semibold">{Number(item.rejected_qty || item.rejected_quantity) || 0}</td>
+                          <td className="px-4 py-2 text-sm">
+                            {item.batch_number && <div className="text-gray-600">Batch: {item.batch_number}</div>}
+                            {item.uid && <div className="font-mono text-blue-600 text-xs">{item.uid}</div>}
+                            {!item.batch_number && !item.uid && <span className="text-gray-400">-</span>}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Footer with Action Buttons */}
+            <div className="p-6 border-t border-gray-200 flex justify-between items-center">
+              <div className="flex gap-3">
+                {editMode ? (
+                  <button
+                    onClick={handleUpdateGRN}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    💾 Save Changes
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={async () => {
+                        console.log('Approve button clicked!');
+                        console.log('GRN ID:', selectedGRN.id);
+                        console.log('GRN Status:', selectedGRN.status);
+                        try {
+                          const token = localStorage.getItem('accessToken');
+                          console.log('Token exists:', !!token);
+                          const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/grn/${selectedGRN.id}/status`, {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              Authorization: `Bearer ${token}`,
+                            },
+                            body: JSON.stringify({ status: 'APPROVED' }),
+                          });
+
+                          console.log('Response status:', response.status);
+                          if (response.ok) {
+                            setAlertMessage({ type: 'success', message: 'GRN approved successfully!' });
+                            setShowViewModal(false);
+                            fetchGRNs();
+                          } else {
+                            const errorData = await response.json();
+                            console.error('Error response:', errorData);
+                            setAlertMessage({ type: 'error', message: `Failed to approve GRN: ${errorData.message}` });
+                          }
+                        } catch (error) {
+                          console.error('Catch error:', error);
+                          setAlertMessage({ type: 'error', message: 'Failed to approve GRN. Please try again.' });
+                        }
+                      }}
+                      disabled={selectedGRN.status !== 'DRAFT'}
+                      className={`px-6 py-2 text-white rounded-lg ${
+                        selectedGRN.status === 'DRAFT' 
+                          ? 'bg-green-600 hover:bg-green-700 cursor-pointer' 
+                          : 'bg-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      ✓ Approve
+                    </button>
+                    <button
+                      onClick={async () => {
+                        console.log('Reject button clicked!');
+                        try {
+                          const token = localStorage.getItem('accessToken');
+                          const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/grn/${selectedGRN.id}/status`, {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              Authorization: `Bearer ${token}`,
+                            },
+                            body: JSON.stringify({ status: 'REJECTED' }),
+                          });
+
+                          if (response.ok) {
+                            setAlertMessage({ type: 'success', message: 'GRN rejected successfully!' });
+                            setShowViewModal(false);
+                            fetchGRNs();
+                          } else {
+                            const errorData = await response.json();
+                            setAlertMessage({ type: 'error', message: `Failed to reject GRN: ${errorData.message}` });
+                          }
+                        } catch (error) {
+                          setAlertMessage({ type: 'error', message: 'Failed to reject GRN. Please try again.' });
+                        }
+                      }}
+                      disabled={selectedGRN.status !== 'DRAFT'}
+                      className={`px-6 py-2 text-white rounded-lg ${
+                        selectedGRN.status === 'DRAFT' 
+                          ? 'bg-red-600 hover:bg-red-700 cursor-pointer' 
+                          : 'bg-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      ✗ Reject
+                    </button>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setShowViewModal(false);
+                  setSelectedGRN(null);
+                  setEditMode(false);
+                }}
+                className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* UIDs Modal */}
       {showUIDsModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -906,6 +1301,63 @@ export default function GRNPage() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Alert Popup */}
+      {alertMessage && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-start">
+              <div className={`flex-shrink-0 ${
+                alertMessage.type === 'success' ? 'text-green-500' :
+                alertMessage.type === 'error' ? 'text-red-500' :
+                'text-blue-500'
+              }`}>
+                {alertMessage.type === 'success' && (
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+                {alertMessage.type === 'error' && (
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+                {alertMessage.type === 'info' && (
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+              </div>
+              <div className="ml-3 flex-1">
+                <h3 className={`text-sm font-medium ${
+                  alertMessage.type === 'success' ? 'text-green-800' :
+                  alertMessage.type === 'error' ? 'text-red-800' :
+                  'text-blue-800'
+                }`}>
+                  {alertMessage.type === 'success' ? 'Success' :
+                   alertMessage.type === 'error' ? 'Error' :
+                   'Information'}
+                </h3>
+                <div className="mt-2 text-sm text-gray-700">
+                  {alertMessage.message}
+                </div>
+              </div>
+            </div>
+            <div className="mt-4">
+              <button
+                onClick={() => setAlertMessage(null)}
+                className={`w-full px-4 py-2 text-sm font-medium text-white rounded-md ${
+                  alertMessage.type === 'success' ? 'bg-green-600 hover:bg-green-700' :
+                  alertMessage.type === 'error' ? 'bg-red-600 hover:bg-red-700' :
+                  'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>

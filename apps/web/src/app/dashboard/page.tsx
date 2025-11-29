@@ -1,18 +1,46 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../lib/api-client';
 
+interface DashboardStats {
+  activeOrders: number;
+  pendingPOs: number;
+  inProduction: number;
+  readyToShip: number;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
+  const [stats, setStats] = useState<DashboardStats>({
+    activeOrders: 0,
+    pendingPOs: 0,
+    inProduction: 0,
+    readyToShip: 0,
+  });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Check if user is authenticated
     if (!apiClient.isAuthenticated()) {
       router.push('/login');
+      return;
     }
+
+    fetchStats();
   }, [router]);
+
+  const fetchStats = async () => {
+    try {
+      const data = await apiClient.get('/dashboard/stats');
+      setStats(data);
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#FAF9F6' }}>
@@ -59,10 +87,10 @@ export default function DashboardPage() {
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {[
-            { title: 'Active Orders', value: '24', color: '#8B6F47' },
-            { title: 'Pending POs', value: '12', color: '#6F4E37' },
-            { title: 'In Production', value: '8', color: '#6B8E23' },
-            { title: 'Ready to Ship', value: '5', color: '#4682B4' },
+            { title: 'Active Orders', value: loading ? '...' : stats.activeOrders.toString(), color: '#8B6F47' },
+            { title: 'Pending POs', value: loading ? '...' : stats.pendingPOs.toString(), color: '#6F4E37' },
+            { title: 'In Production', value: loading ? '...' : stats.inProduction.toString(), color: '#6B8E23' },
+            { title: 'Ready to Ship', value: loading ? '...' : stats.readyToShip.toString(), color: '#4682B4' },
           ].map((kpi, index) => (
             <div
               key={index}
@@ -97,6 +125,7 @@ export default function DashboardPage() {
               { name: 'After-Sales Service', icon: '🛠️', path: '/dashboard/service' },
               { name: 'HR Management', icon: '👥', path: '/dashboard/hr' },
               { name: 'Document Control', icon: '📄', path: '/dashboard/documents' },
+              { name: 'Settings & Users', icon: '⚙️', path: '/dashboard/settings' },
             ].map((module, index) => (
               <button
                 key={index}

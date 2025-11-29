@@ -12,10 +12,11 @@ interface PurchaseOrder {
     name: string;
     contact_person: string;
   };
-  order_date: string;
-  expected_delivery: string;
+  po_date: string;
+  delivery_date: string;
   status: string;
   total_amount: number;
+  remarks?: string;
   purchase_order_items: Array<{
     item: { name: string };
     quantity: number;
@@ -32,6 +33,8 @@ function PurchaseOrdersContent() {
   const [items, setItems] = useState<Array<{ id: string; code: string; name: string; uom: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [loadingPR, setLoadingPR] = useState(false);
@@ -39,6 +42,8 @@ function PurchaseOrdersContent() {
   const [showDrawingManager, setShowDrawingManager] = useState(false);
   const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string } | null>(null);
   const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
+  const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [currentPrId, setCurrentPrId] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -100,9 +105,26 @@ function PurchaseOrdersContent() {
     try {
       setLoadingPR(true);
       console.log('Loading PR data for ID:', prId);
+      
+      // Check if PO already exists for this PR
+      const token = localStorage.getItem('accessToken');
+      const existingPOsResponse = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders?prId=${prId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const existingPOs = await existingPOsResponse.json();
+      
+      if (existingPOs && existingPOs.length > 0) {
+        setAlertMessage({ type: 'error', message: `A Purchase Order (${existingPOs[0].po_number}) already exists for this PR. Cannot create duplicate PO.` });
+        setLoadingPR(false);
+        return;
+      }
+      
       const prData = await apiClient.get(`/purchase/requisitions/${prId}`);
       console.log('PR Data received:', prData);
       console.log('PR Items:', prData.purchase_requisition_items);
+      
+      // Store PR ID for later use
+      setCurrentPrId(prId);
       
       // Map PR items to PO items
       const poItems = prData.purchase_requisition_items?.map((item: any) => {
@@ -129,10 +151,10 @@ function PurchaseOrdersContent() {
 
       // Open modal automatically
       setShowModal(true);
-      alert(`PO form pre-filled with ${poItems.length} items from PR ${prData.pr_number}`);
+      setAlertMessage({ type: 'success', message: `PO form pre-filled with ${poItems.length} items from PR ${prData.pr_number}` });
     } catch (error) {
       console.error('Error loading PR data:', error);
-      alert('Failed to load PR data. Please try again.');
+      setAlertMessage({ type: 'error', message: 'Failed to load PR data. Please try again.' });
     } finally {
       setLoadingPR(false);
     }
@@ -150,6 +172,12 @@ function PurchaseOrdersContent() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
+      console.log('PO API Response:', data);
+      if (data && data.length > 0) {
+        console.log('First PO:', data[0]);
+        console.log('PO Date:', data[0].po_date);
+        console.log('Delivery Date:', data[0].delivery_date);
+      }
       setOrders(data);
     } catch (error) {
       console.error('Error fetching orders:', error);
@@ -167,19 +195,19 @@ function PurchaseOrdersContent() {
       
       // Validate required fields
       if (!formData.vendorId) {
-        alert('Please select a vendor');
+        setAlertMessage({ type: 'error', message: 'Please select a vendor' });
         setSubmitting(false);
         return;
       }
       
       if (!formData.orderDate) {
-        alert('Please select an order date');
+        setAlertMessage({ type: 'error', message: 'Please select an order date' });
         setSubmitting(false);
         return;
       }
       
       if (formData.items.length === 0) {
-        alert('Please add at least one item');
+        setAlertMessage({ type: 'error', message: 'Please add at least one item' });
         setSubmitting(false);
         return;
       }
@@ -187,7 +215,7 @@ function PurchaseOrdersContent() {
       // Check if all items have itemId (or at least itemCode for pre-filled items)
       const invalidItems = formData.items.filter(item => !item.itemId && !item.itemCode);
       if (invalidItems.length > 0) {
-        alert('Please select items for all rows');
+        setAlertMessage({ type: 'error', message: 'Please select items for all rows' });
         setSubmitting(false);
         return;
       }
@@ -205,32 +233,7 @@ function PurchaseOrdersContent() {
           }
         }
 
-        if (itemId) {
-          // Check if item has drawings
-          const drawingsResponse = await fetch(`http://13.205.17.214:4000/api/v1/inventory/items/${itemId}/drawings`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-
-          if (drawingsResponse.ok) {
-            const drawings = await drawingsResponse.json();
-            const activeDrawings = drawings.filter((d: any) => d.is_active);
-            
-            if (activeDrawings.length === 0) {
-              // No drawings - force upload
-              alert(`Item "${item.itemName}" has no design drawings. Please upload a drawing before creating PO.`);
-              setSubmitting(false);
-              
-              // Find the full item details
-              const fullItem = items.find(it => it.id === itemId);
-              if (fullItem) {
-                setSelectedItemForDrawing(fullItem);
-                setPendingItemIndex(i);
-                setShowDrawingManager(true);
-              }
-              return;
-            }
-          }
-        }
+        // Drawing check removed - drawings are now optional for PO creation
       }
       
       console.log('FormData before transformation:', formData);
@@ -266,9 +269,10 @@ function PurchaseOrdersContent() {
       });
 
       const payload = {
+        prId: currentPrId, // Include PR ID if creating from PR
         vendorId: formData.vendorId,
         poDate: formData.orderDate,
-        deliveryDate: formData.expectedDelivery,
+        deliveryDate: formData.expectedDelivery || null, // Send null if empty to avoid validation error
         paymentTerms: formData.paymentTerms,
         deliveryAddress: formData.deliveryAddress,
         remarks: formData.notes,
@@ -292,15 +296,15 @@ function PurchaseOrdersContent() {
         setShowModal(false);
         fetchOrders();
         resetForm();
-        alert('Purchase Order created successfully!');
+        setAlertMessage({ type: 'success', message: 'Purchase Order created successfully!' });
       } else {
         const errorData = await response.json();
         console.error('PO creation failed:', errorData);
-        alert(`Failed to create PO: ${errorData.message || 'Unknown error'}`);
+        setAlertMessage({ type: 'error', message: `Failed to create PO: ${errorData.message || 'Unknown error'}` });
       }
     } catch (error) {
       console.error('Error creating order:', error);
-      alert('Failed to create PO. Please try again.');
+      setAlertMessage({ type: 'error', message: 'Failed to create PO. Please try again.' });
     } finally {
       setSubmitting(false);
     }
@@ -370,6 +374,62 @@ function PurchaseOrdersContent() {
       notes: '',
       items: [],
     });
+    setCurrentPrId(null); // Clear PR ID on form reset
+  };
+
+  const handleViewDetails = async (poId: string) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders/${poId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      console.log('PO Details:', data);
+      setSelectedPO(data);
+      setShowViewModal(true);
+    } catch (error) {
+      console.error('Error fetching PO details:', error);
+      setAlertMessage({ type: 'error', message: 'Failed to load PO details' });
+    }
+  };
+
+  const handleEditDetails = async (poId: string) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders/${poId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      console.log('PO Details for Edit:', data);
+      
+      // Populate form with PO data for editing
+      const editItems = data.purchase_order_items?.map((item: any) => ({
+        itemId: item.item_id || '',
+        itemCode: item.item_code || '',
+        itemName: item.item_name || '',
+        quantity: item.ordered_qty || 0,
+        unitPrice: item.rate || 0,
+        taxRate: item.tax_percent || 18,
+        totalPrice: item.amount || 0,
+        specifications: item.remarks || '',
+      })) || [];
+      
+      setFormData({
+        vendorId: data.vendor_id || '',
+        orderDate: data.po_date || new Date().toISOString().split('T')[0],
+        expectedDelivery: data.delivery_date || '',
+        paymentTerms: data.payment_terms || 'NET_30',
+        deliveryAddress: data.delivery_address || '',
+        notes: data.remarks || '',
+        items: editItems,
+      });
+      
+      setShowModal(true);
+      setAlertMessage({ type: 'info', message: 'Edit mode: Update the PO details below' });
+    } catch (error) {
+      console.error('Error fetching PO details:', error);
+      setAlertMessage({ type: 'error', message: 'Failed to load PO details' });
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -472,10 +532,22 @@ function PurchaseOrdersContent() {
                       <div className="text-sm text-gray-500">{order.vendor.contact_person}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(order.order_date).toLocaleDateString()}
+                      {order.po_date ? (() => {
+                        try {
+                          return new Date(order.po_date).toLocaleDateString();
+                        } catch {
+                          return order.po_date;
+                        }
+                      })() : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {order.expected_delivery ? new Date(order.expected_delivery).toLocaleDateString() : '-'}
+                      {order.delivery_date ? (() => {
+                        try {
+                          return new Date(order.delivery_date).toLocaleDateString();
+                        } catch {
+                          return order.delivery_date;
+                        }
+                      })() : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {order.purchase_order_items.length} items
@@ -489,8 +561,18 @@ function PurchaseOrdersContent() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <button className="text-amber-600 hover:text-amber-900 mr-3">View</button>
-                      <button className="text-blue-600 hover:text-blue-900">Edit</button>
+                      <button 
+                        onClick={() => handleViewDetails(order.id)}
+                        className="text-amber-600 hover:text-amber-900 mr-3"
+                      >
+                        View
+                      </button>
+                      <button 
+                        onClick={() => handleEditDetails(order.id)}
+                        className="text-blue-600 hover:text-blue-900"
+                      >
+                        Edit
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -733,10 +815,235 @@ function PurchaseOrdersContent() {
             setSelectedItemForDrawing(null);
             setPendingItemIndex(null);
             // After closing, user needs to try creating PO again
-            alert('Drawing uploaded! Please try creating the PO again.');
+            setAlertMessage({ type: 'info', message: 'Drawing uploaded! Please try creating the PO again.' });
           }}
           mandatory={true}
         />
+      )}
+
+      {/* View Details Modal */}
+      {showViewModal && selectedPO && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-2xl font-bold text-gray-900">Purchase Order Details</h2>
+              <button onClick={() => setShowViewModal(false)} className="text-gray-500 hover:text-gray-700">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Header Info */}
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <p className="text-sm text-gray-600">PO Number</p>
+                  <p className="font-semibold text-lg">{selectedPO.po_number}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Status</p>
+                  <span className={`inline-block px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedPO.status)}`}>
+                    {selectedPO.status}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Vendor</p>
+                  <p className="font-semibold">{selectedPO.vendor.name}</p>
+                  <p className="text-sm text-gray-500">{selectedPO.vendor.contact_person}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Order Date</p>
+                  <p className="font-semibold">{selectedPO.po_date ? new Date(selectedPO.po_date).toLocaleDateString() : '-'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Expected Delivery</p>
+                  <p className="font-semibold">{selectedPO.delivery_date ? new Date(selectedPO.delivery_date).toLocaleDateString() : '-'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Total Amount</p>
+                  <p className="font-semibold text-lg">₹{selectedPO.total_amount?.toLocaleString() || 0}</p>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3">Items</h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Item</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Quantity</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Rate</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {selectedPO.purchase_order_items && selectedPO.purchase_order_items.length > 0 ? (
+                        selectedPO.purchase_order_items.map((item: any, idx: number) => (
+                          <tr key={idx}>
+                            <td className="px-4 py-2">
+                              <div className="font-medium">{item.item?.name || item.item_name || '-'}</div>
+                              <div className="text-xs text-gray-500">{item.item?.code || item.item_code || ''}</div>
+                            </td>
+                            <td className="px-4 py-2 text-right">{item.quantity || item.ordered_qty || 0}</td>
+                            <td className="px-4 py-2 text-right">₹{(item.rate || 0).toLocaleString()}</td>
+                            <td className="px-4 py-2 text-right font-medium">₹{(item.amount || 0).toLocaleString()}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={4} className="px-4 py-8 text-center text-gray-500">No items found</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Notes */}
+              {selectedPO.remarks && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Remarks</p>
+                  <p className="text-gray-800">{selectedPO.remarks}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-between">
+              <div className="flex gap-3">
+                {selectedPO.status === 'DRAFT' && (
+                  <>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const token = localStorage.getItem('accessToken');
+                          const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders/${selectedPO.id}/status`, {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              Authorization: `Bearer ${token}`,
+                            },
+                            body: JSON.stringify({ status: 'APPROVED' }),
+                          });
+                          if (response.ok) {
+                            setAlertMessage({ type: 'success', message: 'Purchase Order approved successfully!' });
+                            setShowViewModal(false);
+                            fetchOrders();
+                          } else {
+                            const errorData = await response.json();
+                            console.error('Approve failed:', errorData);
+                            setAlertMessage({ type: 'error', message: `Failed to approve PO: ${errorData.message || 'Unknown error'}` });
+                          }
+                        } catch (error) {
+                          console.error('Error approving PO:', error);
+                          setAlertMessage({ type: 'error', message: 'Error approving PO' });
+                        }
+                      }}
+                      className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const token = localStorage.getItem('accessToken');
+                          const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders/${selectedPO.id}/status`, {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              Authorization: `Bearer ${token}`,
+                            },
+                            body: JSON.stringify({ status: 'REJECTED' }),
+                          });
+                          if (response.ok) {
+                            setAlertMessage({ type: 'success', message: 'Purchase Order rejected successfully!' });
+                            setShowViewModal(false);
+                            fetchOrders();
+                          } else {
+                            const errorData = await response.json();
+                            console.error('Reject failed:', errorData);
+                            setAlertMessage({ type: 'error', message: `Failed to reject PO: ${errorData.message || 'Unknown error'}` });
+                          }
+                        } catch (error) {
+                          console.error('Error rejecting PO:', error);
+                          setAlertMessage({ type: 'error', message: 'Error rejecting PO' });
+                        }
+                      }}
+                      className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                    >
+                      Reject
+                    </button>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={() => setShowViewModal(false)}
+                className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Alert Popup */}
+      {alertMessage && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-start">
+              <div className={`flex-shrink-0 ${
+                alertMessage.type === 'success' ? 'text-green-500' :
+                alertMessage.type === 'error' ? 'text-red-500' :
+                'text-blue-500'
+              }`}>
+                {alertMessage.type === 'success' && (
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+                {alertMessage.type === 'error' && (
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+                {alertMessage.type === 'info' && (
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+              </div>
+              <div className="ml-3 flex-1">
+                <h3 className={`text-sm font-medium ${
+                  alertMessage.type === 'success' ? 'text-green-800' :
+                  alertMessage.type === 'error' ? 'text-red-800' :
+                  'text-blue-800'
+                }`}>
+                  {alertMessage.type === 'success' ? 'Success' :
+                   alertMessage.type === 'error' ? 'Error' :
+                   'Information'}
+                </h3>
+                <div className="mt-2 text-sm text-gray-700">
+                  {alertMessage.message}
+                </div>
+              </div>
+            </div>
+            <div className="mt-4">
+              <button
+                onClick={() => setAlertMessage(null)}
+                className={`w-full px-4 py-2 text-sm font-medium text-white rounded-md ${
+                  alertMessage.type === 'success' ? 'bg-green-600 hover:bg-green-700' :
+                  alertMessage.type === 'error' ? 'bg-red-600 hover:bg-red-700' :
+                  'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

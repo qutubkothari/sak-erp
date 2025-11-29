@@ -243,6 +243,19 @@ export default function PurchaseRequisitionsPage() {
     }
   };
 
+  const handleDelete = async (prId: string) => {
+    if (!confirm('Are you sure you want to delete this PR? This action cannot be undone.')) return;
+    try {
+      await apiClient.delete(`/purchase/requisitions/${prId}`);
+      alert('PR deleted successfully!');
+      setShowDetailModal(false);
+      fetchRequisitions();
+    } catch (error) {
+      console.error('Error deleting PR:', error);
+      alert('Failed to delete PR');
+    }
+  };
+
   const handleSubmit = async (status: 'DRAFT' | 'SUBMITTED') => {
     try {
       const prData = {
@@ -685,12 +698,36 @@ export default function PurchaseRequisitionsPage() {
                           {new Date(req.created_at).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4 text-sm">
-                          <button 
-                            onClick={() => handleViewDetails(req.id)}
-                            className="text-amber-600 hover:text-amber-900 font-medium"
-                          >
-                            View Details
-                          </button>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => handleViewDetails(req.id)}
+                              className="text-amber-600 hover:text-amber-900 font-medium"
+                            >
+                              View Details
+                            </button>
+                            {(req.status === 'DRAFT' || req.status === 'SUBMITTED') && (
+                              <>
+                                <button
+                                  onClick={() => handleApprove(req.id)}
+                                  className="text-green-600 hover:text-green-900 font-medium"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => handleReject(req.id)}
+                                  className="text-red-600 hover:text-red-900 font-medium"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => handleDelete(req.id)}
+                              className="text-gray-600 hover:text-gray-900 font-medium"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -754,14 +791,15 @@ export default function PurchaseRequisitionsPage() {
                       <p className="text-sm text-gray-600">Priority</p>
                       <p className="font-semibold">{selectedPR.priority || 'MEDIUM'}</p>
                     </div>
-                    <div className="col-span-2">
+                    <div>
                       <p className="text-sm text-gray-600">Purpose</p>
                       <p className="font-semibold">{selectedPR.purpose || 'N/A'}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Requested By</p>
-                      <p className="font-semibold text-xs">{selectedPR.requested_by}</p>
+                      <p className="text-sm text-gray-600">Request Date</p>
+                      <p className="font-semibold">{new Date(selectedPR.request_date).toLocaleDateString()}</p>
                     </div>
+                    {/* Hide UUID for requested_by until we implement user lookup */}
                     {selectedPR.approved_by && (
                       <div>
                         <p className="text-sm text-gray-600">Approved By</p>

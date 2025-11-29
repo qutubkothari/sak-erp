@@ -29,8 +29,13 @@ export default function ItemsPage() {
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [showDeleted, setShowDeleted] = useState(false);
   const [showDrawingManager, setShowDrawingManager] = useState(false);
   const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<Item | null>(null);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [newCategory, setNewCategory] = useState('');
+  const [editingCategory, setEditingCategory] = useState<{ id: string; name: string } | null>(null);
 
   const [formData, setFormData] = useState({
     code: '',
@@ -46,15 +51,70 @@ export default function ItemsPage() {
     is_active: true,
   });
 
-  const categories = [
-    'RAW_MATERIAL',
-    'COMPONENT',
-    'SUBASSEMBLY',
-    'FINISHED_GOODS',
-    'CONSUMABLE',
-    'PACKING_MATERIAL',
-    'SPARE_PART',
-  ];
+  const addCategory = async () => {
+    if (newCategory.trim()) {
+      try {
+        await apiClient.post('/categories', { name: newCategory });
+        setNewCategory('');
+        await fetchCategories();
+        alert('Category added successfully!');
+      } catch (error) {
+        console.error('Error adding category:', error);
+        alert('Failed to add category');
+      }
+    }
+  };
+
+  const updateCategory = async () => {
+    if (editingCategory && editingCategory.name.trim()) {
+      try {
+        await apiClient.put(`/categories/${editingCategory.id}`, { name: editingCategory.name });
+        setEditingCategory(null);
+        await fetchCategories();
+        alert('Category updated successfully!');
+      } catch (error) {
+        console.error('Error updating category:', error);
+        alert('Failed to update category');
+      }
+    }
+  };
+
+  const deleteCategory = async (id: string, name: string) => {
+    if (confirm(`Delete category "${name}"? This won't affect existing items.`)) {
+      try {
+        await apiClient.delete(`/categories/${id}`);
+        await fetchCategories();
+        alert('Category deleted successfully!');
+      } catch (error) {
+        console.error('Error deleting category:', error);
+        alert('Failed to delete category');
+      }
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const data = await apiClient.get('/categories');
+      setCategories(data);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
+  const seedCategories = async () => {
+    try {
+      await apiClient.post('/categories/seed', {});
+      await fetchCategories();
+      alert('Default categories restored!');
+    } catch (error) {
+      console.error('Error seeding categories:', error);
+      alert('Failed to restore categories');
+    }
+  };
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
 
   const uomOptions = [
     'PCS', 'KG', 'GRAM', 'LITER', 'METER', 'CM', 'MM',
@@ -63,11 +123,18 @@ export default function ItemsPage() {
 
   useEffect(() => {
     fetchItems();
-  }, []);
+  }, [showDeleted]);
 
   const fetchItems = async () => {
     try {
-      const data = await apiClient.get('/inventory/items');
+      const url = showDeleted 
+        ? '/inventory/items?includeInactive=true' 
+        : '/inventory/items';
+      console.log('Fetching items with URL:', url, 'showDeleted:', showDeleted);
+      const data = await apiClient.get(url);
+      console.log('Received items:', data.length, 'items');
+      console.log('Active items:', data.filter((i: Item) => i.is_active).length);
+      console.log('Inactive items:', data.filter((i: Item) => !i.is_active).length);
       setItems(data);
     } catch (error) {
       console.error('Error fetching items:', error);
@@ -138,6 +205,19 @@ export default function ItemsPage() {
     }
   };
 
+  const handleRestore = async (id: string) => {
+    if (!confirm('Are you sure you want to restore this item?')) return;
+    
+    try {
+      await apiClient.put(`/inventory/items/${id}`, { is_active: true });
+      alert('Item restored successfully!');
+      fetchItems();
+    } catch (error) {
+      console.error('Error restoring item:', error);
+      alert('Failed to restore item');
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       code: '',
@@ -159,8 +239,14 @@ export default function ItemsPage() {
       item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = !categoryFilter || item.category === categoryFilter;
-    return matchesSearch && matchesCategory;
+    // When showDeleted is true, show only inactive items. When false, show only active items.
+    const matchesActiveStatus = showDeleted ? !item.is_active : item.is_active;
+    return matchesSearch && matchesCategory && matchesActiveStatus;
   });
+
+  console.log('Total items:', items.length);
+  console.log('Filtered items:', filteredItems.length);
+  console.log('showDeleted:', showDeleted);
 
   if (loading) {
     return (
@@ -172,29 +258,46 @@ export default function ItemsPage() {
 
   return (
     <div className="p-6">
-      <button
-        onClick={() => router.back()}
-        className="mb-4 flex items-center gap-2 text-amber-600 hover:text-amber-800 font-medium"
-      >
-        ← Back
-      </button>
-
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-gray-800">Items Master</h1>
-        <button
-          onClick={() => {
-            setEditingItem(null);
-            resetForm();
-            setShowForm(true);
-          }}
-          className="bg-amber-600 text-white px-6 py-2 rounded-lg hover:bg-amber-700 font-medium"
-        >
-          + Add Item
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowCategoryManager(true)}
+            className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 font-medium flex items-center gap-2"
+          >
+            🏷️ Manage Categories
+          </button>
+          <button
+            onClick={() => router.push('/dashboard/inventory/items/import')}
+            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium flex items-center gap-2"
+          >
+            📊 Import Excel
+          </button>
+          <button
+            onClick={() => {
+              setEditingItem(null);
+              resetForm();
+              setShowForm(true);
+            }}
+            className="bg-amber-600 text-white px-6 py-2 rounded-lg hover:bg-amber-700 font-medium"
+          >
+            + Add Item
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
       <div className="mb-6 bg-white p-4 rounded-lg shadow flex gap-4">
+        <button
+          onClick={() => setShowDeleted(!showDeleted)}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            showDeleted 
+              ? 'bg-red-600 text-white hover:bg-red-700' 
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          {showDeleted ? '🗑️ Showing Deleted' : '📋 Show Deleted'}
+        </button>
         <input
           type="text"
           placeholder="Search by code or name..."
@@ -209,7 +312,7 @@ export default function ItemsPage() {
         >
           <option value="">All Categories</option>
           {categories.map(cat => (
-            <option key={cat} value={cat}>{cat.replace(/_/g, ' ')}</option>
+            <option key={cat.id} value={cat.name}>{cat.name.replace(/_/g, ' ')}</option>
           ))}
         </select>
       </div>
@@ -262,27 +365,38 @@ export default function ItemsPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => handleEdit(item)}
-                      className="text-amber-600 hover:text-amber-900 mr-3"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedItemForDrawing(item);
-                        setShowDrawingManager(true);
-                      }}
-                      className="text-blue-600 hover:text-blue-900 mr-3"
-                    >
-                      Drawings
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="text-red-600 hover:text-red-900"
-                    >
-                      Delete
-                    </button>
+                    {item.is_active ? (
+                      <>
+                        <button
+                          onClick={() => handleEdit(item)}
+                          className="text-amber-600 hover:text-amber-900 mr-3"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedItemForDrawing(item);
+                            setShowDrawingManager(true);
+                          }}
+                          className="text-blue-600 hover:text-blue-900 mr-3"
+                        >
+                          Drawings
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => handleRestore(item.id)}
+                        className="text-green-600 hover:text-green-900 font-medium"
+                      >
+                        ↻ Restore
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
@@ -356,7 +470,7 @@ export default function ItemsPage() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                     >
                       {categories.map(cat => (
-                        <option key={cat} value={cat}>{cat.replace(/_/g, ' ')}</option>
+                        <option key={cat.id} value={cat.name}>{cat.name.replace(/_/g, ' ')}</option>
                       ))}
                     </select>
                   </div>
@@ -499,6 +613,126 @@ export default function ItemsPage() {
           }}
           mandatory={false}
         />
+      )}
+
+      {/* Category Manager Modal */}
+      {showCategoryManager && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">Manage Categories</h2>
+              <button
+                onClick={() => setShowCategoryManager(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Add New Category */}
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-700">Add New Category</h3>
+                <button
+                  onClick={seedCategories}
+                  className="px-4 py-1 bg-amber-600 text-white text-sm rounded hover:bg-amber-700"
+                >
+                  🔄 Restore Defaults
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  placeholder="Enter category name (e.g., TOOLS)"
+                  className="flex-1 px-4 py-2 border rounded-lg"
+                  onKeyPress={(e) => e.key === 'Enter' && addCategory()}
+                />
+                <button
+                  onClick={addCategory}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                >
+                  Add
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 mt-2">
+                Categories will be automatically formatted (spaces become underscores, uppercase)
+              </p>
+            </div>
+
+            {/* Categories List */}
+            <div>
+              <h3 className="font-semibold text-gray-700 mb-3">Current Categories</h3>
+              <div className="space-y-2">
+                {categories.map((category) => (
+                  <div
+                    key={category.id}
+                    className="flex items-center justify-between p-3 bg-white border rounded-lg hover:bg-gray-50"
+                  >
+                    {editingCategory?.id === category.id ? (
+                      <input
+                        type="text"
+                        value={editingCategory?.name || ''}
+                        onChange={(e) =>
+                          setEditingCategory({ id: category.id, name: e.target.value })
+                        }
+                        className="flex-1 px-3 py-1 border rounded mr-2"
+                        onKeyPress={(e) => e.key === 'Enter' && updateCategory()}
+                      />
+                    ) : (
+                      <span className="font-medium text-gray-800">
+                        {category.name.replace(/_/g, ' ')}
+                      </span>
+                    )}
+                    <div className="flex gap-2">
+                      {editingCategory?.id === category.id ? (
+                        <>
+                          <button
+                            onClick={updateCategory}
+                            className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => setEditingCategory(null)}
+                            className="px-3 py-1 bg-gray-400 text-white rounded hover:bg-gray-500 text-sm"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setEditingCategory({ id: category.id, name: category.name })}
+                            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteCategory(category.id, category.name)}
+                            className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t">
+              <button
+                onClick={() => setShowCategoryManager(false)}
+                className="w-full px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
