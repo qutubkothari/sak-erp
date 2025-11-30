@@ -115,7 +115,12 @@ export class UidSupabaseService {
 
     const { data, error } = await this.supabase
       .from('uid_registry')
-      .select('*')
+      .select(`
+        *,
+        supplier:vendors!supplier_id(id, name, vendor_code),
+        purchase_order:purchase_orders!purchase_order_id(id, po_number),
+        grn:grn!grn_id(id, grn_number)
+      `)
       .eq('tenant_id', tenantId)
       .eq('uid', uid)
       .single();
