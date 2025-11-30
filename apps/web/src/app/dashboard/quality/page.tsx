@@ -1389,27 +1389,27 @@ export default function QualityPage() {
                     {viewingNCR.status === 'OPEN' && (
                       <ul className="list-disc list-inside space-y-1">
                         <li>Conduct root cause analysis</li>
-                        <li>Update status to "Under Review"</li>
+                        <li>Update status to &quot;Under Review&quot;</li>
                       </ul>
                     )}
                     {viewingNCR.status === 'UNDER_REVIEW' && (
                       <ul className="list-disc list-inside space-y-1">
                         <li>Complete root cause investigation</li>
                         <li>Plan corrective and preventive actions</li>
-                        <li>Update status to "Action Planned"</li>
+                        <li>Update status to &quot;Action Planned&quot;</li>
                       </ul>
                     )}
                     {viewingNCR.status === 'ACTION_PLANNED' && (
                       <ul className="list-disc list-inside space-y-1">
                         <li>Begin implementing corrective actions</li>
-                        <li>Update status to "In Progress"</li>
+                        <li>Update status to &quot;In Progress&quot;</li>
                       </ul>
                     )}
                     {viewingNCR.status === 'IN_PROGRESS' && (
                       <ul className="list-disc list-inside space-y-1">
                         <li>Complete all corrective actions</li>
                         <li>Verify effectiveness</li>
-                        <li>Update status to "Resolved"</li>
+                        <li>Update status to &quot;Resolved&quot;</li>
                       </ul>
                     )}
                     {viewingNCR.status === 'RESOLVED' && (
