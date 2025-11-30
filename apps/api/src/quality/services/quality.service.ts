@@ -15,6 +15,11 @@ export class QualityService {
   // ==================== Quality Inspections ====================
 
   async createInspection(tenantId: string, userId: string, data: any) {
+    console.log('=== CREATE INSPECTION API ===');
+    console.log('Received data:', JSON.stringify(data, null, 2));
+    console.log('tenantId:', tenantId);
+    console.log('userId:', userId);
+    
     const inspectionNumber = await this.generateInspectionNumber(tenantId, data.inspection_type);
 
     const inspectionData = {
@@ -40,13 +45,18 @@ export class QualityService {
       created_by: userId,
     };
 
+    console.log('Prepared inspectionData:', JSON.stringify(inspectionData, null, 2));
+
     const { data: inspection, error } = await this.supabase
       .from('quality_inspections')
       .insert(inspectionData)
       .select()
       .single();
 
-    if (error) throw new BadRequestException(error.message);
+    if (error) {
+      console.error('Database error:', error);
+      throw new BadRequestException(error.message);
+    }
 
     // Add inspection parameters if provided
     if (data.parameters && data.parameters.length > 0) {
