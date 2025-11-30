@@ -15,10 +15,20 @@ interface UIDRecord {
   status: string;
   location: string;
   supplier_id: string;
+  supplier?: {
+    name: string;
+    vendor_code: string;
+  };
   vendorName?: string;
   vendorCode?: string;
   purchase_order_id: string;
+  purchase_order?: {
+    po_number: string;
+  };
   grn_id: string;
+  grn?: {
+    grn_number: string;
+  };
   grnNumber?: string;
   batch_number: string;
   itemName?: string;
