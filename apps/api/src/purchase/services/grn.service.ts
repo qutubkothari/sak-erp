@@ -78,6 +78,7 @@ export class GrnService {
       const items = data.items.map((item: any) => ({
         grn_id: grn.id,
         po_item_id: item.poItemId,
+        item_id: item.itemId, // Add item_id UUID
         item_code: item.itemCode,
         item_name: item.itemName,
         description: item.description,
