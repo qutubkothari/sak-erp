@@ -14,9 +14,13 @@ export class GrnService {
   }
 
   async create(tenantId: string, userId: string, data: any) {
-    console.log('GRN Create - Received data:', JSON.stringify({
-      items: data.items?.map(i => ({ itemCode: i.itemCode, acceptedQty: i.acceptedQty, type: typeof i.acceptedQty }))
-    }, null, 2));
+    console.log('=== GRN CREATE START ===');
+    console.log('Data items count:', data.items?.length);
+    if (data.items && data.items.length > 0) {
+      data.items.forEach((item, idx) => {
+        console.log(`Item ${idx}: ${item.itemCode}, acceptedQty=${item.acceptedQty}, type=${typeof item.acceptedQty}`);
+      });
+    }
     
     // Check if GRN already exists for this PO
     const { data: existingGRN } = await this.supabase
