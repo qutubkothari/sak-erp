@@ -14,6 +14,10 @@ export class GrnService {
   }
 
   async create(tenantId: string, userId: string, data: any) {
+    console.log('GRN Create - Received data:', JSON.stringify({
+      items: data.items?.map(i => ({ itemCode: i.itemCode, acceptedQty: i.acceptedQty, type: typeof i.acceptedQty }))
+    }, null, 2));
+    
     // Check if GRN already exists for this PO
     const { data: existingGRN } = await this.supabase
       .from('grn')

@@ -369,7 +369,7 @@ export default function GRNPage() {
       };
       
       console.log('Creating GRN with payload:', payload);
-      console.log('Items with acceptedQty:', payload.items.map(i => ({ code: i.itemCode, acceptedQty: i.acceptedQty })));
+      console.log('Items with acceptedQty:', payload.items.map(i => `${i.itemCode}: ${i.acceptedQty}`));
       
       const token = localStorage.getItem('accessToken');
       const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/grn', {
