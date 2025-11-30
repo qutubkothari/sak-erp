@@ -1,4 +1,9 @@
--- Check if status column exists and add it if missing
+-- First check what enum values exist
+SELECT enumlabel 
+FROM pg_enum 
+WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'uid_status');
+
+-- Add status column with correct enum value
 DO $$ 
 BEGIN
     -- Check if column exists
@@ -8,12 +13,9 @@ BEGIN
         WHERE table_name = 'uid_registry' 
         AND column_name = 'status'
     ) THEN
-        -- Create enum type if it doesn't exist
-        CREATE TYPE IF NOT EXISTS uid_status AS ENUM ('ACTIVE', 'CONSUMED', 'SOLD', 'SCRAPPED', 'RETURNED', 'UNDER_SERVICE');
-        
-        -- Add status column
+        -- Add status column with first available enum value
         ALTER TABLE uid_registry 
-        ADD COLUMN status uid_status DEFAULT 'ACTIVE';
+        ADD COLUMN status uid_status DEFAULT 'GENERATED';
         
         RAISE NOTICE 'Added status column to uid_registry table';
     ELSE

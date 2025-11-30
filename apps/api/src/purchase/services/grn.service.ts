@@ -373,7 +373,7 @@ export class GrnService {
             grn_id: grn.id,
             batch_number: grnItem.batch_number,
             location: grn.warehouse?.name || 'Warehouse',
-            status: 'ACTIVE',
+            status: 'GENERATED',
             lifecycle: JSON.stringify([
               {
                 stage: 'RECEIVED',
