@@ -732,14 +732,10 @@ export class UidSupabaseService {
 
     console.log(`[getUIDDetails] UID exists, fetching related data...`);
 
-    // Fetch UID record with related data (using left joins to handle missing relations)
+    // Fetch UID record - don't use joins, fetch items and vendors separately
     const { data: uidRecord, error } = await this.supabase
       .from('uid_registry')
-      .select(`
-        *,
-        item:items!entity_id(id, name, code, description),
-        vendor:vendors!supplier_id(id, name, code)
-      `)
+      .select('*')
       .eq('uid', uid)
       .eq('tenant_id', tenantId)
       .maybeSingle();
@@ -756,8 +752,27 @@ export class UidSupabaseService {
       throw new Error(`UID ${uid} data not found`);
     }
 
-    const itemData = Array.isArray(uidRecord.item) ? uidRecord.item[0] : uidRecord.item;
-    const vendorData = Array.isArray(uidRecord.vendor) ? uidRecord.vendor[0] : uidRecord.vendor;
+    // Fetch item details separately if entity_id exists
+    let itemData = null;
+    if (uidRecord.entity_id) {
+      const { data: item } = await this.supabase
+        .from('items')
+        .select('id, name, code, description')
+        .eq('id', uidRecord.entity_id)
+        .maybeSingle();
+      itemData = item;
+    }
+
+    // Fetch vendor details separately if supplier_id exists
+    let vendorData = null;
+    if (uidRecord.supplier_id) {
+      const { data: vendor } = await this.supabase
+        .from('vendors')
+        .select('id, name, code')
+        .eq('id', uidRecord.supplier_id)
+        .maybeSingle();
+      vendorData = vendor;
+    }
 
     console.log(`[getUIDDetails] Item data:`, itemData);
     console.log(`[getUIDDetails] Vendor data:`, vendorData);
