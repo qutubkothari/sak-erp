@@ -157,28 +157,32 @@ export default function QualityPage() {
       const uidDetails = await apiClient.get(`/uid/details/${uid}`);
       console.log('UID Details:', uidDetails);
       
-      // Fetch GRN details if available
-      if (uidDetails.grnId) {
-        const grnDetails = await apiClient.get(`/purchase/grn/${uidDetails.grnId}`);
-        setSelectedGRN(grnDetails);
-        
-        // Auto-fill form with UID data
-        setInspectionForm({
-          ...inspectionForm,
-          uid: uid,
-          reference_id: uidDetails.grnId,
-          item_id: uidDetails.itemId || grnDetails.grn_items?.[0]?.item_id || '',
-          quantity_inspected: 1, // UID represents 1 unit
-        });
-      } else {
-        // UID without GRN (from production)
-        setInspectionForm({
-          ...inspectionForm,
-          uid: uid,
-          item_id: uidDetails.itemId || '',
-          quantity_inspected: 1,
-        });
-      }
+      // Create a mock GRN object with vendor and item info from UID for display
+      const mockGRN = {
+        id: uidDetails.grnId,
+        grn_number: `GRN-${uidDetails.grnId?.substring(0, 8) || 'UNKNOWN'}`,
+        vendor_id: uidDetails.vendorId,
+        vendor_name: uidDetails.vendorName,
+        batch_number: uidDetails.batchNumber,
+        lot_number: uidDetails.lotNumber,
+        grn_items: [{
+          item_id: uidDetails.itemId,
+          item_name: uidDetails.itemName,
+          item_code: uidDetails.itemCode,
+        }]
+      };
+      
+      console.log('Mock GRN for display:', mockGRN);
+      setSelectedGRN(mockGRN);
+      
+      // Auto-fill form with UID data
+      setInspectionForm({
+        ...inspectionForm,
+        uid: uid,
+        reference_id: uidDetails.grnId || '',
+        item_id: uidDetails.itemId || '',
+        quantity_inspected: 1, // UID represents 1 unit
+      });
     } catch (error) {
       console.error('Error fetching UID details:', error);
       alert('Failed to fetch UID information. Please check if the UID exists.');
