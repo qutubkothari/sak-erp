@@ -283,8 +283,17 @@ export class GrnService {
 
   private async generateUIDsForItem(tenantId: string, userId: string, grn: any, grnItem: any) {
     try {
-      const acceptedQty = grnItem.accepted_qty || 0;
+      console.log('generateUIDsForItem called for:', grnItem.item_code);
+      console.log('grnItem data:', JSON.stringify(grnItem, null, 2));
+      
+      const acceptedQty = parseInt(grnItem.accepted_qty) || 0;
+      console.log('Parsed acceptedQty:', acceptedQty);
       const uidsCreated = [];
+
+      if (acceptedQty === 0) {
+        console.log('Skipping UID generation - acceptedQty is 0');
+        return [];
+      }
 
       // Get item details
       const { data: item } = await this.supabase
@@ -293,6 +302,7 @@ export class GrnService {
         .eq('code', grnItem.item_code)
         .single();
 
+      console.log('Item found:', item ? item.code : 'NOT FOUND');
       if (!item) return; // Skip if item not found
 
       // Determine entity type based on item category
