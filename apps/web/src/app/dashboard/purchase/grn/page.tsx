@@ -669,7 +669,7 @@ export default function GRNPage() {
                             ✓ {grn.grn_items.reduce((sum, item) => sum + (item.uid_count || 0), 0)} UIDs Generated
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
-                            Click "🔍 UIDs" to view details
+                            Click &ldquo;🔍 UIDs&rdquo; to view details
                           </div>
                         </div>
                       ) : (

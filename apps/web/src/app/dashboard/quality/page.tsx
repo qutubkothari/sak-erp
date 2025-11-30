@@ -58,11 +58,9 @@ export default function QualityPage() {
   const [ncrs, setNcrs] = useState<NCR[]>([]);
   const [vendorRatings, setVendorRatings] = useState<VendorRating[]>([]);
   const [dashboard, setDashboard] = useState<QualityDashboard | null>(null);
-  const [loading, setLoading] = useState(false);
   
   // Dropdown data
   const [grns, setGrns] = useState<any[]>([]);
-  const [items, setItems] = useState<any[]>([]);
   const [uids, setUids] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [selectedGRN, setSelectedGRN] = useState<any>(null);
@@ -123,10 +121,6 @@ export default function QualityPage() {
       const grnsData = await apiClient.get('/purchase/grns');
       setGrns(grnsData.filter((g: any) => g.status === 'COMPLETED'));
       
-      // Fetch all items
-      const itemsData = await apiClient.get('/items');
-      setItems(itemsData);
-      
       // Fetch users (for inspectors)
       const usersData = await apiClient.get('/users');
       setUsers(usersData);
@@ -152,7 +146,6 @@ export default function QualityPage() {
   };
 
   const fetchData = async () => {
-    setLoading(true);
     try {
       if (activeTab === 'inspections') {
         const data = await apiClient.get('/quality/inspections');
@@ -169,8 +162,6 @@ export default function QualityPage() {
       }
     } catch (error) {
       console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
