@@ -85,30 +85,16 @@ export default function UIDTrackingPage() {
     if (!searchUID.trim()) return;
 
     try {
-      const data = await apiClient.get<any>(`/uid/details/${encodeURIComponent(searchUID)}`);
-      // Transform data from /uid/details format to UIDRecord format
-      const parsedData: UIDRecord = {
-        id: data.uid,
-        uid: data.uid,
-        entity_type: data.entityType || '',
-        entity_id: data.itemId || '',
-        itemName: data.itemName || '',
-        itemCode: data.itemCode || '',
-        parent_uids: Array.isArray(data.parentUids) ? data.parentUids : [],
-        child_uids: Array.isArray(data.childUids) ? data.childUids : [],
-        assembly_level: data.assemblyLevel || 0,
-        status: data.status || '',
-        location: data.location || '',
-        supplier_id: data.vendorId || '',
-        vendorName: data.vendorName || '',
-        vendorCode: data.vendorCode || '',
-        purchase_order_id: '',
-        grn_id: data.grnId || '',
-        grnNumber: data.grnId ? `GRN-${data.grnId.substring(0, 8)}` : '',
-        batch_number: data.batchNumber || '',
-        quality_status: data.qualityStatus || '',
-        lifecycle: [],
-        created_at: data.createdAt || '',
+      const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(searchUID)}`);
+      // Parse JSON strings to objects and add vendor/GRN names
+      const parsedData: any = {
+        ...data,
+        lifecycle: typeof data.lifecycle === 'string' ? JSON.parse(data.lifecycle) : data.lifecycle,
+        parent_uids: typeof data.parent_uids === 'string' ? JSON.parse(data.parent_uids) : data.parent_uids,
+        child_uids: typeof data.child_uids === 'string' ? JSON.parse(data.child_uids) : data.child_uids,
+        vendorName: data.supplier?.name || '',
+        vendorCode: data.supplier?.vendor_code || '',
+        grnNumber: data.grn?.grn_number || '',
       };
       setSelectedUID(parsedData);
       setShowTraceModal(true);
@@ -298,29 +284,15 @@ export default function UIDTrackingPage() {
                   <button
                     onClick={async () => {
                       try {
-                        const data = await apiClient.get<any>(`/uid/details/${encodeURIComponent(uid.uid)}`);
-                        const parsedUID: UIDRecord = {
-                          id: data.uid,
-                          uid: data.uid,
-                          entity_type: data.entityType || '',
-                          entity_id: data.itemId || '',
-                          itemName: data.itemName || '',
-                          itemCode: data.itemCode || '',
-                          parent_uids: Array.isArray(data.parentUids) ? data.parentUids : [],
-                          child_uids: Array.isArray(data.childUids) ? data.childUids : [],
-                          assembly_level: data.assemblyLevel || 0,
-                          status: data.status || '',
-                          location: data.location || '',
-                          supplier_id: data.vendorId || '',
-                          vendorName: data.vendorName || '',
-                          vendorCode: data.vendorCode || '',
-                          purchase_order_id: '',
-                          grn_id: data.grnId || '',
-                          grnNumber: data.grnId ? `GRN-${data.grnId.substring(0, 8)}` : '',
-                          batch_number: data.batchNumber || '',
-                          quality_status: data.qualityStatus || '',
-                          lifecycle: [],
-                          created_at: data.createdAt || '',
+                        const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(uid.uid)}`);
+                        const parsedUID: any = {
+                          ...data,
+                          lifecycle: typeof data.lifecycle === 'string' ? JSON.parse(data.lifecycle) : data.lifecycle,
+                          parent_uids: typeof data.parent_uids === 'string' ? JSON.parse(data.parent_uids) : data.parent_uids,
+                          child_uids: typeof data.child_uids === 'string' ? JSON.parse(data.child_uids) : data.child_uids,
+                          vendorName: data.supplier?.name || '',
+                          vendorCode: data.supplier?.vendor_code || '',
+                          grnNumber: data.grn?.grn_number || '',
                         };
                         setSelectedUID(parsedUID);
                         setShowTraceModal(true);
@@ -516,9 +488,32 @@ export default function UIDTrackingPage() {
 
             {/* Quality Status */}
             {selectedUID.quality_status && (
-              <div className="bg-green-50 p-4 rounded-lg">
+              <div className="bg-green-50 p-4 rounded-lg mb-4">
                 <h3 className="font-semibold mb-2">✅ Quality Status</h3>
                 <p className="text-sm">{selectedUID.quality_status}</p>
+              </div>
+            )}
+
+            {/* Lifecycle Timeline */}
+            {selectedUID.lifecycle && selectedUID.lifecycle.length > 0 && (
+              <div className="bg-blue-50 p-4 rounded-lg mb-4">
+                <h3 className="font-semibold mb-3">📅 Lifecycle Timeline</h3>
+                <div className="space-y-3">
+                  {selectedUID.lifecycle.map((event: any, idx: number) => (
+                    <div key={idx} className="flex items-start">
+                      <div className="flex-shrink-0 w-24 text-xs text-gray-500">
+                        {new Date(event.timestamp).toLocaleDateString()}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">{event.stage}</p>
+                        <p className="text-xs text-gray-600">
+                          Location: {event.location}
+                          {event.reference && ` | Ref: ${event.reference}`}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
