@@ -386,6 +386,7 @@ export default function GRNPage() {
         setAlertMessage({ type: 'success', message: 'GRN created successfully!' });
         setShowModal(false);
         fetchGRNs();
+        fetchPurchaseOrders(); // Refresh PO list to remove the used PO
         resetForm();
       } else {
         const errorData = await response.json();
