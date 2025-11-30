@@ -95,8 +95,8 @@ export default function DashboardPage() {
         </div>
 
         {/* Modules Grid */}
-        <div className="bg-white p-8 rounded-xl shadow-md border-2" style={{ borderColor: '#E8DCC4' }}>
-          <h3 className="text-2xl font-bold mb-6" style={{ color: '#36454F' }}>
+        <div className="bg-white p-6 rounded-xl shadow-md border-2" style={{ borderColor: '#E8DCC4' }}>
+          <h3 className="text-xl font-bold mb-6" style={{ color: '#36454F' }}>
             ERP Modules
           </h3>
           
@@ -104,11 +104,11 @@ export default function DashboardPage() {
             {[
               { name: 'Purchase Management', icon: '📦', path: '/dashboard/purchase' },
               { name: 'BOM Management', icon: '📋', path: '/dashboard/bom' },
-        {/* Modules Grid */}
-        <div className="bg-white p-6 rounded-xl shadow-md border-2" style={{ borderColor: '#E8DCC4' }}>
-          <h3 className="text-xl font-bold mb-6" style={{ color: '#36454F' }}>
-            ERP Modules
-          </h3> name: 'UID Tracking', icon: '🔍', path: '/dashboard/uid' },
+              { name: 'Inventory & Stores', icon: '🏪', path: '/dashboard/inventory' },
+              { name: 'Production Planning', icon: '⚙️', path: '/dashboard/production' },
+              { name: 'Quality Control', icon: '✅', path: '/dashboard/quality' },
+              { name: 'Sales & Dispatch', icon: '🚚', path: '/dashboard/sales' },
+              { name: 'UID Tracking', icon: '🔍', path: '/dashboard/uid' },
               { name: 'After-Sales Service', icon: '🛠️', path: '/dashboard/service' },
               { name: 'HR Management', icon: '👥', path: '/dashboard/hr' },
               { name: 'Document Control', icon: '📄', path: '/dashboard/documents' },
