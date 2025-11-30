@@ -464,12 +464,16 @@ export class UidSupabaseService {
       throw new Error('UID not found');
     }
 
+    console.log('[UID Trace] UID record item_id:', uidRecord.item_id);
+
     // 2. Get item details separately
-    const { data: item } = await this.supabase
+    const { data: item, error: itemError } = await this.supabase
       .from('items')
       .select('id, code, name, description, category, uom')
       .eq('id', uidRecord.item_id)
       .maybeSingle();
+
+    console.log('[UID Trace] Item lookup result:', { found: !!item, error: itemError });
 
     // Attach item to UID record
     uidRecord.item = item;
