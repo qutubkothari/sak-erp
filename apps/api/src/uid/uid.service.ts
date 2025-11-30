@@ -170,8 +170,8 @@ export class UidService {
         where: { id: uidRecord.entityId },
         select: {
           id: true,
-          item_name: true,
-          item_code: true,
+          name: true,
+          code: true,
           description: true,
         },
       });
@@ -184,8 +184,8 @@ export class UidService {
         where: { id: uidRecord.supplierId },
         select: {
           id: true,
-          vendor_name: true,
-          vendor_code: true,
+          name: true,
+          code: true,
         },
       });
     }
@@ -195,11 +195,11 @@ export class UidService {
       uid: uidRecord.uid,
       grnId: uidRecord.grnId,
       itemId: uidRecord.entityId,
-      itemName: itemDetails?.item_name || '',
-      itemCode: itemDetails?.item_code || '',
+      itemName: itemDetails?.name || '',
+      itemCode: itemDetails?.code || '',
       vendorId: uidRecord.supplierId,
-      vendorName: vendorDetails?.vendor_name || '',
-      vendorCode: vendorDetails?.vendor_code || '',
+      vendorName: vendorDetails?.name || '',
+      vendorCode: vendorDetails?.code || '',
       batchNumber: uidRecord.batchNumber || '',
       lotNumber: '', // Add if you have lot_number field in uid_registry
       entityType: uidRecord.entityType,
