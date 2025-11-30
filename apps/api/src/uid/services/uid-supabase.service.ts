@@ -444,13 +444,10 @@ export class UidSupabaseService {
 
     console.log('[UID Trace] Looking for UID:', uid, 'Tenant:', tenantId);
 
-    // 1. Get main UID record with item details
+    // 1. Get main UID record
     const { data: uidRecord, error: uidError } = await this.supabase
       .from('uid_registry')
-      .select(`
-        *,
-        item:items(id, code, name, description, category, uom)
-      `)
+      .select('*')
       .eq('tenant_id', tenantId)
       .eq('uid', uid)
       .maybeSingle();
@@ -466,6 +463,16 @@ export class UidSupabaseService {
       console.error('[UID Trace] UID not found in database');
       throw new Error('UID not found');
     }
+
+    // 2. Get item details separately
+    const { data: item } = await this.supabase
+      .from('items')
+      .select('id, code, name, description, category, uom')
+      .eq('id', uidRecord.item_id)
+      .maybeSingle();
+
+    // Attach item to UID record
+    uidRecord.item = item;
 
     // Parse lifecycle
     const lifecycle = Array.isArray(uidRecord.lifecycle)
