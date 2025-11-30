@@ -164,12 +164,15 @@ export class UidSupabaseService {
 
     const result = {
       ...uidData,
-      supplier,
-      purchase_order: purchaseOrder,
-      grn,
+      supplier: supplier || null,
+      purchase_order: purchaseOrder || null,
+      grn: grn || null,
     };
     
-    console.log('Returning result with supplier:', result.supplier?.name);
+    console.log('=== FINAL RESULT ===');
+    console.log('Supplier:', JSON.stringify(result.supplier));
+    console.log('PO:', JSON.stringify(result.purchase_order));
+    console.log('GRN:', JSON.stringify(result.grn));
     return result;
   }
 
