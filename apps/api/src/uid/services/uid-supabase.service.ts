@@ -113,20 +113,54 @@ export class UidSupabaseService {
   async searchUID(req: any, uid: string) {
     const tenantId = req.user.tenantId;
 
-    const { data, error } = await this.supabase
+    // First get the UID record
+    const { data: uidData, error: uidError } = await this.supabase
       .from('uid_registry')
-      .select(`
-        *,
-        supplier:vendors!supplier_id(id, name, vendor_code),
-        purchase_order:purchase_orders!purchase_order_id(id, po_number),
-        grn:grn!grn_id(id, grn_number)
-      `)
+      .select('*')
       .eq('tenant_id', tenantId)
       .eq('uid', uid)
       .single();
 
-    if (error) throw new Error(error.message);
-    return data;
+    if (uidError) throw new Error(uidError.message);
+
+    // Then fetch related data separately
+    let supplier = null;
+    let purchaseOrder = null;
+    let grn = null;
+
+    if (uidData.supplier_id) {
+      const { data: vendorData } = await this.supabase
+        .from('vendors')
+        .select('id, name, vendor_code')
+        .eq('id', uidData.supplier_id)
+        .single();
+      supplier = vendorData;
+    }
+
+    if (uidData.purchase_order_id) {
+      const { data: poData } = await this.supabase
+        .from('purchase_orders')
+        .select('id, po_number')
+        .eq('id', uidData.purchase_order_id)
+        .single();
+      purchaseOrder = poData;
+    }
+
+    if (uidData.grn_id) {
+      const { data: grnData } = await this.supabase
+        .from('grn')
+        .select('id, grn_number')
+        .eq('id', uidData.grn_id)
+        .single();
+      grn = grnData;
+    }
+
+    return {
+      ...uidData,
+      supplier,
+      purchase_order: purchaseOrder,
+      grn,
+    };
   }
 
   /**
