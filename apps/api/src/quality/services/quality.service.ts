@@ -278,14 +278,15 @@ export class QualityService {
   async createNCR(tenantId: string, userId: string, data: any) {
     const ncrNumber = await this.generateNCRNumber(tenantId);
 
+    // Map frontend field names to backend
     const ncrData = {
       tenant_id: tenantId,
       ncr_number: ncrNumber,
-      inspection_id: data.inspection_id || null,
+      inspection_id: data.inspection_id || data.reference_id || null,
       ncr_date: data.ncr_date || new Date().toISOString().split('T')[0],
       status: 'OPEN',
-      nonconformance_type: data.nonconformance_type,
-      description: data.description,
+      nonconformance_type: data.nonconformance_type || data.related_to || 'MATERIAL',
+      description: data.description || data.issue_description,
       item_id: data.item_id,
       item_name: data.item_name,
       uid: data.uid,
@@ -295,6 +296,8 @@ export class QualityService {
       root_cause: data.root_cause,
       immediate_action: data.immediate_action,
       containment_action: data.containment_action,
+      corrective_action_plan: data.corrective_action,
+      preventive_action_plan: data.preventive_action,
       cost_impact: data.cost_impact || 0,
       raised_by: userId,
     };
@@ -329,7 +332,9 @@ export class QualityService {
       uid: inspection.uid,
       vendor_id: inspection.vendor_id,
       quantity_affected: inspection.rejected_quantity,
-      immediate_action: ncrDetails?.immediate_action,
+      immediate_action: ncrDetails?.immediate_action || 'Item segregated and placed on hold',
+      containment_action: 'Material quarantined pending disposition',
+      root_cause: 'To be determined through investigation',
     };
 
     return this.createNCR(tenantId, inspection.created_by, ncrData);
@@ -415,21 +420,96 @@ export class QualityService {
   // ==================== Quality Analytics ====================
 
   async getVendorQualityRatings(tenantId: string, vendorId?: string) {
-    let query = this.supabase
-      .from('vendor_quality_rating')
-      .select('*')
+    // Get all completed incoming inspections grouped by vendor
+    const { data: inspections, error: inspError } = await this.supabase
+      .from('quality_inspections')
+      .select('vendor_id, vendor_name, status, rejected_quantity, inspected_quantity')
       .eq('tenant_id', tenantId)
-      .order('rating_period_start', { ascending: false });
+      .eq('inspection_type', 'INCOMING')
+      .not('vendor_id', 'is', null)
+      .in('status', ['PASSED', 'FAILED']);
 
-    if (vendorId) {
-      query = query.eq('vendor_id', vendorId);
-    }
+    if (inspError) throw new BadRequestException(inspError.message);
+    if (!inspections || inspections.length === 0) return [];
 
-    const { data, error } = await query;
+    // Group by vendor
+    const vendorStats: Record<string, any> = {};
+    
+    inspections.forEach(inspection => {
+      const vId = inspection.vendor_id;
+      if (!vId) return;
+      
+      if (!vendorStats[vId]) {
+        vendorStats[vId] = {
+          vendor_name: inspection.vendor_name || 'Unknown Vendor',
+          total_inspections: 0,
+          passed_inspections: 0,
+          total_defects: 0,
+          total_quantity: 0,
+        };
+      }
+      
+      vendorStats[vId].total_inspections++;
+      if (inspection.status === 'PASSED') {
+        vendorStats[vId].passed_inspections++;
+      }
+      vendorStats[vId].total_defects += Number(inspection.rejected_quantity || 0);
+      vendorStats[vId].total_quantity += Number(inspection.inspected_quantity || 0);
+    });
 
-    if (error) throw new BadRequestException(error.message);
+    // Get NCR counts per vendor
+    const { data: ncrs } = await this.supabase
+      .from('ncr')
+      .select('vendor_id')
+      .eq('tenant_id', tenantId)
+      .not('vendor_id', 'is', null);
 
-    return data;
+    const ncrCounts: Record<string, number> = {};
+    ncrs?.forEach(ncr => {
+      if (ncr.vendor_id) {
+        ncrCounts[ncr.vendor_id] = (ncrCounts[ncr.vendor_id] || 0) + 1;
+      }
+    });
+
+    // Calculate ratings
+    const ratings = Object.entries(vendorStats).map(([vendorId, stats]) => {
+      const passRate = stats.total_inspections > 0 
+        ? (stats.passed_inspections / stats.total_inspections) * 100 
+        : 0;
+      
+      const defectRatePpm = stats.total_quantity > 0
+        ? (stats.total_defects / stats.total_quantity) * 1000000
+        : 0;
+      
+      const ncrCount = ncrCounts[vendorId] || 0;
+      
+      // Quality score calculation
+      const passRateScore = passRate;
+      const defectScore = Math.max(0, 100 - (defectRatePpm / 100));
+      const ncrPenalty = Math.max(0, 100 - (ncrCount * 10));
+      const qualityScore = (passRateScore * 0.5) + (defectScore * 0.3) + (ncrPenalty * 0.2);
+      
+      let qualityGrade = 'F';
+      if (qualityScore >= 95) qualityGrade = 'A+';
+      else if (qualityScore >= 90) qualityGrade = 'A';
+      else if (qualityScore >= 80) qualityGrade = 'B';
+      else if (qualityScore >= 70) qualityGrade = 'C';
+      else if (qualityScore >= 60) qualityGrade = 'D';
+      
+      return {
+        vendor_name: stats.vendor_name,
+        total_inspections: stats.total_inspections,
+        passed_inspections: stats.passed_inspections,
+        pass_rate: passRate,
+        total_defects: stats.total_defects,
+        defect_rate_ppm: defectRatePpm,
+        ncr_count: ncrCount,
+        quality_score: qualityScore,
+        quality_grade: qualityGrade,
+      };
+    });
+
+    return ratings.sort((a, b) => b.quality_score - a.quality_score);
   }
 
   async calculateVendorQualityRating(tenantId: string, vendorId: string, periodStart: string, periodEnd: string) {
@@ -569,13 +649,23 @@ export class QualityService {
     });
 
     const topDefects = Object.entries(defectCounts)
-      .map(([category, count]) => ({ category, count }))
+      .map(([defect_type, count]) => ({ defect_type, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
 
+    // Calculate pass rate
+    const totalInspections = inspectionSummary.total;
+    const passRate = totalInspections > 0 
+      ? (inspectionSummary.passed / totalInspections) * 100 
+      : 0;
+
     return {
-      inspections: inspectionSummary,
-      ncrs: ncrSummary,
+      total_inspections: inspectionSummary.total,
+      passed_inspections: inspectionSummary.passed,
+      failed_inspections: inspectionSummary.failed,
+      pass_rate: passRate,
+      open_ncrs: ncrSummary.open,
+      closed_ncrs: ncrSummary.closed,
       top_defects: topDefects,
     };
   }

@@ -576,11 +576,10 @@ export default function QualityPage() {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">NCR #</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Raised Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item/Part</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Issue Description</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Root Cause</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Corrective Action</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Raised By</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Root Cause</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
@@ -589,15 +588,25 @@ export default function QualityPage() {
                   <tr key={ncr.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">{ncr.ncr_number}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(ncr.ncr_date).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-sm">
+                      {ncr.item_name ? (
+                        <div>
+                          <div className="font-medium">{ncr.item_name}</div>
+                          {ncr.quantity_affected && (
+                            <div className="text-xs text-gray-500">Qty: {ncr.quantity_affected}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.description}</td>
-                    <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.root_cause || '-'}</td>
-                    <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.corrective_action || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 text-xs rounded ${getStatusColor(ncr.status)}`}>
-                        {ncr.status}
+                        {ncr.status.replace(/_/g, ' ')}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{ncr.raised_by}</td>
+                    <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.root_cause || <span className="text-gray-400">Pending investigation</span>}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <div className="flex space-x-2">
                         <button
@@ -1327,30 +1336,88 @@ export default function QualityPage() {
                 <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.description}</p>
               </div>
 
+              {/* NCR Workflow Status */}
+              <div className="border-t pt-4">
+                <label className="text-sm font-medium text-gray-600 block mb-2">NCR Workflow</label>
+                <div className="bg-blue-50 border border-blue-200 rounded p-4">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <span className={`px-3 py-1 text-sm rounded ${getStatusColor(viewingNCR.status)}`}>
+                      {viewingNCR.status.replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-sm text-gray-600">
+                      {viewingNCR.status === 'OPEN' && '→ Issue identified, awaiting review'}
+                      {viewingNCR.status === 'UNDER_REVIEW' && '→ Being investigated by quality team'}
+                      {viewingNCR.status === 'ACTION_PLANNED' && '→ Corrective actions planned, awaiting execution'}
+                      {viewingNCR.status === 'IN_PROGRESS' && '→ Corrective actions being implemented'}
+                      {viewingNCR.status === 'RESOLVED' && '→ Actions completed, awaiting verification'}
+                      {viewingNCR.status === 'CLOSED' && '→ Verified and closed'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-600 mt-2">
+                    <p className="font-medium mb-1">Next Steps:</p>
+                    {viewingNCR.status === 'OPEN' && (
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Conduct root cause analysis</li>
+                        <li>Update status to "Under Review"</li>
+                      </ul>
+                    )}
+                    {viewingNCR.status === 'UNDER_REVIEW' && (
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Complete root cause investigation</li>
+                        <li>Plan corrective and preventive actions</li>
+                        <li>Update status to "Action Planned"</li>
+                      </ul>
+                    )}
+                    {viewingNCR.status === 'ACTION_PLANNED' && (
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Begin implementing corrective actions</li>
+                        <li>Update status to "In Progress"</li>
+                      </ul>
+                    )}
+                    {viewingNCR.status === 'IN_PROGRESS' && (
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Complete all corrective actions</li>
+                        <li>Verify effectiveness</li>
+                        <li>Update status to "Resolved"</li>
+                      </ul>
+                    )}
+                    {viewingNCR.status === 'RESOLVED' && (
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Final verification by quality manager</li>
+                        <li>Close NCR if satisfactory</li>
+                      </ul>
+                    )}
+                    {viewingNCR.status === 'CLOSED' && (
+                      <p className="text-green-700">✓ NCR completed and verified</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {viewingNCR.root_cause && (
                 <div className="border-t pt-4">
-                  <label className="text-sm font-medium text-gray-600 block mb-2">Root Cause</label>
+                  <label className="text-sm font-medium text-gray-600 block mb-2">Root Cause Analysis</label>
                   <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.root_cause}</p>
                 </div>
               )}
 
               {viewingNCR.containment_action && (
                 <div className="border-t pt-4">
-                  <label className="text-sm font-medium text-gray-600 block mb-2">Containment Action</label>
+                  <label className="text-sm font-medium text-gray-600 block mb-2">Containment Action (Immediate)</label>
                   <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.containment_action}</p>
                 </div>
               )}
 
               {viewingNCR.corrective_action && (
                 <div className="border-t pt-4">
-                  <label className="text-sm font-medium text-gray-600 block mb-2">Corrective Action</label>
+                  <label className="text-sm font-medium text-gray-600 block mb-2">Corrective Action (Eliminate Root Cause)</label>
                   <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.corrective_action}</p>
                 </div>
               )}
 
               {viewingNCR.preventive_action && (
                 <div className="border-t pt-4">
-                  <label className="text-sm font-medium text-gray-600 block mb-2">Preventive Action</label>
+                  <label className="text-sm font-medium text-gray-600 block mb-2">Preventive Action (Prevent Recurrence)</label>
                   <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.preventive_action}</p>
                 </div>
               )}
