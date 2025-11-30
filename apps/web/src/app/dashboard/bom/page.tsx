@@ -18,6 +18,7 @@ interface BOM {
   };
   bom_items?: Array<{
     id: string;
+    component_type: 'ITEM' | 'BOM';
     quantity: number;
     scrap_percentage: number;
     sequence: number;
@@ -27,6 +28,14 @@ interface BOM {
       code: string;
       name: string;
       uom: string;
+    };
+    child_bom?: {
+      id: string;
+      version: number;
+      item?: {
+        code: string;
+        name: string;
+      };
     };
   }>;
   created_at: string;
@@ -82,17 +91,38 @@ export default function BOMPage() {
     effectiveTo: '',
     notes: '',
     items: [] as Array<{
+      componentType: 'ITEM' | 'BOM';
       itemId: string;
+      childBomId: string;
       quantity: number;
       scrapPercentage: number;
       sequence: number;
       notes: string;
     }>,
   });
+  const [availableBOMs, setAvailableBOMs] = useState<BOM[]>([]);
 
   useEffect(() => {
     fetchBOMs();
-  }, []);
+    if (showModal) {
+      fetchAvailableBOMs();
+    }
+  }, [showModal]);
+
+  const fetchAvailableBOMs = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://13.205.17.214:4000/api/v1/bom', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableBOMs(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error('Error fetching BOMs:', error);
+    }
+  };
 
   const fetchBOMs = async () => {
     try {
@@ -304,7 +334,9 @@ export default function BOMPage() {
       items: [
         ...formData.items,
         {
+          componentType: 'ITEM',
           itemId: '',
+          childBomId: '',
           quantity: 1,
           scrapPercentage: 0,
           sequence: formData.items.length + 1,
@@ -514,18 +546,62 @@ export default function BOMPage() {
                 ) : (
                   <div className="space-y-4">
                     {formData.items.map((item, index) => (
-                      <div key={index} className="border border-gray-300 rounded-lg p-4">
+                      <div key={index} className="border border-gray-300 rounded-lg p-4 bg-white">
+                        {/* Component Type Selector */}
+                        <div className="mb-3">
+                          <label className="text-xs text-gray-600 font-medium block mb-2">Component Type *</label>
+                          <div className="flex gap-4">
+                            <label className="flex items-center cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`componentType-${index}`}
+                                value="ITEM"
+                                checked={item.componentType === 'ITEM'}
+                                onChange={(e) => handleUpdateItem(index, 'componentType', e.target.value)}
+                                className="mr-2"
+                              />
+                              <span className="text-sm">📦 Item (Raw Material)</span>
+                            </label>
+                            <label className="flex items-center cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`componentType-${index}`}
+                                value="BOM"
+                                checked={item.componentType === 'BOM'}
+                                onChange={(e) => handleUpdateItem(index, 'componentType', e.target.value)}
+                                className="mr-2"
+                              />
+                              <span className="text-sm">🔧 BOM (Sub-Assembly)</span>
+                            </label>
+                          </div>
+                        </div>
+
                         <div className="grid grid-cols-12 gap-3">
                           <div className="col-span-4">
                             <label className="text-xs text-gray-600 font-medium">
-                              Component *
+                              {item.componentType === 'ITEM' ? 'Item *' : 'BOM *'}
                             </label>
-                            <ItemSearch
-                              value={item.itemId}
-                              onSelect={(selectedItem) => handleUpdateItem(index, 'itemId', selectedItem.id)}
-                              placeholder="Search item..."
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
-                            />
+                            {item.componentType === 'ITEM' ? (
+                              <ItemSearch
+                                value={item.itemId}
+                                onSelect={(selectedItem) => handleUpdateItem(index, 'itemId', selectedItem.id)}
+                                placeholder="Search item..."
+                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+                              />
+                            ) : (
+                              <select
+                                value={item.childBomId}
+                                onChange={(e) => handleUpdateItem(index, 'childBomId', e.target.value)}
+                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+                              >
+                                <option value="">Select BOM...</option>
+                                {availableBOMs.map((bom) => (
+                                  <option key={bom.id} value={bom.id}>
+                                    {bom.item?.code} - {bom.item?.name} (v{bom.version})
+                                  </option>
+                                ))}
+                              </select>
+                            )}
                           </div>
                           <div className="col-span-2">
                             <label className="text-xs text-gray-600">Quantity *</label>
@@ -549,6 +625,7 @@ export default function BOMPage() {
                             <button
                               onClick={() => handleRemoveItem(index)}
                               className="text-red-600 hover:text-red-900 text-xl"
+                              title="Remove component"
                             >
                               ×
                             </button>
@@ -817,8 +894,9 @@ export default function BOMPage() {
                     <table className="w-full">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Item Code</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Item Name</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Type</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Code</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Name</th>
                           <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Quantity</th>
                           <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Scrap %</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Notes</th>
@@ -828,10 +906,27 @@ export default function BOMPage() {
                       <tbody className="divide-y divide-gray-200">
                         {selectedBom.bom_items.map((item) => (
                           <tr key={item.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm text-gray-900">{item.item?.code || 'N/A'}</td>
-                            <td className="px-4 py-3 text-sm text-gray-900">{item.item?.name || 'Unknown'}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 text-xs rounded ${
+                                item.component_type === 'BOM' 
+                                  ? 'bg-blue-100 text-blue-800' 
+                                  : 'bg-green-100 text-green-800'
+                              }`}>
+                                {item.component_type === 'BOM' ? '🔧 BOM' : '📦 Item'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {item.component_type === 'BOM' 
+                                ? item.child_bom?.item?.code || 'N/A'
+                                : item.item?.code || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {item.component_type === 'BOM' 
+                                ? `${item.child_bom?.item?.name || 'Unknown'} (v${item.child_bom?.version || '?'})`
+                                : item.item?.name || 'Unknown'}
+                            </td>
                             <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                              {item.quantity} {item.item?.uom || 'units'}
+                              {item.quantity} {item.component_type === 'ITEM' ? item.item?.uom || 'units' : 'units'}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 text-right">
                               {item.scrap_percentage || 0}%

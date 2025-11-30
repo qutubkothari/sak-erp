@@ -53,11 +53,22 @@ export class BomService {
 
     // Insert BOM items
     if (data.items && data.items.length > 0) {
-      console.log('[BomService] create - Component item IDs:', data.items.map((i: any) => i.itemId));
+      console.log('[BomService] create - Components:', data.items.map((i: any) => `${i.componentType}:${i.itemId || i.childBomId}`));
+      
+      // Validate no circular references for child BOMs
+      const childBomIds = data.items.filter((i: any) => i.componentType === 'BOM').map((i: any) => i.childBomId);
+      for (const childId of childBomIds) {
+        const hasCycle = await this.validateNoCycle(bom.id, childId);
+        if (hasCycle) {
+          throw new BadRequestException(`Circular BOM reference detected: Cannot add BOM as it would create a cycle`);
+        }
+      }
       
       const items = data.items.map((item: any, index: number) => ({
         bom_id: bom.id,
-        item_id: item.itemId,
+        item_id: item.componentType === 'ITEM' ? item.itemId : null,
+        child_bom_id: item.componentType === 'BOM' ? item.childBomId : null,
+        component_type: item.componentType || 'ITEM',
         quantity: item.quantity,
         scrap_percentage: item.scrapPercentage || 0,
         sequence: item.sequence || index + 1,
@@ -120,9 +131,11 @@ export class BomService {
     console.log('[BomService] Main items found:', itemsRes.data?.length);
     console.log('[BomService] BOM items found:', bomItemsRes.data?.length);
 
-    // Fetch component items (items referenced by bom_items)
-    const componentItemIds = bomItemsRes.data?.map((bi: any) => bi.item_id) || [];
+    // Fetch component items and child BOMs
+    const componentItemIds = bomItemsRes.data?.filter((bi: any) => bi.component_type === 'ITEM').map((bi: any) => bi.item_id) || [];
+    const childBomIds = bomItemsRes.data?.filter((bi: any) => bi.component_type === 'BOM').map((bi: any) => bi.child_bom_id) || [];
     console.log('[BomService] findAll - fetching component items for IDs:', componentItemIds);
+    console.log('[BomService] findAll - fetching child BOMs for IDs:', childBomIds);
     
     let componentItems = [];
     if (componentItemIds.length > 0) {
@@ -139,20 +152,57 @@ export class BomService {
       }
     }
 
+    // Fetch child BOMs
+    let childBoms = [];
+    if (childBomIds.length > 0) {
+      const { data: boms, error: bomsError } = await this.supabase
+        .from('bom_headers')
+        .select('*')
+        .in('id', childBomIds);
+      
+      if (bomsError) {
+        console.error('[BomService] Child BOMs query error:', bomsError);
+      } else {
+        // Fetch items for child BOMs
+        const childBomItemIds = boms?.map((b: any) => b.item_id) || [];
+        if (childBomItemIds.length > 0) {
+          const { data: childItems } = await this.supabase
+            .from('items')
+            .select('*')
+            .in('id', childBomItemIds);
+          
+          const childItemsMap = new Map(childItems?.map((i: any) => [i.id, i]));
+          childBoms = boms?.map((b: any) => ({
+            ...b,
+            item: childItemsMap.get(b.item_id)
+          })) || [];
+        }
+        console.log('[BomService] Child BOMs found:', childBoms.length);
+      }
+    }
+
     // Create maps
     const mainItemsMap = new Map(itemsRes.data?.map((i: any) => [i.id, i]));
     const componentItemsMap = new Map(componentItems.map((i: any) => [i.id, i]));
+    const childBomsMap = new Map(childBoms.map((b: any) => [b.id, b]));
     const bomItemsMap = new Map();
     
-    // Group bom_items by bom_id and attach component item details
+    // Group bom_items by bom_id and attach component item/BOM details
     bomItemsRes.data?.forEach((bi: any) => {
       if (!bomItemsMap.has(bi.bom_id)) {
         bomItemsMap.set(bi.bom_id, []);
       }
-      bomItemsMap.get(bi.bom_id).push({
-        ...bi,
-        item: componentItemsMap.get(bi.item_id)
-      });
+      if (bi.component_type === 'BOM') {
+        bomItemsMap.get(bi.bom_id).push({
+          ...bi,
+          child_bom: childBomsMap.get(bi.child_bom_id)
+        });
+      } else {
+        bomItemsMap.get(bi.bom_id).push({
+          ...bi,
+          item: componentItemsMap.get(bi.item_id)
+        });
+      }
     });
 
     // Combine everything
@@ -183,34 +233,77 @@ export class BomService {
     if (itemRes.error) throw new BadRequestException(itemRes.error.message);
     if (bomItemsRes.error) throw new BadRequestException(bomItemsRes.error.message);
 
-    // Fetch items for bom_items
-    const bomItemIds = bomItemsRes.data?.map((bi: any) => bi.item_id) || [];
+    // Fetch items and child BOMs for bom_items
+    const bomItemIds = bomItemsRes.data?.filter((bi: any) => bi.component_type === 'ITEM').map((bi: any) => bi.item_id) || [];
+    const childBomIds = bomItemsRes.data?.filter((bi: any) => bi.component_type === 'BOM').map((bi: any) => bi.child_bom_id) || [];
     console.log('[BomService] findOne - Component item IDs:', bomItemIds);
+    console.log('[BomService] findOne - Child BOM IDs:', childBomIds);
     
-    const { data: bomItems, error: bomItemsItemsError } = await this.supabase
-      .from('items')
-      .select('*')
-      .in('id', bomItemIds);
+    // Fetch items
+    let bomItems = [];
+    if (bomItemIds.length > 0) {
+      const { data: items, error: itemsError } = await this.supabase
+        .from('items')
+        .select('*')
+        .in('id', bomItemIds);
 
-    console.log('[BomService] findOne - Fetched component items:', bomItems?.length || 0);
-    if (bomItemsItemsError) {
-      console.error('[BomService] findOne - Error fetching component items:', bomItemsItemsError);
-      throw new BadRequestException(bomItemsItemsError.message);
+      if (itemsError) {
+        console.error('[BomService] findOne - Error fetching component items:', itemsError);
+        throw new BadRequestException(itemsError.message);
+      }
+      bomItems = items || [];
     }
 
-    const itemsMap = new Map(bomItems?.map((i: any) => [i.id, i]));
+    // Fetch child BOMs
+    let childBoms = [];
+    if (childBomIds.length > 0) {
+      const { data: boms, error: bomsError } = await this.supabase
+        .from('bom_headers')
+        .select('*')
+        .in('id', childBomIds);
+
+      if (bomsError) {
+        console.error('[BomService] findOne - Error fetching child BOMs:', bomsError);
+      } else {
+        // Fetch items for child BOMs
+        const childBomItemIds = boms?.map((b: any) => b.item_id) || [];
+        if (childBomItemIds.length > 0) {
+          const { data: childItems } = await this.supabase
+            .from('items')
+            .select('*')
+            .in('id', childBomItemIds);
+          
+          const childItemsMap = new Map(childItems?.map((i: any) => [i.id, i]));
+          childBoms = boms?.map((b: any) => ({
+            ...b,
+            item: childItemsMap.get(b.item_id)
+          })) || [];
+        }
+      }
+    }
+
+    const itemsMap = new Map(bomItems.map((i: any) => [i.id, i]));
+    const childBomsMap = new Map(childBoms.map((b: any) => [b.id, b]));
     console.log('[BomService] findOne - Items map size:', itemsMap.size);
+    console.log('[BomService] findOne - Child BOMs map size:', childBomsMap.size);
 
     const result = {
       ...header,
       item: itemRes.data,
       bom_items: bomItemsRes.data?.map((bi: any) => {
-        const item = itemsMap.get(bi.item_id);
-        console.log('[BomService] findOne - Mapping bom_item:', bi.item_id, 'Found:', !!item);
-        return {
-          ...bi,
-          item
-        };
+        if (bi.component_type === 'BOM') {
+          const childBom = childBomsMap.get(bi.child_bom_id);
+          return {
+            ...bi,
+            child_bom: childBom
+          };
+        } else {
+          const item = itemsMap.get(bi.item_id);
+          return {
+            ...bi,
+            item
+          };
+        }
       }) || []
     };
 
@@ -240,9 +333,20 @@ export class BomService {
         .eq('bom_id', id);
 
       if (data.items.length > 0) {
+        // Validate no circular references for child BOMs
+        const childBomIds = data.items.filter((i: any) => i.componentType === 'BOM').map((i: any) => i.childBomId);
+        for (const childId of childBomIds) {
+          const hasCycle = await this.validateNoCycle(id, childId);
+          if (hasCycle) {
+            throw new BadRequestException(`Circular BOM reference detected: Cannot add BOM as it would create a cycle`);
+          }
+        }
+
         const items = data.items.map((item: any, index: number) => ({
           bom_id: id,
-          item_id: item.itemId,
+          item_id: item.componentType === 'ITEM' ? item.itemId : null,
+          child_bom_id: item.componentType === 'BOM' ? item.childBomId : null,
+          component_type: item.componentType || 'ITEM',
           quantity: item.quantity,
           scrap_percentage: item.scrapPercentage || 0,
           sequence: item.sequence || index + 1,
@@ -374,6 +478,47 @@ export class BomService {
 
     if (error) throw new BadRequestException(error.message);
     return { message: 'BOM deleted successfully' };
+  }
+
+  /**
+   * Validate that adding childBomId to parentBomId won't create a circular reference
+   * Uses DFS to check if childBomId already contains parentBomId in its hierarchy
+   */
+  private async validateNoCycle(parentBomId: string, childBomId: string): Promise<boolean> {
+    const visited = new Set<string>();
+    const stack = [childBomId];
+
+    while (stack.length > 0) {
+      const currentBomId = stack.pop()!;
+      
+      // If we've reached the parent, there's a cycle
+      if (currentBomId === parentBomId) {
+        return true;
+      }
+
+      // Skip if already visited
+      if (visited.has(currentBomId)) {
+        continue;
+      }
+      visited.add(currentBomId);
+
+      // Get child BOMs of current BOM
+      const { data: bomItems } = await this.supabase
+        .from('bom_items')
+        .select('child_bom_id')
+        .eq('bom_id', currentBomId)
+        .eq('component_type', 'BOM');
+
+      if (bomItems && bomItems.length > 0) {
+        bomItems.forEach((bi: any) => {
+          if (bi.child_bom_id) {
+            stack.push(bi.child_bom_id);
+          }
+        });
+      }
+    }
+
+    return false;
   }
 
   private async generatePRNumber(tenantId: string): Promise<string> {
