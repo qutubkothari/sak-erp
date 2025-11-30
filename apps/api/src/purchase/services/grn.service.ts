@@ -463,6 +463,10 @@ export class GrnService {
   }
 
   async getUIDsByGRN(tenantId: string, grnId: string) {
+    console.log('=== GET UIDs BY GRN ===');
+    console.log('TenantId:', tenantId);
+    console.log('GRN ID:', grnId);
+    
     const { data, error } = await this.supabase
       .from('uid_registry')
       .select('*')
@@ -470,7 +474,16 @@ export class GrnService {
       .eq('grn_id', grnId)
       .order('created_at', { ascending: false });
 
-    if (error) throw new BadRequestException(error.message);
+    console.log('UIDs found:', data?.length || 0);
+    if (data && data.length > 0) {
+      console.log('First UID grn_id:', data[0].grn_id);
+      console.log('Sample UIDs:', data.slice(0, 3).map(u => ({ uid: u.uid, grn_id: u.grn_id })));
+    }
+    
+    if (error) {
+      console.error('Error fetching UIDs:', error);
+      throw new BadRequestException(error.message);
+    }
     return data || [];
   }
 
