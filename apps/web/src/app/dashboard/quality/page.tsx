@@ -174,6 +174,12 @@ export default function QualityPage() {
       // Find selected inspector details
       const selectedInspector = users.find((user: any) => user.id === inspectionForm.inspector_id);
       
+      console.log('=== CREATE INSPECTION DEBUG ===');
+      console.log('selectedGRN:', selectedGRN);
+      console.log('selectedItem:', selectedItem);
+      console.log('selectedInspector:', selectedInspector);
+      console.log('inspectionForm:', inspectionForm);
+      
       // Prepare data with all required fields
       const inspectionData = {
         inspection_type: inspectionForm.inspection_type,
@@ -191,6 +197,8 @@ export default function QualityPage() {
         inspector_name: selectedInspector?.full_name || selectedInspector?.email || '',
         inspection_checklist: inspectionForm.remarks || '',
       };
+      
+      console.log('Sending inspectionData:', inspectionData);
       
       await apiClient.post('/quality/inspections', inspectionData);
       setShowInspectionForm(false);
