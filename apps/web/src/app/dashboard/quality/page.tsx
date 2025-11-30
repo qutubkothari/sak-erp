@@ -118,7 +118,7 @@ export default function QualityPage() {
   const fetchFormData = async () => {
     try {
       // Fetch GRNs
-      const grnsData = await apiClient.get('/purchase/grns');
+      const grnsData = await apiClient.get('/purchase/grn');
       setGrns(grnsData.filter((g: any) => g.status === 'COMPLETED'));
       
       // Fetch users (for inspectors)
@@ -134,11 +134,11 @@ export default function QualityPage() {
     
     try {
       // Fetch selected GRN details to get items and UIDs
-      const grnDetails = await apiClient.get(`/purchase/grns/${grnId}`);
+      const grnDetails = await apiClient.get(`/purchase/grn/${grnId}`);
       setSelectedGRN(grnDetails);
       
       // Fetch UIDs generated for this GRN
-      const uidsData = await apiClient.get(`/uid/search?grn=${grnDetails.grn_number}`);
+      const uidsData = await apiClient.get(`/purchase/grn/${grnId}/uids`);
       setUids(uidsData || []);
     } catch (error) {
       console.error('Error fetching GRN details:', error);
@@ -594,15 +594,14 @@ export default function QualityPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Item</label>
-                  <select
-                    value={inspectionForm.item_id}
+                  <select\n                    value={inspectionForm.item_id}
                     onChange={(e) => setInspectionForm({ ...inspectionForm, item_id: e.target.value })}
-                    className="w-full border rounded px-3 py-2"
+                    className=\"w-full border rounded px-3 py-2\"
                     required
                     disabled={!selectedGRN}
                   >
-                    <option value="">Select Item...</option>
-                    {selectedGRN?.items?.map((item: any) => (
+                    <option value=\"\">Select Item...</option>
+                    {selectedGRN?.grn_items?.map((item: any) => (
                       <option key={item.item_id} value={item.item_id}>
                         {item.item_code} - {item.item_name}
                       </option>
