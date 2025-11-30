@@ -111,23 +111,25 @@ export class QualityService {
     return data;
   }
 
-  async completeInspection(tenantId: string, inspectionId: string, data: any) {
-    // Calculate defect rate
-    const defectRate = data.inspected_quantity > 0
-      ? (data.rejected_quantity / data.inspected_quantity) * 100
-      : 0;
-
+  async updateInspection(tenantId: string, inspectionId: string, data: any) {
     const updateData = {
-      status: data.status || 'PASSED',
-      accepted_quantity: data.accepted_quantity,
-      rejected_quantity: data.rejected_quantity,
-      overall_result: data.overall_result,
-      defect_count: data.defect_count || 0,
-      defect_rate: defectRate,
-      observations: data.observations,
+      inspection_type: data.inspection_type,
+      inspection_date: data.inspection_date,
+      grn_id: data.grn_id,
+      production_order_id: data.production_order_id,
+      uid: data.uid,
+      item_id: data.item_id,
+      item_name: data.item_name,
+      item_code: data.item_code,
+      vendor_id: data.vendor_id,
+      vendor_name: data.vendor_name,
+      batch_number: data.batch_number,
+      lot_number: data.lot_number,
+      inspected_quantity: data.inspected_quantity,
+      inspector_id: data.inspector_id,
+      inspector_name: data.inspector_name,
+      inspection_checklist: data.inspection_checklist,
       remarks: data.remarks,
-      approved_by: data.approved_by,
-      approved_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
@@ -136,17 +138,38 @@ export class QualityService {
       .update(updateData)
       .eq('tenant_id', tenantId)
       .eq('id', inspectionId)
+      .eq('status', 'PENDING') // Only allow updates for pending inspections
       .select()
       .single();
 
     if (error) throw new BadRequestException(error.message);
 
-    // Auto-generate NCR if inspection failed
-    if (data.status === 'FAILED' && data.generate_ncr) {
-      await this.createNCRFromInspection(tenantId, inspection, data.ncr_details);
+    return inspection;
+  }
+
+  async deleteInspection(tenantId: string, inspectionId: string) {
+    // Only allow deletion of pending inspections
+    const { data: inspection, error: fetchError } = await this.supabase
+      .from('quality_inspections')
+      .select('status')
+      .eq('tenant_id', tenantId)
+      .eq('id', inspectionId)
+      .single();
+
+    if (fetchError) throw new NotFoundException('Inspection not found');
+    if (inspection.status !== 'PENDING') {
+      throw new BadRequestException('Only pending inspections can be deleted');
     }
 
-    return inspection;
+    const { error } = await this.supabase
+      .from('quality_inspections')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('id', inspectionId);
+
+    if (error) throw new BadRequestException(error.message);
+
+    return { message: 'Inspection deleted successfully' };
   }
 
   async addInspectionParameters(inspectionId: string, parameters: any[]) {

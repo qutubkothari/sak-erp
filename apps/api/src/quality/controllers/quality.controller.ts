@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { QualityService } from '../services/quality.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
@@ -28,13 +28,18 @@ export class QualityController {
     return this.qualityService.getInspectionById(req.user.tenantId, id);
   }
 
-  @Post('inspections/:id/complete')
-  async completeInspection(
+  @Put('inspections/:id')
+  async updateInspection(
     @Request() req: any,
     @Param('id') id: string,
     @Body() body: any,
   ) {
-    return this.qualityService.completeInspection(req.user.tenantId, id, body);
+    return this.qualityService.updateInspection(req.user.tenantId, id, body);
+  }
+
+  @Delete('inspections/:id')
+  async deleteInspection(@Request() req: any, @Param('id') id: string) {
+    return this.qualityService.deleteInspection(req.user.tenantId, id);
   }
 
   @Post('inspections/:id/parameters')

@@ -105,6 +105,10 @@ export default function QualityPage() {
     ncr_description: ''
   });
 
+  // Edit/Delete state
+  const [editingInspection, setEditingInspection] = useState<any>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+
   useEffect(() => {
     fetchData();
   }, [activeTab]);
@@ -278,6 +282,96 @@ export default function QualityPage() {
     }
   };
 
+  const handleEditInspection = (inspection: any) => {
+    setEditingInspection(inspection);
+    setInspectionForm({
+      inspection_type: inspection.inspection_type,
+      reference_type: 'GRN', // Assuming GRN for now
+      reference_id: inspection.grn_id || '',
+      item_id: inspection.item_id || '',
+      uid: inspection.uid || '',
+      quantity_inspected: inspection.quantity_inspected || 0,
+      inspector_id: inspection.inspector_id || '',
+      inspection_date: inspection.inspection_date ? new Date(inspection.inspection_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      remarks: inspection.remarks || ''
+    });
+    setShowInspectionForm(true);
+  };
+
+  const handleUpdateInspection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingInspection) return;
+
+    try {
+      // Defensive: Ensure item_id is always UUID
+      let itemId = inspectionForm.item_id;
+      if (selectedGRN?.grn_items) {
+        const found = selectedGRN.grn_items.find((item: any) => item.item_id === itemId);
+        if (!found) {
+          const fallback = selectedGRN.grn_items.find((item: any) => item.item_name === itemId || item.item_code === itemId);
+          if (fallback) {
+            itemId = fallback.item_id;
+          }
+        }
+      }
+
+      const selectedItem = selectedGRN?.grn_items?.find((item: any) => item.item_id === itemId);
+      const selectedInspector = users.find((user: any) => user.id === inspectionForm.inspector_id);
+
+      const updateData = {
+        inspection_type: inspectionForm.inspection_type,
+        inspection_date: inspectionForm.inspection_date,
+        grn_id: inspectionForm.reference_id,
+        uid: inspectionForm.uid || null,
+        item_id: itemId,
+        item_name: selectedItem?.item_name || '',
+        item_code: selectedItem?.item_code || '',
+        vendor_id: selectedGRN?.vendor_id || null,
+        vendor_name: selectedGRN?.vendor_name || '',
+        batch_number: selectedGRN?.batch_number || '',
+        lot_number: selectedGRN?.lot_number || '',
+        inspected_quantity: inspectionForm.quantity_inspected || 0,
+        inspector_id: inspectionForm.inspector_id,
+        inspector_name: selectedInspector?.full_name || selectedInspector?.email || '',
+        inspection_checklist: inspectionForm.remarks || '',
+        remarks: inspectionForm.remarks
+      };
+
+      await apiClient.put(`/quality/inspections/${editingInspection.id}`, updateData);
+      setShowInspectionForm(false);
+      setEditingInspection(null);
+      setInspectionForm({
+        inspection_type: 'INCOMING',
+        reference_type: 'GRN',
+        reference_id: '',
+        item_id: '',
+        uid: '',
+        quantity_inspected: 0,
+        inspector_id: '',
+        inspection_date: new Date().toISOString().split('T')[0],
+        remarks: ''
+      });
+      setSelectedGRN(null);
+      fetchData();
+      alert('Inspection updated successfully');
+    } catch (error) {
+      console.error('Error updating inspection:', error);
+      alert('Failed to update inspection');
+    }
+  };
+
+  const handleDeleteInspection = async (inspectionId: string) => {
+    try {
+      await apiClient.delete(`/quality/inspections/${inspectionId}`);
+      setShowDeleteConfirm(null);
+      fetchData();
+      alert('Inspection deleted successfully');
+    } catch (error) {
+      console.error('Error deleting inspection:', error);
+      alert('Failed to delete inspection');
+    }
+  };
+
   const getStatusColor = (status: string) => {
     const colors: { [key: string]: string } = {
       'PENDING': 'bg-yellow-100 text-yellow-800',
@@ -412,21 +506,39 @@ export default function QualityPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{inspection.inspector_name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {(inspection.inspection_status === 'PENDING' || inspection.inspection_status === 'IN_PROGRESS') && (
-                        <button
-                          onClick={() => {
-                            setCompleteInspectionId(inspection.id);
-                            setCompleteForm({
-                              ...completeForm,
-                              quantity_accepted: inspection.quantity_inspected
-                            });
-                            setShowCompleteForm(true);
-                          }}
-                          className="text-amber-600 hover:text-amber-800"
-                        >
-                          Complete
-                        </button>
-                      )}
+                      <div className="flex space-x-2">
+                        {inspection.inspection_status === 'PENDING' && (
+                          <>
+                            <button
+                              onClick={() => handleEditInspection(inspection)}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => setShowDeleteConfirm(inspection.id)}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                        {(inspection.inspection_status === 'PENDING' || inspection.inspection_status === 'IN_PROGRESS') && (
+                          <button
+                            onClick={() => {
+                              setCompleteInspectionId(inspection.id);
+                              setCompleteForm({
+                                ...completeForm,
+                                quantity_accepted: inspection.quantity_inspected
+                              });
+                              setShowCompleteForm(true);
+                            }}
+                            className="text-amber-600 hover:text-amber-800"
+                          >
+                            Complete
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -586,8 +698,10 @@ export default function QualityPage() {
       {showInspectionForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">Create New Inspection</h2>
-            <form onSubmit={handleCreateInspection} className="space-y-4">
+            <h2 className="text-xl font-bold mb-4">
+              {editingInspection ? 'Edit Inspection' : 'Create New Inspection'}
+            </h2>
+            <form onSubmit={editingInspection ? handleUpdateInspection : handleCreateInspection} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Inspection Type</label>
@@ -728,7 +842,22 @@ export default function QualityPage() {
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowInspectionForm(false)}
+                  onClick={() => {
+                    setShowInspectionForm(false);
+                    setEditingInspection(null);
+                    setInspectionForm({
+                      inspection_type: 'INCOMING',
+                      reference_type: 'GRN',
+                      reference_id: '',
+                      item_id: '',
+                      uid: '',
+                      quantity_inspected: 0,
+                      inspector_id: '',
+                      inspection_date: new Date().toISOString().split('T')[0],
+                      remarks: ''
+                    });
+                    setSelectedGRN(null);
+                  }}
                   className="px-4 py-2 border rounded hover:bg-gray-50"
                 >
                   Cancel
@@ -737,7 +866,7 @@ export default function QualityPage() {
                   type="submit"
                   className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700"
                 >
-                  Create Inspection
+                  {editingInspection ? 'Update Inspection' : 'Create Inspection'}
                 </button>
               </div>
             </form>
@@ -975,6 +1104,32 @@ export default function QualityPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4">Confirm Delete</h2>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete this inspection? This action cannot be undone.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="px-4 py-2 border rounded hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteInspection(showDeleteConfirm)}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
