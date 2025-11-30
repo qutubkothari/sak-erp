@@ -366,8 +366,8 @@ export class GrnService {
               item_code: grnItem.item_code,
               item_name: grnItem.item_name,
               grn_item_id: grnItem.id,
-              manufacturing_date: grnItem.manufacturing_date,
-              expiry_date: grnItem.expiry_date,
+              manufacturing_date: grnItem.manufacturing_date || null,
+              expiry_date: grnItem.expiry_date || null,
               invoice_number: grn.invoice_number,
             }),
           });
@@ -416,8 +416,8 @@ export class GrnService {
         p_tenant_id: tenantId,
         p_item_code: grnItem.item_code,
         p_item_name: grnItem.item_name,
-        p_batch_number: grnItem.batch_number,
-        p_manufacturing_date: grnItem.manufacturing_date,
+        p_batch_number: grnItem.batch_number || null,
+        p_manufacturing_date: grnItem.manufacturing_date || null,
         p_accepted_qty: data.acceptedQty || grnItem.accepted_qty,
         p_warranty_months: data.warrantyMonths || 12,
       });

@@ -348,10 +348,10 @@ export default function GRNPage() {
         poId: formData.poId,
         vendorId: formData.vendorId,
         grnDate: formData.receiptDate,
-        invoiceNumber: formData.invoiceNumber,
-        invoiceDate: formData.invoiceDate,
+        invoiceNumber: formData.invoiceNumber || null,
+        invoiceDate: formData.invoiceDate || null,
         warehouseId: formData.warehouseId,
-        remarks: formData.notes,
+        remarks: formData.notes || null,
         status: 'DRAFT',
         items: formData.items.map(item => ({
           poItemId: item.poItemId,
@@ -362,9 +362,9 @@ export default function GRNPage() {
           acceptedQty: item.acceptedQuantity,
           rejectedQty: item.rejectedQuantity,
           rate: item.unitPrice,
-          batchNumber: item.batchNumber,
+          batchNumber: item.batchNumber || null,
           expiryDate: item.expiryDate || null,
-          remarks: item.notes,
+          remarks: item.notes || null,
         })),
       };
       
