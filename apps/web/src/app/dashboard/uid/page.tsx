@@ -452,20 +452,20 @@ export default function UIDTrackingPage() {
             )}
 
             {/* Source Traceability */}
-            {(selectedUID.supplier_id || selectedUID.supplier) && (
+            {selectedUID.supplier_id && (
               <div className="bg-yellow-50 p-4 rounded-lg mb-4">
                 <h3 className="font-semibold mb-2">📦 Source Traceability</h3>
                 <p className="text-sm">
-                  Supplier: {selectedUID.supplier?.name || selectedUID.supplier?.vendor_code || selectedUID.supplier_id}
+                  Supplier: {selectedUID.supplier_id}
                 </p>
-                {(selectedUID.purchase_order_id || selectedUID.purchase_order) && (
+                {selectedUID.purchase_order_id && (
                   <p className="text-sm">
-                    PO: {selectedUID.purchase_order?.po_number || selectedUID.purchase_order_id}
+                    PO: {selectedUID.purchase_order_id}
                   </p>
                 )}
-                {(selectedUID.grn_id || selectedUID.grn) && (
+                {selectedUID.grn_id && (
                   <p className="text-sm">
-                    GRN: {selectedUID.grn?.grn_number || selectedUID.grn_id}
+                    GRN: {selectedUID.grn_id}
                   </p>
                 )}
                 {selectedUID.batch_number && (
