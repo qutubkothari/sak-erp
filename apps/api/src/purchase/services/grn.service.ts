@@ -91,6 +91,13 @@ export class GrnService {
         amount: (item.receivedQty || 0) * (item.rate || 0),
         remarks: item.remarks || null,
       }));
+      
+      console.log('GRN Items before insert:', JSON.stringify(items.map(i => ({ 
+        item_code: i.item_code, 
+        accepted_qty: i.accepted_qty,
+        ordered_qty: i.ordered_qty,
+        received_qty: i.received_qty 
+      })), null, 2));
 
       const { error: itemsError } = await this.supabase
         .from('grn_items')
