@@ -15,9 +15,14 @@ interface UIDRecord {
   status: string;
   location: string;
   supplier_id: string;
+  vendorName?: string;
+  vendorCode?: string;
   purchase_order_id: string;
   grn_id: string;
+  grnNumber?: string;
   batch_number: string;
+  itemName?: string;
+  itemCode?: string;
   quality_status: string;
   lifecycle: Array<{
     stage: string;
@@ -80,13 +85,30 @@ export default function UIDTrackingPage() {
     if (!searchUID.trim()) return;
 
     try {
-      const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(searchUID)}`);
-      // Parse JSON strings to objects
-      const parsedData: any = {
-        ...data,
-        lifecycle: typeof data.lifecycle === 'string' ? JSON.parse(data.lifecycle) : data.lifecycle,
-        parent_uids: typeof data.parent_uids === 'string' ? JSON.parse(data.parent_uids) : data.parent_uids,
-        child_uids: typeof data.child_uids === 'string' ? JSON.parse(data.child_uids) : data.child_uids,
+      const data = await apiClient.get<any>(`/uid/details/${encodeURIComponent(searchUID)}`);
+      // Transform data from /uid/details format to UIDRecord format
+      const parsedData: UIDRecord = {
+        id: data.uid,
+        uid: data.uid,
+        entity_type: data.entityType || '',
+        entity_id: data.itemId || '',
+        itemName: data.itemName || '',
+        itemCode: data.itemCode || '',
+        parent_uids: Array.isArray(data.parentUids) ? data.parentUids : [],
+        child_uids: Array.isArray(data.childUids) ? data.childUids : [],
+        assembly_level: data.assemblyLevel || 0,
+        status: data.status || '',
+        location: data.location || '',
+        supplier_id: data.vendorId || '',
+        vendorName: data.vendorName || '',
+        vendorCode: data.vendorCode || '',
+        purchase_order_id: '',
+        grn_id: data.grnId || '',
+        grnNumber: data.grnId ? `GRN-${data.grnId.substring(0, 8)}` : '',
+        batch_number: data.batchNumber || '',
+        quality_status: data.qualityStatus || '',
+        lifecycle: [],
+        created_at: data.createdAt || '',
       };
       setSelectedUID(parsedData);
       setShowTraceModal(true);
@@ -276,12 +298,29 @@ export default function UIDTrackingPage() {
                   <button
                     onClick={async () => {
                       try {
-                        const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(uid.uid)}`);
-                        const parsedUID: any = {
-                          ...data,
-                          lifecycle: typeof data.lifecycle === 'string' ? JSON.parse(data.lifecycle) : data.lifecycle,
-                          parent_uids: typeof data.parent_uids === 'string' ? JSON.parse(data.parent_uids) : data.parent_uids,
-                          child_uids: typeof data.child_uids === 'string' ? JSON.parse(data.child_uids) : data.child_uids,
+                        const data = await apiClient.get<any>(`/uid/details/${encodeURIComponent(uid.uid)}`);
+                        const parsedUID: UIDRecord = {
+                          id: data.uid,
+                          uid: data.uid,
+                          entity_type: data.entityType || '',
+                          entity_id: data.itemId || '',
+                          itemName: data.itemName || '',
+                          itemCode: data.itemCode || '',
+                          parent_uids: Array.isArray(data.parentUids) ? data.parentUids : [],
+                          child_uids: Array.isArray(data.childUids) ? data.childUids : [],
+                          assembly_level: data.assemblyLevel || 0,
+                          status: data.status || '',
+                          location: data.location || '',
+                          supplier_id: data.vendorId || '',
+                          vendorName: data.vendorName || '',
+                          vendorCode: data.vendorCode || '',
+                          purchase_order_id: '',
+                          grn_id: data.grnId || '',
+                          grnNumber: data.grnId ? `GRN-${data.grnId.substring(0, 8)}` : '',
+                          batch_number: data.batchNumber || '',
+                          quality_status: data.qualityStatus || '',
+                          lifecycle: [],
+                          created_at: data.createdAt || '',
                         };
                         setSelectedUID(parsedUID);
                         setShowTraceModal(true);
@@ -456,7 +495,8 @@ export default function UIDTrackingPage() {
               <div className="bg-yellow-50 p-4 rounded-lg mb-4">
                 <h3 className="font-semibold mb-2">📦 Source Traceability</h3>
                 <p className="text-sm">
-                  Supplier: {selectedUID.supplier_id}
+                  Supplier: {selectedUID.vendorName || selectedUID.supplier_id}
+                  {selectedUID.vendorCode && <span className="text-gray-500 ml-2">({selectedUID.vendorCode})</span>}
                 </p>
                 {selectedUID.purchase_order_id && (
                   <p className="text-sm">
@@ -465,7 +505,7 @@ export default function UIDTrackingPage() {
                 )}
                 {selectedUID.grn_id && (
                   <p className="text-sm">
-                    GRN: {selectedUID.grn_id}
+                    GRN: {selectedUID.grnNumber || selectedUID.grn_id}
                   </p>
                 )}
                 {selectedUID.batch_number && (
