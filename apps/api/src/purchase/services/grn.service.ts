@@ -257,13 +257,25 @@ export class GrnService {
 
     // If approved, auto-generate UIDs first, then update status
     if (status === 'APPROVED') {
+      console.log('=== UID GENERATION START ===');
+      console.log('GRN object:', JSON.stringify(grn, null, 2));
+      console.log('Has grn_items:', !!grn.grn_items);
+      console.log('grn_items length:', grn.grn_items?.length || 0);
+      
       if (grn.grn_items && grn.grn_items.length > 0) {
+        console.log('Processing', grn.grn_items.length, 'items for UID generation');
         for (const item of grn.grn_items) {
+          console.log('Item accepted_qty:', item.accepted_qty, 'Type:', typeof item.accepted_qty);
           if (item.accepted_qty > 0) {
             await this.generateUIDsForItem(tenantId, userId, grn, item);
+          } else {
+            console.log('Skipping item due to accepted_qty <= 0');
           }
         }
+      } else {
+        console.log('No grn_items found or array is empty');
       }
+      console.log('=== UID GENERATION END ===');
     }
 
     // Update GRN status
