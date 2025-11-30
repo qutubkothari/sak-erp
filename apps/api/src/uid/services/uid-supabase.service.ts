@@ -707,14 +707,18 @@ export class UidSupabaseService {
    */
   async getUIDDetails(req: any, uid: string) {
     const tenantId = req.user.tenantId;
+    console.log(`[getUIDDetails] Fetching UID: ${uid} for tenant: ${tenantId}`);
 
     // First check if UID exists
     const { data: uidCheck, error: checkError } = await this.supabase
       .from('uid_registry')
-      .select('uid, entity_id, supplier_id, grn_id')
+      .select('uid, entity_id, supplier_id, grn_id, tenant_id')
       .eq('uid', uid)
       .eq('tenant_id', tenantId)
       .maybeSingle();
+
+    console.log(`[getUIDDetails] UID check result:`, uidCheck);
+    console.log(`[getUIDDetails] Check error:`, checkError);
 
     if (checkError) {
       console.error('Error checking UID:', checkError);
@@ -722,8 +726,11 @@ export class UidSupabaseService {
     }
 
     if (!uidCheck) {
+      console.error(`UID ${uid} not found for tenant ${tenantId}`);
       throw new Error(`UID ${uid} not found or does not belong to your tenant`);
     }
+
+    console.log(`[getUIDDetails] UID exists, fetching related data...`);
 
     // Fetch UID record with related data (using left joins to handle missing relations)
     const { data: uidRecord, error } = await this.supabase
@@ -737,6 +744,9 @@ export class UidSupabaseService {
       .eq('tenant_id', tenantId)
       .maybeSingle();
 
+    console.log(`[getUIDDetails] Full UID record:`, JSON.stringify(uidRecord, null, 2));
+    console.log(`[getUIDDetails] Fetch error:`, error);
+
     if (error) {
       console.error('Error fetching UID details:', error);
       throw new Error(`Failed to fetch UID details: ${error.message}`);
@@ -749,7 +759,10 @@ export class UidSupabaseService {
     const itemData = Array.isArray(uidRecord.item) ? uidRecord.item[0] : uidRecord.item;
     const vendorData = Array.isArray(uidRecord.vendor) ? uidRecord.vendor[0] : uidRecord.vendor;
 
-    return {
+    console.log(`[getUIDDetails] Item data:`, itemData);
+    console.log(`[getUIDDetails] Vendor data:`, vendorData);
+
+    const result = {
       uid: uidRecord.uid,
       grnId: uidRecord.grn_id,
       itemId: uidRecord.entity_id,
@@ -769,6 +782,9 @@ export class UidSupabaseService {
       qualityStatus: uidRecord.quality_status,
       createdAt: uidRecord.created_at,
     };
+
+    console.log(`[getUIDDetails] Returning result:`, result);
+    return result;
   }
 
   /**
