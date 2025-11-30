@@ -371,31 +371,41 @@ export class BomService {
       throw new BadRequestException('BOM has no items');
     }
 
-    // Check stock availability for each item
+    // First, explode BOM to get all actual items (handles nested BOMs)
+    const explodedItems = await this.explodeBOMForPR(bomId, quantity);
+
+    // Check stock availability for each exploded item
     const itemsToOrder = [];
 
-    for (const bomItem of bom.bom_items) {
-      const requiredQty = bomItem.quantity * quantity * (1 + (bomItem.scrap_percentage || 0) / 100);
-
+    for (const explodedItem of explodedItems) {
       // Check current stock
       const { data: stock } = await this.supabase
         .from('stock_entries')
         .select('available_quantity')
         .eq('tenant_id', tenantId)
-        .eq('item_id', bomItem.item_id);
+        .eq('item_id', explodedItem.itemId);
 
       const availableQty = stock?.reduce((sum, s) => sum + s.available_quantity, 0) || 0;
-      const shortfall = requiredQty - availableQty;
+      const shortfall = explodedItem.quantity - availableQty;
 
       if (shortfall > 0) {
-        itemsToOrder.push({
-          itemId: bomItem.item_id,
-          itemCode: bomItem.item.code,
-          itemName: bomItem.item.name,
-          quantity: Math.ceil(shortfall),
-          specifications: bomItem.notes,
-          drawingUrl: bomItem.drawing_url, // Include drawing for PR
-        });
+        // Fetch item details
+        const { data: item } = await this.supabase
+          .from('items')
+          .select('code, name')
+          .eq('id', explodedItem.itemId)
+          .single();
+
+        if (item) {
+          itemsToOrder.push({
+            itemId: explodedItem.itemId,
+            itemCode: item.code,
+            itemName: item.name,
+            quantity: Math.ceil(shortfall),
+            specifications: explodedItem.notes,
+            drawingUrl: explodedItem.drawingUrl,
+          });
+        }
       }
     }
 
@@ -478,6 +488,58 @@ export class BomService {
 
     if (error) throw new BadRequestException(error.message);
     return { message: 'BOM deleted successfully' };
+  }
+
+  /**
+   * Explode BOM recursively to get all actual items needed (for PR generation)
+   */
+  private async explodeBOMForPR(bomId: string, quantity: number): Promise<Array<{
+    itemId: string;
+    quantity: number;
+    notes: string;
+    drawingUrl: string;
+  }>> {
+    const { data: bomItems } = await this.supabase
+      .from('bom_items')
+      .select('component_type, item_id, child_bom_id, quantity, scrap_percentage, notes, drawing_url')
+      .eq('bom_id', bomId);
+
+    if (!bomItems || bomItems.length === 0) return [];
+
+    const allItems: Map<string, { quantity: number; notes: string; drawingUrl: string }> = new Map();
+
+    for (const bomItem of bomItems) {
+      const scrapFactor = 1 + (bomItem.scrap_percentage || 0) / 100;
+      const adjustedQty = bomItem.quantity * quantity * scrapFactor;
+
+      if (bomItem.component_type === 'ITEM' && bomItem.item_id) {
+        // Direct item
+        const existing = allItems.get(bomItem.item_id);
+        allItems.set(bomItem.item_id, {
+          quantity: (existing?.quantity || 0) + adjustedQty,
+          notes: bomItem.notes || existing?.notes || '',
+          drawingUrl: bomItem.drawing_url || existing?.drawingUrl || '',
+        });
+      } else if (bomItem.component_type === 'BOM' && bomItem.child_bom_id) {
+        // Recursively explode child BOM
+        const childItems = await this.explodeBOMForPR(bomItem.child_bom_id, adjustedQty);
+        childItems.forEach(childItem => {
+          const existing = allItems.get(childItem.itemId);
+          allItems.set(childItem.itemId, {
+            quantity: (existing?.quantity || 0) + childItem.quantity,
+            notes: childItem.notes || existing?.notes || '',
+            drawingUrl: childItem.drawingUrl || existing?.drawingUrl || '',
+          });
+        });
+      }
+    }
+
+    return Array.from(allItems.entries()).map(([itemId, details]) => ({
+      itemId,
+      quantity: details.quantity,
+      notes: details.notes,
+      drawingUrl: details.drawingUrl,
+    }));
   }
 
   /**
