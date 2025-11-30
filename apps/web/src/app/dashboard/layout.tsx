@@ -8,8 +8,8 @@ export default function DashboardLayout({
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
       <Sidebar />
-      <main className="flex-1 transition-all duration-300" style={{ marginLeft: '0' }}>
-        <div className="pt-16">
+      <main className="flex-1 ml-72">
+        <div className="p-6">
           {children}
         </div>
       </main>

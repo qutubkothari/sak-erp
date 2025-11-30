@@ -43,20 +43,17 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#FAF9F6' }}>
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b-2" style={{ borderColor: '#E8DCC4' }}>
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#8B6F47' }}>
-              <path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"></path>
-              <path d="M17 18h1"></path>
-              <path d="M12 18h1"></path>
-              <path d="M7 18h1"></path>
-            </svg>
-            <h1 className="text-2xl font-bold" style={{ color: '#8B6F47' }}>
-              SAK Solutions
+    <div>
+      {/* Header with Logout */}
+      <div className="bg-white shadow-sm border-b-2 mb-6" style={{ borderColor: '#E8DCC4' }}>
+        <div className="flex items-center justify-between px-6 py-4">
+          <div>
+            <h1 className="text-3xl font-bold" style={{ color: '#36454F' }}>
+              SAK ERP Dashboard
             </h1>
+            <p className="text-sm mt-1" style={{ color: '#6F4E37' }}>
+              Your complete lifecycle management solution
+            </p>
           </div>
           
           <button
@@ -64,26 +61,16 @@ export default function DashboardPage() {
               await apiClient.logout();
               router.push('/login');
             }}
-            className="px-4 py-2 rounded-lg text-white transition-colors hover:opacity-90"
+            className="px-6 py-2 rounded-lg text-white transition-colors hover:opacity-90 font-medium"
             style={{ backgroundColor: '#6F4E37' }}
           >
             Logout
           </button>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
-      <main className="container mx-auto px-6 py-8">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold mb-2" style={{ color: '#36454F' }}>
-            Welcome to SAK ERP Dashboard
-          </h2>
-          <p style={{ color: '#6F4E37' }}>
-            Manufacturing ERP System - Your complete lifecycle management solution
-          </p>
-        </div>
-
+      <div>
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {[
@@ -117,11 +104,11 @@ export default function DashboardPage() {
             {[
               { name: 'Purchase Management', icon: '📦', path: '/dashboard/purchase' },
               { name: 'BOM Management', icon: '📋', path: '/dashboard/bom' },
-              { name: 'Inventory & Stores', icon: '🏪', path: '/dashboard/inventory' },
-              { name: 'Production Planning', icon: '⚙️', path: '/dashboard/production' },
-              { name: 'Quality Control', icon: '✅', path: '/dashboard/quality' },
-              { name: 'Sales & Dispatch', icon: '🚚', path: '/dashboard/sales' },
-              { name: 'UID Tracking', icon: '🔍', path: '/dashboard/uid' },
+        {/* Modules Grid */}
+        <div className="bg-white p-6 rounded-xl shadow-md border-2" style={{ borderColor: '#E8DCC4' }}>
+          <h3 className="text-xl font-bold mb-6" style={{ color: '#36454F' }}>
+            ERP Modules
+          </h3> name: 'UID Tracking', icon: '🔍', path: '/dashboard/uid' },
               { name: 'After-Sales Service', icon: '🛠️', path: '/dashboard/service' },
               { name: 'HR Management', icon: '👥', path: '/dashboard/hr' },
               { name: 'Document Control', icon: '📄', path: '/dashboard/documents' },
@@ -151,7 +138,7 @@ export default function DashboardPage() {
             ✅ All modules are active and ready to use! Click any module above to get started.
           </p>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

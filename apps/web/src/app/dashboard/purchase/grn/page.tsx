@@ -165,26 +165,43 @@ export default function GRNPage() {
   const fetchPurchaseOrders = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders?status=APPROVED', {
+      
+      // Fetch all approved POs
+      const poResponse = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders?status=APPROVED', {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Failed to fetch purchase orders:', response.status, errorData);
-        if (response.status === 401) {
-          console.error('Authentication failed - token may be expired');
-        }
+      if (!poResponse.ok) {
+        const errorData = await poResponse.json();
+        console.error('Failed to fetch purchase orders:', poResponse.status, errorData);
         setPurchaseOrders([]);
         return;
       }
       
-      const data = await response.json();
-      console.log('Purchase orders fetched:', data);
-      setPurchaseOrders(Array.isArray(data) ? data : []);
+      const allPOs = await poResponse.json();
+      
+      // Fetch all GRNs to check which POs already have GRNs
+      const grnResponse = await fetch('http://13.205.17.214:4000/api/v1/purchase/grn', {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      let poIdsWithGRNs = new Set();
+      if (grnResponse.ok) {
+        const allGRNs = await grnResponse.json();
+        poIdsWithGRNs = new Set(allGRNs.map((grn: any) => grn.po_id));
+      }
+      
+      // Filter out POs that already have GRNs
+      const availablePOs = Array.isArray(allPOs) ? allPOs.filter((po: any) => !poIdsWithGRNs.has(po.id)) : [];
+      
+      console.log('Available POs (without GRNs):', availablePOs);
+      setPurchaseOrders(availablePOs);
     } catch (error) {
       console.error('Error fetching purchase orders:', error);
       setPurchaseOrders([]);
@@ -383,18 +400,29 @@ export default function GRNPage() {
 
   const fetchGRNUIDs = async (grnId: string) => {
     try {
+      console.log('Fetching UIDs for GRN:', grnId);
       setLoadingUIDs(true);
+      setSelectedGRNUIDs([]);
       const token = localStorage.getItem('accessToken');
       const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/grn/${grnId}/uids`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
 
+      console.log('UIDs response status:', response.status);
       if (response.ok) {
         const data = await response.json();
-        setSelectedGRNUIDs(data);
+        console.log('UIDs data received:', data);
+        const uidsArray = Array.isArray(data) ? data : [];
+        console.log('Setting UIDs array:', uidsArray);
+        setSelectedGRNUIDs(uidsArray);
         setShowUIDsModal(true);
       } else {
-        setAlertMessage({ type: 'info', message: 'No UIDs found for this GRN. UIDs are auto-generated when GRN is submitted.' });
+        const errorData = await response.json();
+        console.error('Failed to fetch UIDs:', errorData);
+        setAlertMessage({ type: 'info', message: 'No UIDs found for this GRN. UIDs are auto-generated on approval.' });
       }
     } catch (error) {
       console.error('Error fetching UIDs:', error);
@@ -647,19 +675,29 @@ export default function GRNPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <button 
-                        onClick={() => {
+                        type="button"
+                        onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          console.log('View clicked for GRN:', grn);
                           setSelectedGRN(grn);
                           setShowViewModal(true);
                           setEditMode(false);
                         }}
-                        className="text-amber-600 hover:text-amber-900 mr-3"
+                        className="text-amber-600 hover:text-amber-900 mr-3 font-medium"
                       >
                         View
                       </button>
                       {grn.status === 'COMPLETED' && (
                         <button 
-                          onClick={() => fetchGRNUIDs(grn.id)}
-                          className="text-green-600 hover:text-green-900 mr-3"
+                          type="button"
+                          onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.log('UIDs clicked for GRN:', grn.id);
+                            fetchGRNUIDs(grn.id);
+                          }}
+                          className="text-green-600 hover:text-green-900 mr-3 font-medium"
                         >
                           🔍 UIDs
                         </button>
