@@ -345,14 +345,20 @@ export class GrnService {
       else if (item.category?.includes('FINISHED')) entityType = 'FG';
       else if (item.category?.includes('ASSEMBLY')) entityType = 'SA';
 
+      console.log(`Starting loop to generate ${acceptedQty} UIDs, entityType: ${entityType}`);
+      
       // Generate UIDs for accepted quantity
       for (let i = 0; i < acceptedQty; i++) {
+        console.log(`Loop iteration ${i + 1}/${acceptedQty}`);
+        
         // Generate UID using the UID service
         const uid = await this.uidService.generateUID(
           'SAIF', // tenant code - you may want to fetch this from tenant table
           'MFG',  // plant code
           entityType,
         );
+        
+        console.log(`Generated UID: ${uid}`);
 
         // Create UID record with complete purchase trail
         const { error: uidError } = await this.supabase
@@ -387,6 +393,8 @@ export class GrnService {
             }),
           });
 
+        console.log(`UID insert result - Error: ${uidError ? JSON.stringify(uidError) : 'none'}`);
+        
         if (!uidError) {
           uidsCreated.push(uid);
         }
