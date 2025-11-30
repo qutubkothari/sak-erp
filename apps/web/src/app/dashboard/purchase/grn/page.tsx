@@ -417,16 +417,27 @@ export default function GRNPage() {
         console.log('UIDs data received:', data);
         const uidsArray = Array.isArray(data) ? data : [];
         console.log('Setting UIDs array:', uidsArray);
-        setSelectedGRNUIDs(uidsArray);
-        setShowUIDsModal(true);
+        
+        if (uidsArray.length === 0) {
+          setAlertMessage({ 
+            type: 'info', 
+            message: 'No UIDs found. UIDs are generated when GRN status is COMPLETED. Please ensure the GRN is completed first.' 
+          });
+        } else {
+          setSelectedGRNUIDs(uidsArray);
+          setShowUIDsModal(true);
+        }
       } else {
         const errorData = await response.json();
         console.error('Failed to fetch UIDs:', errorData);
-        setAlertMessage({ type: 'info', message: 'No UIDs found for this GRN. UIDs are auto-generated on approval.' });
+        setAlertMessage({ 
+          type: 'warning', 
+          message: `Failed to fetch UIDs: ${errorData.message || 'Unknown error'}. UIDs are auto-generated when GRN status is COMPLETED.` 
+        });
       }
     } catch (error) {
       console.error('Error fetching UIDs:', error);
-      setAlertMessage({ type: 'error', message: 'Failed to fetch UIDs' });
+      setAlertMessage({ type: 'error', message: 'Failed to fetch UIDs. Please check your connection.' });
     } finally {
       setLoadingUIDs(false);
     }
