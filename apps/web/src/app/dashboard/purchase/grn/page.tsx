@@ -662,21 +662,18 @@ export default function GRNPage() {
                           </span>
                         )}
                       </div>
-                      {/* Display UIDs if available */}
-                      {grn.grn_items.some(item => item.uid) ? (
-                        <div className="mt-2 space-y-1">
-                          {grn.grn_items.filter(item => item.uid).map((item, idx) => (
-                            <div key={idx} className="text-xs">
-                              <span className="font-mono text-blue-600 font-semibold">{item.uid}</span>
-                              <span className="text-gray-500 ml-2">
-                                {item.item_code || item.item?.code || item.item_name || item.item?.name}
-                                {item.batch_number && ` • Batch: ${item.batch_number}`}
-                              </span>
-                            </div>
-                          ))}
+                      {/* Display UID count instead of individual UIDs */}
+                      {grn.grn_items.some(item => item.uid_count > 0) ? (
+                        <div className="mt-2">
+                          <div className="text-xs text-green-600 font-semibold">
+                            ✓ {grn.grn_items.reduce((sum, item) => sum + (item.uid_count || 0), 0)} UIDs Generated
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            Click "🔍 UIDs" to view details
+                          </div>
                         </div>
                       ) : (
-                        <div className="text-xs text-gray-400 mt-1">
+                        <div className="text-xs text-amber-500 mt-1">
                           ⚠️ UIDs pending generation
                         </div>
                       )}
