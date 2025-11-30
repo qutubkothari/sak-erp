@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { UidService } from './uid.service';
 
@@ -7,7 +7,22 @@ import { UidService } from './uid.service';
 export class UidController {
   constructor(private uidService: UidService) {}
 
+  @Get()
+  @ApiOperation({ summary: 'Get all UIDs (filterable for inspections)' })
+  async getAllUids(
+    @Query('status') status?: string,
+    @Query('entityType') entityType?: string,
+  ) {
+    return this.uidService.getAllUids(status, entityType);
+  }
+
   @Get(':uid')
+  @ApiOperation({ summary: 'Get complete UID details with vendor and item information' })
+  async getUidDetails(@Param('uid') uid: string) {
+    return this.uidService.getUidDetails(uid);
+  }
+
+  @Get(':uid/history')
   @ApiOperation({ summary: 'Get UID traceability history' })
   async getUidHistory(@Param('uid') uid: string) {
     return this.uidService.getUidHistory(uid);

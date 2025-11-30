@@ -134,9 +134,9 @@ export default function QualityPage() {
 
   const fetchFormData = async () => {
     try {
-      // Fetch GRNs
-      const grnsData = await apiClient.get('/purchase/grn');
-      setGrns(grnsData.filter((g: any) => g.status === 'COMPLETED'));
+      // Fetch all UIDs for inspection
+      const uidsData = await apiClient.get('/uid');
+      setUids(uidsData || []);
       
       // Fetch users (for inspectors)
       const usersData = await apiClient.get('/users');
@@ -146,19 +146,42 @@ export default function QualityPage() {
     }
   };
 
-  const handleGRNChange = async (grnId: string) => {
-    setInspectionForm({ ...inspectionForm, reference_id: grnId, item_id: '', uid: '' });
+  const handleUIDChange = async (uid: string) => {
+    if (!uid) {
+      setSelectedGRN(null);
+      return;
+    }
     
     try {
-      // Fetch selected GRN details to get items and UIDs
-      const grnDetails = await apiClient.get(`/purchase/grn/${grnId}`);
-      setSelectedGRN(grnDetails);
+      // Fetch UID details which contains vendor, item, GRN info
+      const uidDetails = await apiClient.get(`/uid/${uid}`);
+      console.log('UID Details:', uidDetails);
       
-      // Fetch UIDs generated for this GRN
-      const uidsData = await apiClient.get(`/purchase/grn/${grnId}/uids`);
-      setUids(uidsData || []);
+      // Fetch GRN details if available
+      if (uidDetails.grnId) {
+        const grnDetails = await apiClient.get(`/purchase/grn/${uidDetails.grnId}`);
+        setSelectedGRN(grnDetails);
+        
+        // Auto-fill form with UID data
+        setInspectionForm({
+          ...inspectionForm,
+          uid: uid,
+          reference_id: uidDetails.grnId,
+          item_id: uidDetails.itemId || grnDetails.grn_items?.[0]?.item_id || '',
+          quantity_inspected: 1, // UID represents 1 unit
+        });
+      } else {
+        // UID without GRN (from production)
+        setInspectionForm({
+          ...inspectionForm,
+          uid: uid,
+          item_id: uidDetails.itemId || '',
+          quantity_inspected: 1,
+        });
+      }
     } catch (error) {
-      console.error('Error fetching GRN details:', error);
+      console.error('Error fetching UID details:', error);
+      alert('Failed to fetch UID information. Please check if the UID exists.');
     }
   };
 
@@ -184,49 +207,54 @@ export default function QualityPage() {
 
   const handleCreateInspection = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate UID is selected
+    if (!inspectionForm.uid) {
+      alert('UID is required for quality inspection. UID enables complete traceability.');
+      return;
+    }
+    
     try {
-      // Defensive: Ensure item_id is always UUID
-      let itemId = inspectionForm.item_id;
-      if (selectedGRN?.grn_items) {
-        const found = selectedGRN.grn_items.find((item: any) => item.item_id === itemId);
-        if (!found) {
-          // Try to find by name/code (legacy bug)
-          const fallback = selectedGRN.grn_items.find((item: any) => item.item_name === itemId || item.item_code === itemId);
-          if (fallback) {
-            itemId = fallback.item_id;
-          }
-        }
-      }
-      // Find selected item details
-      const selectedItem = selectedGRN?.grn_items?.find((item: any) => item.item_id === itemId);
-      if (!selectedItem) {
-        console.warn('Quality Inspection: selectedItem is undefined! itemId:', itemId, 'selectedGRN:', selectedGRN);
-      }
+      // Fetch UID details to get all vendor/item information
+      const uidDetails = await apiClient.get(`/uid/${inspectionForm.uid}`);
+      
       // Find selected inspector details
       const selectedInspector = users.find((user: any) => user.id === inspectionForm.inspector_id);
-      console.log('=== CREATE INSPECTION DEBUG ===');
-      console.log('selectedGRN:', selectedGRN);
-      console.log('selectedItem:', selectedItem);
-      console.log('selectedInspector:', selectedInspector);
-      console.log('inspectionForm:', inspectionForm);
-      // Prepare data with all required fields
+      
+      // Find item details from GRN if available
+      let itemName = '';
+      let itemCode = '';
+      let vendorId = null;
+      let vendorName = '';
+      
+      if (selectedGRN) {
+        const selectedItem = selectedGRN.grn_items?.find((item: any) => item.item_id === inspectionForm.item_id);
+        itemName = selectedItem?.item_name || '';
+        itemCode = selectedItem?.item_code || '';
+        vendorId = selectedGRN.vendor_id;
+        vendorName = selectedGRN.vendor_name || '';
+      }
+      
+      // Prepare data with all required fields from UID
       const inspectionData = {
         inspection_type: inspectionForm.inspection_type,
         inspection_date: inspectionForm.inspection_date,
-        grn_id: inspectionForm.reference_id,
-        uid: inspectionForm.uid || null,
-        item_id: itemId,
-        item_name: selectedItem?.item_name || '',
-        item_code: selectedItem?.item_code || '',
-        vendor_id: selectedGRN?.vendor_id || null,
-        vendor_name: selectedGRN?.vendor_name || '',
-        batch_number: selectedGRN?.batch_number || '',
-        lot_number: selectedGRN?.lot_number || '',
-        inspected_quantity: inspectionForm.quantity_inspected || 0,
+        grn_id: inspectionForm.reference_id || uidDetails.grnId || null,
+        uid: inspectionForm.uid, // UID is now mandatory
+        item_id: inspectionForm.item_id || uidDetails.itemId,
+        item_name: itemName,
+        item_code: itemCode,
+        vendor_id: vendorId,
+        vendor_name: vendorName,
+        batch_number: uidDetails.batchNumber || selectedGRN?.batch_number || '',
+        lot_number: uidDetails.lotNumber || selectedGRN?.lot_number || '',
+        inspected_quantity: inspectionForm.quantity_inspected || 1,
         inspector_name: selectedInspector?.full_name || selectedInspector?.email || '',
         inspection_checklist: inspectionForm.remarks || '',
       };
-      console.log('Sending inspectionData:', inspectionData);
+      
+      console.log('Creating inspection with UID:', inspectionForm.uid);
+      console.log('Inspection data:', inspectionData);
       await apiClient.post('/quality/inspections', inspectionData);
       setShowInspectionForm(false);
       setInspectionForm({
@@ -764,75 +792,93 @@ export default function QualityPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Reference Type</label>
-                  <select
-                    value={inspectionForm.reference_type}
-                    onChange={(e) => setInspectionForm({ ...inspectionForm, reference_type: e.target.value })}
+                  <label className="block text-sm font-medium mb-1">Inspection Date</label>
+                  <input
+                    type="date"
+                    value={inspectionForm.inspection_date}
+                    onChange={(e) => setInspectionForm({ ...inspectionForm, inspection_date: e.target.value })}
                     className="w-full border rounded px-3 py-2"
                     required
-                  >
-                    <option value="GRN">GRN</option>
-                    <option value="PRODUCTION">Production Order</option>
-                    <option value="SALES_ORDER">Sales Order</option>
-                  </select>
+                  />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">GRN / Reference</label>
+              {/* UID Selection - PRIMARY FIELD - MANDATORY FOR TRACEABILITY */}
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-4">
+                <label className="block text-sm font-semibold mb-2 text-amber-900">
+                  🔍 Select UID (Required for Traceability) *
+                </label>
                 <select
-                  value={inspectionForm.reference_id}
-                  onChange={(e) => handleGRNChange(e.target.value)}
-                  className="w-full border rounded px-3 py-2"
+                  value={inspectionForm.uid}
+                  onChange={(e) => handleUIDChange(e.target.value)}
+                  className="w-full border-2 border-amber-400 rounded px-3 py-2 focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
                   required
                 >
-                  <option value="">Select GRN...</option>
-                  {grns.map(grn => (
-                    <option key={grn.id} value={grn.id}>
-                      {grn.grn_number} - {grn.vendor?.name} ({new Date(grn.grn_date).toLocaleDateString()})
+                  <option value="">Search and select UID...</option>
+                  {uids.map((uid: any) => (
+                    <option key={uid.uid} value={uid.uid}>
+                      {uid.uid} - {uid.entityType} ({uid.status})
                     </option>
                   ))}
                 </select>
+                <p className="text-xs text-amber-700 mt-1">
+                  ℹ️ UID is mandatory as it enables complete product traceability from receipt through warranty to repairs
+                </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Item</label>
-                  <select
-                    value={inspectionForm.item_id}
-                    onChange={(e) => setInspectionForm({ ...inspectionForm, item_id: e.target.value })}
-                    className="w-full border rounded px-3 py-2"
-                    required
-                    disabled={!selectedGRN}
-                  >
-                    <option value="">Select Item...</option>
-                    {selectedGRN?.grn_items?.map((item: any) => (
-                      <option key={item.item_id} value={item.item_id}>
-                        {item.item_code} - {item.item_name}
-                      </option>
-                    ))}
-                  </select>
-                  {!selectedGRN && (
-                    <p className="text-xs text-gray-500 mt-1">Select a GRN first</p>
-                  )}
+              {/* Auto-populated Vendor Information (read-only) */}
+              {selectedGRN && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="text-sm font-semibold mb-2 text-blue-900">📦 Auto-populated from UID</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-blue-700 mb-1">Vendor</label>
+                      <input
+                        type="text"
+                        value={selectedGRN.vendor_name || 'Loading...'}
+                        className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-700"
+                        readOnly
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-blue-700 mb-1">Item Code</label>
+                      <input
+                        type="text"
+                        value={selectedGRN.grn_items?.[0]?.item_code || 'Loading...'}
+                        className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-700"
+                        readOnly
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-blue-700 mb-1">Item Name</label>
+                      <input
+                        type="text"
+                        value={selectedGRN.grn_items?.[0]?.item_name || 'Loading...'}
+                        className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-700"
+                        readOnly
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-blue-700 mb-1">Batch Number</label>
+                      <input
+                        type="text"
+                        value={selectedGRN.batch_number || '-'}
+                        className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-700"
+                        readOnly
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-blue-700 mb-1">GRN Number</label>
+                      <input
+                        type="text"
+                        value={selectedGRN.grn_number || '-'}
+                        className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-700"
+                        readOnly
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">UID (Optional)</label>
-                  <select
-                    value={inspectionForm.uid}
-                    onChange={(e) => setInspectionForm({ ...inspectionForm, uid: e.target.value })}
-                    className="w-full border rounded px-3 py-2"
-                    disabled={!selectedGRN}
-                  >
-                    <option value="">Select UID...</option>
-                    {uids.map((uid: any) => (
-                      <option key={uid.uid} value={uid.uid}>
-                        {uid.uid}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -846,6 +892,7 @@ export default function QualityPage() {
                     step="0.01"
                     required
                   />
+                  <p className="text-xs text-gray-500 mt-1">Usually 1 for UID-based inspection</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Inspector</label>
@@ -866,23 +913,13 @@ export default function QualityPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Inspection Date</label>
-                <input
-                  type="date"
-                  value={inspectionForm.inspection_date}
-                  onChange={(e) => setInspectionForm({ ...inspectionForm, inspection_date: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
-                  required
-                />
-              </div>
-
-              <div>
                 <label className="block text-sm font-medium mb-1">Remarks</label>
                 <textarea
                   value={inspectionForm.remarks}
                   onChange={(e) => setInspectionForm({ ...inspectionForm, remarks: e.target.value })}
                   className="w-full border rounded px-3 py-2"
                   rows={3}
+                  placeholder="Visual inspection notes, dimensional checks, functional tests..."
                 />
               </div>
 
@@ -912,6 +949,7 @@ export default function QualityPage() {
                 <button
                   type="submit"
                   className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700"
+                  disabled={!inspectionForm.uid}
                 >
                   {editingInspection ? 'Update Inspection' : 'Create Inspection'}
                 </button>

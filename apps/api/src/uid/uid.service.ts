@@ -118,6 +118,102 @@ export class UidService {
   }
 
   /**
+   * Get all UIDs with filtering options
+   */
+  async getAllUids(status?: string, entityType?: string) {
+    const where: any = {};
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (entityType) {
+      where.entityType = entityType;
+    }
+
+    const uids = await this.prisma.uidRegistry.findMany({
+      where,
+      select: {
+        uid: true,
+        entityType: true,
+        status: true,
+        location: true,
+        batchNumber: true,
+        qualityStatus: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 1000, // Limit for performance
+    });
+
+    return uids;
+  }
+
+  /**
+   * Get UID details with vendor and item information for quality inspection
+   */
+  async getUidDetails(uid: string) {
+    const uidRecord = await this.prisma.uidRegistry.findUnique({
+      where: { uid },
+    });
+
+    if (!uidRecord) {
+      throw new Error(`UID ${uid} not found`);
+    }
+
+    // Fetch item details
+    let itemDetails = null;
+    if (uidRecord.entityId) {
+      itemDetails = await this.prisma.item.findUnique({
+        where: { id: uidRecord.entityId },
+        select: {
+          id: true,
+          item_name: true,
+          item_code: true,
+          description: true,
+        },
+      });
+    }
+
+    // Fetch vendor details
+    let vendorDetails = null;
+    if (uidRecord.supplierId) {
+      vendorDetails = await this.prisma.vendor.findUnique({
+        where: { id: uidRecord.supplierId },
+        select: {
+          id: true,
+          vendor_name: true,
+          vendor_code: true,
+        },
+      });
+    }
+
+    // Return complete UID information for quality inspection
+    return {
+      uid: uidRecord.uid,
+      grnId: uidRecord.grnId,
+      itemId: uidRecord.entityId,
+      itemName: itemDetails?.item_name || '',
+      itemCode: itemDetails?.item_code || '',
+      vendorId: uidRecord.supplierId,
+      vendorName: vendorDetails?.vendor_name || '',
+      vendorCode: vendorDetails?.vendor_code || '',
+      batchNumber: uidRecord.batchNumber || '',
+      lotNumber: '', // Add if you have lot_number field in uid_registry
+      entityType: uidRecord.entityType,
+      status: uidRecord.status,
+      location: uidRecord.location,
+      assemblyLevel: uidRecord.assemblyLevel,
+      parentUids: uidRecord.parentUids,
+      childUids: uidRecord.childUids,
+      qualityStatus: uidRecord.qualityStatus,
+      createdAt: uidRecord.createdAt,
+    };
+  }
+
+  /**
    * Get UID history/traceability
    */
   async getUidHistory(uid: string) {
