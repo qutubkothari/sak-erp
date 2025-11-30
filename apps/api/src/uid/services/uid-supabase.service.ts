@@ -708,7 +708,24 @@ export class UidSupabaseService {
   async getUIDDetails(req: any, uid: string) {
     const tenantId = req.user.tenantId;
 
-    // Fetch UID record with related data
+    // First check if UID exists
+    const { data: uidCheck, error: checkError } = await this.supabase
+      .from('uid_registry')
+      .select('uid, entity_id, supplier_id, grn_id')
+      .eq('uid', uid)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking UID:', checkError);
+      throw new Error(`Database error: ${checkError.message}`);
+    }
+
+    if (!uidCheck) {
+      throw new Error(`UID ${uid} not found or does not belong to your tenant`);
+    }
+
+    // Fetch UID record with related data (using left joins to handle missing relations)
     const { data: uidRecord, error } = await this.supabase
       .from('uid_registry')
       .select(`
@@ -718,10 +735,15 @@ export class UidSupabaseService {
       `)
       .eq('uid', uid)
       .eq('tenant_id', tenantId)
-      .single();
+      .maybeSingle();
 
-    if (error || !uidRecord) {
-      throw new Error(`UID ${uid} not found`);
+    if (error) {
+      console.error('Error fetching UID details:', error);
+      throw new Error(`Failed to fetch UID details: ${error.message}`);
+    }
+
+    if (!uidRecord) {
+      throw new Error(`UID ${uid} data not found`);
     }
 
     const itemData = Array.isArray(uidRecord.item) ? uidRecord.item[0] : uidRecord.item;
