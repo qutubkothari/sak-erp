@@ -168,25 +168,37 @@ export default function QualityPage() {
   const handleCreateInspection = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      // Defensive: Ensure item_id is always UUID
+      let itemId = inspectionForm.item_id;
+      if (selectedGRN?.grn_items) {
+        const found = selectedGRN.grn_items.find((item: any) => item.item_id === itemId);
+        if (!found) {
+          // Try to find by name/code (legacy bug)
+          const fallback = selectedGRN.grn_items.find((item: any) => item.item_name === itemId || item.item_code === itemId);
+          if (fallback) {
+            itemId = fallback.item_id;
+          }
+        }
+      }
       // Find selected item details
-      const selectedItem = selectedGRN?.grn_items?.find((item: any) => item.item_id === inspectionForm.item_id);
-      
+      const selectedItem = selectedGRN?.grn_items?.find((item: any) => item.item_id === itemId);
+      if (!selectedItem) {
+        console.warn('Quality Inspection: selectedItem is undefined! itemId:', itemId, 'selectedGRN:', selectedGRN);
+      }
       // Find selected inspector details
       const selectedInspector = users.find((user: any) => user.id === inspectionForm.inspector_id);
-      
       console.log('=== CREATE INSPECTION DEBUG ===');
       console.log('selectedGRN:', selectedGRN);
       console.log('selectedItem:', selectedItem);
       console.log('selectedInspector:', selectedInspector);
       console.log('inspectionForm:', inspectionForm);
-      
       // Prepare data with all required fields
       const inspectionData = {
         inspection_type: inspectionForm.inspection_type,
         inspection_date: inspectionForm.inspection_date,
         grn_id: inspectionForm.reference_id,
         uid: inspectionForm.uid || null,
-        item_id: inspectionForm.item_id,
+        item_id: itemId,
         item_name: selectedItem?.item_name || '',
         item_code: selectedItem?.item_code || '',
         vendor_id: selectedGRN?.vendor_id || null,
@@ -197,9 +209,7 @@ export default function QualityPage() {
         inspector_name: selectedInspector?.full_name || selectedInspector?.email || '',
         inspection_checklist: inspectionForm.remarks || '',
       };
-      
       console.log('Sending inspectionData:', inspectionData);
-      
       await apiClient.post('/quality/inspections', inspectionData);
       setShowInspectionForm(false);
       setInspectionForm({
