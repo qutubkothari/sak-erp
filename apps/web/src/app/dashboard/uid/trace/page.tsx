@@ -31,6 +31,7 @@ interface UIDTrace {
   };
   status: string;
   location: string;
+  batch_number?: string;
   lifecycle: LifecycleEvent[];
   components: Component[];
   parent_products: Array<{
@@ -42,7 +43,16 @@ interface UIDTrace {
     name: string;
     code: string;
     contact: string;
-  };
+  } | null;
+  purchase_order?: {
+    po_number: string;
+    order_date: string;
+    total_amount: number;
+  } | null;
+  grn?: {
+    grn_number: string;
+    grn_date: string;
+  } | null;
   quality_checkpoints: Array<{
     stage: string;
     status: string;
@@ -259,6 +269,50 @@ function TraceProductContent() {
                         <p className="text-sm text-gray-500">Contact</p>
                         <p className="text-gray-700">{traceData.vendor.contact}</p>
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Purchase Order Details */}
+                {traceData.purchase_order && (
+                  <div className="bg-white rounded-lg shadow-lg p-6">
+                    <h2 className="text-xl font-bold text-gray-800 mb-4">📋 Purchase Order</h2>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-sm text-gray-500">PO Number</p>
+                        <p className="font-bold text-gray-800">{traceData.purchase_order.po_number}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">Order Date</p>
+                        <p className="text-gray-700">{new Date(traceData.purchase_order.order_date).toLocaleDateString('en-IN')}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">Total Amount</p>
+                        <p className="text-gray-700">₹{traceData.purchase_order.total_amount.toLocaleString('en-IN')}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* GRN Details */}
+                {traceData.grn && (
+                  <div className="bg-white rounded-lg shadow-lg p-6">
+                    <h2 className="text-xl font-bold text-gray-800 mb-4">📦 Goods Receipt</h2>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-sm text-gray-500">GRN Number</p>
+                        <p className="font-bold text-gray-800">{traceData.grn.grn_number}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">Receipt Date</p>
+                        <p className="text-gray-700">{new Date(traceData.grn.grn_date).toLocaleDateString('en-IN')}</p>
+                      </div>
+                      {traceData.batch_number && (
+                        <div>
+                          <p className="text-sm text-gray-500">Batch Number</p>
+                          <p className="text-gray-700">{traceData.batch_number}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

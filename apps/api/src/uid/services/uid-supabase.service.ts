@@ -485,30 +485,56 @@ export class UidSupabaseService {
       ? JSON.parse(uidRecord.lifecycle)
       : [];
 
-    // 2. Get vendor details (from GRN if available)
+    // 2. Get vendor details directly from supplier_id
     let vendor = null;
-    const grnReference = lifecycle.find((event: any) => 
-      event.reference && event.reference.includes('GRN')
-    );
-    
-    if (grnReference) {
-      const grnNumber = grnReference.reference;
-      const { data: grn } = await this.supabase
-        .from('grn')
-        .select(`
-          id,
-          vendor:vendors(code, name, contact_person, email)
-        `)
+    if (uidRecord.supplier_id) {
+      const { data: vendorData } = await this.supabase
+        .from('vendors')
+        .select('code, name, contact_person, email, vendor_code')
         .eq('tenant_id', tenantId)
-        .eq('grn_number', grnNumber)
-        .single();
+        .eq('id', uidRecord.supplier_id)
+        .maybeSingle();
 
-      if (grn && grn.vendor) {
-        const vendorData = Array.isArray(grn.vendor) ? grn.vendor[0] : grn.vendor;
+      if (vendorData) {
         vendor = {
-          code: vendorData.code,
+          code: vendorData.vendor_code || vendorData.code,
           name: vendorData.name,
           contact: `${vendorData.contact_person} (${vendorData.email})`,
+        };
+      }
+    }
+
+    // 2b. Get PO details if available
+    let purchase_order = null;
+    if (uidRecord.purchase_order_id) {
+      const { data: poData } = await this.supabase
+        .from('purchase_orders')
+        .select('id, po_number, order_date, total_amount')
+        .eq('id', uidRecord.purchase_order_id)
+        .maybeSingle();
+      
+      if (poData) {
+        purchase_order = {
+          po_number: poData.po_number,
+          order_date: poData.order_date,
+          total_amount: poData.total_amount,
+        };
+      }
+    }
+
+    // 2c. Get GRN details if available
+    let grn_info = null;
+    if (uidRecord.grn_id) {
+      const { data: grnData } = await this.supabase
+        .from('grn')
+        .select('id, grn_number, grn_date, received_date')
+        .eq('id', uidRecord.grn_id)
+        .maybeSingle();
+      
+      if (grnData) {
+        grn_info = {
+          grn_number: grnData.grn_number,
+          grn_date: grnData.grn_date || grnData.received_date,
         };
       }
     }
@@ -663,10 +689,13 @@ export class UidSupabaseService {
       },
       status: uidRecord.status,
       location: uidRecord.location,
+      batch_number: uidRecord.batch_number,
       lifecycle,
       components,
       parent_products,
       vendor,
+      purchase_order,
+      grn: grn_info,
       quality_checkpoints,
       customer,
     };
