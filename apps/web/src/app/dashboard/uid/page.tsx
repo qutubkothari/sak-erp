@@ -437,37 +437,12 @@ export default function UIDTrackingPage() {
               </div>
             )}
 
-            {/* Lifecycle Timeline */}
-            {selectedUID.lifecycle && selectedUID.lifecycle.length > 0 && (
-              <div className="mb-6">
-                <h3 className="font-semibold text-lg mb-3">🕐 Lifecycle Timeline</h3>
-                <div className="space-y-3">
-                  {selectedUID.lifecycle.map((event, idx) => (
-                    <div key={idx} className="flex gap-4 border-l-2 border-amber-300 pl-4 pb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-amber-600">{event.stage}</span>
-                          <span className="text-xs text-gray-500">{formatDate(event.timestamp)}</span>
-                        </div>
-                        <p className="text-sm text-gray-600 mt-1">
-                          Location: {event.location} | Ref: {event.reference}
-                        </p>
-                        {event.user && (
-                          <p className="text-xs text-gray-500">By: {event.user}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Source Traceability */}
             {selectedUID.supplier_id && (
               <div className="bg-yellow-50 p-4 rounded-lg mb-4">
                 <h3 className="font-semibold mb-2">📦 Source Traceability</h3>
                 <p className="text-sm">
-                  Supplier: {selectedUID.vendorName || selectedUID.supplier_id}
+                  Supplier: {selectedUID.vendorName || 'Unknown'}
                   {selectedUID.vendorCode && <span className="text-gray-500 ml-2">({selectedUID.vendorCode})</span>}
                 </p>
                 {selectedUID.purchase_order_id && (
