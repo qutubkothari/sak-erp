@@ -369,6 +369,7 @@ export default function GRNPage() {
       };
       
       console.log('Creating GRN with payload:', payload);
+      console.log('Items with acceptedQty:', payload.items.map(i => ({ code: i.itemCode, acceptedQty: i.acceptedQty })));
       
       const token = localStorage.getItem('accessToken');
       const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/grn', {
@@ -873,7 +874,7 @@ export default function GRNPage() {
                             <input
                               type="number"
                               value={item.acceptedQuantity}
-                              onChange={(e) => handleUpdateItem(index, 'acceptedQuantity', parseFloat(e.target.value))}
+                              onChange={(e) => handleUpdateItem(index, 'acceptedQuantity', parseFloat(e.target.value) || 0)}
                               className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-green-50 focus:ring-2 focus:ring-green-500"
                             />
                           </div>
