@@ -60,6 +60,13 @@ export default function QualityPage() {
   const [dashboard, setDashboard] = useState<QualityDashboard | null>(null);
   const [loading, setLoading] = useState(false);
   
+  // Dropdown data
+  const [grns, setGrns] = useState<any[]>([]);
+  const [items, setItems] = useState<any[]>([]);
+  const [uids, setUids] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [selectedGRN, setSelectedGRN] = useState<any>(null);
+  
   // Inspection form state
   const [showInspectionForm, setShowInspectionForm] = useState(false);
   const [inspectionForm, setInspectionForm] = useState({
@@ -103,6 +110,46 @@ export default function QualityPage() {
   useEffect(() => {
     fetchData();
   }, [activeTab]);
+
+  useEffect(() => {
+    if (showInspectionForm) {
+      fetchFormData();
+    }
+  }, [showInspectionForm]);
+
+  const fetchFormData = async () => {
+    try {
+      // Fetch GRNs
+      const grnsData = await apiClient.get('/purchase/grns');
+      setGrns(grnsData.filter((g: any) => g.status === 'COMPLETED'));
+      
+      // Fetch all items
+      const itemsData = await apiClient.get('/items');
+      setItems(itemsData);
+      
+      // Fetch users (for inspectors)
+      const usersData = await apiClient.get('/users');
+      setUsers(usersData);
+    } catch (error) {
+      console.error('Error fetching form data:', error);
+    }
+  };
+
+  const handleGRNChange = async (grnId: string) => {
+    setInspectionForm({ ...inspectionForm, reference_id: grnId, item_id: '', uid: '' });
+    
+    try {
+      // Fetch selected GRN details to get items and UIDs
+      const grnDetails = await apiClient.get(`/purchase/grns/${grnId}`);
+      setSelectedGRN(grnDetails);
+      
+      // Fetch UIDs generated for this GRN
+      const uidsData = await apiClient.get(`/uid/search?grn=${grnDetails.grn_number}`);
+      setUids(uidsData || []);
+    } catch (error) {
+      console.error('Error fetching GRN details:', error);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -537,35 +584,58 @@ export default function QualityPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Reference ID (UUID)</label>
-                <input
-                  type="text"
+                <label className="block text-sm font-medium mb-1">GRN / Reference</label>
+                <select
                   value={inspectionForm.reference_id}
-                  onChange={(e) => setInspectionForm({ ...inspectionForm, reference_id: e.target.value })}
+                  onChange={(e) => handleGRNChange(e.target.value)}
                   className="w-full border rounded px-3 py-2"
                   required
-                />
+                >
+                  <option value="">Select GRN...</option>
+                  {grns.map(grn => (
+                    <option key={grn.id} value={grn.id}>
+                      {grn.grn_number} - {grn.vendor?.name} ({new Date(grn.grn_date).toLocaleDateString()})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Item ID (UUID)</label>
-                  <input
-                    type="text"
+                  <label className="block text-sm font-medium mb-1">Item</label>
+                  <select
                     value={inspectionForm.item_id}
                     onChange={(e) => setInspectionForm({ ...inspectionForm, item_id: e.target.value })}
                     className="w-full border rounded px-3 py-2"
                     required
-                  />
+                    disabled={!selectedGRN}
+                  >
+                    <option value="">Select Item...</option>
+                    {selectedGRN?.items?.map((item: any) => (
+                      <option key={item.item_id} value={item.item_id}>
+                        {item.item_code} - {item.item_name}
+                      </option>
+                    ))}
+                  </select>
+                  {!selectedGRN && (
+                    <p className="text-xs text-gray-500 mt-1">Select a GRN first</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">UID (Optional)</label>
-                  <input
-                    type="text"
+                  <select
                     value={inspectionForm.uid}
                     onChange={(e) => setInspectionForm({ ...inspectionForm, uid: e.target.value })}
                     className="w-full border rounded px-3 py-2"
-                  />
+                    disabled={!selectedGRN}
+                  >
+                    <option value="">Select UID...</option>
+                    {uids.map((uid: any) => (
+                      <option key={uid.uid} value={uid.uid}>
+                        {uid.uid}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -583,14 +653,20 @@ export default function QualityPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Inspector ID (UUID)</label>
-                  <input
-                    type="text"
+                  <label className="block text-sm font-medium mb-1">Inspector</label>
+                  <select
                     value={inspectionForm.inspector_id}
                     onChange={(e) => setInspectionForm({ ...inspectionForm, inspector_id: e.target.value })}
                     className="w-full border rounded px-3 py-2"
                     required
-                  />
+                  >
+                    <option value="">Select Inspector...</option>
+                    {users.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.full_name || user.email}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
