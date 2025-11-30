@@ -134,8 +134,8 @@ export default function QualityPage() {
 
   const fetchFormData = async () => {
     try {
-      // Fetch all UIDs for inspection
-      const uidsData = await apiClient.get('/uid');
+      // Fetch all UIDs for inspection (with forInspection flag)
+      const uidsData = await apiClient.get('/uid?forInspection=true');
       setUids(uidsData || []);
       
       // Fetch users (for inspectors)
@@ -154,7 +154,7 @@ export default function QualityPage() {
     
     try {
       // Fetch UID details which contains vendor, item, GRN info
-      const uidDetails = await apiClient.get(`/uid/${uid}`);
+      const uidDetails = await apiClient.get(`/uid/details/${uid}`);
       console.log('UID Details:', uidDetails);
       
       // Fetch GRN details if available

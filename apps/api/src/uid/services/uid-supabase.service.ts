@@ -673,6 +673,83 @@ export class UidSupabaseService {
   }
 
   /**
+   * Get all UIDs with filtering - for quality inspection form
+   */
+  async getAllUIDs(req: any, status?: string, entityType?: string) {
+    const tenantId = req.user.tenantId;
+    
+    let query = this.supabase
+      .from('uid_registry')
+      .select('uid, entity_type, status, location, batch_number, quality_status, created_at')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .limit(1000);
+
+    if (status) {
+      query = query.eq('status', status);
+    }
+
+    if (entityType) {
+      query = query.eq('entity_type', entityType);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      throw new Error(`Failed to fetch UIDs: ${error.message}`);
+    }
+
+    return data || [];
+  }
+
+  /**
+   * Get UID details with vendor and item information for quality inspection
+   */
+  async getUIDDetails(req: any, uid: string) {
+    const tenantId = req.user.tenantId;
+
+    // Fetch UID record with related data
+    const { data: uidRecord, error } = await this.supabase
+      .from('uid_registry')
+      .select(`
+        *,
+        item:items!entity_id(id, name, code, description),
+        vendor:vendors!supplier_id(id, name, code)
+      `)
+      .eq('uid', uid)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (error || !uidRecord) {
+      throw new Error(`UID ${uid} not found`);
+    }
+
+    const itemData = Array.isArray(uidRecord.item) ? uidRecord.item[0] : uidRecord.item;
+    const vendorData = Array.isArray(uidRecord.vendor) ? uidRecord.vendor[0] : uidRecord.vendor;
+
+    return {
+      uid: uidRecord.uid,
+      grnId: uidRecord.grn_id,
+      itemId: uidRecord.entity_id,
+      itemName: itemData?.name || '',
+      itemCode: itemData?.code || '',
+      vendorId: uidRecord.supplier_id,
+      vendorName: vendorData?.name || '',
+      vendorCode: vendorData?.code || '',
+      batchNumber: uidRecord.batch_number || '',
+      lotNumber: '', // Add if you have lot_number field
+      entityType: uidRecord.entity_type,
+      status: uidRecord.status,
+      location: uidRecord.location,
+      assemblyLevel: uidRecord.assembly_level,
+      parentUids: uidRecord.parent_uids,
+      childUids: uidRecord.child_uids,
+      qualityStatus: uidRecord.quality_status,
+      createdAt: uidRecord.created_at,
+    };
+  }
+
+  /**
    * Generate checksum
    */
   private generateChecksum(input: string): string {

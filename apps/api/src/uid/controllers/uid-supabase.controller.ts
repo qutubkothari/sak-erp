@@ -24,7 +24,17 @@ export class UidSupabaseController {
 
   @Get()
   findAll(@Request() req: any, @Query() filters: any) {
+    // If requesting for quality inspection (simple list), use getAllUIDs
+    if (filters.forInspection === 'true') {
+      return this.uidService.getAllUIDs(req, filters.status, filters.entityType);
+    }
+    // Otherwise use the full findAll
     return this.uidService.findAll(req, filters);
+  }
+
+  @Get('details/:uid')
+  getDetails(@Request() req: any, @Param('uid') uid: string) {
+    return this.uidService.getUIDDetails(req, uid);
   }
 
   @Get('search/:uid')
