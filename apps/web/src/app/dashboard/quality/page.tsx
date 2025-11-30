@@ -594,13 +594,14 @@ export default function QualityPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Item</label>
-                  <select\n                    value={inspectionForm.item_id}
+                  <select
+                    value={inspectionForm.item_id}
                     onChange={(e) => setInspectionForm({ ...inspectionForm, item_id: e.target.value })}
-                    className=\"w-full border rounded px-3 py-2\"
+                    className="w-full border rounded px-3 py-2"
                     required
                     disabled={!selectedGRN}
                   >
-                    <option value=\"\">Select Item...</option>
+                    <option value="">Select Item...</option>
                     {selectedGRN?.grn_items?.map((item: any) => (
                       <option key={item.item_id} value={item.item_id}>
                         {item.item_code} - {item.item_name}
