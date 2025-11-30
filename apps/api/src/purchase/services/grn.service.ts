@@ -39,11 +39,11 @@ export class GrnService {
         po_id: data.poId,
         vendor_id: data.vendorId,
         grn_date: data.grnDate || new Date().toISOString().split('T')[0],
-        invoice_number: data.invoiceNumber,
-        invoice_date: data.invoiceDate,
+        invoice_number: data.invoiceNumber || null,
+        invoice_date: data.invoiceDate || null,
         warehouse_id: data.warehouseId,
         status: data.status || 'DRAFT',
-        remarks: data.remarks,
+        remarks: data.remarks || null,
         received_by: userId,
       })
       .select()
@@ -166,11 +166,11 @@ export class GrnService {
     const { error } = await this.supabase
       .from('grn')
       .update({
-        grn_date: data.grnDate,
-        invoice_number: data.invoiceNumber,
-        invoice_date: data.invoiceDate,
+        grn_date: data.grnDate || null,
+        invoice_number: data.invoiceNumber || null,
+        invoice_date: data.invoiceDate || null,
         warehouse_id: data.warehouseId,
-        remarks: data.remarks,
+        remarks: data.remarks || null,
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
