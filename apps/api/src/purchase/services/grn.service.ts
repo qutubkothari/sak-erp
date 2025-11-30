@@ -17,7 +17,7 @@ export class GrnService {
     console.log('=== GRN CREATE START ===');
     console.log('Data items count:', data.items?.length);
     if (data.items && data.items.length > 0) {
-      data.items.forEach((item, idx) => {
+      data.items.forEach((item: any, idx: number) => {
         console.log(`Item ${idx}: ${item.itemCode}, acceptedQty=${item.acceptedQty}, type=${typeof item.acceptedQty}`);
       });
     }
@@ -96,7 +96,7 @@ export class GrnService {
         remarks: item.remarks || null,
       }));
       
-      console.log('GRN Items before insert:', JSON.stringify(items.map(i => ({ 
+      console.log('GRN Items before insert:', JSON.stringify(items.map((i: any) => ({ 
         item_code: i.item_code, 
         accepted_qty: i.accepted_qty,
         ordered_qty: i.ordered_qty,
