@@ -401,6 +401,19 @@ export class GrnService {
       }
 
       console.log(`Generated ${uidsCreated.length} UIDs for GRN ${grn.grn_number}, Item: ${grnItem.item_code}`);
+      
+      // Update uid_count in grn_items
+      if (uidsCreated.length > 0) {
+        await this.supabase
+          .from('grn_items')
+          .update({ 
+            uid_count: uidsCreated.length,
+            uid_generated: true 
+          })
+          .eq('id', grnItem.id);
+        console.log(`Updated grn_item uid_count to ${uidsCreated.length}`);
+      }
+      
       return uidsCreated;
     } catch (error) {
       console.error('Error generating UIDs:', error);
