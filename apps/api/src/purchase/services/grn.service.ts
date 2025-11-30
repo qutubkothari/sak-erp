@@ -79,13 +79,13 @@ export class GrnService {
         accepted_qty: item.acceptedQty || 0,
         rejected_qty: item.rejectedQty || 0,
         inspection_status: item.inspectionStatus || 'PENDING',
-        inspection_remarks: item.inspectionRemarks,
-        batch_number: item.batchNumber,
-        manufacturing_date: item.manufacturingDate,
-        expiry_date: item.expiryDate,
+        inspection_remarks: item.inspectionRemarks || null,
+        batch_number: item.batchNumber || null,
+        manufacturing_date: item.manufacturingDate || null,
+        expiry_date: item.expiryDate || null,
         rate: item.rate,
         amount: (item.receivedQty || 0) * (item.rate || 0),
-        remarks: item.remarks,
+        remarks: item.remarks || null,
       }));
 
       const { error: itemsError } = await this.supabase
@@ -195,9 +195,9 @@ export class GrnService {
           accepted_quantity: item.acceptedQuantity,
           rejected_quantity: item.rejectedQuantity,
           unit_price: item.unitPrice,
-          batch_number: item.batchNumber,
-          expiry_date: item.expiryDate,
-          notes: item.notes,
+          batch_number: item.batchNumber || null,
+          expiry_date: item.expiryDate || null,
+          notes: item.notes || null,
         }));
 
         await this.supabase
