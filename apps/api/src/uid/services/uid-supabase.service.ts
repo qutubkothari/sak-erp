@@ -442,6 +442,8 @@ export class UidSupabaseService {
   async getCompleteTrace(req: any, uid: string) {
     const tenantId = req.user.tenantId;
 
+    console.log('[UID Trace] Looking for UID:', uid, 'Tenant:', tenantId);
+
     // 1. Get main UID record with item details
     const { data: uidRecord, error: uidError } = await this.supabase
       .from('uid_registry')
@@ -451,9 +453,17 @@ export class UidSupabaseService {
       `)
       .eq('tenant_id', tenantId)
       .eq('uid', uid)
-      .single();
+      .maybeSingle();
 
-    if (uidError || !uidRecord) {
+    console.log('[UID Trace] Query result:', { found: !!uidRecord, error: uidError });
+
+    if (uidError) {
+      console.error('[UID Trace] Database error:', uidError);
+      throw new Error(`Database error: ${uidError.message}`);
+    }
+
+    if (!uidRecord) {
+      console.error('[UID Trace] UID not found in database');
       throw new Error('UID not found');
     }
 
