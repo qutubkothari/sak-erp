@@ -112,6 +112,8 @@ export class UidSupabaseService {
    */
   async searchUID(req: any, uid: string) {
     const tenantId = req.user.tenantId;
+    console.log('=== SEARCH UID ===');
+    console.log('UID:', uid);
 
     // First get the UID record
     const { data: uidData, error: uidError } = await this.supabase
@@ -122,6 +124,8 @@ export class UidSupabaseService {
       .single();
 
     if (uidError) throw new Error(uidError.message);
+
+    console.log('UID Data:', { supplier_id: uidData.supplier_id, po_id: uidData.purchase_order_id, grn_id: uidData.grn_id });
 
     // Then fetch related data separately
     let supplier = null;
@@ -135,6 +139,7 @@ export class UidSupabaseService {
         .eq('id', uidData.supplier_id)
         .single();
       supplier = vendorData;
+      console.log('Supplier found:', supplier?.name);
     }
 
     if (uidData.purchase_order_id) {
@@ -144,6 +149,7 @@ export class UidSupabaseService {
         .eq('id', uidData.purchase_order_id)
         .single();
       purchaseOrder = poData;
+      console.log('PO found:', purchaseOrder?.po_number);
     }
 
     if (uidData.grn_id) {
@@ -153,14 +159,18 @@ export class UidSupabaseService {
         .eq('id', uidData.grn_id)
         .single();
       grn = grnData;
+      console.log('GRN found:', grn?.grn_number);
     }
 
-    return {
+    const result = {
       ...uidData,
       supplier,
       purchase_order: purchaseOrder,
       grn,
     };
+    
+    console.log('Returning result with supplier:', result.supplier?.name);
+    return result;
   }
 
   /**
