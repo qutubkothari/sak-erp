@@ -133,11 +133,15 @@ export class UidSupabaseService {
     let grn = null;
 
     if (uidData.supplier_id) {
-      const { data: vendorData } = await this.supabase
+      const { data: vendorData, error: vendorError } = await this.supabase
         .from('vendors')
         .select('id, name, vendor_code')
+        .eq('tenant_id', tenantId)
         .eq('id', uidData.supplier_id)
         .single();
+      if (vendorError) {
+        console.log('Vendor query error:', vendorError.message);
+      }
       supplier = vendorData;
       console.log('Supplier found:', supplier?.name);
     }
