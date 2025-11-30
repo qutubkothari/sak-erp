@@ -96,18 +96,44 @@ sudo systemctl reload nginx
 
 ## Step 6: Deploy Application
 
+**⚠️ DO NOT use deploy.sh - it tries production build which FAILS!**
+
+Instead, use the PM2 ecosystem file:
+
 ```bash
-cd /var/www/sak-erp
-chmod +x deploy/deploy.sh
-./deploy/deploy.sh
+cd /home/ubuntu/sak-erp
+
+# Copy ecosystem config
+cp ecosystem.config.js /home/ubuntu/sak-erp/
+
+# Install dependencies
+cd apps/api && npm install
+cd ../web && npm install
+cd ../..
+
+# Generate Prisma
+cd packages/database
+pnpm prisma generate
+pnpm prisma db push
+cd ../..
+
+# Build API only
+cd apps/api
+npm run build
+cd ../..
+
+# Start with PM2 ecosystem (uses dev mode for web)
+pm2 delete all  # Clear any existing
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup  # Enable on boot
 ```
 
 This will:
-- Install dependencies
-- Generate Prisma Client
-- Build API and Frontend
-- Run database migrations
-- Start applications with PM2
+- Build API in production mode ✅
+- Run Web in development mode ✅ (production build fails)
+- Start both with PM2
+- Save configuration
 
 ## Step 7: Verify Deployment
 
