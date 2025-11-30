@@ -69,31 +69,117 @@ export class ProductionService {
   }
 
   /**
-   * Explode BOM to get component requirements
+   * Explode BOM to get component requirements (with recursive multi-level BOM support)
    */
   async explodeBOM(productionOrderId: string, bomId: string, quantity: number) {
-    // Get BOM items
+    // Get BOM items with component type
     const { data: bomItems } = await this.supabase
       .from('bom_items')
-      .select('item_id, quantity, scrap_percentage')
+      .select('component_type, item_id, child_bom_id, quantity, scrap_percentage')
       .eq('bom_id', bomId);
 
     if (!bomItems || bomItems.length === 0) return;
 
-    // Calculate required quantities with scrap
-    const components = bomItems.map((item) => {
-      const scrapFactor = 1 + (item.scrap_percentage || 0) / 100;
-      const requiredQty = item.quantity * quantity * scrapFactor;
+    const allComponents: Array<{
+      production_order_id: string;
+      item_id: string;
+      required_quantity: number;
+      consumed_quantity: number;
+    }> = [];
 
-      return {
+    // Process each component
+    for (const bomItem of bomItems) {
+      const scrapFactor = 1 + (bomItem.scrap_percentage || 0) / 100;
+      const adjustedQty = bomItem.quantity * quantity * scrapFactor;
+
+      if (bomItem.component_type === 'ITEM' && bomItem.item_id) {
+        // Direct item - add to requirements
+        allComponents.push({
+          production_order_id: productionOrderId,
+          item_id: bomItem.item_id,
+          required_quantity: adjustedQty,
+          consumed_quantity: 0,
+        });
+      } else if (bomItem.component_type === 'BOM' && bomItem.child_bom_id) {
+        // Nested BOM - recursively explode
+        console.log(`[Production] Exploding child BOM: ${bomItem.child_bom_id} with qty: ${adjustedQty}`);
+        
+        // Get child BOM items
+        const { data: childBomItems } = await this.supabase
+          .from('bom_items')
+          .select('component_type, item_id, child_bom_id, quantity, scrap_percentage')
+          .eq('bom_id', bomItem.child_bom_id);
+
+        if (childBomItems) {
+          // Recursively process child BOM
+          await this.explodeChildBOM(
+            productionOrderId,
+            childBomItems,
+            adjustedQty,
+            allComponents
+          );
+        }
+      }
+    }
+
+    // Insert all components in one batch
+    if (allComponents.length > 0) {
+      // Aggregate quantities for duplicate items
+      const aggregatedComponents = new Map<string, number>();
+      allComponents.forEach(comp => {
+        const existing = aggregatedComponents.get(comp.item_id) || 0;
+        aggregatedComponents.set(comp.item_id, existing + comp.required_quantity);
+      });
+
+      const finalComponents = Array.from(aggregatedComponents.entries()).map(([itemId, qty]) => ({
         production_order_id: productionOrderId,
-        item_id: item.item_id,
-        required_quantity: requiredQty,
+        item_id: itemId,
+        required_quantity: qty,
         consumed_quantity: 0,
-      };
-    });
+      }));
 
-    await this.supabase.from('production_order_components').insert(components);
+      await this.supabase.from('production_order_components').insert(finalComponents);
+      console.log(`[Production] Inserted ${finalComponents.length} component requirements`);
+    }
+  }
+
+  /**
+   * Helper: Recursively explode child BOMs
+   */
+  private async explodeChildBOM(
+    productionOrderId: string,
+    bomItems: any[],
+    quantity: number,
+    accumulator: Array<any>
+  ) {
+    for (const bomItem of bomItems) {
+      const scrapFactor = 1 + (bomItem.scrap_percentage || 0) / 100;
+      const adjustedQty = bomItem.quantity * quantity * scrapFactor;
+
+      if (bomItem.component_type === 'ITEM' && bomItem.item_id) {
+        accumulator.push({
+          production_order_id: productionOrderId,
+          item_id: bomItem.item_id,
+          required_quantity: adjustedQty,
+          consumed_quantity: 0,
+        });
+      } else if (bomItem.component_type === 'BOM' && bomItem.child_bom_id) {
+        // Continue recursion
+        const { data: childBomItems } = await this.supabase
+          .from('bom_items')
+          .select('component_type, item_id, child_bom_id, quantity, scrap_percentage')
+          .eq('bom_id', bomItem.child_bom_id);
+
+        if (childBomItems) {
+          await this.explodeChildBOM(
+            productionOrderId,
+            childBomItems,
+            adjustedQty,
+            accumulator
+          );
+        }
+      }
+    }
   }
 
   /**
