@@ -172,6 +172,65 @@ export class QualityService {
     return { message: 'Inspection deleted successfully' };
   }
 
+  async completeInspection(
+    tenantId: string,
+    userId: string,
+    inspectionId: string,
+    data: any,
+  ) {
+    // Get inspection details
+    const { data: inspection, error: fetchError } = await this.supabase
+      .from('quality_inspections')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('id', inspectionId)
+      .single();
+
+    if (fetchError) throw new NotFoundException('Inspection not found');
+
+    // Calculate defect rate
+    const totalQty =
+      (data.quantity_accepted || 0) +
+      (data.quantity_rejected || 0) +
+      (data.quantity_on_hold || 0);
+    const defectRate =
+      totalQty > 0 ? ((data.quantity_rejected || 0) / totalQty) * 100 : 0;
+
+    // Update inspection
+    const updateData = {
+      status: data.inspection_status,
+      accepted_quantity: data.quantity_accepted || 0,
+      rejected_quantity: data.quantity_rejected || 0,
+      on_hold_quantity: data.quantity_on_hold || 0,
+      defect_rate: defectRate,
+      inspector_remarks: data.inspector_remarks,
+      completion_date: new Date().toISOString().split('T')[0],
+      completed_by: userId,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: updatedInspection, error: updateError } = await this.supabase
+      .from('quality_inspections')
+      .update(updateData)
+      .eq('tenant_id', tenantId)
+      .eq('id', inspectionId)
+      .select()
+      .single();
+
+    if (updateError) throw new BadRequestException(updateError.message);
+
+    // Generate NCR if requested
+    if (data.generate_ncr && data.ncr_description) {
+      await this.createNCRFromInspection(
+        tenantId,
+        { ...inspection, ...updatedInspection },
+        { description: data.ncr_description },
+      );
+    }
+
+    return updatedInspection;
+  }
+
   async addInspectionParameters(inspectionId: string, parameters: any[]) {
     const parameterData = parameters.map(param => ({
       inspection_id: inspectionId,

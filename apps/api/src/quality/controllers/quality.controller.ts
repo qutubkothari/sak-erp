@@ -42,6 +42,20 @@ export class QualityController {
     return this.qualityService.deleteInspection(req.user.tenantId, id);
   }
 
+  @Post('inspections/:id/complete')
+  async completeInspection(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: any,
+  ) {
+    return this.qualityService.completeInspection(
+      req.user.tenantId,
+      req.user.userId,
+      id,
+      body,
+    );
+  }
+
   @Post('inspections/:id/parameters')
   async addInspectionParameters(
     @Param('id') id: string,

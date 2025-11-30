@@ -8,25 +8,35 @@ interface Inspection {
   id: string;
   inspection_number: string;
   inspection_type: 'INCOMING' | 'IN_PROCESS' | 'FINAL';
-  inspection_status: 'PENDING' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'ON_HOLD';
+  status: 'PENDING' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'ON_HOLD';
   inspection_date: string;
   item_name: string;
-  quantity_inspected: number;
-  quantity_accepted: number;
-  quantity_rejected: number;
+  inspected_quantity: number;
+  accepted_quantity: number;
+  rejected_quantity: number;
+  on_hold_quantity: number;
   defect_rate: number;
   inspector_name: string;
+  grn_id?: string;
+  uid?: string;
+  completion_date?: string;
+  inspector_remarks?: string;
 }
 
 interface NCR {
   id: string;
   ncr_number: string;
-  ncr_status: 'OPEN' | 'UNDER_REVIEW' | 'ACTION_PLANNED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
-  raised_date: string;
-  issue_description: string;
+  status: 'OPEN' | 'UNDER_REVIEW' | 'ACTION_PLANNED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+  ncr_date: string;
+  description: string;
   root_cause: string;
   corrective_action: string;
-  raised_by_name: string;
+  containment_action: string;
+  preventive_action: string;
+  raised_by: string;
+  nonconformance_type: string;
+  item_name?: string;
+  quantity_affected?: number;
 }
 
 interface VendorRating {
@@ -108,6 +118,9 @@ export default function QualityPage() {
   // Edit/Delete state
   const [editingInspection, setEditingInspection] = useState<any>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [viewingInspection, setViewingInspection] = useState<any>(null);
+  const [viewingNCR, setViewingNCR] = useState<any>(null);
+  const [editingNCR, setEditingNCR] = useState<any>(null);
 
   useEffect(() => {
     fetchData();
@@ -493,21 +506,27 @@ export default function QualityPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(inspection.inspection_date).toLocaleDateString()}</td>
                     <td className="px-6 py-4 text-sm">{inspection.item_name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">{inspection.quantity_inspected}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600">{inspection.quantity_accepted}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600">{inspection.quantity_rejected}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">{inspection.inspected_quantity}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600">{inspection.accepted_quantity || 0}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600">{inspection.rejected_quantity || 0}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                       {inspection.defect_rate ? `${inspection.defect_rate.toFixed(2)}%` : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(inspection.inspection_status)}`}>
-                        {inspection.inspection_status}
+                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(inspection.status)}`}>
+                        {inspection.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{inspection.inspector_name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <div className="flex space-x-2">
-                        {inspection.inspection_status === 'PENDING' && (
+                        <button
+                          onClick={() => setViewingInspection(inspection)}
+                          className="text-gray-600 hover:text-gray-800"
+                        >
+                          View
+                        </button>
+                        {inspection.status === 'PENDING' && (
                           <>
                             <button
                               onClick={() => handleEditInspection(inspection)}
@@ -523,13 +542,13 @@ export default function QualityPage() {
                             </button>
                           </>
                         )}
-                        {(inspection.inspection_status === 'PENDING' || inspection.inspection_status === 'IN_PROGRESS') && (
+                        {(inspection.status === 'PENDING' || inspection.status === 'IN_PROGRESS') && (
                           <button
                             onClick={() => {
                               setCompleteInspectionId(inspection.id);
                               setCompleteForm({
                                 ...completeForm,
-                                quantity_accepted: inspection.quantity_inspected
+                                quantity_accepted: inspection.inspected_quantity
                               });
                               setShowCompleteForm(true);
                             }}
@@ -562,22 +581,41 @@ export default function QualityPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Corrective Action</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Raised By</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {ncrs.map((ncr) => (
                   <tr key={ncr.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">{ncr.ncr_number}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(ncr.raised_date).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.issue_description}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(ncr.ncr_date).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.description}</td>
                     <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.root_cause || '-'}</td>
                     <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.corrective_action || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(ncr.ncr_status)}`}>
-                        {ncr.ncr_status}
+                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(ncr.status)}`}>
+                        {ncr.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{ncr.raised_by_name}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{ncr.raised_by}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => setViewingNCR(ncr)}
+                          className="text-gray-600 hover:text-gray-800"
+                        >
+                          View
+                        </button>
+                        {ncr.status !== 'CLOSED' && (
+                          <button
+                            onClick={() => setEditingNCR(ncr)}
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            Update
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1130,6 +1168,316 @@ export default function QualityPage() {
                 Delete
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Inspection Details Modal */}
+      {viewingInspection && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-xl font-bold">Inspection Details</h2>
+              <button
+                onClick={() => setViewingInspection(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="text-sm font-medium text-gray-600">Inspection Number</label>
+                <p className="text-lg font-semibold text-amber-600">{viewingInspection.inspection_number}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Status</label>
+                <p>
+                  <span className={`px-3 py-1 text-sm rounded ${getStatusColor(viewingInspection.status)}`}>
+                    {viewingInspection.status}
+                  </span>
+                </p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Type</label>
+                <p className="font-medium">{viewingInspection.inspection_type}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Date</label>
+                <p className="font-medium">{new Date(viewingInspection.inspection_date).toLocaleDateString()}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Item</label>
+                <p className="font-medium">{viewingInspection.item_name}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Inspector</label>
+                <p className="font-medium">{viewingInspection.inspector_name}</p>
+              </div>
+            </div>
+
+            <div className="border-t pt-4 mb-4">
+              <h3 className="font-semibold mb-3">Inspection Results</h3>
+              <div className="grid grid-cols-4 gap-4">
+                <div className="bg-blue-50 p-3 rounded">
+                  <div className="text-sm text-gray-600">Inspected</div>
+                  <div className="text-xl font-bold text-blue-600">{viewingInspection.inspected_quantity}</div>
+                </div>
+                <div className="bg-green-50 p-3 rounded">
+                  <div className="text-sm text-gray-600">Accepted</div>
+                  <div className="text-xl font-bold text-green-600">{viewingInspection.accepted_quantity || 0}</div>
+                </div>
+                <div className="bg-red-50 p-3 rounded">
+                  <div className="text-sm text-gray-600">Rejected</div>
+                  <div className="text-xl font-bold text-red-600">{viewingInspection.rejected_quantity || 0}</div>
+                </div>
+                <div className="bg-yellow-50 p-3 rounded">
+                  <div className="text-sm text-gray-600">On Hold</div>
+                  <div className="text-xl font-bold text-yellow-600">{viewingInspection.on_hold_quantity || 0}</div>
+                </div>
+              </div>
+            </div>
+
+            {viewingInspection.defect_rate && (
+              <div className="border-t pt-4 mb-4">
+                <label className="text-sm font-medium text-gray-600">Defect Rate</label>
+                <p className="text-2xl font-bold text-red-600">{viewingInspection.defect_rate.toFixed(2)}%</p>
+              </div>
+            )}
+
+            {viewingInspection.inspector_remarks && (
+              <div className="border-t pt-4 mb-4">
+                <label className="text-sm font-medium text-gray-600">Inspector Remarks</label>
+                <p className="mt-1 text-gray-800">{viewingInspection.inspector_remarks}</p>
+              </div>
+            )}
+
+            {viewingInspection.uid && (
+              <div className="border-t pt-4 mb-4">
+                <label className="text-sm font-medium text-gray-600">UID</label>
+                <p className="font-mono text-sm bg-gray-100 p-2 rounded">{viewingInspection.uid}</p>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-4">
+              <button
+                onClick={() => setViewingInspection(null)}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View NCR Details Modal */}
+      {viewingNCR && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-xl font-bold">NCR Details</h2>
+              <button
+                onClick={() => setViewingNCR(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="text-sm font-medium text-gray-600">NCR Number</label>
+                <p className="text-lg font-semibold text-red-600">{viewingNCR.ncr_number}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Status</label>
+                <p>
+                  <span className={`px-3 py-1 text-sm rounded ${getStatusColor(viewingNCR.status)}`}>
+                    {viewingNCR.status}
+                  </span>
+                </p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Type</label>
+                <p className="font-medium">{viewingNCR.nonconformance_type}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Date Raised</label>
+                <p className="font-medium">{new Date(viewingNCR.ncr_date).toLocaleDateString()}</p>
+              </div>
+              {viewingNCR.item_name && (
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Item</label>
+                  <p className="font-medium">{viewingNCR.item_name}</p>
+                </div>
+              )}
+              {viewingNCR.quantity_affected && (
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Quantity Affected</label>
+                  <p className="font-medium">{viewingNCR.quantity_affected}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <div className="border-t pt-4">
+                <label className="text-sm font-medium text-gray-600 block mb-2">Issue Description</label>
+                <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.description}</p>
+              </div>
+
+              {viewingNCR.root_cause && (
+                <div className="border-t pt-4">
+                  <label className="text-sm font-medium text-gray-600 block mb-2">Root Cause</label>
+                  <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.root_cause}</p>
+                </div>
+              )}
+
+              {viewingNCR.containment_action && (
+                <div className="border-t pt-4">
+                  <label className="text-sm font-medium text-gray-600 block mb-2">Containment Action</label>
+                  <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.containment_action}</p>
+                </div>
+              )}
+
+              {viewingNCR.corrective_action && (
+                <div className="border-t pt-4">
+                  <label className="text-sm font-medium text-gray-600 block mb-2">Corrective Action</label>
+                  <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.corrective_action}</p>
+                </div>
+              )}
+
+              {viewingNCR.preventive_action && (
+                <div className="border-t pt-4">
+                  <label className="text-sm font-medium text-gray-600 block mb-2">Preventive Action</label>
+                  <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.preventive_action}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-6 border-t mt-6">
+              {viewingNCR.status !== 'CLOSED' && (
+                <button
+                  onClick={() => {
+                    setEditingNCR(viewingNCR);
+                    setViewingNCR(null);
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Update NCR
+                </button>
+              )}
+              <button
+                onClick={() => setViewingNCR(null)}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit NCR Modal */}
+      {editingNCR && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4">Update NCR - {editingNCR.ncr_number}</h2>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await apiClient.put(`/quality/ncr/${editingNCR.id}`, {
+                    status: editingNCR.status,
+                    root_cause: editingNCR.root_cause,
+                    containment_action: editingNCR.containment_action,
+                    corrective_action: editingNCR.corrective_action,
+                    preventive_action: editingNCR.preventive_action,
+                  });
+                  setEditingNCR(null);
+                  fetchData();
+                  alert('NCR updated successfully');
+                } catch (error) {
+                  console.error('Error updating NCR:', error);
+                  alert('Failed to update NCR');
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-medium mb-1">Status</label>
+                <select
+                  value={editingNCR.status}
+                  onChange={(e) => setEditingNCR({ ...editingNCR, status: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  required
+                >
+                  <option value="OPEN">Open</option>
+                  <option value="UNDER_REVIEW">Under Review</option>
+                  <option value="ACTION_PLANNED">Action Planned</option>
+                  <option value="IN_PROGRESS">In Progress</option>
+                  <option value="RESOLVED">Resolved</option>
+                  <option value="CLOSED">Closed</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Root Cause Analysis</label>
+                <textarea
+                  value={editingNCR.root_cause || ''}
+                  onChange={(e) => setEditingNCR({ ...editingNCR, root_cause: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Containment Action</label>
+                <textarea
+                  value={editingNCR.containment_action || ''}
+                  onChange={(e) => setEditingNCR({ ...editingNCR, containment_action: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  rows={2}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Corrective Action</label>
+                <textarea
+                  value={editingNCR.corrective_action || ''}
+                  onChange={(e) => setEditingNCR({ ...editingNCR, corrective_action: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  rows={2}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Preventive Action</label>
+                <textarea
+                  value={editingNCR.preventive_action || ''}
+                  onChange={(e) => setEditingNCR({ ...editingNCR, preventive_action: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  rows={2}
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setEditingNCR(null)}
+                  className="px-4 py-2 border rounded hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Update NCR
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
