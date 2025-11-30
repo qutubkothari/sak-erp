@@ -265,11 +265,18 @@ export class GrnService {
       if (grn.grn_items && grn.grn_items.length > 0) {
         console.log('Processing', grn.grn_items.length, 'items for UID generation');
         for (const item of grn.grn_items) {
+          console.log('=== FULL ITEM DATA ===');
+          console.log('Item keys:', Object.keys(item));
+          console.log('Full item:', JSON.stringify(item, null, 2));
           console.log('Item accepted_qty:', item.accepted_qty, 'Type:', typeof item.accepted_qty);
-          if (item.accepted_qty > 0) {
+          console.log('Item accepted_quantity:', item.accepted_quantity, 'Type:', typeof item.accepted_quantity);
+          console.log('======================');
+          
+          const acceptedQty = item.accepted_qty || item.accepted_quantity || 0;
+          if (acceptedQty > 0) {
             await this.generateUIDsForItem(tenantId, userId, grn, item);
           } else {
-            console.log('Skipping item due to accepted_qty <= 0');
+            console.log('Skipping item due to accepted_qty <= 0. Value was:', acceptedQty);
           }
         }
       } else {
@@ -298,7 +305,7 @@ export class GrnService {
       console.log('generateUIDsForItem called for:', grnItem.item_code);
       console.log('grnItem data:', JSON.stringify(grnItem, null, 2));
       
-      const acceptedQty = parseInt(grnItem.accepted_qty) || 0;
+      const acceptedQty = parseInt(grnItem.accepted_qty || grnItem.accepted_quantity || '0') || 0;
       console.log('Parsed acceptedQty:', acceptedQty);
       const uidsCreated = [];
 
