@@ -115,6 +115,17 @@ export default function QualityPage() {
     ncr_description: ''
   });
 
+  // Progress update form state
+  const [showProgressForm, setShowProgressForm] = useState(false);
+  const [progressInspectionId, setProgressInspectionId] = useState('');
+  const [progressForm, setProgressForm] = useState({
+    status: 'IN_PROGRESS',
+    inspector_remarks: '',
+    partial_accepted: 0,
+    partial_rejected: 0,
+    partial_on_hold: 0
+  });
+
   // Edit/Delete state
   const [editingInspection, setEditingInspection] = useState<any>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
@@ -269,6 +280,33 @@ export default function QualityPage() {
     } catch (error) {
       console.error('Error completing inspection:', error);
       alert('Failed to complete inspection');
+    }
+  };
+
+  const handleUpdateProgress = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await apiClient.put(`/quality/inspections/${progressInspectionId}`, {
+        status: progressForm.status,
+        inspector_remarks: progressForm.inspector_remarks,
+        accepted_quantity: progressForm.partial_accepted || undefined,
+        rejected_quantity: progressForm.partial_rejected || undefined,
+        on_hold_quantity: progressForm.partial_on_hold || undefined,
+      });
+      setShowProgressForm(false);
+      setProgressInspectionId('');
+      setProgressForm({
+        status: 'IN_PROGRESS',
+        inspector_remarks: '',
+        partial_accepted: 0,
+        partial_rejected: 0,
+        partial_on_hold: 0
+      });
+      fetchData();
+      alert('Progress updated successfully');
+    } catch (error) {
+      console.error('Error updating progress:', error);
+      alert('Failed to update progress');
     }
   };
 
@@ -491,33 +529,6 @@ export default function QualityPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rejected</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Defect Rate</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inspector</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {inspections.map((inspection) => (
-                  <tr key={inspection.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-amber-600">{inspection.inspection_number}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className="px-2 py-1 text-xs rounded bg-purple-100 text-purple-800">
-                        {inspection.inspection_type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(inspection.inspection_date).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 text-sm">{inspection.item_name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">{inspection.inspected_quantity}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600">{inspection.accepted_quantity || 0}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600">{inspection.rejected_quantity || 0}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                      {inspection.defect_rate ? `${inspection.defect_rate.toFixed(2)}%` : '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(inspection.status)}`}>
-                        {inspection.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{inspection.inspector_name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <div className="flex space-x-2">
                         <button
@@ -532,6 +543,51 @@ export default function QualityPage() {
                               onClick={() => handleEditInspection(inspection)}
                               className="text-blue-600 hover:text-blue-800"
                             >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => setShowDeleteConfirm(inspection.id)}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                        {(inspection.status === 'PENDING' || inspection.status === 'IN_PROGRESS') && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setProgressInspectionId(inspection.id);
+                                setProgressForm({
+                                  status: inspection.status,
+                                  inspector_remarks: inspection.inspector_remarks || '',
+                                  partial_accepted: inspection.accepted_quantity || 0,
+                                  partial_rejected: inspection.rejected_quantity || 0,
+                                  partial_on_hold: inspection.on_hold_quantity || 0
+                                });
+                                setShowProgressForm(true);
+                              }}
+                              className="text-purple-600 hover:text-purple-800"
+                            >
+                              Update Progress
+                            </button>
+                            <button
+                              onClick={() => {
+                                setCompleteInspectionId(inspection.id);
+                                setCompleteForm({
+                                  ...completeForm,
+                                  quantity_accepted: inspection.inspected_quantity - (inspection.rejected_quantity || 0) - (inspection.on_hold_quantity || 0)
+                                });
+                                setShowCompleteForm(true);
+                              }}
+                              className="text-amber-600 hover:text-amber-800"
+                            >
+                              Complete
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>   >
                               Edit
                             </button>
                             <button
@@ -894,24 +950,6 @@ export default function QualityPage() {
                       inspection_date: new Date().toISOString().split('T')[0],
                       remarks: ''
                     });
-                    setSelectedGRN(null);
-                  }}
-                  className="px-4 py-2 border rounded hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700"
-                >
-                  {editingInspection ? 'Update Inspection' : 'Create Inspection'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Complete Inspection Modal */}
       {showCompleteForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -919,7 +957,7 @@ export default function QualityPage() {
             <h2 className="text-xl font-bold mb-4">Complete Inspection</h2>
             <form onSubmit={handleCompleteInspection} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Inspection Status</label>
+                <label className="block text-sm font-medium mb-1">Final Status</label>
                 <select
                   value={completeForm.inspection_status}
                   onChange={(e) => setCompleteForm({ ...completeForm, inspection_status: e.target.value })}
@@ -972,12 +1010,13 @@ export default function QualityPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Inspector Remarks</label>
+                <label className="block text-sm font-medium mb-1">Final Inspector Remarks</label>
                 <textarea
                   value={completeForm.inspector_remarks}
                   onChange={(e) => setCompleteForm({ ...completeForm, inspector_remarks: e.target.value })}
                   className="w-full border rounded px-3 py-2"
                   rows={3}
+                  placeholder="Final remarks and observations..."
                 />
               </div>
 
@@ -1005,6 +1044,126 @@ export default function QualityPage() {
               )}
 
               <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowCompleteForm(false)}
+                  className="px-4 py-2 border rounded hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                >
+                  Complete Inspection
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Update Progress Modal */}
+      {showProgressForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4">Update Inspection Progress</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Add remarks, change status, or record partial results. Use this when inspection needs further review or is ongoing.
+            </p>
+            <form onSubmit={handleUpdateProgress} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Current Status</label>
+                <select
+                  value={progressForm.status}
+                  onChange={(e) => setProgressForm({ ...progressForm, status: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  required
+                >
+                  <option value="PENDING">Pending</option>
+                  <option value="IN_PROGRESS">In Progress</option>
+                  <option value="ON_HOLD">On Hold (Needs Review)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Inspector Remarks / Progress Notes</label>
+                <textarea
+                  value={progressForm.inspector_remarks}
+                  onChange={(e) => setProgressForm({ ...progressForm, inspector_remarks: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  rows={4}
+                  placeholder="Add observations, issues found, further review needed, etc..."
+                  required
+                />
+              </div>
+
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-semibold mb-3">Partial Results (Optional)</h3>
+                <p className="text-xs text-gray-500 mb-3">
+                  If you've inspected some quantities but not completed the full inspection, record them here.
+                </p>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Partial Accepted</label>
+                    <input
+                      type="number"
+                      value={progressForm.partial_accepted}
+                      onChange={(e) => setProgressForm({ ...progressForm, partial_accepted: parseFloat(e.target.value) || 0 })}
+                      className="w-full border rounded px-3 py-2"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Partial Rejected</label>
+                    <input
+                      type="number"
+                      value={progressForm.partial_rejected}
+                      onChange={(e) => setProgressForm({ ...progressForm, partial_rejected: parseFloat(e.target.value) || 0 })}
+                      className="w-full border rounded px-3 py-2"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Partial On Hold</label>
+                    <input
+                      type="number"
+                      value={progressForm.partial_on_hold}
+                      onChange={(e) => setProgressForm({ ...progressForm, partial_on_hold: parseFloat(e.target.value) || 0 })}
+                      className="w-full border rounded px-3 py-2"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm text-blue-800">
+                <strong>Note:</strong> This updates progress without completing the inspection. 
+                Use "Complete" button when final results are ready.
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowProgressForm(false)}
+                  className="px-4 py-2 border rounded hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+                >
+                  Update Progress
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}      <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
                   onClick={() => setShowCompleteForm(false)}
