@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../lib/api-client';
 
+export const dynamic = 'force-dynamic';
+
 interface DashboardStats {
   activeOrders: number;
   pendingPOs: number;
