@@ -219,39 +219,28 @@ export default function QualityPage() {
     }
     
     try {
-      // Fetch UID details to get all vendor/item information
-      const uidDetails = await apiClient.get(`/uid/${inspectionForm.uid}`);
-      
       // Find selected inspector details
       const selectedInspector = users.find((user: any) => user.id === inspectionForm.inspector_id);
       
-      // Find item details from GRN if available
-      let itemName = '';
-      let itemCode = '';
-      let vendorId = null;
-      let vendorName = '';
+      // Get vendor and item details from selectedGRN (populated by handleUIDChange)
+      const itemName = selectedGRN?.grn_items?.[0]?.item_name || '';
+      const itemCode = selectedGRN?.grn_items?.[0]?.item_code || '';
+      const vendorId = selectedGRN?.vendor_id || null;
+      const vendorName = selectedGRN?.vendor_name || '';
       
-      if (selectedGRN) {
-        const selectedItem = selectedGRN.grn_items?.find((item: any) => item.item_id === inspectionForm.item_id);
-        itemName = selectedItem?.item_name || '';
-        itemCode = selectedItem?.item_code || '';
-        vendorId = selectedGRN.vendor_id;
-        vendorName = selectedGRN.vendor_name || '';
-      }
-      
-      // Prepare data with all required fields from UID
+      // Prepare data with all required fields
       const inspectionData = {
         inspection_type: inspectionForm.inspection_type,
         inspection_date: inspectionForm.inspection_date,
-        grn_id: inspectionForm.reference_id || uidDetails.grnId || null,
+        grn_id: inspectionForm.reference_id || null,
         uid: inspectionForm.uid, // UID is now mandatory
-        item_id: inspectionForm.item_id || uidDetails.itemId,
+        item_id: inspectionForm.item_id,
         item_name: itemName,
         item_code: itemCode,
         vendor_id: vendorId,
         vendor_name: vendorName,
-        batch_number: uidDetails.batchNumber || selectedGRN?.batch_number || '',
-        lot_number: uidDetails.lotNumber || selectedGRN?.lot_number || '',
+        batch_number: selectedGRN?.batch_number || '',
+        lot_number: selectedGRN?.lot_number || '',
         inspected_quantity: inspectionForm.quantity_inspected || 1,
         inspector_name: selectedInspector?.full_name || selectedInspector?.email || '',
         inspection_checklist: inspectionForm.remarks || '',
