@@ -430,8 +430,8 @@ export default function GRNPage() {
       } else {
         const errorData = await response.json();
         console.error('Failed to fetch UIDs:', errorData);
-        setAlertMessage({ 
-          type: 'warning', 
+        setAlertMessage({
+          type: 'error',
           message: `Failed to fetch UIDs: ${errorData.message || 'Unknown error'}. UIDs are auto-generated when GRN status is COMPLETED.` 
         });
       }
@@ -1164,14 +1164,16 @@ export default function GRNPage() {
                           });
 
                           console.log('Response status:', response.status);
+                          const responseData = await response.json();
+                          console.log('Response data:', responseData);
+                          
                           if (response.ok) {
-                            setAlertMessage({ type: 'success', message: 'GRN approved successfully!' });
+                            setAlertMessage({ type: 'success', message: 'GRN approved successfully! UIDs generated.' });
                             setShowViewModal(false);
                             fetchGRNs();
                           } else {
-                            const errorData = await response.json();
-                            console.error('Error response:', errorData);
-                            setAlertMessage({ type: 'error', message: `Failed to approve GRN: ${errorData.message}` });
+                            console.error('Error response:', responseData);
+                            setAlertMessage({ type: 'error', message: `Failed to approve GRN: ${responseData.message}` });
                           }
                         } catch (error) {
                           console.error('Catch error:', error);
