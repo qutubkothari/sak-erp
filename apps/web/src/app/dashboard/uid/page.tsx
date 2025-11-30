@@ -275,16 +275,22 @@ export default function UIDTrackingPage() {
                 </td>
                 <td className="px-6 py-4 text-sm space-x-2">
                   <button
-                    onClick={() => {
-                      const parsedUID = {
-                        ...uid,
-                        lifecycle: typeof uid.lifecycle === 'string' ? JSON.parse(uid.lifecycle) : uid.lifecycle,
-                        metadata: typeof uid.metadata === 'string' ? JSON.parse(uid.metadata) : uid.metadata,
-                        parent_uids: typeof uid.parent_uids === 'string' ? JSON.parse(uid.parent_uids) : uid.parent_uids,
-                        child_uids: typeof uid.child_uids === 'string' ? JSON.parse(uid.child_uids) : uid.child_uids,
-                      };
-                      setSelectedUID(parsedUID);
-                      setShowTraceModal(true);
+                    onClick={async () => {
+                      try {
+                        const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(uid.uid)}`);
+                        const parsedUID = {
+                          ...data,
+                          lifecycle: typeof data.lifecycle === 'string' ? JSON.parse(data.lifecycle) : data.lifecycle,
+                          metadata: typeof data.metadata === 'string' ? JSON.parse(data.metadata) : data.metadata,
+                          parent_uids: typeof data.parent_uids === 'string' ? JSON.parse(data.parent_uids) : data.parent_uids,
+                          child_uids: typeof data.child_uids === 'string' ? JSON.parse(data.child_uids) : data.child_uids,
+                        };
+                        setSelectedUID(parsedUID);
+                        setShowTraceModal(true);
+                      } catch (error) {
+                        console.error('Error loading trace data:', error);
+                        alert('Error loading trace information');
+                      }
                     }}
                     className="text-amber-600 hover:text-amber-900 font-medium"
                   >
