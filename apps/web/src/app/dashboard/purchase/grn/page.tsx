@@ -663,10 +663,10 @@ export default function GRNPage() {
                         )}
                       </div>
                       {/* Display UID count instead of individual UIDs */}
-                      {grn.grn_items.some(item => item.uid_count > 0) ? (
+                      {grn.grn_items.some((item: any) => item.uid_count > 0) ? (
                         <div className="mt-2">
                           <div className="text-xs text-green-600 font-semibold">
-                            ✓ {grn.grn_items.reduce((sum, item) => sum + (item.uid_count || 0), 0)} UIDs Generated
+                            ✓ {grn.grn_items.reduce((sum: number, item: any) => sum + (item.uid_count || 0), 0)} UIDs Generated
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
                             Click &ldquo;🔍 UIDs&rdquo; to view details
