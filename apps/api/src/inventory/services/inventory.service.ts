@@ -19,7 +19,18 @@ export class InventoryService {
 
     let query = this.supabase
       .from('inventory_stock')
-      .select('*')
+      .select(`
+        *,
+        items:item_id (
+          item_code: code,
+          item_name: name,
+          uom
+        ),
+        warehouses:warehouse_id (
+          warehouse_code: code,
+          warehouse_name: name
+        )
+      `)
       .eq('tenant_id', tenantId);
 
     if (filters?.warehouse_id) {
@@ -52,7 +63,21 @@ export class InventoryService {
 
     let query = this.supabase
       .from('stock_movements')
-      .select('*')
+      .select(`
+        *,
+        items:item_id (
+          item_code: code,
+          item_name: name
+        ),
+        from_warehouse:from_warehouse_id (
+          warehouse_code: code,
+          warehouse_name: name
+        ),
+        to_warehouse:to_warehouse_id (
+          warehouse_code: code,
+          warehouse_name: name
+        )
+      `)
       .eq('tenant_id', tenantId);
 
     if (filters?.movement_type) {

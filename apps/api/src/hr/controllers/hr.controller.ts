@@ -41,49 +41,49 @@ export class HrController {
 
   // Leave Requests
   @Post('leaves')
-  applyLeave(@Body() body: any) {
-    return this.hrService.applyLeave(body);
+  applyLeave(@Request() req: any, @Body() body: any) {
+    return this.hrService.applyLeave(req.user.tenantId, body);
   }
   @Get('leaves')
-  getLeaves(@Query('employeeId') employeeId: string) {
-    return this.hrService.getLeaves(employeeId);
+  getLeaves(@Request() req: any, @Query('employeeId') employeeId?: string) {
+    return this.hrService.getLeaves(req.user.tenantId, employeeId);
   }
   @Put('leaves/:id/approve')
-  approveLeave(@Param('id') id: string, @Body('approverId') approverId: string) {
-    return this.hrService.approveLeave(id, approverId);
+  approveLeave(@Request() req: any, @Param('id') id: string, @Body('approverId') approverId: string) {
+    return this.hrService.approveLeave(req.user.tenantId, id, approverId);
   }
   @Put('leaves/:id/reject')
-  rejectLeave(@Param('id') id: string, @Body('approverId') approverId: string) {
-    return this.hrService.rejectLeave(id, approverId);
+  rejectLeave(@Request() req: any, @Param('id') id: string, @Body('approverId') approverId: string) {
+    return this.hrService.rejectLeave(req.user.tenantId, id, approverId);
   }
 
   // Salary Components
-  @Post('salary-components')
-  addSalaryComponent(@Body() body: any) {
-    return this.hrService.addSalaryComponent(body);
+  @Post('salary')
+  addSalaryComponent(@Request() req: any, @Body() body: any) {
+    return this.hrService.addSalaryComponent(req.user.tenantId, body);
   }
-  @Get('salary-components')
-  getSalaryComponents(@Query('employeeId') employeeId: string) {
-    return this.hrService.getSalaryComponents(employeeId);
+  @Get('salary/:employeeId')
+  getSalaryComponents(@Request() req: any, @Param('employeeId') employeeId: string) {
+    return this.hrService.getSalaryComponents(req.user.tenantId, employeeId);
   }
 
   // Payroll Run
-  @Post('payroll-runs')
-  createPayrollRun(@Body() body: any) {
-    return this.hrService.createPayrollRun(body);
+  @Post('payroll/run')
+  createPayrollRun(@Request() req: any, @Body() body: any) {
+    return this.hrService.createPayrollRun(req.user.tenantId, body);
   }
-  @Get('payroll-runs')
-  getPayrollRuns(@Query('tenantId') tenantId: string) {
-    return this.hrService.getPayrollRuns(tenantId);
+  @Get('payroll/runs')
+  getPayrollRuns(@Request() req: any) {
+    return this.hrService.getPayrollRuns(req.user.tenantId);
   }
 
   // Payslip Generation
-  @Post('payslips')
-  generatePayslip(@Body() body: any) {
-    return this.hrService.generatePayslip(body);
+  @Post('payroll/run/:runId/generate')
+  generatePayslips(@Request() req: any, @Param('runId') runId: string) {
+    return this.hrService.generatePayslip(req.user.tenantId, { runId });
   }
-  @Get('payslips')
-  getPayslips(@Query('employeeId') employeeId: string) {
-    return this.hrService.getPayslips(employeeId);
+  @Get('payroll/payslips')
+  getPayslips(@Request() req: any, @Query('employeeId') employeeId?: string) {
+    return this.hrService.getPayslips(req.user.tenantId, employeeId);
   }
 }

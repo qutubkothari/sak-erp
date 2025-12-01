@@ -31,6 +31,11 @@ interface UIDRecord {
   };
   grnNumber?: string;
   batch_number: string;
+  items?: {
+    id: string;
+    code: string;
+    name: string;
+  };
   itemName?: string;
   itemCode?: string;
   quality_status: string;
@@ -252,6 +257,7 @@ export default function UIDTrackingPage() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">UID</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
@@ -267,6 +273,16 @@ export default function UIDTrackingPage() {
                   <div className="font-mono text-sm font-medium text-amber-600">{uid.uid}</div>
                   {uid.batch_number && (
                     <div className="text-xs text-gray-500">Batch: {uid.batch_number}</div>
+                  )}
+                </td>
+                <td className="px-6 py-4">
+                  {uid.items ? (
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{uid.items.code}</div>
+                      <div className="text-xs text-gray-500">{uid.items.name}</div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-400">-</div>
                   )}
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-900">{uid.entity_type}</td>

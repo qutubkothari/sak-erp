@@ -76,7 +76,8 @@ export class HrService {
   async getAttendance(tenantId: string, employeeId?: string, month?: string) {
     let query = this.supabase
       .from('attendance_records')
-      .select('*');
+      .select('*')
+      .eq('tenant_id', tenantId);
     
     if (employeeId) {
       query = query.eq('employee_id', employeeId);
@@ -92,40 +93,112 @@ export class HrService {
   }
 
   // Leave Requests
-  async applyLeave(data: any) {
-    return this.supabase.from('leave_requests').insert([data]);
+  async applyLeave(tenantId: string, data: any) {
+    const { data: result, error } = await this.supabase
+      .from('leave_requests')
+      .insert([{ ...data, tenant_id: tenantId }])
+      .select();
+    if (error) throw new Error(error.message);
+    return result;
   }
-  async getLeaves(employeeId: string) {
-    return this.supabase.from('leave_requests').select('*').eq('employee_id', employeeId);
+  async getLeaves(tenantId: string, employeeId?: string) {
+    let query = this.supabase
+      .from('leave_requests')
+      .select('*')
+      .eq('tenant_id', tenantId);
+    
+    if (employeeId) {
+      query = query.eq('employee_id', employeeId);
+    }
+    
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return data || [];
   }
-  async approveLeave(id: string, approverId: string) {
-    return this.supabase.from('leave_requests').update({ status: 'APPROVED', approved_by: approverId, approved_at: new Date().toISOString() }).eq('id', id);
+  async approveLeave(tenantId: string, id: string, approverId: string) {
+    const { data, error } = await this.supabase
+      .from('leave_requests')
+      .update({ status: 'APPROVED', approved_by: approverId, approved_at: new Date().toISOString() })
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .select();
+    if (error) throw new Error(error.message);
+    return data;
   }
-  async rejectLeave(id: string, approverId: string) {
-    return this.supabase.from('leave_requests').update({ status: 'REJECTED', approved_by: approverId, approved_at: new Date().toISOString() }).eq('id', id);
+  async rejectLeave(tenantId: string, id: string, approverId: string) {
+    const { data, error } = await this.supabase
+      .from('leave_requests')
+      .update({ status: 'REJECTED', approved_by: approverId, approved_at: new Date().toISOString() })
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .select();
+    if (error) throw new Error(error.message);
+    return data;
   }
 
   // Salary Components
-  async addSalaryComponent(data: any) {
-    return this.supabase.from('salary_components').insert([data]);
+  async addSalaryComponent(tenantId: string, data: any) {
+    const { data: result, error } = await this.supabase
+      .from('salary_components')
+      .insert([{ ...data, tenant_id: tenantId }])
+      .select();
+    if (error) throw new Error(error.message);
+    return result;
   }
-  async getSalaryComponents(employeeId: string) {
-    return this.supabase.from('salary_components').select('*').eq('employee_id', employeeId);
+  async getSalaryComponents(tenantId: string, employeeId?: string) {
+    let query = this.supabase
+      .from('salary_components')
+      .select('*')
+      .eq('tenant_id', tenantId);
+    
+    if (employeeId) {
+      query = query.eq('employee_id', employeeId);
+    }
+    
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return data || [];
   }
 
   // Payroll Run
-  async createPayrollRun(data: any) {
-    return this.supabase.from('payroll_runs').insert([data]);
+  async createPayrollRun(tenantId: string, data: any) {
+    const { data: result, error } = await this.supabase
+      .from('payroll_runs')
+      .insert([{ ...data, tenant_id: tenantId }])
+      .select();
+    if (error) throw new Error(error.message);
+    return result;
   }
   async getPayrollRuns(tenantId: string) {
-    return this.supabase.from('payroll_runs').select('*').eq('tenant_id', tenantId);
+    const { data, error } = await this.supabase
+      .from('payroll_runs')
+      .select('*')
+      .eq('tenant_id', tenantId);
+    if (error) throw new Error(error.message);
+    return data || [];
   }
 
   // Payslip Generation
-  async generatePayslip(data: any) {
-    return this.supabase.from('payslips').insert([data]);
+  async generatePayslip(tenantId: string, data: any) {
+    const { data: result, error } = await this.supabase
+      .from('payslips')
+      .insert([{ ...data, tenant_id: tenantId }])
+      .select();
+    if (error) throw new Error(error.message);
+    return result;
   }
-  async getPayslips(employeeId: string) {
-    return this.supabase.from('payslips').select('*').eq('employee_id', employeeId);
+  async getPayslips(tenantId: string, employeeId?: string) {
+    let query = this.supabase
+      .from('payslips')
+      .select('*')
+      .eq('tenant_id', tenantId);
+    
+    if (employeeId) {
+      query = query.eq('employee_id', employeeId);
+    }
+    
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return data || [];
   }
 }

@@ -30,7 +30,7 @@ function PurchaseOrdersContent() {
   
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<Array<{ id: string; name: string; contact_person: string }>>([]);
-  const [items, setItems] = useState<Array<{ id: string; code: string; name: string; uom: string }>>([]);
+  const [items, setItems] = useState<Array<{ id: string; code: string; name: string; uom: string; standard_cost?: number; selling_price?: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -332,7 +332,7 @@ function PurchaseOrdersContent() {
   const handleUpdateItem = (index: number, field: string, value: any) => {
     const updatedItems = [...formData.items];
     
-    // If selecting an item from dropdown, populate itemCode and itemName
+    // If selecting an item from dropdown, populate itemCode, itemName, and unitPrice
     if (field === 'itemId' && value) {
       const selectedItem = items.find(item => item.id === value);
       if (selectedItem) {
@@ -341,6 +341,7 @@ function PurchaseOrdersContent() {
           itemId: value,
           itemCode: selectedItem.code,
           itemName: selectedItem.name,
+          unitPrice: selectedItem.standard_cost || selectedItem.selling_price || 0, // Pull unit price from item
         };
       }
     } else {
@@ -348,7 +349,7 @@ function PurchaseOrdersContent() {
     }
 
     // Recalculate total price
-    if (field === 'quantity' || field === 'unitPrice' || field === 'taxRate') {
+    if (field === 'quantity' || field === 'unitPrice' || field === 'taxRate' || field === 'itemId') {
       const item = updatedItems[index];
       const subtotal = item.quantity * item.unitPrice;
       item.totalPrice = subtotal + (subtotal * item.taxRate) / 100;

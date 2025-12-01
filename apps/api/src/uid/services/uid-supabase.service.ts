@@ -732,7 +732,21 @@ export class UidSupabaseService {
     
     let query = this.supabase
       .from('uid_registry')
-      .select('uid, entity_id, entity_type, status, location, batch_number, quality_status, created_at')
+      .select(`
+        uid, 
+        entity_id, 
+        entity_type, 
+        status, 
+        location, 
+        batch_number, 
+        quality_status, 
+        created_at,
+        items!entity_id (
+          id,
+          code,
+          name
+        )
+      `)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
       .limit(1000);
