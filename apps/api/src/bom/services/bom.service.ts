@@ -397,7 +397,10 @@ export class BomService {
     }
 
     // First, explode BOM to get all actual items (handles nested BOMs)
-    const explodedItems = await this.explodeBOMForPR(bomId, quantity);
+    console.log(`[BOM PR] Starting BOM explosion for BOM ${bomId} with quantity ${quantity}`);
+    const explodedItems = await this.explodeBOMForPR(bomId, quantity, 0);
+    console.log(`[BOM PR] Explosion complete. Got ${explodedItems.length} unique items:`, 
+      explodedItems.map(i => `${i.itemId}:${i.quantity}`).join(', '));
 
     // Check stock availability for each exploded item
     const itemsToOrder = [];
@@ -524,17 +527,22 @@ export class BomService {
   /**
    * Explode BOM recursively to get all actual items needed (for PR generation)
    */
-  private async explodeBOMForPR(bomId: string, quantity: number): Promise<Array<{
+  private async explodeBOMForPR(bomId: string, quantity: number, level: number = 0): Promise<Array<{
     itemId: string;
     quantity: number;
     notes: string;
     drawingUrl: string;
   }>> {
+    const indent = '  '.repeat(level);
+    console.log(`${indent}[BOM EXPLODE] Level ${level}: BOM ID=${bomId}, Quantity=${quantity}`);
+    
     const { data: bomItems } = await this.supabase
       .from('bom_items')
       .select('component_type, item_id, child_bom_id, quantity, scrap_percentage, notes, drawing_url')
       .eq('bom_id', bomId);
 
+    console.log(`${indent}[BOM EXPLODE] Found ${bomItems?.length || 0} components`);
+    
     if (!bomItems || bomItems.length === 0) return [];
 
     const allItems: Map<string, { quantity: number; notes: string; drawingUrl: string }> = new Map();
@@ -543,8 +551,11 @@ export class BomService {
       const scrapFactor = 1 + (bomItem.scrap_percentage || 0) / 100;
       const adjustedQty = bomItem.quantity * quantity * scrapFactor;
 
+      console.log(`${indent}[BOM EXPLODE] Component: type=${bomItem.component_type}, qty=${bomItem.quantity}, scrap=${bomItem.scrap_percentage}%, adjustedQty=${adjustedQty}`);
+
       if (bomItem.component_type === 'ITEM' && bomItem.item_id) {
         // Direct item
+        console.log(`${indent}[BOM EXPLODE] → Adding ITEM ${bomItem.item_id}: ${adjustedQty} units`);
         const existing = allItems.get(bomItem.item_id);
         allItems.set(bomItem.item_id, {
           quantity: (existing?.quantity || 0) + adjustedQty,
@@ -553,11 +564,16 @@ export class BomService {
         });
       } else if (bomItem.component_type === 'BOM' && bomItem.child_bom_id) {
         // Recursively explode child BOM
-        const childItems = await this.explodeBOMForPR(bomItem.child_bom_id, adjustedQty);
+        console.log(`${indent}[BOM EXPLODE] → Recursing into child BOM ${bomItem.child_bom_id} with qty=${adjustedQty}`);
+        const childItems = await this.explodeBOMForPR(bomItem.child_bom_id, adjustedQty, level + 1);
+        console.log(`${indent}[BOM EXPLODE] ← Child BOM returned ${childItems.length} items`);
+        
         childItems.forEach(childItem => {
           const existing = allItems.get(childItem.itemId);
+          const newQty = (existing?.quantity || 0) + childItem.quantity;
+          console.log(`${indent}[BOM EXPLODE]   Aggregating item ${childItem.itemId}: +${childItem.quantity} = ${newQty}`);
           allItems.set(childItem.itemId, {
-            quantity: (existing?.quantity || 0) + childItem.quantity,
+            quantity: newQty,
             notes: childItem.notes || existing?.notes || '',
             drawingUrl: childItem.drawingUrl || existing?.drawingUrl || '',
           });
@@ -565,12 +581,17 @@ export class BomService {
       }
     }
 
-    return Array.from(allItems.entries()).map(([itemId, details]) => ({
+    const result = Array.from(allItems.entries()).map(([itemId, details]) => ({
       itemId,
       quantity: details.quantity,
       notes: details.notes,
       drawingUrl: details.drawingUrl,
     }));
+    
+    console.log(`${indent}[BOM EXPLODE] Level ${level} returning ${result.length} unique items:`, 
+      result.map(r => `${r.itemId}:${r.quantity}`).join(', '));
+    
+    return result;
   }
 
   /**
