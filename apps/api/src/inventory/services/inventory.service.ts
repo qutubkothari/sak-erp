@@ -73,12 +73,12 @@ export class InventoryService {
           item_name: name
         ),
         from_warehouse:from_warehouse_id (
-          warehouse_code: code,
-          warehouse_name: name
+          code,
+          name
         ),
         to_warehouse:to_warehouse_id (
-          warehouse_code: code,
-          warehouse_name: name
+          code,
+          name
         )
       `)
       .eq('tenant_id', tenantId);
@@ -399,7 +399,17 @@ export class InventoryService {
 
     let query = this.supabase
       .from('inventory_alerts')
-      .select('*')
+      .select(`
+        *,
+        items:item_id (
+          item_code: code,
+          item_name: name
+        ),
+        warehouses:warehouse_id (
+          warehouse_code: code,
+          warehouse_name: name
+        )
+      `)
       .eq('tenant_id', tenantId);
 
     if (acknowledged !== undefined) {
@@ -572,7 +582,13 @@ export class InventoryService {
 
     let query = this.supabase
       .from('demo_inventory')
-      .select('*')
+      .select(`
+        *,
+        items:item_id (
+          item_code: code,
+          item_name: name
+        )
+      `)
       .eq('tenant_id', tenantId);
 
     if (filters?.status) {
