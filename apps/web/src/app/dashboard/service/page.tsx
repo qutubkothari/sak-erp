@@ -96,6 +96,7 @@ export default function ServicePage() {
     reported_by: '',
     contact_number: '',
     email: '',
+    product_id: '',
     product_name: '',
     model_number: '',
     service_location: '',
@@ -218,6 +219,7 @@ export default function ServicePage() {
         reported_by: '',
         contact_number: '',
         email: '',
+        product_id: '',
         product_name: '',
         model_number: '',
         service_location: '',
@@ -434,12 +436,13 @@ export default function ServicePage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
                       <SearchableSelect
                         options={items.map(i => ({ value: i.id, label: `${i.item_code} - ${i.item_description}` }))}
-                        value={ticketForm.product_name}
+                        value={ticketForm.product_id}
                         onChange={(value) => {
                           const selectedItem = items.find(i => i.id === value);
                           setTicketForm({ 
                             ...ticketForm, 
-                            product_name: selectedItem?.item_description || value 
+                            product_id: value,
+                            product_name: selectedItem?.item_description || '' 
                           });
                           fetchAvailableUIDs(value);
                         }}
@@ -464,11 +467,11 @@ export default function ServicePage() {
                           value={ticketForm.uid}
                           onChange={(e) => setTicketForm({ ...ticketForm, uid: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                          placeholder={ticketForm.product_name ? "No UIDs available for this product" : "Select a product first"}
+                          placeholder={ticketForm.product_id ? "No UIDs available for this product" : "Select a product first"}
                           disabled
                         />
                       )}
-                      {availableUIDs.length === 0 && ticketForm.product_name && (
+                      {availableUIDs.length === 0 && ticketForm.product_id && (
                         <p className="text-xs text-gray-500 mt-1">No available UIDs for this product - manual entry disabled</p>
                       )}
                     </div>
