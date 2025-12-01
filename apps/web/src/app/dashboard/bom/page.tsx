@@ -109,6 +109,25 @@ export default function BOMPage() {
     }
   }, [showModal]);
 
+  useEffect(() => {
+    if (!loading) {
+      console.log('[BOM] Loaded BOM count:', boms.length);
+      boms.forEach((bom) => {
+        console.log('[BOM] Summary data', {
+          bomId: bom.id,
+          itemName: bom.item?.name,
+          components: bom.bom_items?.map((item) => ({
+            id: item.id,
+            type: item.component_type,
+            hasItem: Boolean(item.item?.name),
+            hasChildBom: Boolean(item.child_bom?.item?.name),
+            childBomVersion: item.child_bom?.version,
+          })),
+        });
+      });
+    }
+  }, [boms, loading]);
+
   const fetchAvailableBOMs = async () => {
     try {
       const token = localStorage.getItem('accessToken');
@@ -423,19 +442,34 @@ export default function BOMPage() {
                 <div className="mb-4">
                   <h4 className="text-sm font-semibold text-gray-700 mb-2">Components ({bom.bom_items?.length || 0})</h4>
                   <div className="space-y-2">
-                    {bom.bom_items?.slice(0, 3).map((item) => (
-                      <div key={item.id} className="flex justify-between text-sm">
-                        <span className="text-gray-600">
-                          {item.item?.code || 'N/A'} - {item.item?.name || 'Unknown'}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{item.quantity} {item.item?.uom || 'units'}</span>
-                          {item.drawing_url && (
-                            <span className="text-blue-600" title="Drawing attached">📎</span>
-                          )}
+                    {bom.bom_items?.slice(0, 3).map((item) => {
+                      const isChildBom = item.component_type === 'BOM';
+                      const componentCode = isChildBom
+                        ? item.child_bom?.item?.code || 'BOM'
+                        : item.item?.code || 'N/A';
+                      const componentName = isChildBom
+                        ? `${item.child_bom?.item?.name || 'Unknown'} (v${item.child_bom?.version ?? '?'})`
+                        : item.item?.name || 'Unknown';
+                      const componentUom = isChildBom
+                        ? item.child_bom?.item?.uom || 'set'
+                        : item.item?.uom || 'units';
+
+                      return (
+                        <div key={item.id} className="flex justify-between text-sm">
+                          <span className="text-gray-600">
+                            {componentCode} - {componentName}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">
+                              {item.quantity} {componentUom}
+                            </span>
+                            {item.drawing_url && (
+                              <span className="text-blue-600" title="Drawing attached">📎</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {(bom.bom_items?.length || 0) > 3 && (
                       <p className="text-xs text-gray-500">+ {(bom.bom_items?.length || 0) - 3} more items</p>
                     )}

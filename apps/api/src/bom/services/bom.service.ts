@@ -130,6 +130,17 @@ export class BomService {
 
     console.log('[BomService] Main items found:', itemsRes.data?.length);
     console.log('[BomService] BOM items found:', bomItemsRes.data?.length);
+    if (bomItemsRes.data && bomItemsRes.data.length > 0) {
+      bomItemsRes.data.slice(0, 25).forEach((item: any) => {
+        console.log('[BomService] Raw bom_item snapshot', {
+          id: item.id,
+          bomId: item.bom_id,
+          componentType: item.component_type,
+          itemId: item.item_id,
+          childBomId: item.child_bom_id,
+        });
+      });
+    }
 
     // Fetch component items and child BOMs
     const componentItemIds = bomItemsRes.data?.filter((bi: any) => bi.component_type === 'ITEM').map((bi: any) => bi.item_id) || [];
@@ -193,14 +204,28 @@ export class BomService {
         bomItemsMap.set(bi.bom_id, []);
       }
       if (bi.component_type === 'BOM') {
+        const resolvedChild = childBomsMap.get(bi.child_bom_id);
+        if (!resolvedChild) {
+          console.warn('[BomService] Missing child BOM details for component', {
+            bomId: bi.bom_id,
+            childBomId: bi.child_bom_id,
+          });
+        }
         bomItemsMap.get(bi.bom_id).push({
           ...bi,
-          child_bom: childBomsMap.get(bi.child_bom_id)
+          child_bom: resolvedChild
         });
       } else {
+        const resolvedItem = componentItemsMap.get(bi.item_id);
+        if (!resolvedItem) {
+          console.warn('[BomService] Missing component item details', {
+            bomId: bi.bom_id,
+            itemId: bi.item_id,
+          });
+        }
         bomItemsMap.get(bi.bom_id).push({
           ...bi,
-          item: componentItemsMap.get(bi.item_id)
+          item: resolvedItem
         });
       }
     });
