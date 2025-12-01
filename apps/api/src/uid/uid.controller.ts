@@ -23,8 +23,9 @@ export class UidController {
   async getAllUids(
     @Query('status') status?: string,
     @Query('entityType') entityType?: string,
+    @Query('item_id') itemId?: string,
   ) {
-    return this.uidService.getAllUids(status, entityType);
+    return this.uidService.getAllUids(status, entityType, itemId);
   }
 
   @Get(':uid')

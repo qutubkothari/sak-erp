@@ -120,7 +120,7 @@ export class UidService {
   /**
    * Get all UIDs with filtering options
    */
-  async getAllUids(status?: string, entityType?: string) {
+  async getAllUids(status?: string, entityType?: string, itemId?: string) {
     const where: any = {};
 
     if (status) {
@@ -129,6 +129,10 @@ export class UidService {
 
     if (entityType) {
       where.entityType = entityType;
+    }
+
+    if (itemId) {
+      where.itemId = itemId;
     }
 
     const uids = await this.prisma.uidRegistry.findMany({
@@ -140,6 +144,7 @@ export class UidService {
         location: true,
         batchNumber: true,
         qualityStatus: true,
+        itemId: true,
         createdAt: true,
       },
       orderBy: {

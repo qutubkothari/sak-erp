@@ -94,6 +94,16 @@ interface Warranty {
   created_at: string;
 }
 
+interface UIDRecord {
+  id: string;
+  uid: string;
+  item_id: string;
+  status: string;
+  location?: string;
+  grn_id?: string;
+  created_at: string;
+}
+
 export default function SalesPage() {
   const [activeTab, setActiveTab] = useState<TabType>('customers');
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -102,6 +112,8 @@ export default function SalesPage() {
   const [dispatches, setDispatches] = useState<DispatchNote[]>([]);
   const [warranties, setWarranties] = useState<Warranty[]>([]);
   const [items, setItems] = useState<any[]>([]);
+  const [availableUIDs, setAvailableUIDs] = useState<{ [key: string]: UIDRecord[] }>({});
+  const [loadingUIDs, setLoadingUIDs] = useState<{ [key: number]: boolean }>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -411,8 +423,11 @@ export default function SalesPage() {
           ...newItems[index], 
           sales_order_item_id: value,
           item_id: soItem.item_id,
-          quantity: soItem.quantity - (soItem.dispatched_quantity || 0) // Remaining qty
+          quantity: soItem.quantity - (soItem.dispatched_quantity || 0), // Remaining qty
+          uid: '' // Reset UID when item changes
         };
+        // Fetch available UIDs for this item
+        fetchAvailableUIDs(soItem.item_id, index);
       } else {
         newItems[index] = { ...newItems[index], [field]: value };
       }
@@ -444,6 +459,28 @@ export default function SalesPage() {
       console.error('Failed to fetch SO items:', err);
       alert('Failed to fetch sales order items: ' + err.message);
       setSalesOrderItems([]);
+    }
+  };
+
+  const fetchAvailableUIDs = async (itemId: string, rowIndex: number) => {
+    if (!itemId) return;
+    
+    setLoadingUIDs({ ...loadingUIDs, [rowIndex]: true });
+    try {
+      // Fetch UIDs with status AVAILABLE or RESERVED for this item
+      const data = await apiClient.get(`/uid?item_id=${itemId}&status=AVAILABLE`);
+      const uids = Array.isArray(data) ? data : [];
+      setAvailableUIDs({ ...availableUIDs, [itemId]: uids });
+      
+      if (uids.length === 0) {
+        alert(`No available UIDs found for this item. Please complete a GRN first.`);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch UIDs:', err);
+      alert('Failed to fetch available UIDs: ' + err.message);
+      setAvailableUIDs({ ...availableUIDs, [itemId]: [] });
+    } finally {
+      setLoadingUIDs({ ...loadingUIDs, [rowIndex]: false });
     }
   };
 
@@ -1309,14 +1346,31 @@ export default function SalesPage() {
                         </div>
                         <div>
                           <label className="block text-xs text-gray-600 mb-1">UID *</label>
-                          <input
-                            type="text"
-                            placeholder="UID"
-                            required
-                            value={item.uid}
-                            onChange={(e) => updateDispatchItem(index, 'uid', e.target.value)}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                          />
+                          {loadingUIDs[index] ? (
+                            <div className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-gray-50 text-gray-500">
+                              Loading UIDs...
+                            </div>
+                          ) : item.item_id && availableUIDs[item.item_id] ? (
+                            <select
+                              required
+                              value={item.uid}
+                              onChange={(e) => updateDispatchItem(index, 'uid', e.target.value)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                            >
+                              <option value="">
+                                {availableUIDs[item.item_id].length === 0 ? 'No UIDs available' : 'Select UID'}
+                              </option>
+                              {availableUIDs[item.item_id].map((uid) => (
+                                <option key={uid.id} value={uid.uid}>
+                                  {uid.uid} - {uid.status} {uid.location ? `(${uid.location})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-gray-50 text-gray-500">
+                              Select item first
+                            </div>
+                          )}
                         </div>
                         <div>
                           <label className="block text-xs text-gray-600 mb-1">Quantity *</label>
