@@ -448,18 +448,28 @@ export default function ServicePage() {
                     </div>
                     <div className="col-span-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">UID (Optional)</label>
-                      <SearchableSelect
-                        options={availableUIDs.map(u => ({ 
-                          value: u.uid, 
-                          label: `${u.uid}${u.batch_number ? ` - Batch: ${u.batch_number}` : ''}${u.location ? ` - ${u.location}` : ''}` 
-                        }))}
-                        value={ticketForm.uid}
-                        onChange={(value) => setTicketForm({ ...ticketForm, uid: value })}
-                        placeholder="Select UID for warranty check"
-                        disabled={availableUIDs.length === 0}
-                      />
+                      {availableUIDs.length > 0 ? (
+                        <SearchableSelect
+                          options={availableUIDs.map(u => ({ 
+                            value: u.uid, 
+                            label: `${u.uid}${u.batch_number ? ` - Batch: ${u.batch_number}` : ''}${u.location ? ` - ${u.location}` : ''}` 
+                          }))}
+                          value={ticketForm.uid}
+                          onChange={(value) => setTicketForm({ ...ticketForm, uid: value })}
+                          placeholder="Select UID for warranty check"
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={ticketForm.uid}
+                          onChange={(e) => setTicketForm({ ...ticketForm, uid: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                          placeholder={ticketForm.product_name ? "No UIDs available for this product" : "Select a product first"}
+                          disabled
+                        />
+                      )}
                       {availableUIDs.length === 0 && ticketForm.product_name && (
-                        <p className="text-xs text-gray-500 mt-1">No available UIDs for this product</p>
+                        <p className="text-xs text-gray-500 mt-1">No available UIDs for this product - manual entry disabled</p>
                       )}
                     </div>
                     <div>
