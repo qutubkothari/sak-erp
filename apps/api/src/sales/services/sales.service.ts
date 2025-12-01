@@ -31,7 +31,7 @@ export class SalesService {
       query = query.eq('is_active', filters.is_active);
     }
 
-    const { data, error } = await query.order('customer_name');
+    const { data, error } = await query.order('name');
 
     if (error) throw new BadRequestException(error.message);
     return data;
@@ -47,8 +47,8 @@ export class SalesService {
 
     const customer = {
       tenant_id: tenantId,
-      customer_code: customerCode,
-      customer_name: customerData.customer_name,
+      code: customerCode,  // Changed from customer_code to code
+      name: customerData.customer_name,  // Changed from customer_name to name
       customer_type: customerData.customer_type || 'REGULAR',
       contact_person: customerData.contact_person,
       email: customerData.email,
@@ -110,7 +110,7 @@ export class SalesService {
       .from('quotations')
       .select(`
         *,
-        customers:customer_id(id, customer_code, customer_name, contact_person)
+        customers:customer_id(id, code, name, contact_person)
       `)
       .eq('tenant_id', tenantId);
 
@@ -129,8 +129,8 @@ export class SalesService {
     // Flatten customer data for frontend
     const formattedData = data?.map((q: any) => ({
       ...q,
-      customer_name: q.customers?.customer_name || null,
-      customer_code: q.customers?.customer_code || null,
+      customer_name: q.customers?.name || null,
+      customer_code: q.customers?.code || null,
     }));
     
     return formattedData;
@@ -320,7 +320,7 @@ export class SalesService {
       .from('sales_orders')
       .select(`
         *,
-        customers:customer_id(id, customer_code, customer_name, contact_person)
+        customers:customer_id(id, code, name, contact_person)
       `)
       .eq('tenant_id', tenantId);
 
@@ -339,8 +339,8 @@ export class SalesService {
     // Flatten customer data for frontend
     const formattedData = data?.map((so: any) => ({
       ...so,
-      customer_name: so.customers?.customer_name || null,
-      customer_code: so.customers?.customer_code || null,
+      customer_name: so.customers?.name || null,
+      customer_code: so.customers?.code || null,
     }));
     
     return formattedData;
@@ -353,7 +353,7 @@ export class SalesService {
       .from('sales_orders')
       .select(`
         *,
-        customers:customer_id(id, customer_code, customer_name, contact_person, email, phone),
+        customers:customer_id(id, code, name, contact_person, email, phone),
         sales_order_items(*)
       `)
       .eq('id', soId)
@@ -531,7 +531,7 @@ export class SalesService {
       .from('warranties')
       .select(`
         *,
-        customers:customer_id(customer_code, customer_name, contact_person)
+        customers:customer_id(code, name, contact_person)
       `)
       .eq('tenant_id', tenantId);
 
@@ -554,8 +554,8 @@ export class SalesService {
     // Flatten customer data for frontend
     const formattedData = data?.map((w: any) => ({
       ...w,
-      customer_name: w.customers?.customer_name || null,
-      customer_code: w.customers?.customer_code || null,
+      customer_name: w.customers?.name || null,
+      customer_code: w.customers?.code || null,
     }));
     
     return formattedData;

@@ -5,15 +5,42 @@
 DO $$ 
 BEGIN
     -- Fix customer_code column naming issue
-    IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'code') THEN
+    -- If both 'code' and 'customer_code' exist, drop 'code'
+    IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'code') 
+       AND EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'customer_code') THEN
+        ALTER TABLE customers DROP COLUMN code;
+        RAISE NOTICE 'Dropped duplicate code column';
+    ELSIF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'code') THEN
         ALTER TABLE customers RENAME COLUMN code TO customer_code;
         RAISE NOTICE 'Renamed code to customer_code';
     END IF;
 
-    -- Add customer_code if it doesn't exist
+    -- Ensure customer_code exists and is properly constrained
     IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'customer_code') THEN
-        ALTER TABLE customers ADD COLUMN customer_code VARCHAR(50) UNIQUE NOT NULL;
+        ALTER TABLE customers ADD COLUMN customer_code VARCHAR(50);
         RAISE NOTICE 'Added customer_code column';
+    END IF;
+    
+    -- Make customer_code NOT NULL if it isn't already
+    IF EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_name = 'customers' 
+        AND column_name = 'customer_code' 
+        AND is_nullable = 'YES'
+    ) THEN
+        -- First set a default value for any NULL rows using a subquery
+        WITH numbered_customers AS (
+            SELECT id, ROW_NUMBER() OVER (ORDER BY created_at) as rn
+            FROM customers
+            WHERE customer_code IS NULL
+        )
+        UPDATE customers c
+        SET customer_code = 'CUST-' || LPAD(nc.rn::text, 5, '0')
+        FROM numbered_customers nc
+        WHERE c.id = nc.id;
+        
+        ALTER TABLE customers ALTER COLUMN customer_code SET NOT NULL;
+        RAISE NOTICE 'Set customer_code to NOT NULL';
     END IF;
 
     -- Add customer_name if missing
