@@ -109,7 +109,15 @@ export class SalesService {
     const { data, error } = await query.order('quotation_date', { ascending: false });
 
     if (error) throw new BadRequestException(error.message);
-    return data;
+    
+    // Flatten customer data for frontend
+    const formattedData = data?.map((q: any) => ({
+      ...q,
+      customer_name: q.customers?.customer_name || null,
+      customer_code: q.customers?.customer_code || null,
+    }));
+    
+    return formattedData;
   }
 
   async createQuotation(req: Request, quotationData: any) {
@@ -311,7 +319,15 @@ export class SalesService {
     const { data, error } = await query.order('order_date', { ascending: false });
 
     if (error) throw new BadRequestException(error.message);
-    return data;
+    
+    // Flatten customer data for frontend
+    const formattedData = data?.map((so: any) => ({
+      ...so,
+      customer_name: so.customers?.customer_name || null,
+      customer_code: so.customers?.customer_code || null,
+    }));
+    
+    return formattedData;
   }
 
   async getSalesOrderById(req: Request, soId: string) {
@@ -348,13 +364,22 @@ export class SalesService {
   async createDispatch(req: Request, dispatchData: any) {
     const { tenantId, userId } = req.user as any;
 
+    // Get sales order to extract customer_id
+    const { data: salesOrder } = await this.supabase
+      .from('sales_orders')
+      .select('customer_id')
+      .eq('id', dispatchData.sales_order_id)
+      .single();
+
+    if (!salesOrder) throw new NotFoundException('Sales order not found');
+
     const dnNumber = await this.generateDNNumber(req);
 
     const dispatch = {
       tenant_id: tenantId,
       dn_number: dnNumber,
       sales_order_id: dispatchData.sales_order_id,
-      customer_id: dispatchData.customer_id,
+      customer_id: salesOrder.customer_id,
       dispatch_date: dispatchData.dispatch_date || new Date().toISOString().split('T')[0],
       transporter_name: dispatchData.transporter_name,
       vehicle_number: dispatchData.vehicle_number,
@@ -393,10 +418,20 @@ export class SalesService {
 
     // Update sales order item dispatched quantities
     for (const item of dispatchData.items) {
-      await this.supabase.rpc('update_dispatched_quantity', {
-        p_so_item_id: item.sales_order_item_id,
-        p_quantity: item.quantity,
-      });
+      const { data: soItem } = await this.supabase
+        .from('sales_order_items')
+        .select('dispatched_quantity')
+        .eq('id', item.sales_order_item_id)
+        .single();
+
+      if (soItem) {
+        await this.supabase
+          .from('sales_order_items')
+          .update({
+            dispatched_quantity: (soItem.dispatched_quantity || 0) + item.quantity,
+          })
+          .eq('id', item.sales_order_item_id);
+      }
     }
 
     // Update sales order status
@@ -406,7 +441,10 @@ export class SalesService {
       .eq('id', dispatchData.sales_order_id);
 
     // Create warranties for dispatched items
-    await this.createWarrantiesForDispatch(req, dispatchRecord.id, dispatchData);
+    await this.createWarrantiesForDispatch(req, dispatchRecord.id, {
+      ...dispatchData,
+      customer_id: salesOrder.customer_id,
+    });
 
     return dispatchRecord;
   }
@@ -496,7 +534,15 @@ export class SalesService {
     const { data, error } = await query.order('warranty_start_date', { ascending: false });
 
     if (error) throw new BadRequestException(error.message);
-    return data;
+    
+    // Flatten customer data for frontend
+    const formattedData = data?.map((w: any) => ({
+      ...w,
+      customer_name: w.customers?.customer_name || null,
+      customer_code: w.customers?.customer_code || null,
+    }));
+    
+    return formattedData;
   }
 
   async validateWarranty(req: Request, uid: string) {
@@ -541,6 +587,15 @@ export class SalesService {
     const { data, error } = await query.order('dispatch_date', { ascending: false });
 
     if (error) throw new BadRequestException(error.message);
-    return data;
+    
+    // Flatten nested data for frontend
+    const formattedData = data?.map((dn: any) => ({
+      ...dn,
+      so_number: dn.sales_orders?.so_number || null,
+      customer_name: dn.customers?.customer_name || null,
+      customer_code: dn.customers?.customer_code || null,
+    }));
+    
+    return formattedData;
   }
 }

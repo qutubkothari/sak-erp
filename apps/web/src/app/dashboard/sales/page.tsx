@@ -208,7 +208,7 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get<DispatchNote[]>('/api/v1/sales/dispatch');
+      const data = await apiClient.get<DispatchNote[]>('/sales/dispatch');
       setDispatches(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch dispatch notes');
@@ -221,7 +221,7 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get<Warranty[]>('/api/v1/sales/warranties');
+      const data = await apiClient.get<Warranty[]>('/sales/warranties');
       setWarranties(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch warranties');
@@ -235,7 +235,7 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post('/api/v1/sales/customers', customerForm);
+      await apiClient.post('/sales/customers', customerForm);
       setShowCustomerForm(false);
       setCustomerForm({
         customer_name: '',
@@ -268,7 +268,7 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post('/api/v1/sales/quotations', quotationForm);
+      await apiClient.post('/sales/quotations', quotationForm);
       setShowQuotationForm(false);
       setQuotationForm({
         customer_id: '',
@@ -292,7 +292,7 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      await apiClient.put(`/api/v1/sales/quotations/${quotationId}/approve`, {});
+      await apiClient.put(`/sales/quotations/${quotationId}/approve`, {});
       fetchQuotations();
     } catch (err: any) {
       setError(err.message || 'Failed to approve quotation');
@@ -306,7 +306,7 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post(`/api/v1/sales/quotations/${quotationId}/convert-to-so`, {});
+      await apiClient.post(`/sales/quotations/${quotationId}/convert-to-so`, {});
       fetchQuotations();
       fetchOrders();
     } catch (err: any) {
@@ -321,7 +321,7 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post('/api/v1/sales/dispatch', dispatchForm);
+      await apiClient.post('/sales/dispatch', dispatchForm);
       setShowDispatchForm(false);
       setSelectedOrderForDispatch(null);
       setDispatchForm({
