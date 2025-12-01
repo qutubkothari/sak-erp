@@ -76,6 +76,7 @@ interface UIDRecord {
 }
 
 export default function ServicePage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>('tickets');
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -315,8 +316,6 @@ export default function ServicePage() {
     };
     return colors[priority] || 'bg-gray-100 text-gray-800';
   };
-
-  const router = useRouter();
 
   return (
     <div className="p-6">
