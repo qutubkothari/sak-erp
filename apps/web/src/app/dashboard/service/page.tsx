@@ -158,12 +158,7 @@ export default function ServicePage() {
       console.error('Failed to fetch UIDs:', err);
       setAvailableUIDs([]);
     }
-  };iveTab === 'technicians') {
-      fetchTechnicians();
-    } else if (activeTab === 'reports') {
-      fetchReports();
-    }
-  }, [activeTab]);
+  };
 
   const fetchTickets = async () => {
     setLoading(true);
