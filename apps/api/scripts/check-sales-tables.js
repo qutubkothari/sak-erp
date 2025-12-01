@@ -18,7 +18,7 @@ async function runMigration() {
     console.log('=== Running Sales Module Migration ===\n');
     
     // Read the migration file
-    const migrationPath = path.join(__dirname, '../migrations/create-sales-dispatch.sql');
+    const migrationPath = path.join(__dirname, '../../../migrations/create-sales-dispatch.sql');
     const sql = fs.readFileSync(migrationPath, 'utf8');
     
     console.log('Migration file loaded...');
