@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
+import SearchableSelect from '../../../components/SearchableSelect';
 
 type TabType = 'tickets' | 'technicians' | 'warranty-check' | 'reports';
 
@@ -47,12 +48,43 @@ interface WarrantyValidation {
   days_remaining?: number;
 }
 
+interface Customer {
+  id: string;
+  customer_code: string;
+  customer_name: string;
+  customer_type: string;
+  contact_person?: string;
+  email?: string;
+  phone?: string;
+  mobile?: string;
+}
+
+interface Item {
+  id: string;
+  item_code: string;
+  item_description: string;
+  category?: string;
+}
+
+interface UIDRecord {
+  uid: string;
+  entity_id: string;
+  status: string;
+  location?: string;
+  batch_number?: string;
+}
+
 export default function ServicePage() {
   const [activeTab, setActiveTab] = useState<TabType>('tickets');
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Data for dropdowns
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
+  const [availableUIDs, setAvailableUIDs] = useState<UIDRecord[]>([]);
 
   // Forms
   const [showTicketForm, setShowTicketForm] = useState(false);
@@ -80,15 +112,53 @@ export default function ServicePage() {
 
   // Warranty check
   const [warrantyUID, setWarrantyUID] = useState('');
-  const [warrantyResult, setWarrantyResult] = useState<WarrantyValidation | null>(null);
-
-  // Reports
-  const [reports, setReports] = useState<any>(null);
-
   useEffect(() => {
     if (activeTab === 'tickets') {
       fetchTickets();
     } else if (activeTab === 'technicians') {
+      fetchTechnicians();
+    } else if (activeTab === 'reports') {
+      fetchReports();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    // Fetch customers and items when component mounts
+    fetchCustomers();
+    fetchItems();
+  }, []);
+
+  const fetchCustomers = async () => {
+    try {
+      const data = await apiClient.get<Customer[]>('/sales/customers');
+      setCustomers(data);
+    } catch (err) {
+      console.error('Failed to fetch customers:', err);
+    }
+  };
+
+  const fetchItems = async () => {
+    try {
+      const data = await apiClient.get<Item[]>('/items');
+      setItems(data);
+    } catch (err) {
+      console.error('Failed to fetch items:', err);
+    }
+  };
+
+  const fetchAvailableUIDs = async (itemId: string) => {
+    if (!itemId) {
+      setAvailableUIDs([]);
+      return;
+    }
+    try {
+      const data = await apiClient.get<UIDRecord[]>(`/uid?item_id=${itemId}&status=GENERATED`);
+      setAvailableUIDs(data);
+    } catch (err) {
+      console.error('Failed to fetch UIDs:', err);
+      setAvailableUIDs([]);
+    }
+  };iveTab === 'technicians') {
       fetchTechnicians();
     } else if (activeTab === 'reports') {
       fetchReports();
@@ -352,32 +422,45 @@ export default function ServicePage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Customer ID *</label>
-                      <input
-                        type="text"
-                        required
+                      <SearchableSelect
+                        options={customers.map(c => ({ value: c.id, label: `${c.customer_code} - ${c.customer_name}` }))}
                         value={ticketForm.customer_id}
-                        onChange={(e) => setTicketForm({ ...ticketForm, customer_id: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">UID (Optional)</label>
-                      <input
-                        type="text"
-                        value={ticketForm.uid}
-                        onChange={(e) => setTicketForm({ ...ticketForm, uid: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                        placeholder="Enter UID for warranty check"
+                        onChange={(value) => setTicketForm({ ...ticketForm, customer_id: value })}
+                        placeholder="Select Customer"
+                        required
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
-                      <input
-                        type="text"
+                      <SearchableSelect
+                        options={items.map(i => ({ value: i.id, label: `${i.item_code} - ${i.item_description}` }))}
                         value={ticketForm.product_name}
-                        onChange={(e) => setTicketForm({ ...ticketForm, product_name: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        onChange={(value) => {
+                          const selectedItem = items.find(i => i.id === value);
+                          setTicketForm({ 
+                            ...ticketForm, 
+                            product_name: selectedItem?.item_description || value 
+                          });
+                          fetchAvailableUIDs(value);
+                        }}
+                        placeholder="Select Product"
                       />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">UID (Optional)</label>
+                      <SearchableSelect
+                        options={availableUIDs.map(u => ({ 
+                          value: u.uid, 
+                          label: `${u.uid}${u.batch_number ? ` - Batch: ${u.batch_number}` : ''}${u.location ? ` - ${u.location}` : ''}` 
+                        }))}
+                        value={ticketForm.uid}
+                        onChange={(value) => setTicketForm({ ...ticketForm, uid: value })}
+                        placeholder="Select UID for warranty check"
+                        disabled={availableUIDs.length === 0}
+                      />
+                      {availableUIDs.length === 0 && ticketForm.product_name && (
+                        <p className="text-xs text-gray-500 mt-1">No available UIDs for this product</p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Model Number</label>
