@@ -1001,84 +1001,122 @@ export default function SalesPage() {
                   </div>
 
                   <div className="mb-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="block text-sm font-medium text-gray-700">Items *</label>
+                    <div className="flex justify-between items-center mb-3">
+                      <label className="block text-sm font-medium text-gray-700">Quotation Items *</label>
                       <button
                         type="button"
                         onClick={addQuotationItem}
-                        className="text-sm text-amber-600 hover:text-amber-700"
+                        className="px-3 py-1.5 text-sm text-white bg-amber-600 hover:bg-amber-700 rounded-md transition-colors"
                       >
                         + Add Item
                       </button>
                     </div>
-                    {quotationForm.items.map((item, index) => (
-                      <div key={index} className="grid grid-cols-6 gap-2 mb-2 p-3 border border-gray-200 rounded-lg">
-                        <SearchableSelect
-                          options={items.map(i => ({
-                            value: i.id,
-                            label: i.code,
-                            subtitle: i.name,
-                          }))}
-                          value={item.item_id}
-                          onChange={(value, option) => {
-                            const selectedItem = items.find(i => i.id === value);
-                            if (selectedItem) {
-                              const newItems = [...quotationForm.items];
-                              newItems[index] = {
-                                ...newItems[index],
-                                item_id: value,
-                                item_description: selectedItem.name || selectedItem.description || '',
-                                unit_price: selectedItem.selling_price || selectedItem.standard_cost || 0,
-                              };
-                              setQuotationForm({ ...quotationForm, items: newItems });
-                            } else {
-                              updateQuotationItem(index, 'item_id', value);
-                            }
-                          }}
-                          placeholder="Search item..."
-                          required
-                          className="col-span-1"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Description"
-                          required
-                          value={item.item_description}
-                          onChange={(e) => updateQuotationItem(index, 'item_description', e.target.value)}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Qty"
-                          required
-                          value={item.quantity}
-                          onChange={(e) => updateQuotationItem(index, 'quantity', parseFloat(e.target.value))}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Price"
-                          required
-                          value={item.unit_price}
-                          onChange={(e) => updateQuotationItem(index, 'unit_price', parseFloat(e.target.value))}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Disc%"
-                          value={item.discount_percentage}
-                          onChange={(e) => updateQuotationItem(index, 'discount_percentage', parseFloat(e.target.value))}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeQuotationItem(index)}
-                          className="text-red-600 hover:text-red-800 text-sm"
-                        >
-                          Remove
-                        </button>
+
+                    {/* Column Headers */}
+                    <div className="grid grid-cols-12 gap-2 mb-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="col-span-3 text-xs font-semibold text-gray-700 uppercase">Item</div>
+                      <div className="col-span-3 text-xs font-semibold text-gray-700 uppercase">Description</div>
+                      <div className="col-span-2 text-xs font-semibold text-gray-700 uppercase">Quantity</div>
+                      <div className="col-span-2 text-xs font-semibold text-gray-700 uppercase">Unit Price (₹)</div>
+                      <div className="col-span-1 text-xs font-semibold text-gray-700 uppercase">Disc %</div>
+                      <div className="col-span-1 text-xs font-semibold text-gray-700 uppercase text-center">Action</div>
+                    </div>
+
+                    {quotationForm.items.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500 border-2 border-dashed border-gray-300 rounded-lg">
+                        <p className="text-sm">No items added yet. Click "+ Add Item" to start.</p>
                       </div>
-                    ))}
+                    ) : (
+                      quotationForm.items.map((item, index) => (
+                        <div key={index} className="grid grid-cols-12 gap-2 mb-3 p-3 border border-gray-200 rounded-lg hover:border-amber-300 transition-colors bg-white shadow-sm">
+                          <div className="col-span-3">
+                            <SearchableSelect
+                              options={items.map(i => ({
+                                value: i.id,
+                                label: i.code,
+                                subtitle: i.name,
+                              }))}
+                              value={item.item_id}
+                              onChange={(value, option) => {
+                                const selectedItem = items.find(i => i.id === value);
+                                if (selectedItem) {
+                                  const newItems = [...quotationForm.items];
+                                  newItems[index] = {
+                                    ...newItems[index],
+                                    item_id: value,
+                                    item_description: selectedItem.name || selectedItem.description || '',
+                                    unit_price: selectedItem.selling_price || selectedItem.standard_cost || 0,
+                                  };
+                                  setQuotationForm({ ...quotationForm, items: newItems });
+                                } else {
+                                  updateQuotationItem(index, 'item_id', value);
+                                }
+                              }}
+                              placeholder="Search item..."
+                              required
+                            />
+                          </div>
+                          <div className="col-span-3">
+                            <input
+                              type="text"
+                              placeholder="Item description"
+                              required
+                              value={item.item_description}
+                              onChange={(e) => updateQuotationItem(index, 'item_description', e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <input
+                              type="number"
+                              placeholder="0"
+                              required
+                              min="0.01"
+                              step="0.01"
+                              value={item.quantity}
+                              onChange={(e) => updateQuotationItem(index, 'quantity', parseFloat(e.target.value))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <input
+                              type="number"
+                              placeholder="0.00"
+                              required
+                              min="0"
+                              step="0.01"
+                              value={item.unit_price}
+                              onChange={(e) => updateQuotationItem(index, 'unit_price', parseFloat(e.target.value))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                            />
+                          </div>
+                          <div className="col-span-1">
+                            <input
+                              type="number"
+                              placeholder="0"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={item.discount_percentage}
+                              onChange={(e) => updateQuotationItem(index, 'discount_percentage', parseFloat(e.target.value))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                            />
+                          </div>
+                          <div className="col-span-1 flex items-center justify-center">
+                            <button
+                              type="button"
+                              onClick={() => removeQuotationItem(index)}
+                              className="px-2 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors"
+                              title="Remove item"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
 
                   <div className="mt-6 flex justify-end space-x-3">
