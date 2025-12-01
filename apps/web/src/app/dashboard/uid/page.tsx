@@ -457,7 +457,7 @@ export default function UIDTrackingPage() {
                 </p>
                 {selectedUID.purchase_order_id && (
                   <p className="text-sm">
-                    PO: {selectedUID.purchase_order_id}
+                    PO: {selectedUID.purchase_order?.po_number || selectedUID.purchase_order_id}
                   </p>
                 )}
                 {selectedUID.grn_id && (
