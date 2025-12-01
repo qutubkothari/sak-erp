@@ -17,31 +17,14 @@ export class InventoryService {
   async getStockLevels(req: Request, filters?: any) {
     const { tenantId } = req.user as any;
 
+    // Get stock entries first
     let query = this.supabase
       .from('stock_entries')
-      .select(`
-        *,
-        items:item_id (
-          code,
-          name,
-          uom,
-          category,
-          standard_cost,
-          selling_price
-        ),
-        warehouses:warehouse_id (
-          code,
-          name
-        )
-      `)
+      .select('*')
       .eq('tenant_id', tenantId);
 
     if (filters?.warehouse_id) {
       query = query.eq('warehouse_id', filters.warehouse_id);
-    }
-
-    if (filters?.category) {
-      query = query.eq('category', filters.category);
     }
 
     if (filters?.item_id) {
@@ -49,14 +32,52 @@ export class InventoryService {
     }
 
     if (filters?.low_stock) {
-      // Compare available_quantity with reorder_point column
-      query = query.lte('available_quantity', 'reorder_point');
+      query = query.lt('available_quantity', 10); // Low stock threshold
     }
 
-    const { data, error } = await query.order('updated_at', { ascending: false });
+    const { data: stockEntries, error: stockError } = await query;
+    if (stockError) throw new BadRequestException(stockError.message);
 
-    if (error) throw new BadRequestException(error.message);
-    return data;
+    if (!stockEntries || stockEntries.length === 0) {
+      return [];
+    }
+
+    // Get item details separately
+    const itemIds = [...new Set(stockEntries.map(entry => entry.item_id))];
+    const { data: items, error: itemError } = await this.supabase
+      .from('items')
+      .select('id, code, name, uom, category, standard_cost, selling_price')
+      .in('id', itemIds);
+
+    if (itemError) throw new BadRequestException(itemError.message);
+
+    // Get warehouse details separately
+    const warehouseIds = [...new Set(stockEntries.map(entry => entry.warehouse_id))];
+    const { data: warehouses, error: warehouseError } = await this.supabase
+      .from('warehouses')
+      .select('id, code, name')
+      .in('id', warehouseIds);
+
+    if (warehouseError) throw new BadRequestException(warehouseError.message);
+
+    // Combine the data manually
+    const result = stockEntries.map(entry => {
+      const item = items?.find(i => i.id === entry.item_id);
+      const warehouse = warehouses?.find(w => w.id === entry.warehouse_id);
+      
+      return {
+        ...entry,
+        items: item || { code: 'N/A', name: 'Unknown Item', uom: '', category: '', standard_cost: 0, selling_price: 0 },
+        warehouses: warehouse || { code: 'N/A', name: 'Unknown Warehouse' }
+      };
+    });
+
+    // Apply category filter if needed
+    if (filters?.category) {
+      return result.filter(entry => entry.items.category === filters.category);
+    }
+
+    return result;
   }
 
   // Get stock movements history
@@ -66,21 +87,7 @@ export class InventoryService {
 
     let query = this.supabase
       .from('stock_movements')
-      .select(`
-        *,
-        items:item_id (
-          item_code: code,
-          item_name: name
-        ),
-        from_warehouse:from_warehouse_id (
-          code,
-          name
-        ),
-        to_warehouse:to_warehouse_id (
-          code,
-          name
-        )
-      `)
+      .select('*')
       .eq('tenant_id', tenantId);
 
     if (filters?.movement_type) {
@@ -103,12 +110,53 @@ export class InventoryService {
       query = query.lte('movement_date', filters.to_date);
     }
 
-    const { data, error } = await query
+    const { data: movements, error: movementError } = await query
       .order('movement_date', { ascending: false })
       .limit(filters?.limit || 100);
 
-    if (error) throw new BadRequestException(error.message);
-    return data;
+    if (movementError) throw new BadRequestException(movementError.message);
+
+    if (!movements || movements.length === 0) {
+      return [];
+    }
+
+    // Get item details separately
+    const itemIds = [...new Set(movements.map(m => m.item_id))];
+    const { data: items, error: itemError } = await this.supabase
+      .from('items')
+      .select('id, code, name')
+      .in('id', itemIds);
+
+    if (itemError) throw new BadRequestException(itemError.message);
+
+    // Get warehouse details separately
+    const warehouseIds = [...new Set([
+      ...movements.filter(m => m.from_warehouse_id).map(m => m.from_warehouse_id),
+      ...movements.filter(m => m.to_warehouse_id).map(m => m.to_warehouse_id)
+    ])];
+    
+    const { data: warehouses, error: warehouseError } = await this.supabase
+      .from('warehouses')
+      .select('id, code, name')
+      .in('id', warehouseIds);
+
+    if (warehouseError) throw new BadRequestException(warehouseError.message);
+
+    // Combine the data manually
+    const result = movements.map(movement => {
+      const item = items?.find(i => i.id === movement.item_id);
+      const fromWarehouse = warehouses?.find(w => w.id === movement.from_warehouse_id);
+      const toWarehouse = warehouses?.find(w => w.id === movement.to_warehouse_id);
+      
+      return {
+        ...movement,
+        items: item || { code: 'N/A', name: 'Unknown Item' },
+        from_warehouse: fromWarehouse || null,
+        to_warehouse: toWarehouse || null
+      };
+    });
+
+    return result;
   }
 
   // Create stock movement (generic)
@@ -399,27 +447,59 @@ export class InventoryService {
 
     let query = this.supabase
       .from('inventory_alerts')
-      .select(`
-        *,
-        items:item_id (
-          item_code: code,
-          item_name: name
-        ),
-        warehouses:warehouse_id (
-          warehouse_code: code,
-          warehouse_name: name
-        )
-      `)
+      .select('*')
       .eq('tenant_id', tenantId);
 
     if (acknowledged !== undefined) {
       query = query.eq('acknowledged', acknowledged);
     }
 
-    const { data, error } = await query.order('created_at', { ascending: false });
+    const { data: alerts, error: alertError } = await query
+      .order('created_at', { ascending: false });
 
-    if (error) throw new BadRequestException(error.message);
-    return data;
+    if (alertError) throw new BadRequestException(alertError.message);
+
+    if (!alerts || alerts.length === 0) {
+      return [];
+    }
+
+    // Get item details separately
+    const itemIds = [...new Set(alerts.map(a => a.item_id))];
+    const { data: items, error: itemError } = await this.supabase
+      .from('items')
+      .select('id, code, name')
+      .in('id', itemIds);
+
+    if (itemError) throw new BadRequestException(itemError.message);
+
+    // Get warehouse details separately
+    const warehouseIds = [...new Set(alerts.map(a => a.warehouse_id))];
+    const { data: warehouses, error: warehouseError } = await this.supabase
+      .from('warehouses')
+      .select('id, code, name')
+      .in('id', warehouseIds);
+
+    if (warehouseError) throw new BadRequestException(warehouseError.message);
+
+    // Combine the data manually
+    const result = alerts.map(alert => {
+      const item = items?.find(i => i.id === alert.item_id);
+      const warehouse = warehouses?.find(w => w.id === alert.warehouse_id);
+      
+      return {
+        ...alert,
+        items: item ? {
+          item_code: item.code,
+          item_name: item.name
+        } : null,
+        warehouses: warehouse ? {
+          warehouse_code: warehouse.code,
+          warehouse_name: warehouse.name
+        } : null
+      };
+    });
+
+    return result;
   }
 
   // Acknowledge alert
@@ -582,13 +662,7 @@ export class InventoryService {
 
     let query = this.supabase
       .from('demo_inventory')
-      .select(`
-        *,
-        items:item_id (
-          item_code: code,
-          item_name: name
-        )
-      `)
+      .select('*')
       .eq('tenant_id', tenantId);
 
     if (filters?.status) {
@@ -599,10 +673,38 @@ export class InventoryService {
       query = query.eq('issued_to_staff_id', filters.staff_id);
     }
 
-    const { data, error } = await query.order('issue_date', { ascending: false });
+    const { data: demos, error: demoError } = await query
+      .order('issue_date', { ascending: false });
 
-    if (error) throw new BadRequestException(error.message);
-    return data;
+    if (demoError) throw new BadRequestException(demoError.message);
+
+    if (!demos || demos.length === 0) {
+      return [];
+    }
+
+    // Get item details separately
+    const itemIds = [...new Set(demos.map(d => d.item_id))];
+    const { data: items, error: itemError } = await this.supabase
+      .from('items')
+      .select('id, code, name')
+      .in('id', itemIds);
+
+    if (itemError) throw new BadRequestException(itemError.message);
+
+    // Combine the data manually
+    const result = demos.map(demo => {
+      const item = items?.find(i => i.id === demo.item_id);
+      
+      return {
+        ...demo,
+        items: item ? {
+          item_code: item.code,
+          item_name: item.name
+        } : null
+      };
+    });
+
+    return result;
   }
 
   private async generateDemoId(req: Request): Promise<string> {
