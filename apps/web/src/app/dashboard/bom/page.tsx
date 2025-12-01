@@ -35,6 +35,7 @@ interface BOM {
       item?: {
         code: string;
         name: string;
+        uom?: string;
       };
     };
   }>;

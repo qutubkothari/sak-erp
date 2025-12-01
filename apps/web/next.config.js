@@ -1,8 +1,10 @@
+const enableStandalone = process.env.NEXT_STANDALONE === 'true';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  output: 'standalone',
+  output: enableStandalone ? 'standalone' : undefined,
   
   // Multi-language support
   i18n: {
