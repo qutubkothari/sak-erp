@@ -487,39 +487,53 @@ export class UidSupabaseService {
 
     // 2. Get vendor details directly from supplier_id
     let vendor = null;
+    console.log('[UID Trace] UID Record supplier_id:', uidRecord.supplier_id);
     if (uidRecord.supplier_id) {
-      const { data: vendorData } = await this.supabase
+      const { data: vendorData, error: vendorError } = await this.supabase
         .from('vendors')
         .select('code, name, contact_person, email, vendor_code')
         .eq('tenant_id', tenantId)
         .eq('id', uidRecord.supplier_id)
         .maybeSingle();
 
+      console.log('[UID Trace] Vendor lookup result:', { vendorData, vendorError });
       if (vendorData) {
         vendor = {
           code: vendorData.vendor_code || vendorData.code,
           name: vendorData.name,
           contact: `${vendorData.contact_person} (${vendorData.email})`,
         };
+        console.log('[UID Trace] Vendor object created:', vendor);
+      } else {
+        console.log('[UID Trace] No vendor data found for supplier_id:', uidRecord.supplier_id);
       }
+    } else {
+      console.log('[UID Trace] No supplier_id in UID record');
     }
 
     // 2b. Get PO details if available
     let purchase_order = null;
+    console.log('[UID Trace] UID Record purchase_order_id:', uidRecord.purchase_order_id);
     if (uidRecord.purchase_order_id) {
-      const { data: poData } = await this.supabase
+      const { data: poData, error: poError } = await this.supabase
         .from('purchase_orders')
         .select('id, po_number, order_date, total_amount')
         .eq('id', uidRecord.purchase_order_id)
         .maybeSingle();
       
+      console.log('[UID Trace] PO lookup result:', { poData, poError });
       if (poData) {
         purchase_order = {
           po_number: poData.po_number,
           order_date: poData.order_date,
           total_amount: poData.total_amount,
         };
+        console.log('[UID Trace] PO object created:', purchase_order);
+      } else {
+        console.log('[UID Trace] No PO data found for purchase_order_id:', uidRecord.purchase_order_id);
       }
+    } else {
+      console.log('[UID Trace] No purchase_order_id in UID record');
     }
 
     // 2c. Get GRN details if available
@@ -679,7 +693,7 @@ export class UidSupabaseService {
 
     const itemData = Array.isArray(uidRecord.item) ? uidRecord.item[0] : uidRecord.item;
 
-    return {
+    const result = {
       uid: uidRecord.uid,
       entity_type: uidRecord.entity_type,
       item: {
@@ -699,6 +713,11 @@ export class UidSupabaseService {
       quality_checkpoints: quality_checkpoints || [],
       customer: customer || null,
     };
+
+    console.log('[UID Trace] Final result vendor:', result.vendor);
+    console.log('[UID Trace] Final result purchase_order:', result.purchase_order);
+
+    return result;
   }
 
   /**

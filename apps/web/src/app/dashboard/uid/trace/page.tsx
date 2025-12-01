@@ -94,6 +94,9 @@ function TraceProductContent() {
       if (!response.ok) throw new Error('UID not found');
 
       const data = await response.json();
+      console.log('[Frontend] Received trace data:', data);
+      console.log('[Frontend] Vendor data:', data.vendor);
+      console.log('[Frontend] Purchase order data:', data.purchase_order);
       setTraceData(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch trace data');
