@@ -87,7 +87,7 @@ export class UidSupabaseService {
       .from('uid_registry')
       .select(`
         *,
-        items:entity_id (
+        items:item_id (
           code,
           name,
           category

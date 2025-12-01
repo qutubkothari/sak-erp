@@ -2,10 +2,13 @@
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 
-const supabase = createClient(
-  'https://pfjswqmwvvznrqudoyjh.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmanN3cW13dnZ6bnJxdWRveWpoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzIyODczODMsImV4cCI6MjA0Nzg2MzM4M30.TgGXLqHnQs9TBMRxB1oZznwXH7EMNFiZCRt5BPM1cBU'
-);
+// Try to use environment variables first, fallback to known working ones
+const supabaseUrl = process.env.SUPABASE_URL || 'https://kvfttnibmroxbldmuvvj.supabase.co';
+const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2ZnR0bmljbXJveGJsZG11dnZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzE5ODQ2ODksImV4cCI6MjA0NzU2MDY4OX0.qrKQVg1oPOOVOa4lpG_cGlPVKLCBigJrXqFaB8XyEj8';
+
+console.log('Using Supabase URL:', supabaseUrl);
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function createHRTables() {
   try {
