@@ -378,29 +378,35 @@ export class BomService {
     const itemsToOrder = [];
 
     for (const explodedItem of explodedItems) {
-      // Check current stock
-      const { data: stock } = await this.supabase
-        .from('stock_entries')
-        .select('available_quantity')
-        .eq('tenant_id', tenantId)
-        .eq('item_id', explodedItem.itemId);
+      // Check current stock AND get reorder level
+      const [stockRes, itemRes] = await Promise.all([
+        this.supabase
+          .from('stock_entries')
+          .select('available_quantity')
+          .eq('tenant_id', tenantId)
+          .eq('item_id', explodedItem.itemId),
+        this.supabase
+          .from('items')
+          .select('code, name, reorder_level')
+          .eq('id', explodedItem.itemId)
+          .single(),
+      ]);
 
-      const availableQty = stock?.reduce((sum, s) => sum + s.available_quantity, 0) || 0;
-      const shortfall = explodedItem.quantity - availableQty;
+      const availableQty = stockRes.data?.reduce((sum, s) => sum + parseFloat(s.available_quantity.toString()), 0) || 0;
+      const reorderLevel = itemRes.data?.reorder_level ? parseFloat(itemRes.data.reorder_level.toString()) : 0;
+      
+      // Calculate usable stock (available minus reorder level safety stock)
+      const usableStock = Math.max(0, availableQty - reorderLevel);
+      const shortfall = explodedItem.quantity - usableStock;
+
+      console.log(`[BOM PR] Item ${explodedItem.itemId}: Required=${explodedItem.quantity}, Available=${availableQty}, ReorderLevel=${reorderLevel}, Usable=${usableStock}, Shortfall=${shortfall}`);
 
       if (shortfall > 0) {
-        // Fetch item details
-        const { data: item } = await this.supabase
-          .from('items')
-          .select('code, name')
-          .eq('id', explodedItem.itemId)
-          .single();
-
-        if (item) {
+        if (itemRes.data) {
           itemsToOrder.push({
             itemId: explodedItem.itemId,
-            itemCode: item.code,
-            itemName: item.name,
+            itemCode: itemRes.data.code,
+            itemName: itemRes.data.name,
             quantity: Math.ceil(shortfall),
             specifications: explodedItem.notes,
             drawingUrl: explodedItem.drawingUrl,
