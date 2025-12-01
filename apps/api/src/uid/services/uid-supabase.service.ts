@@ -693,11 +693,11 @@ export class UidSupabaseService {
       lifecycle,
       components,
       parent_products,
-      vendor,
-      purchase_order,
-      grn: grn_info,
-      quality_checkpoints,
-      customer,
+      vendor: vendor || null,
+      purchase_order: purchase_order || null,
+      grn: grn_info || null,
+      quality_checkpoints: quality_checkpoints || [],
+      customer: customer || null,
     };
   }
 
