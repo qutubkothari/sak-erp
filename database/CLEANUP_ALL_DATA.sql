@@ -48,7 +48,7 @@ BEGIN
     ) THEN
         SELECT EXISTS (
             SELECT 1
-            FROM information_schema.columns
+                        FROM information_schema.columns
             WHERE table_schema = 'public'
               AND table_name = 'production_assemblies'
               AND column_name = 'tenant_id'
@@ -179,6 +179,19 @@ BEGIN
         ELSE
             EXECUTE 'DELETE FROM uid_registry';
         END IF;
+    END IF;
+END $$;
+
+-- Legacy UID records table (only if it still exists)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'uid_records'
+    ) THEN
+        EXECUTE 'DELETE FROM uid_records';
     END IF;
 END $$;
 
@@ -606,6 +619,113 @@ END $$;
 -- STEP 6: DELETE SALES DATA
 -- ============================================================================
 
+-- Warranty claims
+DO $$
+DECLARE
+    has_tenant_column boolean := FALSE;
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'warranty_claims'
+    ) THEN
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'warranty_claims'
+              AND column_name = 'tenant_id'
+        ) INTO has_tenant_column;
+
+        IF has_tenant_column THEN
+            EXECUTE 'DELETE FROM warranty_claims WHERE tenant_id IN (SELECT id FROM tenants)';
+        ELSE
+            EXECUTE 'DELETE FROM warranty_claims';
+        END IF;
+    END IF;
+END $$;
+
+-- Warranties
+DO $$
+DECLARE
+    has_tenant_column boolean := FALSE;
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'warranties'
+    ) THEN
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'warranties'
+              AND column_name = 'tenant_id'
+        ) INTO has_tenant_column;
+
+        IF has_tenant_column THEN
+            EXECUTE 'DELETE FROM warranties WHERE tenant_id IN (SELECT id FROM tenants)';
+        ELSE
+            EXECUTE 'DELETE FROM warranties';
+        END IF;
+    END IF;
+END $$;
+
+-- Invoices
+DO $$
+DECLARE
+    has_tenant_column boolean := FALSE;
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'invoices'
+    ) THEN
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'invoices'
+              AND column_name = 'tenant_id'
+        ) INTO has_tenant_column;
+
+        IF has_tenant_column THEN
+            EXECUTE 'DELETE FROM invoices WHERE tenant_id IN (SELECT id FROM tenants)';
+        ELSE
+            EXECUTE 'DELETE FROM invoices';
+        END IF;
+    END IF;
+END $$;
+
+-- Dispatch items
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'dispatch_items'
+    ) THEN
+        EXECUTE 'DELETE FROM dispatch_items';
+    END IF;
+END $$;
+
+-- Dispatch notes
+DO $$
+DECLARE
+    has_tenant_column boolean := FALSE;
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'dispatch_notes'
+    ) THEN
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'dispatch_notes'
+              AND column_name = 'tenant_id'
+        ) INTO has_tenant_column;
+
+        IF has_tenant_column THEN
+            EXECUTE 'DELETE FROM dispatch_notes WHERE tenant_id IN (SELECT id FROM tenants)';
+        ELSE
+            EXECUTE 'DELETE FROM dispatch_notes';
+        END IF;
+    END IF;
+END $$;
+
 -- Sales order items
 DO $$
 DECLARE
@@ -890,14 +1010,14 @@ BEGIN
     ) THEN
         SELECT EXISTS (
             SELECT 1 FROM information_schema.tables
-            WHERE table_schema = 'public' AND table_name = 'bom'
+            WHERE table_schema = 'public' AND table_name = 'bom_headers'
         ) INTO parent_exists;
 
         IF parent_exists THEN
             SELECT EXISTS (
                 SELECT 1 FROM information_schema.columns
                 WHERE table_schema = 'public'
-                  AND table_name = 'bom'
+                  AND table_name = 'bom_headers'
                   AND column_name = 'tenant_id'
             ) INTO parent_has_tenant;
         END IF;
@@ -905,7 +1025,7 @@ BEGIN
         IF parent_has_tenant THEN
             EXECUTE 'DELETE FROM bom_items
                      WHERE bom_id IN (
-                         SELECT id FROM bom WHERE tenant_id IN (SELECT id FROM tenants)
+                         SELECT id FROM bom_headers WHERE tenant_id IN (SELECT id FROM tenants)
                      )';
         ELSE
             EXECUTE 'DELETE FROM bom_items';
@@ -913,26 +1033,26 @@ BEGIN
     END IF;
 END $$;
 
--- BOM (Bill of Materials)
+-- BOM headers (Bill of Materials definitions)
 DO $$
 DECLARE
     has_tenant_column boolean := FALSE;
 BEGIN
     IF EXISTS (
         SELECT 1 FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = 'bom'
+        WHERE table_schema = 'public' AND table_name = 'bom_headers'
     ) THEN
         SELECT EXISTS (
             SELECT 1 FROM information_schema.columns
             WHERE table_schema = 'public'
-              AND table_name = 'bom'
+              AND table_name = 'bom_headers'
               AND column_name = 'tenant_id'
         ) INTO has_tenant_column;
 
         IF has_tenant_column THEN
-            EXECUTE 'DELETE FROM bom WHERE tenant_id IN (SELECT id FROM tenants)';
+            EXECUTE 'DELETE FROM bom_headers WHERE tenant_id IN (SELECT id FROM tenants)';
         ELSE
-            EXECUTE 'DELETE FROM bom';
+            EXECUTE 'DELETE FROM bom_headers';
         END IF;
     END IF;
 END $$;
@@ -1061,7 +1181,7 @@ DECLARE
     cnt bigint;
     tables text[] := ARRAY[
         'production_orders', 'purchase_orders', 'sales_orders', 'grn',
-        'uid_registry', 'bom', 'items', 'vendors', 'customers'
+        'uid_registry', 'bom_headers', 'items', 'vendors', 'customers'
     ];
 BEGIN
     FOREACH tbl IN ARRAY tables LOOP

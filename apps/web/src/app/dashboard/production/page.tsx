@@ -491,18 +491,22 @@ export default function ProductionPage() {
                     </option>
                     {availableBOMs.map(bom => (
                       <option key={bom.id} value={bom.id}>
-                        v{bom.version} - {bom.description} ({bom.items.length} components)
+                        v{bom.version} - {bom.description} ({bom.items?.length || 0} components)
                       </option>
                     ))}
                   </select>
                   {selectedBOM && (
                     <div className="mt-2 p-3 bg-orange-50 rounded border border-orange-200">
                       <div className="text-xs font-semibold text-orange-900 mb-2">BOM Components:</div>
-                      {selectedBOM.items.map((item, idx) => (
-                        <div key={idx} className="text-xs text-orange-800">
-                          • {item.item.code} - {item.item.name} × {item.quantity} {item.uom}
-                        </div>
-                      ))}
+                      {selectedBOM.items && selectedBOM.items.length > 0 ? (
+                        selectedBOM.items.map((item, idx) => (
+                          <div key={idx} className="text-xs text-orange-800">
+                            • {item.item.code} - {item.item.name} × {item.quantity} {item.uom}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-xs text-orange-600">No components defined</div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -598,7 +602,8 @@ export default function ProductionPage() {
 
             <div className="p-6 space-y-6">
               {/* BOM Components with FIFO UID Selection */}
-              {selectedBOM && selectedBOM.items.map((component, idx) => {
+              {selectedBOM && selectedBOM.items && selectedBOM.items.length > 0 ? (
+                selectedBOM.items.map((component, idx) => {
                 const uids = availableUIDs[component.item.id] || [];
                 const requiredQty = component.quantity * formData.quantity;
                 
@@ -666,7 +671,12 @@ export default function ProductionPage() {
                     </div>
                   </div>
                 );
-              })}
+              })
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No BOM components available. Please ensure a valid BOM is selected.</p>
+                </div>
+              )}
 
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                 <p className="text-sm text-amber-800">
