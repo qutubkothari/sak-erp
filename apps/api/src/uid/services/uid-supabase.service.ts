@@ -491,7 +491,7 @@ export class UidSupabaseService {
     if (uidRecord.supplier_id) {
       const { data: vendorData, error: vendorError } = await this.supabase
         .from('vendors')
-        .select('code, name, contact_person, email, vendor_code')
+        .select('code, name, contact_person, email')
         .eq('tenant_id', tenantId)
         .eq('id', uidRecord.supplier_id)
         .maybeSingle();
@@ -499,9 +499,9 @@ export class UidSupabaseService {
       console.log('[UID Trace] Vendor lookup result:', { vendorData, vendorError });
       if (vendorData) {
         vendor = {
-          code: vendorData.vendor_code || vendorData.code,
+          code: vendorData.code,
           name: vendorData.name,
-          contact: `${vendorData.contact_person} (${vendorData.email})`,
+          contact: `${vendorData.contact_person || 'N/A'} (${vendorData.email || 'N/A'})`,
         };
         console.log('[UID Trace] Vendor object created:', vendor);
       } else {
