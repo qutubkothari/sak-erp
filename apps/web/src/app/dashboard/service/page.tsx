@@ -112,6 +112,11 @@ export default function ServicePage() {
 
   // Warranty check
   const [warrantyUID, setWarrantyUID] = useState('');
+  const [warrantyResult, setWarrantyResult] = useState<WarrantyValidation | null>(null);
+
+  // Reports
+  const [reports, setReports] = useState<any>(null);
+
   useEffect(() => {
     if (activeTab === 'tickets') {
       fetchTickets();
