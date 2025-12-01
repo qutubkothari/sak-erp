@@ -467,8 +467,8 @@ export default function SalesPage() {
     
     setLoadingUIDs({ ...loadingUIDs, [rowIndex]: true });
     try {
-      // Fetch UIDs with status AVAILABLE or RESERVED for this item
-      const data = await apiClient.get(`/uid?item_id=${itemId}&status=AVAILABLE`);
+      // Fetch UIDs with status ACTIVE (available for dispatch)
+      const data = await apiClient.get(`/uid?item_id=${itemId}&status=ACTIVE`);
       const uids = Array.isArray(data) ? data : [];
       setAvailableUIDs({ ...availableUIDs, [itemId]: uids });
       
