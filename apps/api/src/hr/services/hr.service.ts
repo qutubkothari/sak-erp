@@ -16,7 +16,7 @@ export class HrService {
   async createEmployee(tenantId: string, data: any) {
     const { data: result, error } = await this.supabase
       .from('employees')
-      .insert([{ ...data, tenant_id: tenantId }])
+      .insert([data])
       .select();
     if (error) throw new Error(error.message);
     return result;
@@ -25,8 +25,7 @@ export class HrService {
   async getEmployees(tenantId: string) {
     const { data, error } = await this.supabase
       .from('employees')
-      .select('*')
-      .eq('tenant_id', tenantId);
+      .select('*');
     if (error) throw new Error(error.message);
     return data || [];
   }
@@ -35,7 +34,6 @@ export class HrService {
     const { data, error } = await this.supabase
       .from('employees')
       .select('*')
-      .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
     if (error) throw new Error(error.message);
@@ -46,7 +44,6 @@ export class HrService {
     const { data: result, error } = await this.supabase
       .from('employees')
       .update(data)
-      .eq('tenant_id', tenantId)
       .eq('id', id)
       .select();
     if (error) throw new Error(error.message);
@@ -57,7 +54,6 @@ export class HrService {
     const { error } = await this.supabase
       .from('employees')
       .delete()
-      .eq('tenant_id', tenantId)
       .eq('id', id);
     if (error) throw new Error(error.message);
     return { message: 'Employee deleted successfully' };
@@ -67,7 +63,7 @@ export class HrService {
   async recordAttendance(tenantId: string, data: any) {
     const { data: result, error } = await this.supabase
       .from('attendance_records')
-      .insert([{ ...data, tenant_id: tenantId }])
+      .insert([data])
       .select();
     if (error) throw new Error(error.message);
     return result;
@@ -76,8 +72,7 @@ export class HrService {
   async getAttendance(tenantId: string, employeeId?: string, month?: string) {
     let query = this.supabase
       .from('attendance_records')
-      .select('*')
-      .eq('tenant_id', tenantId);
+      .select('*');
     
     if (employeeId) {
       query = query.eq('employee_id', employeeId);
@@ -96,7 +91,7 @@ export class HrService {
   async applyLeave(tenantId: string, data: any) {
     const { data: result, error } = await this.supabase
       .from('leave_requests')
-      .insert([{ ...data, tenant_id: tenantId }])
+      .insert([data])
       .select();
     if (error) throw new Error(error.message);
     return result;
@@ -104,8 +99,7 @@ export class HrService {
   async getLeaves(tenantId: string, employeeId?: string) {
     let query = this.supabase
       .from('leave_requests')
-      .select('*')
-      .eq('tenant_id', tenantId);
+      .select('*');
     
     if (employeeId) {
       query = query.eq('employee_id', employeeId);
@@ -119,7 +113,6 @@ export class HrService {
     const { data, error } = await this.supabase
       .from('leave_requests')
       .update({ status: 'APPROVED', approved_by: approverId, approved_at: new Date().toISOString() })
-      .eq('tenant_id', tenantId)
       .eq('id', id)
       .select();
     if (error) throw new Error(error.message);
@@ -129,7 +122,6 @@ export class HrService {
     const { data, error } = await this.supabase
       .from('leave_requests')
       .update({ status: 'REJECTED', approved_by: approverId, approved_at: new Date().toISOString() })
-      .eq('tenant_id', tenantId)
       .eq('id', id)
       .select();
     if (error) throw new Error(error.message);
@@ -140,7 +132,7 @@ export class HrService {
   async addSalaryComponent(tenantId: string, data: any) {
     const { data: result, error } = await this.supabase
       .from('salary_components')
-      .insert([{ ...data, tenant_id: tenantId }])
+      .insert([data])
       .select();
     if (error) throw new Error(error.message);
     return result;
@@ -148,8 +140,7 @@ export class HrService {
   async getSalaryComponents(tenantId: string, employeeId?: string) {
     let query = this.supabase
       .from('salary_components')
-      .select('*')
-      .eq('tenant_id', tenantId);
+      .select('*');
     
     if (employeeId) {
       query = query.eq('employee_id', employeeId);
@@ -164,7 +155,7 @@ export class HrService {
   async createPayrollRun(tenantId: string, data: any) {
     const { data: result, error } = await this.supabase
       .from('payroll_runs')
-      .insert([{ ...data, tenant_id: tenantId }])
+      .insert([data])
       .select();
     if (error) throw new Error(error.message);
     return result;
@@ -172,8 +163,7 @@ export class HrService {
   async getPayrollRuns(tenantId: string) {
     const { data, error } = await this.supabase
       .from('payroll_runs')
-      .select('*')
-      .eq('tenant_id', tenantId);
+      .select('*');
     if (error) throw new Error(error.message);
     return data || [];
   }
@@ -182,7 +172,7 @@ export class HrService {
   async generatePayslip(tenantId: string, data: any) {
     const { data: result, error } = await this.supabase
       .from('payslips')
-      .insert([{ ...data, tenant_id: tenantId }])
+      .insert([data])
       .select();
     if (error) throw new Error(error.message);
     return result;
@@ -190,8 +180,7 @@ export class HrService {
   async getPayslips(tenantId: string, employeeId?: string) {
     let query = this.supabase
       .from('payslips')
-      .select('*')
-      .eq('tenant_id', tenantId);
+      .select('*');
     
     if (employeeId) {
       query = query.eq('employee_id', employeeId);

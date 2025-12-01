@@ -11,43 +11,39 @@ SELECT 'Starting HR Tables creation...' as status;
 -- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Verify UUID generation function is available
+DO $$
+BEGIN
+    -- Test if the function works
+    PERFORM extensions.uuid_generate_v4();
+    RAISE NOTICE 'UUID extension verified';
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Using alternative UUID function';
+END $$;
+
 -- ============================================================================
--- STEP 1: Ensure tenants table exists
+-- STEP 1: Verify tenants table exists and ensure default tenant
 -- ============================================================================
 
--- Check if tenants table exists, create if missing
+-- Verify tenants table exists
 DO $$ 
 BEGIN
-    IF NOT EXISTS (
+    IF EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
         AND table_name = 'tenants'
     ) THEN
-        RAISE NOTICE 'Creating tenants table...';
+        RAISE NOTICE 'Tenants table verified - exists';
         
-        CREATE TABLE tenants (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            name VARCHAR(200) NOT NULL,
-            subdomain VARCHAR(100) UNIQUE NOT NULL,
-            domain VARCHAR(200),
-            is_active BOOLEAN DEFAULT true,
-            settings JSONB DEFAULT '{}',
-            metadata JSONB DEFAULT '{}',
-            created_at TIMESTAMP DEFAULT NOW(),
-            updated_at TIMESTAMP DEFAULT NOW()
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_tenants_subdomain ON tenants(subdomain);
-        CREATE INDEX IF NOT EXISTS idx_tenants_is_active ON tenants(is_active);
-        
-        -- Insert default tenant
+        -- Insert default tenant if none exists
         INSERT INTO tenants (name, subdomain, is_active) 
         VALUES ('Default Tenant', 'default', true)
         ON CONFLICT (subdomain) DO NOTHING;
         
-        RAISE NOTICE 'Tenants table created successfully';
+        RAISE NOTICE 'Default tenant ensured';
     ELSE
-        RAISE NOTICE 'Tenants table already exists';
+        RAISE EXCEPTION 'Tenants table does not exist! Please create it first.';
     END IF;
 END $$;
 
@@ -97,7 +93,7 @@ END $$;
 
 -- Create employees table
 CREATE TABLE IF NOT EXISTS employees (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     employee_code VARCHAR(50) NOT NULL,
     employee_name VARCHAR(200) NOT NULL,
@@ -117,7 +113,7 @@ CREATE TABLE IF NOT EXISTS employees (
 
 -- Create attendance_records table
 CREATE TABLE IF NOT EXISTS attendance_records (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
     attendance_date DATE NOT NULL,
@@ -130,7 +126,7 @@ CREATE TABLE IF NOT EXISTS attendance_records (
 
 -- Create leave_requests table
 CREATE TABLE IF NOT EXISTS leave_requests (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
     leave_type leave_type NOT NULL,
@@ -147,7 +143,7 @@ CREATE TABLE IF NOT EXISTS leave_requests (
 
 -- Create salary_components table
 CREATE TABLE IF NOT EXISTS salary_components (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
     component_type salary_component_type NOT NULL,
@@ -159,7 +155,7 @@ CREATE TABLE IF NOT EXISTS salary_components (
 
 -- Create payroll_runs table
 CREATE TABLE IF NOT EXISTS payroll_runs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     payroll_month VARCHAR(7) NOT NULL,
     run_date DATE NOT NULL,
@@ -171,7 +167,7 @@ CREATE TABLE IF NOT EXISTS payroll_runs (
 
 -- Create payslips table
 CREATE TABLE IF NOT EXISTS payslips (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     payroll_run_id UUID NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
     employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
