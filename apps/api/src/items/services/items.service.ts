@@ -8,6 +8,18 @@ export class ItemsService {
     process.env.SUPABASE_KEY!,
   );
 
+  private normalizeNumber(value: any, type: 'int' | 'float' = 'float') {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+
+    const parsed = type === 'int'
+      ? parseInt(value, 10)
+      : parseFloat(value);
+
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
   async findAll(tenantId: string, search?: string, includeInactive?: boolean) {
     console.log('[ItemsService] findAll called:', { tenantId, search, includeInactive });
     
@@ -87,6 +99,12 @@ export class ItemsService {
       }
     }
 
+    const standardCost = this.normalizeNumber(itemData.standard_cost ?? itemData.standardCost);
+    const sellingPrice = this.normalizeNumber(itemData.selling_price ?? itemData.sellingPrice);
+    const reorderLevel = this.normalizeNumber(itemData.reorder_level ?? itemData.reorderLevel, 'int');
+    const reorderQuantity = this.normalizeNumber(itemData.reorder_quantity ?? itemData.reorderQuantity, 'int');
+    const leadTimeDays = this.normalizeNumber(itemData.lead_time_days ?? itemData.leadTimeDays, 'int');
+
     const { data, error } = await this.supabase
       .from('items')
       .insert({
@@ -96,10 +114,13 @@ export class ItemsService {
         description: itemData.description,
         category: itemData.category,
         uom: itemData.uom,
-        reorder_level: itemData.reorderLevel,
+        reorder_level: reorderLevel,
         min_stock: itemData.minStock,
         max_stock: itemData.maxStock,
-        standard_cost: itemData.standardCost,
+        standard_cost: standardCost,
+        selling_price: sellingPrice,
+        reorder_quantity: reorderQuantity,
+        lead_time_days: leadTimeDays,
         hsn_code: validatedHsn,
         is_active: true,
         metadata: itemData.metadata || {},
@@ -239,10 +260,47 @@ export class ItemsService {
     if (itemData.description !== undefined) updateData.description = itemData.description;
     if (itemData.category !== undefined) updateData.category = itemData.category;
     if (itemData.uom !== undefined) updateData.uom = itemData.uom;
-    if (itemData.reorderLevel !== undefined) updateData.reorder_level = itemData.reorderLevel;
+    const standardCostProvided = itemData.standard_cost !== undefined || itemData.standardCost !== undefined;
+    const sellingPriceProvided = itemData.selling_price !== undefined || itemData.sellingPrice !== undefined;
+    const reorderLevelProvided = itemData.reorder_level !== undefined || itemData.reorderLevel !== undefined;
+    const reorderQtyProvided = itemData.reorder_quantity !== undefined || itemData.reorderQuantity !== undefined;
+    const leadTimeProvided = itemData.lead_time_days !== undefined || itemData.leadTimeDays !== undefined;
+
+    if (standardCostProvided) {
+      updateData.standard_cost = this.normalizeNumber(
+        itemData.standard_cost ?? itemData.standardCost,
+      );
+    }
+
+    if (sellingPriceProvided) {
+      updateData.selling_price = this.normalizeNumber(
+        itemData.selling_price ?? itemData.sellingPrice,
+      );
+    }
+
+    if (reorderLevelProvided) {
+      updateData.reorder_level = this.normalizeNumber(
+        itemData.reorder_level ?? itemData.reorderLevel,
+        'int',
+      );
+    }
+
+    if (reorderQtyProvided) {
+      updateData.reorder_quantity = this.normalizeNumber(
+        itemData.reorder_quantity ?? itemData.reorderQuantity,
+        'int',
+      );
+    }
+
+    if (leadTimeProvided) {
+      updateData.lead_time_days = this.normalizeNumber(
+        itemData.lead_time_days ?? itemData.leadTimeDays,
+        'int',
+      );
+    }
+
     if (itemData.minStock !== undefined) updateData.min_stock = itemData.minStock;
     if (itemData.maxStock !== undefined) updateData.max_stock = itemData.maxStock;
-    if (itemData.standardCost !== undefined) updateData.standard_cost = itemData.standardCost;
     if (itemData.metadata !== undefined) updateData.metadata = itemData.metadata;
     if (validatedHsn !== null) updateData.hsn_code = validatedHsn;
     if (itemData.is_active !== undefined) updateData.is_active = itemData.is_active;

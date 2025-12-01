@@ -101,6 +101,57 @@ export class SalesService {
     return code;
   }
 
+  private prepareQuotationItems(items: any[]) {
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new BadRequestException('Quotation must include at least one item');
+    }
+
+    let totalAmount = 0;
+    const preparedItems = items.map((item: any, index: number) => {
+      if (!item.item_id) {
+        throw new BadRequestException(`Quotation item ${index + 1} is missing item selection`);
+      }
+
+      const quantity = Number(item.quantity) || 0;
+      const unitPrice = Number(item.unit_price) || 0;
+      const baseAmount = quantity * unitPrice;
+      const discountPercentage = item.discount_percentage !== undefined
+        ? Number(item.discount_percentage)
+        : 0;
+
+      let discountAmount = item.discount_amount !== undefined
+        ? Number(item.discount_amount)
+        : (baseAmount * discountPercentage) / 100;
+
+      if (Number.isNaN(discountAmount)) {
+        discountAmount = 0;
+      }
+
+      const lineTotal = Math.max(baseAmount - discountAmount, 0);
+      const taxPercentage = item.tax_percentage !== undefined
+        ? Number(item.tax_percentage)
+        : 18;
+      const taxAmount = (lineTotal * taxPercentage) / 100;
+      totalAmount += lineTotal + taxAmount;
+
+      return {
+        item_id: item.item_id,
+        item_description: item.item_description || '',
+        quantity,
+        unit_price: unitPrice,
+        discount_percentage: discountPercentage,
+        discount_amount: discountAmount,
+        tax_percentage: taxPercentage,
+        tax_amount: taxAmount,
+        line_total: lineTotal,
+        delivery_days: item.delivery_days,
+        notes: item.notes,
+      };
+    });
+
+    return { preparedItems, totalAmount };
+  }
+
   // ==================== QUOTATIONS ====================
   
   async getQuotations(req: Request, filters?: any) {
@@ -141,18 +192,7 @@ export class SalesService {
 
     const quotationNumber = await this.generateQuotationNumber(req);
 
-    // Calculate totals
-    let totalAmount = 0;
-    const items = quotationData.items.map((item: any) => {
-      const lineTotal = item.quantity * item.unit_price - (item.discount_amount || 0);
-      const taxAmount = (lineTotal * (item.tax_percentage || 18)) / 100;
-      totalAmount += lineTotal + taxAmount;
-      return {
-        ...item,
-        line_total: lineTotal,
-        tax_amount: taxAmount,
-      };
-    });
+    const { preparedItems, totalAmount } = this.prepareQuotationItems(quotationData.items || []);
 
     const discountAmount = quotationData.discount_amount || 0;
     const netAmount = totalAmount - discountAmount;
@@ -183,12 +223,13 @@ export class SalesService {
     if (quotationError) throw new BadRequestException(quotationError.message);
 
     // Insert quotation items
-    const quotationItems = items.map((item: any) => ({
+    const quotationItems = preparedItems.map((item: any) => ({
       quotation_id: quotationRecord.id,
       item_id: item.item_id,
       item_description: item.item_description,
       quantity: item.quantity,
       unit_price: item.unit_price,
+      discount_percentage: item.discount_percentage,
       discount_amount: item.discount_amount || 0,
       tax_percentage: item.tax_percentage || 18,
       tax_amount: item.tax_amount,
@@ -204,6 +245,116 @@ export class SalesService {
     if (itemsError) throw new BadRequestException(itemsError.message);
 
     return quotationRecord;
+  }
+
+  async getQuotationById(req: Request, quotationId: string) {
+    const { tenantId } = req.user as any;
+
+    const { data, error } = await this.supabase
+      .from('quotations')
+      .select(`
+        *,
+        customers:customer_id(id, customer_code, customer_name, contact_person, email, phone),
+        quotation_items(*)
+      `)
+      .eq('id', quotationId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    if (!data) {
+      throw new NotFoundException('Quotation not found');
+    }
+
+    return {
+      ...data,
+      customer_name: data.customers?.customer_name || null,
+      customer_code: data.customers?.customer_code || null,
+    };
+  }
+
+  async updateQuotation(req: Request, quotationId: string, quotationData: any) {
+    const { tenantId } = req.user as any;
+
+    const { data: existing, error: fetchError } = await this.supabase
+      .from('quotations')
+      .select('id, status')
+      .eq('id', quotationId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (fetchError || !existing) {
+      throw new NotFoundException('Quotation not found');
+    }
+
+    if (existing.status !== 'DRAFT') {
+      throw new BadRequestException('Only draft quotations can be edited');
+    }
+
+    const { preparedItems, totalAmount } = this.prepareQuotationItems(quotationData.items || []);
+    const discountAmount = quotationData.discount_amount ? Number(quotationData.discount_amount) : 0;
+    const netAmount = totalAmount - discountAmount;
+
+    const { data: updatedQuotation, error: quotationError } = await this.supabase
+      .from('quotations')
+      .update({
+        customer_id: quotationData.customer_id,
+        quotation_date: quotationData.quotation_date,
+        valid_until: quotationData.valid_until,
+        total_amount: totalAmount,
+        discount_amount: discountAmount,
+        net_amount: netAmount,
+        payment_terms: quotationData.payment_terms,
+        delivery_terms: quotationData.delivery_terms,
+        notes: quotationData.notes,
+        terms_conditions: quotationData.terms_conditions,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', quotationId)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (quotationError) {
+      throw new BadRequestException(quotationError.message);
+    }
+
+    const { error: deleteError } = await this.supabase
+      .from('quotation_items')
+      .delete()
+      .eq('quotation_id', quotationId);
+
+    if (deleteError) {
+      throw new BadRequestException(deleteError.message);
+    }
+
+    const quotationItems = preparedItems.map((item: any) => ({
+      quotation_id: quotationId,
+      item_id: item.item_id,
+      item_description: item.item_description,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      discount_percentage: item.discount_percentage,
+      discount_amount: item.discount_amount,
+      tax_percentage: item.tax_percentage,
+      tax_amount: item.tax_amount,
+      line_total: item.line_total,
+      delivery_days: item.delivery_days,
+      notes: item.notes,
+    }));
+
+    const { error: itemsError } = await this.supabase
+      .from('quotation_items')
+      .insert(quotationItems);
+
+    if (itemsError) {
+      throw new BadRequestException(itemsError.message);
+    }
+
+    return updatedQuotation;
   }
 
   async approveQuotation(req: Request, quotationId: string) {

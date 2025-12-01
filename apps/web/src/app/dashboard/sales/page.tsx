@@ -139,8 +139,15 @@ export default function SalesPage() {
   });
 
   // Quotation form
-  const [showQuotationForm, setShowQuotationForm] = useState(false);
-  const [quotationForm, setQuotationForm] = useState({
+  const createDefaultQuotationForm = (): {
+    customer_id: string;
+    quotation_date: string;
+    valid_until: string;
+    payment_terms: string;
+    delivery_terms: string;
+    notes: string;
+    items: QuotationItem[];
+  } => ({
     customer_id: '',
     quotation_date: new Date().toISOString().split('T')[0],
     valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -149,6 +156,10 @@ export default function SalesPage() {
     notes: '',
     items: [] as QuotationItem[],
   });
+  const [showQuotationForm, setShowQuotationForm] = useState(false);
+  const [quotationForm, setQuotationForm] = useState(createDefaultQuotationForm);
+  const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null);
+  const [viewingQuotation, setViewingQuotation] = useState<any | null>(null);
 
   // Dispatch form
   const [showDispatchForm, setShowDispatchForm] = useState(false);
@@ -236,6 +247,11 @@ export default function SalesPage() {
     }
   };
 
+  const resetQuotationForm = () => {
+    setQuotationForm(createDefaultQuotationForm());
+    setEditingQuotationId(null);
+  };
+
   const fetchOrders = async () => {
     setLoading(true);
     setError(null);
@@ -312,27 +328,61 @@ export default function SalesPage() {
     }
   };
 
-  const handleCreateQuotation = async (e: React.FormEvent) => {
+  const handleSaveQuotation = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post('/sales/quotations', quotationForm);
+      if (editingQuotationId) {
+        await apiClient.put(`/sales/quotations/${editingQuotationId}`, quotationForm);
+        alert('Quotation updated successfully!');
+      } else {
+        await apiClient.post('/sales/quotations', quotationForm);
+        alert('Quotation created successfully!');
+      }
       setShowQuotationForm(false);
-      setQuotationForm({
-        customer_id: '',
-        quotation_date: new Date().toISOString().split('T')[0],
-        valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        payment_terms: '',
-        delivery_terms: '',
-        notes: '',
-        items: [],
-      });
+      resetQuotationForm();
       fetchQuotations();
     } catch (err: any) {
-      setError(err.message || 'Failed to create quotation');
+      setError(err.message || 'Failed to save quotation');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleViewQuotation = async (quotationId: string) => {
+    try {
+      const data = await apiClient.get(`/sales/quotations/${quotationId}`);
+      setViewingQuotation(data);
+    } catch (err: any) {
+      alert(err.message || 'Failed to load quotation');
+    }
+  };
+
+  const handleEditQuotation = async (quotationId: string) => {
+    try {
+      const data: any = await apiClient.get(`/sales/quotations/${quotationId}`);
+      setEditingQuotationId(quotationId);
+      setQuotationForm({
+        customer_id: data.customer_id || '',
+        quotation_date: data.quotation_date?.split('T')[0] || '',
+        valid_until: data.valid_until?.split('T')[0] || '',
+        payment_terms: data.payment_terms || '',
+        delivery_terms: data.delivery_terms || '',
+        notes: data.notes || '',
+        items: (data.quotation_items || []).map((item: any) => ({
+          item_id: item.item_id || '',
+          item_description: item.item_description || '',
+          quantity: Number(item.quantity) || 1,
+          unit_price: Number(item.unit_price) || 0,
+          discount_percentage:
+            item.discount_percentage !== undefined ? Number(item.discount_percentage) : 0,
+          tax_percentage: item.tax_percentage !== undefined ? Number(item.tax_percentage) : 18,
+        })),
+      });
+      setShowQuotationForm(true);
+    } catch (err: any) {
+      alert(err.message || 'Failed to load quotation for editing');
     }
   };
 
@@ -822,7 +872,10 @@ export default function SalesPage() {
           <div className="mb-4 flex justify-between items-center">
             <h2 className="text-lg font-semibold">Quotations</h2>
             <button
-              onClick={() => setShowQuotationForm(true)}
+              onClick={() => {
+                resetQuotationForm();
+                setShowQuotationForm(true);
+              }}
               className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
             >
               + Create Quotation
@@ -869,6 +922,20 @@ export default function SalesPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                        <button
+                          onClick={() => handleViewQuotation(quotation.id)}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          View
+                        </button>
+                        {quotation.status === 'DRAFT' && (
+                          <button
+                            onClick={() => handleEditQuotation(quotation.id)}
+                            className="text-amber-600 hover:text-amber-900"
+                          >
+                            Edit
+                          </button>
+                        )}
                         {quotation.status === 'DRAFT' && (
                           <button
                             onClick={async () => {
@@ -991,12 +1058,101 @@ export default function SalesPage() {
             </div>
           )}
 
+          {viewingQuotation && (
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">Quotation {viewingQuotation.quotation_number}</h3>
+                    <p className="text-sm text-gray-500">Status: {viewingQuotation.status}</p>
+                  </div>
+                  <button
+                    onClick={() => setViewingQuotation(null)}
+                    className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                    aria-label="Close quotation details"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 border rounded-lg p-4 bg-gray-50 mb-6">
+                  <div>
+                    <p className="text-xs uppercase text-gray-500">Customer</p>
+                    <p className="text-sm text-gray-900">{viewingQuotation.customer_name || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-gray-500">Quotation Date</p>
+                    <p className="text-sm text-gray-900">
+                      {new Date(viewingQuotation.quotation_date).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-gray-500">Valid Until</p>
+                    <p className="text-sm text-gray-900">
+                      {new Date(viewingQuotation.valid_until).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-gray-500">Net Amount</p>
+                    <p className="text-sm text-gray-900">₹{viewingQuotation.net_amount?.toLocaleString()}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Items</h4>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Discount %</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Line Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 bg-white">
+                        {(viewingQuotation.quotation_items || []).map((item: any) => (
+                          <tr key={item.id}>
+                            <td className="px-4 py-2 text-sm text-gray-900">{item.item_description || '—'}</td>
+                            <td className="px-4 py-2 text-sm text-gray-600">{item.quantity}</td>
+                            <td className="px-4 py-2 text-sm text-gray-600">₹{Number(item.unit_price).toLocaleString()}</td>
+                            <td className="px-4 py-2 text-sm text-gray-600">{item.discount_percentage ?? 0}%</td>
+                            <td className="px-4 py-2 text-sm text-gray-900">₹{Number(item.line_total).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                        {(viewingQuotation.quotation_items || []).length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
+                              No items available for this quotation.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="mt-6 text-right">
+                  <button
+                    onClick={() => setViewingQuotation(null)}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Quotation Form Modal */}
           {showQuotationForm && (
             <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
               <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-                <h3 className="text-lg font-semibold mb-4">Create Quotation</h3>
-                <form onSubmit={handleCreateQuotation}>
+                <h3 className="text-lg font-semibold mb-4">
+                  {editingQuotationId ? 'Edit Quotation' : 'Create Quotation'}
+                </h3>
+                <form onSubmit={handleSaveQuotation}>
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
@@ -1167,7 +1323,10 @@ export default function SalesPage() {
                   <div className="mt-6 flex justify-end space-x-3">
                     <button
                       type="button"
-                      onClick={() => setShowQuotationForm(false)}
+                      onClick={() => {
+                        resetQuotationForm();
+                        setShowQuotationForm(false);
+                      }}
                       className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
                     >
                       Cancel
@@ -1177,7 +1336,13 @@ export default function SalesPage() {
                       disabled={loading || quotationForm.items.length === 0}
                       className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
                     >
-                      {loading ? 'Creating...' : 'Create Quotation'}
+                      {loading
+                        ? editingQuotationId
+                          ? 'Updating...'
+                          : 'Creating...'
+                        : editingQuotationId
+                          ? 'Update Quotation'
+                          : 'Create Quotation'}
                     </button>
                   </div>
                 </form>
