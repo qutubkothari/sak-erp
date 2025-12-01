@@ -40,7 +40,10 @@ export class SalesService {
   async createCustomer(req: Request, customerData: any) {
     const { tenantId, userId } = req.user as any;
 
+    console.log('Creating customer with tenantId:', tenantId);
+    
     const customerCode = await this.generateCustomerCode(req);
+    console.log('Generated customer code:', customerCode);
 
     const customer = {
       tenant_id: tenantId,
@@ -64,25 +67,38 @@ export class SalesService {
       is_active: true,
     };
 
+    console.log('Inserting customer:', JSON.stringify(customer, null, 2));
+
     const { data, error } = await this.supabase
       .from('customers')
       .insert(customer)
       .select()
       .single();
 
-    if (error) throw new BadRequestException(error.message);
+    if (error) {
+      console.error('Customer creation error:', error);
+      throw new BadRequestException(error.message);
+    }
+    
+    console.log('Customer created successfully:', data);
     return data;
   }
 
   private async generateCustomerCode(req: Request): Promise<string> {
     const { tenantId } = req.user as any;
 
-    const { count } = await this.supabase
+    const { count, error } = await this.supabase
       .from('customers')
       .select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenantId);
 
-    return `CUST-${String((count || 0) + 1).padStart(5, '0')}`;
+    if (error) {
+      console.error('Error counting customers:', error);
+    }
+
+    const code = `CUST-${String((count || 0) + 1).padStart(5, '0')}`;
+    console.log('Generated customer code:', code, 'from count:', count);
+    return code;
   }
 
   // ==================== QUOTATIONS ====================
