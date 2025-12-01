@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
+import SearchableSelect from '../../../../components/SearchableSelect';
 
 type TabType = 'customers' | 'quotations' | 'orders' | 'dispatch' | 'warranties';
 
@@ -847,26 +848,25 @@ export default function SalesPage() {
                     </div>
                     {quotationForm.items.map((item, index) => (
                       <div key={index} className="grid grid-cols-6 gap-2 mb-2 p-3 border border-gray-200 rounded-lg">
-                        <select
-                          required
+                        <SearchableSelect
+                          options={items.map(i => ({
+                            value: i.id,
+                            label: i.code,
+                            subtitle: i.name,
+                          }))}
                           value={item.item_id}
-                          onChange={(e) => {
-                            const selectedItem = items.find(i => i.id === e.target.value);
-                            updateQuotationItem(index, 'item_id', e.target.value);
+                          onChange={(value, option) => {
+                            const selectedItem = items.find(i => i.id === value);
+                            updateQuotationItem(index, 'item_id', value);
                             if (selectedItem) {
                               updateQuotationItem(index, 'item_description', selectedItem.name || selectedItem.description || '');
                               updateQuotationItem(index, 'unit_price', selectedItem.selling_price || selectedItem.standard_cost || 0);
                             }
                           }}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm bg-white"
-                        >
-                          <option value="">Select Item</option>
-                          {items.map(i => (
-                            <option key={i.id} value={i.id}>
-                              {i.code} - {i.name}
-                            </option>
-                          ))}
-                        </select>
+                          placeholder="Search item..."
+                          required
+                          className="col-span-1"
+                        />
                         <input
                           type="text"
                           placeholder="Description"
