@@ -136,7 +136,7 @@ export class UidSupabaseService {
       console.log('Looking up vendor with ID:', uidData.supplier_id, 'for tenant:', tenantId);
       const { data: vendorData, error: vendorError } = await this.supabase
         .from('vendors')
-        .select('id, name, vendor_code')
+        .select('id, name, code')
         .eq('tenant_id', tenantId)
         .eq('id', uidData.supplier_id)
         .maybeSingle();
