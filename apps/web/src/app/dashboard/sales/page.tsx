@@ -95,13 +95,13 @@ interface Warranty {
 }
 
 interface UIDRecord {
-  id: string;
+  id?: string;
   uid: string;
-  item_id: string;
+  entityId: string;
   status: string;
   location?: string;
   grn_id?: string;
-  created_at: string;
+  created_at?: string;
 }
 
 export default function SalesPage() {

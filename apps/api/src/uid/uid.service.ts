@@ -132,7 +132,7 @@ export class UidService {
     }
 
     if (itemId) {
-      where.itemId = itemId;
+      where.entityId = itemId;
     }
 
     const uids = await this.prisma.uidRegistry.findMany({
@@ -140,11 +140,11 @@ export class UidService {
       select: {
         uid: true,
         entityType: true,
+        entityId: true,
         status: true,
         location: true,
         batchNumber: true,
         qualityStatus: true,
-        itemId: true,
         createdAt: true,
       },
       orderBy: {
