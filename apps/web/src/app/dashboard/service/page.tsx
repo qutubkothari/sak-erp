@@ -61,8 +61,9 @@ interface Customer {
 
 interface Item {
   id: string;
-  item_code: string;
-  item_description: string;
+  code: string;
+  name: string;
+  description?: string;
   category?: string;
 }
 
@@ -435,14 +436,14 @@ export default function ServicePage() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
                       <SearchableSelect
-                        options={items.map(i => ({ value: i.id, label: `${i.item_code} - ${i.item_description}` }))}
+                        options={items.map(i => ({ value: i.id, label: i.code, subtitle: i.name }))}
                         value={ticketForm.product_id}
                         onChange={(value) => {
                           const selectedItem = items.find(i => i.id === value);
                           setTicketForm({ 
                             ...ticketForm, 
                             product_id: value,
-                            product_name: selectedItem?.item_description || '' 
+                            product_name: selectedItem?.name || '' 
                           });
                           fetchAvailableUIDs(value);
                         }}
