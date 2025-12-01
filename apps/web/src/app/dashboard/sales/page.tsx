@@ -170,6 +170,7 @@ export default function SalesPage() {
   const fetchItems = async () => {
     try {
       const data = await apiClient.get<any[]>('/items');
+      console.log('Fetched items:', data);
       setItems(data);
     } catch (err: any) {
       console.error('Failed to fetch items:', err);
