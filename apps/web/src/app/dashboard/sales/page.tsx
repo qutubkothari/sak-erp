@@ -235,7 +235,9 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post('/sales/customers', customerForm);
+      console.log('Creating customer with data:', customerForm);
+      const response = await apiClient.post('/sales/customers', customerForm);
+      console.log('Customer created successfully:', response);
       setShowCustomerForm(false);
       setCustomerForm({
         customer_name: '',
@@ -257,7 +259,9 @@ export default function SalesPage() {
       });
       fetchCustomers();
     } catch (err: any) {
-      setError(err.message || 'Failed to create customer');
+      console.error('Full error object:', err);
+      console.error('Error response:', err.response?.data);
+      setError(err.response?.data?.message || err.message || 'Failed to create customer');
     } finally {
       setLoading(false);
     }
