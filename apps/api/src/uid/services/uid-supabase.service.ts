@@ -85,14 +85,7 @@ export class UidSupabaseService {
 
     let query = this.supabase
       .from('uid_registry')
-      .select(`
-        *,
-        items:item_id (
-          code,
-          name,
-          category
-        )
-      `)
+      .select('*')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false });
 
@@ -112,11 +105,35 @@ export class UidSupabaseService {
 
     if (error) throw new Error(error.message);
     
-    // Post-process to ensure items data is correctly formatted
-    const processedData = data?.map(uid => ({
-      ...uid,
-      items: uid.items || null
-    }));
+    // Manually fetch item details for each UID to avoid relationship issues
+    const processedData = [];
+    for (const uid of data || []) {
+      let itemDetails = null;
+      
+      // Try to fetch item details if item_id exists
+      if (uid.item_id) {
+        const { data: item } = await this.supabase
+          .from('items')
+          .select('code, name, category')
+          .eq('id', uid.item_id)
+          .maybeSingle();
+        itemDetails = item;
+      }
+      // Fallback: try entity_id if item_id doesn't exist
+      else if (uid.entity_id) {
+        const { data: item } = await this.supabase
+          .from('items')
+          .select('code, name, category')
+          .eq('id', uid.entity_id)
+          .maybeSingle();
+        itemDetails = item;
+      }
+      
+      processedData.push({
+        ...uid,
+        items: itemDetails
+      });
+    }
     
     return processedData;
   }
