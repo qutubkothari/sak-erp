@@ -100,6 +100,7 @@ export default function SalesPage() {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [dispatches, setDispatches] = useState<DispatchNote[]>([]);
   const [warranties, setWarranties] = useState<Warranty[]>([]);
+  const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -152,6 +153,7 @@ export default function SalesPage() {
   });
 
   useEffect(() => {
+    fetchItems(); // Fetch items on mount for all forms
     if (activeTab === 'customers') {
       fetchCustomers();
     } else if (activeTab === 'quotations') {
@@ -164,6 +166,15 @@ export default function SalesPage() {
       fetchWarranties();
     }
   }, [activeTab]);
+
+  const fetchItems = async () => {
+    try {
+      const data = await apiClient.get<any[]>('/items');
+      setItems(data);
+    } catch (err: any) {
+      console.error('Failed to fetch items:', err);
+    }
+  };
 
   const fetchCustomers = async () => {
     setLoading(true);
@@ -835,14 +846,26 @@ export default function SalesPage() {
                     </div>
                     {quotationForm.items.map((item, index) => (
                       <div key={index} className="grid grid-cols-6 gap-2 mb-2 p-3 border border-gray-200 rounded-lg">
-                        <input
-                          type="text"
-                          placeholder="Item ID"
+                        <select
                           required
                           value={item.item_id}
-                          onChange={(e) => updateQuotationItem(index, 'item_id', e.target.value)}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
+                          onChange={(e) => {
+                            const selectedItem = items.find(i => i.id === e.target.value);
+                            updateQuotationItem(index, 'item_id', e.target.value);
+                            if (selectedItem) {
+                              updateQuotationItem(index, 'item_description', selectedItem.item_name || selectedItem.description || '');
+                              updateQuotationItem(index, 'unit_price', selectedItem.sale_price || selectedItem.unit_cost || 0);
+                            }
+                          }}
+                          className="px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                        >
+                          <option value="">Select Item</option>
+                          {items.map(i => (
+                            <option key={i.id} value={i.id}>
+                              {i.item_code} - {i.item_name}
+                            </option>
+                          ))}
+                        </select>
                         <input
                           type="text"
                           placeholder="Description"
