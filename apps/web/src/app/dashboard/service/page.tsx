@@ -76,7 +76,6 @@ interface UIDRecord {
 }
 
 export default function ServicePage() {
-  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>('tickets');
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -267,7 +266,6 @@ export default function ServicePage() {
         specialization: '',
         contact_number: '',
         email: '',
-        is_active: true,
       });
       fetchTechnicians();
     } catch (err: any) {
@@ -316,6 +314,8 @@ export default function ServicePage() {
     };
     return colors[priority] || 'bg-gray-100 text-gray-800';
   };
+
+  const router = useRouter();
 
   return (
     <div className="p-6">
@@ -390,7 +390,6 @@ export default function ServicePage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Warranty</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -429,56 +428,6 @@ export default function ServicePage() {
                           <span className="text-gray-400">-</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => {
-                              setSelectedTicket(ticket);
-                              setShowTicketDetails(true);
-                            }}
-                            className="text-blue-600 hover:text-blue-800"
-                            title="View Details"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => {
-                              setSelectedTicket(ticket);
-                              setShowStatusModal(true);
-                            }}
-                            className="text-amber-600 hover:text-amber-800"
-                            title="Update Status"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
-                          </button>
-                          {ticket.status === 'OPEN' && (
-                            <button
-                              onClick={async () => {
-                                if (confirm('Are you sure you want to delete this ticket?')) {
-                                  try {
-                                    await apiClient.delete(`/service/tickets/${ticket.id}`);
-                                    fetchTickets();
-                                  } catch (err: any) {
-                                    setError(err.message);
-                                  }
-                                }
-                              }}
-                              className="text-red-600 hover:text-red-800"
-                              title="Delete"
-                            >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>d>
                     </tr>
                   ))}
                 </tbody>
@@ -637,143 +586,6 @@ export default function ServicePage() {
               </div>
             </div>
           )}
-
-          {/* Ticket Details Modal */}
-          {showTicketDetails && selectedTicket && (
-            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Ticket Details - {selectedTicket.ticket_number}</h3>
-                  <button onClick={() => setShowTicketDetails(false)} className="text-gray-500 hover:text-gray-700">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Customer</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedTicket.customer?.customer_name || '-'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Status</label>
-                    <span className={`mt-1 inline-block px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedTicket.status)}`}>
-                      {selectedTicket.status}
-                    </span>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Priority</label>
-                    <span className={`mt-1 inline-block px-2 py-1 text-xs font-semibold rounded-full ${getPriorityColor(selectedTicket.priority)}`}>
-                      {selectedTicket.priority}
-                    </span>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Service Type</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedTicket.service_type}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Product</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedTicket.product_name || '-'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">UID</label>
-                    <p className="mt-1 text-sm font-mono text-gray-900">{selectedTicket.uid || '-'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Reported By</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedTicket.reported_by || '-'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Contact</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedTicket.contact_number || '-'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Complaint Date</label>
-                    <p className="mt-1 text-sm text-gray-900">{new Date(selectedTicket.complaint_date).toLocaleDateString()}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Warranty Status</label>
-                    <p className="mt-1 text-sm text-gray-900">
-                      {selectedTicket.is_under_warranty ? (
-                        <span className="text-green-600">✓ Under Warranty</span>
-                      ) : (
-                        <span className="text-gray-600">Not Under Warranty</span>
-                      )}
-                    </p>
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-600">Complaint Description</label>
-                    <p className="mt-1 text-sm text-gray-900 bg-gray-50 p-3 rounded">{selectedTicket.complaint_description}</p>
-                  </div>
-                  {selectedTicket.service_location && (
-                    <div className="col-span-2">
-                      <label className="block text-sm font-medium text-gray-600">Service Location</label>
-                      <p className="mt-1 text-sm text-gray-900">{selectedTicket.service_location}</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-6 flex justify-end">
-                  <button
-                    onClick={() => setShowTicketDetails(false)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Update Status Modal */}
-          {showStatusModal && selectedTicket && (
-            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                <h3 className="text-lg font-semibold mb-4">Update Ticket Status</h3>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Current Status: 
-                    <span className={`ml-2 px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedTicket.status)}`}>
-                      {selectedTicket.status}
-                    </span>
-                  </label>
-                  <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    defaultValue={selectedTicket.status}
-                    onChange={async (e) => {
-                      try {
-                        await apiClient.put(`/service/tickets/${selectedTicket.id}`, { status: e.target.value });
-                        setShowStatusModal(false);
-                        setSelectedTicket(null);
-                        fetchTickets();
-                      } catch (err: any) {
-                        setError(err.message);
-                      }
-                    }}
-                  >
-                    <option value="OPEN">Open</option>
-                    <option value="ASSIGNED">Assigned</option>
-                    <option value="IN_PROGRESS">In Progress</option>
-                    <option value="PARTS_PENDING">Parts Pending</option>
-                    <option value="COMPLETED">Completed</option>
-                    <option value="CLOSED">Closed</option>
-                    <option value="CANCELLED">Cancelled</option>
-                  </select>
-                </div>
-                <div className="flex justify-end space-x-3">
-                  <button
-                    onClick={() => {
-                      setShowStatusModal(false);
-                      setSelectedTicket(null);
-                    }}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -805,7 +617,6 @@ export default function ServicePage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Completed</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -836,60 +647,6 @@ export default function ServicePage() {
                         >
                           {tech.is_active ? 'Active' : 'Inactive'}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => {
-                              setSelectedTechnician(tech);
-                              setShowTechnicianDetails(true);
-                            }}
-                            className="text-blue-600 hover:text-blue-800"
-                            title="View Details"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => {
-                              setSelectedTechnician(tech);
-                              setTechnicianForm({
-                                technician_name: tech.technician_name,
-                                specialization: tech.specialization || '',
-                                contact_number: tech.contact_number || '',
-                                email: tech.email || '',
-                                is_active: tech.is_active,
-                              });
-                              setShowEditTechnicianModal(true);
-                            }}
-                            className="text-amber-600 hover:text-amber-800"
-                            title="Edit"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={async () => {
-                              if (confirm(`Delete technician ${tech.technician_name}?`)) {
-                                try {
-                                  await apiClient.delete(`/service/technicians/${tech.id}`);
-                                  fetchTechnicians();
-                                } catch (err: any) {
-                                  setError(err.message);
-                                }
-                              }
-                            }}
-                            className="text-red-600 hover:text-red-800"
-                            title="Delete"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
                       </td>
                     </tr>
                   ))}
@@ -957,170 +714,6 @@ export default function ServicePage() {
                       className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
                     >
                       {loading ? 'Adding...' : 'Add Technician'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {/* Technician Details Modal */}
-          {showTechnicianDetails && selectedTechnician && (
-            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 max-w-2xl w-full">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Technician Details - {selectedTechnician.technician_code}</h3>
-                  <button onClick={() => setShowTechnicianDetails(false)} className="text-gray-500 hover:text-gray-700">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Name</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedTechnician.technician_name}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Code</label>
-                    <p className="mt-1 text-sm font-mono text-gray-900">{selectedTechnician.technician_code}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Specialization</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedTechnician.specialization || '-'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Contact Number</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedTechnician.contact_number || '-'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Email</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedTechnician.email || '-'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Status</label>
-                    <span className={`mt-1 inline-block px-2 py-1 text-xs font-semibold rounded-full ${
-                      selectedTechnician.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {selectedTechnician.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Total Assignments</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedTechnician.total_assignments}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Completed Services</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedTechnician.completed_services}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Average Rating</label>
-                    <p className="mt-1 text-sm text-gray-900">
-                      {selectedTechnician.average_rating > 0 ? `${selectedTechnician.average_rating.toFixed(1)} ⭐` : '-'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600">Join Date</label>
-                    <p className="mt-1 text-sm text-gray-900">
-                      {selectedTechnician.created_at ? new Date(selectedTechnician.created_at).toLocaleDateString() : '-'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-6 flex justify-end">
-                  <button
-                    onClick={() => setShowTechnicianDetails(false)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Edit Technician Modal */}
-          {showEditTechnicianModal && selectedTechnician && (
-            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 max-w-lg w-full">
-                <h3 className="text-lg font-semibold mb-4">Edit Technician</h3>
-                <form onSubmit={async (e) => {
-                  e.preventDefault();
-                  try {
-                    await apiClient.put(`/service/technicians/${selectedTechnician.id}`, technicianForm);
-                    setShowEditTechnicianModal(false);
-                    setSelectedTechnician(null);
-                    fetchTechnicians();
-                  } catch (err: any) {
-                    setError(err.message);
-                  }
-                }}>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-                      <input
-                        type="text"
-                        required
-                        value={technicianForm.technician_name}
-                        onChange={(e) => setTechnicianForm({ ...technicianForm, technician_name: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Specialization</label>
-                      <input
-                        type="text"
-                        value={technicianForm.specialization}
-                        onChange={(e) => setTechnicianForm({ ...technicianForm, specialization: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number</label>
-                      <input
-                        type="text"
-                        value={technicianForm.contact_number}
-                        onChange={(e) => setTechnicianForm({ ...technicianForm, contact_number: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                      <input
-                        type="email"
-                        value={technicianForm.email}
-                        onChange={(e) => setTechnicianForm({ ...technicianForm, email: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={technicianForm.is_active}
-                        onChange={(e) => setTechnicianForm({ ...technicianForm, is_active: e.target.checked })}
-                        className="h-4 w-4 text-amber-600 rounded"
-                      />
-                      <label className="ml-2 text-sm text-gray-700">Active</label>
-                    </div>
-                  </div>
-                  <div className="mt-6 flex justify-end space-x-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowEditTechnicianModal(false);
-                        setSelectedTechnician(null);
-                      }}
-                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
-                    >
-                      {loading ? 'Saving...' : 'Save Changes'}
                     </button>
                   </div>
                 </form>
