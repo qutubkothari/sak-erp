@@ -854,8 +854,8 @@ export default function SalesPage() {
                             const selectedItem = items.find(i => i.id === e.target.value);
                             updateQuotationItem(index, 'item_id', e.target.value);
                             if (selectedItem) {
-                              updateQuotationItem(index, 'item_description', selectedItem.item_name || selectedItem.description || '');
-                              updateQuotationItem(index, 'unit_price', selectedItem.sale_price || selectedItem.unit_cost || 0);
+                              updateQuotationItem(index, 'item_description', selectedItem.name || selectedItem.description || '');
+                              updateQuotationItem(index, 'unit_price', selectedItem.selling_price || selectedItem.standard_cost || 0);
                             }
                           }}
                           className="px-2 py-1 border border-gray-300 rounded text-sm bg-white"
@@ -863,7 +863,7 @@ export default function SalesPage() {
                           <option value="">Select Item</option>
                           {items.map(i => (
                             <option key={i.id} value={i.id}>
-                              {i.item_code} - {i.item_name}
+                              {i.code} - {i.name}
                             </option>
                           ))}
                         </select>
