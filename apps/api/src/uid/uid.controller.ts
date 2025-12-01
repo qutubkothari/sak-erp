@@ -1,35 +1,32 @@
-import { Controller, Get, Param, Query, UseGuards, Inject } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { UidService } from './uid.service';
 import { UidSupabaseService } from './services/uid-supabase.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('UID Tracking')
 @Controller('uid')
+@UseGuards(JwtAuthGuard)
 export class UidController {
   constructor(
     private uidService: UidService,
-    @Inject(UidSupabaseService) private uidSupabaseService: UidSupabaseService,
+    private uidSupabaseService: UidSupabaseService,
   ) {}
+
   @Get('trace/:uid')
   @ApiOperation({ summary: 'Get complete UID traceability report (full details)' })
-  async getUidTrace(@Param('uid') uid: string, @Query() req: any) {
-    // Simulate req.user for local testing; in production, use auth middleware
-    if (!req.user) req.user = { tenantId: req.tenantId || 'default', email: req.email || 'system' };
+  async getUidTrace(@Param('uid') uid: string, @Request() req: any) {
     return this.uidSupabaseService.getCompleteTrace(req, uid);
   }
 
   @Get()
   @ApiOperation({ summary: 'Get all UIDs (filterable for inspections)' })
   async getAllUids(
+    @Request() req: any,
     @Query('status') status?: string,
     @Query('entityType') entityType?: string,
     @Query('item_id') itemId?: string,
-    @Query() req?: any,
   ) {
-    // For now, create a mock req object if not provided
-    if (!req.user) {
-      req.user = { tenantId: req.tenantId || process.env.DEFAULT_TENANT_ID || 'default' };
-    }
     return this.uidSupabaseService.getAllUIDs(req, status, entityType, itemId);
   }
 
