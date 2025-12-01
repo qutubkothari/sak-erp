@@ -211,7 +211,9 @@ export default function ServicePage() {
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post('/service/tickets', ticketForm);
+      // Remove product_id before sending - backend only needs product_name
+      const { product_id, ...ticketData } = ticketForm;
+      await apiClient.post('/service/tickets', ticketData);
       setShowTicketForm(false);
       setTicketForm({
         customer_id: '',
