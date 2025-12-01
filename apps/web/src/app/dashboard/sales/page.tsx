@@ -1069,7 +1069,7 @@ export default function SalesPage() {
 
                     {quotationForm.items.length === 0 ? (
                       <div className="text-center py-8 text-gray-500 border-2 border-dashed border-gray-300 rounded-lg">
-                        <p className="text-sm">No items added yet. Click "+ Add Item" to start.</p>
+                        <p className="text-sm">No items added yet. Click &quot;+ Add Item&quot; to start.</p>
                       </div>
                     ) : (
                       quotationForm.items.map((item, index) => (
