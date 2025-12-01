@@ -213,7 +213,9 @@ export default function ServicePage() {
     try {
       // Remove product_id before sending - backend only needs product_name
       const { product_id, ...ticketData } = ticketForm;
-      await apiClient.post('/service/tickets', ticketData);
+      console.log('Submitting ticket data:', ticketData);
+      const response = await apiClient.post('/service/tickets', ticketData);
+      console.log('Ticket creation response:', response);
       setShowTicketForm(false);
       setTicketForm({
         customer_id: '',
@@ -231,6 +233,7 @@ export default function ServicePage() {
       });
       fetchTickets();
     } catch (err: any) {
+      console.error('Ticket creation error:', err);
       setError(err.message || 'Failed to create service ticket');
     } finally {
       setLoading(false);
