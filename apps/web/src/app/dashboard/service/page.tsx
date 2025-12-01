@@ -211,10 +211,17 @@ export default function ServicePage() {
     setLoading(true);
     setError(null);
     try {
-      // Remove product_id before sending - backend only needs product_name
+      // Remove product_id and clean up empty date fields before sending
       const { product_id, ...ticketData } = ticketForm;
-      console.log('Submitting ticket data:', ticketData);
-      const response = await apiClient.post('/service/tickets', ticketData);
+      
+      // Convert empty string dates to null for PostgreSQL
+      const cleanedData = {
+        ...ticketData,
+        expected_completion_date: ticketData.expected_completion_date || null,
+      };
+      
+      console.log('Submitting ticket data:', cleanedData);
+      const response = await apiClient.post('/service/tickets', cleanedData);
       console.log('Ticket creation response:', response);
       setShowTicketForm(false);
       setTicketForm({
