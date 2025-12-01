@@ -266,6 +266,7 @@ export default function ServicePage() {
         specialization: '',
         contact_number: '',
         email: '',
+        is_active: true,
       });
       fetchTechnicians();
     } catch (err: any) {
