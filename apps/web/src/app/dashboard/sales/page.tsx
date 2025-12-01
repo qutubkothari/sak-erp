@@ -1022,10 +1022,17 @@ export default function SalesPage() {
                           value={item.item_id}
                           onChange={(value, option) => {
                             const selectedItem = items.find(i => i.id === value);
-                            updateQuotationItem(index, 'item_id', value);
                             if (selectedItem) {
-                              updateQuotationItem(index, 'item_description', selectedItem.name || selectedItem.description || '');
-                              updateQuotationItem(index, 'unit_price', selectedItem.selling_price || selectedItem.standard_cost || 0);
+                              const newItems = [...quotationForm.items];
+                              newItems[index] = {
+                                ...newItems[index],
+                                item_id: value,
+                                item_description: selectedItem.name || selectedItem.description || '',
+                                unit_price: selectedItem.selling_price || selectedItem.standard_cost || 0,
+                              };
+                              setQuotationForm({ ...quotationForm, items: newItems });
+                            } else {
+                              updateQuotationItem(index, 'item_id', value);
                             }
                           }}
                           placeholder="Search item..."
