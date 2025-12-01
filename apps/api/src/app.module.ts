@@ -9,6 +9,8 @@ import { join } from 'path';
 
 // Core Modules
 import { PrismaModule } from './prisma/prisma.module';
+import { MigrationController } from './migration.controller';
+import { MigrationService } from './migration.service';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
@@ -95,7 +97,9 @@ import { AuditModule } from './audit/audit.module';
     NotificationModule,
     AuditModule,
   ],
+  controllers: [MigrationController],
   providers: [
+    MigrationService,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
