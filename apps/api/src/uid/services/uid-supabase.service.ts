@@ -723,27 +723,42 @@ export class UidSupabaseService {
   /**
    * Get all UIDs with filtering - for quality inspection form
    */
-  async getAllUIDs(req: any, status?: string, entityType?: string) {
-    const tenantId = req.user.tenantId;
+  async getAllUIDs(req: any, status?: string, entityType?: string, itemId?: string) {
+    const tenantId = req.user?.tenantId || req.tenantId;
+    
+    if (!tenantId) {
+      throw new Error('Tenant ID is required');
+    }
     
     let query = this.supabase
       .from('uid_registry')
-      .select('uid, entity_type, status, location, batch_number, quality_status, created_at')
+      .select('uid, entity_id, entity_type, status, location, batch_number, quality_status, created_at')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
       .limit(1000);
 
     if (status) {
-      query = query.eq('status', status);
+      // Support comma-separated statuses
+      const statuses = status.split(',').map(s => s.trim());
+      if (statuses.length === 1) {
+        query = query.eq('status', statuses[0]);
+      } else {
+        query = query.in('status', statuses);
+      }
     }
 
     if (entityType) {
       query = query.eq('entity_type', entityType);
     }
 
+    if (itemId) {
+      query = query.eq('entity_id', itemId);
+    }
+
     const { data, error } = await query;
 
     if (error) {
+      console.error('[getAllUIDs] Error:', error);
       throw new Error(`Failed to fetch UIDs: ${error.message}`);
     }
 

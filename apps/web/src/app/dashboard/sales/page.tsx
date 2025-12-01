@@ -97,7 +97,7 @@ interface Warranty {
 interface UIDRecord {
   id?: string;
   uid: string;
-  entityId: string;
+  entity_id: string;
   status: string;
   location?: string;
   grn_id?: string;

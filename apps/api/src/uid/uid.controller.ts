@@ -24,8 +24,13 @@ export class UidController {
     @Query('status') status?: string,
     @Query('entityType') entityType?: string,
     @Query('item_id') itemId?: string,
+    @Query() req?: any,
   ) {
-    return this.uidService.getAllUids(status, entityType, itemId);
+    // For now, create a mock req object if not provided
+    if (!req.user) {
+      req.user = { tenantId: req.tenantId || process.env.DEFAULT_TENANT_ID || 'default' };
+    }
+    return this.uidSupabaseService.getAllUIDs(req, status, entityType, itemId);
   }
 
   @Get(':uid')
