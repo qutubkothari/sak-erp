@@ -414,6 +414,19 @@ export class GrnService {
           .eq('id', grnItem.id);
         console.log(`Updated grn_item uid_count to ${uidsCreated.length}`);
       }
+
+      // Create stock entry for inventory tracking
+      await this.createStockEntry({
+        tenant_id: grn.tenant_id,
+        item_id: grnItem.item_id,
+        warehouse_id: grn.warehouse_id,
+        quantity: grnItem.accepted_qty,
+        available_quantity: grnItem.accepted_qty,
+        allocated_quantity: 0,
+        unit_price: grnItem.unit_price,
+        batch_number: grnItem.batch_number,
+        grn_reference: grn.grn_number
+      });
       
       return uidsCreated;
     } catch (error) {
@@ -432,6 +445,65 @@ export class GrnService {
 
     if (error) throw new BadRequestException(error.message);
     return { message: 'GRN deleted successfully' };
+  }
+
+  // Helper method to create stock entries
+  private async createStockEntry(stockData: any) {
+    try {
+      // Check if stock entry already exists
+      const { data: existingStock } = await this.supabase
+        .from('stock_entries')
+        .select('*')
+        .eq('tenant_id', stockData.tenant_id)
+        .eq('item_id', stockData.item_id)
+        .eq('warehouse_id', stockData.warehouse_id)
+        .eq('batch_number', stockData.batch_number || '')
+        .maybeSingle();
+
+      if (existingStock) {
+        // Update existing stock
+        const newQuantity = parseFloat(existingStock.quantity || 0) + parseFloat(stockData.quantity);
+        const newAvailable = parseFloat(existingStock.available_quantity || 0) + parseFloat(stockData.available_quantity);
+        
+        await this.supabase
+          .from('stock_entries')
+          .update({
+            quantity: newQuantity,
+            available_quantity: newAvailable,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingStock.id);
+        
+        console.log(`Updated existing stock entry for item ${stockData.item_id}`);
+      } else {
+        // Create new stock entry
+        const { error } = await this.supabase
+          .from('stock_entries')
+          .insert({
+            tenant_id: stockData.tenant_id,
+            item_id: stockData.item_id,
+            warehouse_id: stockData.warehouse_id,
+            quantity: stockData.quantity,
+            available_quantity: stockData.available_quantity,
+            allocated_quantity: stockData.allocated_quantity || 0,
+            unit_price: stockData.unit_price,
+            batch_number: stockData.batch_number,
+            metadata: {
+              grn_reference: stockData.grn_reference,
+              created_from: 'GRN_RECEIPT'
+            }
+          });
+
+        if (error) {
+          console.error('Error creating stock entry:', error);
+        } else {
+          console.log(`Created new stock entry for item ${stockData.item_id}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error in createStockEntry:', error);
+      // Don't throw - allow GRN to continue even if stock creation fails
+    }
   }
 
   async generateUIDs(tenantId: string, grnItemId: string, data: any) {

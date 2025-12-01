@@ -8,20 +8,22 @@ interface StockLevel {
   id: string;
   item_id: string;
   warehouse_id: string;
-  category: string;
   quantity: number;
-  reserved_quantity: number;
   available_quantity: number;
-  min_quantity: number;
-  reorder_point: number;
+  allocated_quantity: number;
+  unit_price?: number;
+  batch_number?: string;
   items: {
-    item_code: string;
-    item_name: string;
+    code: string;
+    name: string;
     uom: string;
+    category: string;
+    standard_cost?: number;
+    selling_price?: number;
   };
   warehouses: {
-    warehouse_code: string;
-    warehouse_name: string;
+    code: string;
+    name: string;
   };
 }
 
@@ -35,16 +37,16 @@ interface StockMovement {
   reference_number?: string;
   notes?: string;
   items: {
-    item_code: string;
-    item_name: string;
+    code: string;
+    name: string;
   };
   from_warehouse?: {
-    warehouse_code: string;
-    warehouse_name: string;
+    code: string;
+    name: string;
   };
   to_warehouse?: {
-    warehouse_code: string;
-    warehouse_name: string;
+    code: string;
+    name: string;
   };
 }
 
@@ -271,10 +273,10 @@ export default function InventoryPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Warehouse</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total Qty</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Reserved</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Available</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Reorder Point</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Allocated</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -294,40 +296,38 @@ export default function InventoryPage() {
                   stockLevels.map((stock) => (
                     <tr key={stock.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">{stock.items.item_name}</div>
-                        <div className="text-sm text-gray-500">{stock.items.item_code}</div>
+                        <div className="text-sm font-medium text-gray-900">{stock.items.name}</div>
+                        <div className="text-sm text-gray-500">{stock.items.code}</div>
+                        {stock.items.standard_cost && (
+                          <div className="text-xs text-green-600">Cost: ₹{stock.items.standard_cost.toFixed(2)}</div>
+                        )}
+                        {stock.items.selling_price && (
+                          <div className="text-xs text-blue-600">Price: ₹{stock.items.selling_price.toFixed(2)}</div>
+                        )}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900">{stock.warehouses.warehouse_name}</div>
-                        <div className="text-sm text-gray-500">{stock.warehouses.warehouse_code}</div>
+                        <div className="text-sm text-gray-900">{stock.warehouses.name}</div>
+                        <div className="text-sm text-gray-500">{stock.warehouses.code}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-2 py-1 text-xs rounded-full ${getCategoryColor(stock.category)}`}>
-                          {stock.category.replace('_', ' ')}
+                        <span className={`px-2 py-1 text-xs rounded-full ${getCategoryColor(stock.items.category)}`}>
+                          {stock.items.category.replace('_', ' ')}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right text-sm text-gray-900">
                         {stock.quantity} {stock.items.uom}
                       </td>
-                      <td className="px-6 py-4 text-right text-sm text-gray-500">
-                        {stock.reserved_quantity} {stock.items.uom}
-                      </td>
-                      <td className="px-6 py-4 text-right text-sm font-medium text-gray-900">
+                      <td className="px-6 py-4 text-right text-sm font-medium text-green-700">
                         {stock.available_quantity} {stock.items.uom}
                       </td>
                       <td className="px-6 py-4 text-right text-sm text-gray-500">
-                        {stock.reorder_point} {stock.items.uom}
+                        {stock.allocated_quantity} {stock.items.uom}
                       </td>
-                      <td className="px-6 py-4 text-center">
-                        {parseFloat(stock.available_quantity.toString()) <= parseFloat(stock.reorder_point.toString()) ? (
-                          <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
-                            Low Stock
-                          </span>
-                        ) : (
-                          <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
-                            Normal
-                          </span>
-                        )}
+                      <td className="px-6 py-4 text-right text-sm text-gray-900">
+                        {stock.unit_price ? `₹${stock.unit_price.toFixed(2)}` : '-'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {stock.batch_number || '-'}
                       </td>
                     </tr>
                   ))
@@ -382,14 +382,14 @@ export default function InventoryPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">{movement.items.item_name}</div>
-                      <div className="text-sm text-gray-500">{movement.items.item_code}</div>
+                      <div className="text-sm text-gray-900">{movement.items.name}</div>
+                      <div className="text-sm text-gray-500">{movement.items.code}</div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
-                      {movement.from_warehouse?.warehouse_name || '-'}
+                      {movement.from_warehouse?.name || '-'}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
-                      {movement.to_warehouse?.warehouse_name || '-'}
+                      {movement.to_warehouse?.name || '-'}
                     </td>
                     <td className="px-6 py-4 text-right text-sm text-gray-900">
                       {movement.quantity}

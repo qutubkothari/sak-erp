@@ -18,17 +18,20 @@ export class InventoryService {
     const { tenantId } = req.user as any;
 
     let query = this.supabase
-      .from('inventory_stock')
+      .from('stock_entries')
       .select(`
         *,
         items:item_id (
-          item_code: code,
-          item_name: name,
-          uom
+          code,
+          name,
+          uom,
+          category,
+          standard_cost,
+          selling_price
         ),
         warehouses:warehouse_id (
-          warehouse_code: code,
-          warehouse_name: name
+          code,
+          name
         )
       `)
       .eq('tenant_id', tenantId);
@@ -197,36 +200,39 @@ export class InventoryService {
 
     // Get current stock
     const { data: currentStock } = await this.supabase
-      .from('inventory_stock')
+      .from('stock_entries')
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('item_id', itemId)
       .eq('warehouse_id', warehouseId)
-      .eq('location_id', locationId || 'null')
       .maybeSingle();
 
     if (currentStock) {
       // Update existing stock
       const newQuantity = parseFloat(currentStock.quantity) + quantityChange;
+      const newAvailable = parseFloat(currentStock.available_quantity) + quantityChange;
       await this.supabase
-        .from('inventory_stock')
+        .from('stock_entries')
         .update({
           quantity: newQuantity,
-          last_movement_date: new Date().toISOString(),
+          available_quantity: newAvailable,
           updated_at: new Date().toISOString(),
         })
         .eq('id', currentStock.id);
     } else {
       // Create new stock record (for receipts)
       if (quantityChange > 0) {
-        await this.supabase.from('inventory_stock').insert({
+        await this.supabase.from('stock_entries').insert({
           tenant_id: tenantId,
           item_id: itemId,
           warehouse_id: warehouseId,
-          location_id: locationId,
-          category: category || 'RAW_MATERIAL',
           quantity: quantityChange,
-          last_movement_date: new Date().toISOString(),
+          available_quantity: quantityChange,
+          allocated_quantity: 0,
+          metadata: {
+            category: category || 'RAW_MATERIAL',
+            created_from: 'STOCK_MOVEMENT'
+          }
         });
       }
     }

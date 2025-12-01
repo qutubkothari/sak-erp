@@ -85,7 +85,14 @@ export class UidSupabaseService {
 
     let query = this.supabase
       .from('uid_registry')
-      .select('*')
+      .select(`
+        *,
+        items:entity_id (
+          code,
+          name,
+          category
+        )
+      `)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false });
 
@@ -104,7 +111,14 @@ export class UidSupabaseService {
     const { data, error } = await query;
 
     if (error) throw new Error(error.message);
-    return data;
+    
+    // Post-process to ensure items data is correctly formatted
+    const processedData = data?.map(uid => ({
+      ...uid,
+      items: uid.items || null
+    }));
+    
+    return processedData;
   }
 
   /**
