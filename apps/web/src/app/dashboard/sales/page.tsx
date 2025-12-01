@@ -431,10 +431,18 @@ export default function SalesPage() {
 
   const fetchSalesOrderItems = async (orderId: string) => {
     try {
+      console.log('Fetching SO items for order:', orderId);
       const data = await apiClient.get(`/sales/orders/${orderId}`);
-      setSalesOrderItems(data.items || []);
+      console.log('SO data received:', data);
+      const itemsArray = data.sales_order_items || data.items || [];
+      console.log('SO items extracted:', itemsArray);
+      setSalesOrderItems(itemsArray);
+      if (itemsArray.length === 0) {
+        alert('Warning: This sales order has no items. Please check the sales order.');
+      }
     } catch (err: any) {
       console.error('Failed to fetch SO items:', err);
+      alert('Failed to fetch sales order items: ' + err.message);
       setSalesOrderItems([]);
     }
   };
@@ -1270,6 +1278,15 @@ export default function SalesPage() {
                         + Add Item
                       </button>
                     </div>
+
+                    {salesOrderItems.length === 0 && (
+                      <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <p className="text-sm text-yellow-800">
+                          ⚠️ No items found in this sales order. The sales order may not have any items yet.
+                        </p>
+                      </div>
+                    )}
+
                     {dispatchForm.items.map((item, index) => (
                       <div key={index} className="grid grid-cols-5 gap-2 mb-2 p-3 border border-gray-200 rounded-lg">
                         <div>
@@ -1280,7 +1297,9 @@ export default function SalesPage() {
                             onChange={(e) => updateDispatchItem(index, 'sales_order_item_id', e.target.value)}
                             className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
                           >
-                            <option value="">Select Item</option>
+                            <option value="">
+                              {salesOrderItems.length === 0 ? 'No items available' : 'Select Item'}
+                            </option>
                             {salesOrderItems.map((soItem) => (
                               <option key={soItem.id} value={soItem.id}>
                                 {items.find(i => i.id === soItem.item_id)?.code || soItem.item_id} - Qty: {soItem.quantity - (soItem.dispatched_quantity || 0)}
