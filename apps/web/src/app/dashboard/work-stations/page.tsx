@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 
 interface WorkStation {
   id: string;
-  name: string;
-  code: string;
+  station_name: string;
+  station_code: string;
   station_type: string;
   capacity: number;
   is_active: boolean;
@@ -330,10 +330,10 @@ export default function WorkStationsPage() {
                 {workStations.map((station) => (
                   <tr key={station.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {station.code}
+                      {station.station_code}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">
-                      {station.name}
+                      {station.station_name}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {station.station_type}
