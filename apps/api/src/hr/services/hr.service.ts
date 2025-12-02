@@ -175,7 +175,8 @@ export class HrService {
   async createPayrollRun(tenantId: string, data: any) {
     const payrollData = {
       ...data,
-      tenant_id: tenantId
+      tenant_id: tenantId,
+      run_date: data.run_date || new Date().toISOString().split('T')[0]
     };
     const { data: result, error } = await this.supabase
       .from('payroll_runs')
