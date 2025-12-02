@@ -80,7 +80,7 @@ export class HrController {
   // Payslip Generation
   @Post('payroll/run/:runId/generate')
   generatePayslips(@Request() req: any, @Param('runId') runId: string) {
-    return this.hrService.generatePayslip(req.user.tenantId, { runId });
+    return this.hrService.generatePayslip(req.user.tenantId, { run_id: runId });
   }
   @Get('payroll/payslips')
   getPayslips(@Request() req: any, @Query('employeeId') employeeId?: string) {
