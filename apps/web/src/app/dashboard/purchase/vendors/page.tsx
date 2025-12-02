@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
-import { useSelection } from '../../../../../hooks/useSelection';
+import { useSelection } from '../../../../hooks/useSelection';
 
 interface Vendor {
   id: string;
