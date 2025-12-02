@@ -627,14 +627,20 @@ export class ProductionService {
       .from('production_orders')
       .select(`
         *,
-        item:items(id, code, name, description, uom),
-        production_assemblies(id, finished_product_uid, qc_status, assembly_date)
+        item:items(id, code, name, description, uom)
       `)
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
 
-    if (error) throw new NotFoundException('Production order not found');
+    if (error) {
+      console.error('[Production] Failed to fetch order', {
+        tenantId,
+        orderId: id,
+        error,
+      });
+      throw new NotFoundException('Production order not found');
+    }
     return data;
   }
 
