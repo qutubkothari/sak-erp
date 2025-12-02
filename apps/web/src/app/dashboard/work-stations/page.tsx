@@ -22,10 +22,10 @@ export default function WorkStationsPage() {
   // Form state
   const [formData, setFormData] = useState({
     name: '',
-    code: '',
-    station_type: 'MACHINING',
+    stationCode: '',
+    stationType: 'MACHINING',
     capacity: 1,
-    is_active: true,
+    isActive: true,
     description: '',
   });
 
@@ -79,8 +79,10 @@ export default function WorkStationsPage() {
 
     try {
       const token = localStorage.getItem('accessToken');
+      let response;
+      
       if (editingId) {
-        await fetch(`http://13.205.17.214:4000/api/v1/production/work-stations/${editingId}`, {
+        response = await fetch(`http://13.205.17.214:4000/api/v1/production/work-stations/${editingId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -88,9 +90,8 @@ export default function WorkStationsPage() {
           },
           body: JSON.stringify(formData),
         });
-        alert('Work station updated successfully');
       } else {
-        await fetch('http://13.205.17.214:4000/api/v1/production/work-stations', {
+        response = await fetch('http://13.205.17.214:4000/api/v1/production/work-stations', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -98,13 +99,19 @@ export default function WorkStationsPage() {
           },
           body: JSON.stringify(formData),
         });
-        alert('Work station created successfully');
       }
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      alert(editingId ? 'Work station updated successfully' : 'Work station created successfully');
       resetForm();
       fetchWorkStations();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save work station');
+      console.error('Save error:', error);
+      alert('Failed to save work station: ' + (error.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -145,10 +152,10 @@ export default function WorkStationsPage() {
   const resetForm = () => {
     setFormData({
       name: '',
-      code: '',
-      station_type: 'MACHINING',
+      stationCode: '',
+      stationType: 'MACHINING',
       capacity: 1,
-      is_active: true,
+      isActive: true,
       description: '',
     });
     setEditingId(null);
@@ -200,8 +207,8 @@ export default function WorkStationsPage() {
                 <input
                   type="text"
                   required
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                  value={formData.stationCode}
+                  onChange={(e) => setFormData({ ...formData, stationCode: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="e.g., WS-CNC-01"
                 />
@@ -213,8 +220,8 @@ export default function WorkStationsPage() {
                 </label>
                 <select
                   required
-                  value={formData.station_type}
-                  onChange={(e) => setFormData({ ...formData, station_type: e.target.value })}
+                  value={formData.stationType}
+                  onChange={(e) => setFormData({ ...formData, stationType: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   {stationTypes.map((type) => (
@@ -257,8 +264,8 @@ export default function WorkStationsPage() {
               <input
                 type="checkbox"
                 id="is_active"
-                checked={formData.is_active}
-                onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                checked={formData.isActive}
+                onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
                 className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
               />
               <label htmlFor="is_active" className="ml-2 text-sm text-gray-700">
