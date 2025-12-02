@@ -120,15 +120,30 @@ function PurchaseOrdersContent() {
       // Map PR items to PO items
       const poItems = prData.purchase_requisition_items?.map((item: any) => {
         console.log('Mapping PR item:', item);
+        
+        // Try to find item in items master to get actual price
+        let unitPrice = item.estimated_rate || 0;
+        if (item.item_id && items.length > 0) {
+          const masterItem = items.find(i => i.id === item.item_id);
+          if (masterItem) {
+            unitPrice = masterItem.standard_cost || masterItem.selling_price || unitPrice;
+            console.log(`Found price for ${item.item_code}: ${unitPrice}`);
+          }
+        }
+        
+        const quantity = item.requested_qty || 0;
+        const subtotal = quantity * unitPrice;
+        const totalWithTax = subtotal + (subtotal * 18 / 100);
+        
         return {
           itemId: item.item_id || '',
           itemCode: item.item_code || '',
           itemName: item.item_name || '',
           vendorId: '', // Will be set by master vendor selector
-          quantity: item.requested_qty || 0,
-          unitPrice: item.estimated_rate || 0,
+          quantity: quantity,
+          unitPrice: unitPrice,
           taxRate: 18, // Default GST rate
-          totalPrice: (item.requested_qty || 0) * (item.estimated_rate || 0),
+          totalPrice: totalWithTax,
           specifications: item.remarks || '',
         };
       }) || [];
