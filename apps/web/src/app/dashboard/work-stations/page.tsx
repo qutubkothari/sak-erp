@@ -47,17 +47,27 @@ export default function WorkStationsPage() {
     setLoading(true);
     try {
       const token = localStorage.getItem('accessToken');
+      console.log('Fetching work stations with token:', token ? 'present' : 'missing');
       const response = await fetch('http://13.205.17.214:4000/api/v1/production/work-stations', {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log('Response status:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API error response:', errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
       const data = await response.json();
+      console.log('Received data:', data);
       // Ensure data is always an array
       const stationsArray = Array.isArray(data) ? data : (data?.data ? data.data : []);
       setWorkStations(stationsArray);
     } catch (error) {
       console.error('Failed to fetch work stations:', error);
       setWorkStations([]);
-      alert('Failed to load work stations');
+      alert('Failed to load work stations: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setLoading(false);
     }
