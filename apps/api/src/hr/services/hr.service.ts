@@ -195,6 +195,27 @@ export class HrService {
 
   // Payslip Generation
   async generatePayslip(tenantId: string, data: any) {
+    // Check if payslips already exist for this payroll run
+    const { data: existingPayslips, error: checkError } = await this.supabase
+      .from('payslips')
+      .select('id')
+      .eq('payroll_run_id', data.run_id)
+      .limit(1);
+    
+    if (checkError) throw new Error(checkError.message);
+    
+    // If payslips already exist, just update the status and return
+    if (existingPayslips && existingPayslips.length > 0) {
+      const { error: updateError } = await this.supabase
+        .from('payroll_runs')
+        .update({ status: 'COMPLETED' })
+        .eq('id', data.run_id);
+      
+      if (updateError) throw new Error(updateError.message);
+      
+      return { message: 'Payroll run status updated to COMPLETED. Payslips already exist.' };
+    }
+
     // Get the payroll run details
     const { data: payrollRun, error: runError } = await this.supabase
       .from('payroll_runs')
