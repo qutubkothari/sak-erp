@@ -221,6 +221,34 @@ export default function ProductionPage() {
 
   const handleCompleteAssembly = async () => {
     try {
+      // Auto-select FIFO UIDs for each component
+      const selectedComponentUids: string[] = [];
+      
+      if (!selectedBOM || !selectedBOM.items) {
+        alert('No BOM selected');
+        return;
+      }
+
+      // For each BOM component, select required quantity of UIDs (FIFO)
+      for (const component of selectedBOM.items) {
+        const requiredQty = component.quantity * formData.quantity;
+        const availableForItem = availableUIDs[component.item.id] || [];
+        
+        if (availableForItem.length < requiredQty) {
+          alert(`Insufficient UIDs for ${component.item.name}. Need ${requiredQty}, have ${availableForItem.length}`);
+          return;
+        }
+
+        // Take first N UIDs (already FIFO sorted from API)
+        const selectedForItem = availableForItem.slice(0, Math.ceil(requiredQty)).map(u => u.uid);
+        selectedComponentUids.push(...selectedForItem);
+      }
+
+      if (selectedComponentUids.length === 0) {
+        alert('No component UIDs selected');
+        return;
+      }
+
       const token = localStorage.getItem('accessToken');
       const response = await fetch('http://13.205.17.214:4000/api/v1/production/assembly/complete', {
         method: 'POST',
@@ -228,18 +256,27 @@ export default function ProductionPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(assemblyData),
+        body: JSON.stringify({
+          productionOrderId: assemblyData.productionOrderId,
+          componentUids: selectedComponentUids,
+        }),
       });
 
       if (response.ok) {
         const result = await response.json();
-        alert(`Assembly completed! Finished Product UID: ${result.finishedUid}`);
+        alert(`✅ Assembly completed successfully!\n\nFinished Product UID: ${result.finishedUid}\n\nComponents consumed: ${selectedComponentUids.length}\nInventory updated automatically.`);
         setShowAssemblyModal(false);
         fetchOrders();
         setAssemblyData({ productionOrderId: '', componentUids: [''] });
+        setSelectedBOM(null);
+        setAvailableUIDs({});
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.message || 'Failed to complete assembly'}`);
       }
     } catch (error) {
       console.error('Error completing assembly:', error);
+      alert('Error completing assembly. Please try again.');
     }
   };
 
