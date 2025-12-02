@@ -91,6 +91,7 @@ export default function PurchaseRequisitionsPage() {
   const [useManualEntry, setUseManualEntry] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [itemsLoadError, setItemsLoadError] = useState<string | null>(null);
+  const [existingPONumber, setExistingPONumber] = useState<string | null>(null);
 
   useEffect(() => {
     fetchRequisitions();
@@ -201,12 +202,24 @@ export default function PurchaseRequisitionsPage() {
 
   const handleViewDetails = async (prId: string) => {
     setSelectedPR(null);
+    setExistingPONumber(null);
     setLoadingDetail(true);
     setShowDetailModal(true);
     try {
       const data = await apiClient.get(`/purchase/requisitions/${prId}`);
       console.log('PR Details Response:', data);
       setSelectedPR(data);
+      
+      // Check if PO already exists for this PR
+      const token = localStorage.getItem('accessToken');
+      const existingPOsResponse = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders?prId=${prId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const existingPOs = await existingPOsResponse.json();
+      
+      if (existingPOs && existingPOs.length > 0) {
+        setExistingPONumber(existingPOs[0].po_number);
+      }
     } catch (error) {
       console.error('Error fetching PR details:', error);
       alert('Failed to load PR details');
@@ -883,15 +896,21 @@ export default function PurchaseRequisitionsPage() {
                       </>
                     )}
                     {selectedPR.status === 'APPROVED' && (
-                      <button
-                        onClick={() => {
-                          setShowDetailModal(false);
-                          router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
-                        }}
-                        className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors"
-                      >
-                        Create PO from this PR
-                      </button>
+                      existingPONumber ? (
+                        <div className="px-6 py-2 bg-blue-50 text-blue-700 rounded-lg border border-blue-200">
+                          PO Already Created: {existingPONumber}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setShowDetailModal(false);
+                            router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
+                          }}
+                          className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors"
+                        >
+                          Create PO from this PR
+                        </button>
+                      )
                     )}
                     <button
                       onClick={() => setShowDetailModal(false)}

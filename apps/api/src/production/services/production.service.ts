@@ -35,13 +35,14 @@ export class ProductionService {
   async create(tenantId: string, userId: string, data: any) {
     const orderNumber = await this.generateOrderNumber(tenantId);
 
-    // Create production order (omit bom_id - not in legacy schema)
+    // Create production order with BOM reference
     const { data: order, error } = await this.supabase
       .from('production_orders')
       .insert({
         tenant_id: tenantId,
         order_number: orderNumber,
         item_id: data.itemId,
+        bom_id: data.bomId || null, // Save BOM reference for routing integration
         quantity: data.quantity,
         plant_code: data.plantCode || 'KOL',
         start_date: data.startDate,
