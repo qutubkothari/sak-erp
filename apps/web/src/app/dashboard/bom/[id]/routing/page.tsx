@@ -30,16 +30,40 @@ export default function BOMRoutingPage() {
   const router = useRouter();
   const params = useParams();
   
-  // Get BOM ID from URL - handle both 'id' and array format
-  const getBomId = () => {
-    if (!params) return null;
-    if (typeof params.id === 'string') return params.id;
-    if (Array.isArray(params.id)) return params.id[0];
+  // Extract BOM ID from params or URL pathname as fallback
+  const getBomId = (): string | null => {
+    console.log('Getting BOM ID - params:', params);
+    console.log('params.id type:', typeof params?.id);
+    console.log('params.id value:', params?.id);
+    
+    if (!params) {
+      console.log('No params object');
+      // Fallback: extract from URL pathname
+      const pathname = window.location.pathname;
+      console.log('Pathname:', pathname);
+      const match = pathname.match(/\/bom\/([^\/]+)\/routing/);
+      if (match) {
+        console.log('Extracted from pathname:', match[1]);
+        return match[1];
+      }
+      return null;
+    }
+    
+    if (typeof params.id === 'string') {
+      console.log('Returning string ID:', params.id);
+      return params.id;
+    }
+    
+    if (Array.isArray(params.id) && params.id.length > 0) {
+      console.log('Returning array ID[0]:', params.id[0]);
+      return params.id[0];
+    }
+    
+    console.log('No valid ID found in params');
     return null;
   };
   
-  const bomId = getBomId();
-
+  const [bomId, setBomId] = useState<string | null>(null);
   const [bom, setBom] = useState<BOM | null>(null);
   const [routingSteps, setRoutingSteps] = useState<RoutingStep[]>([]);
   const [workStations, setWorkStations] = useState<WorkStation[]>([]);
@@ -54,15 +78,22 @@ export default function BOMRoutingPage() {
     description: '',
   });
 
+  // Set bomId when params become available
   useEffect(() => {
-    console.log('Params object:', params);
-    console.log('BOM ID from params:', bomId);
-    console.log('URL:', window.location.href);
+    const id = getBomId();
+    console.log('useEffect - extracted BOM ID:', id);
+    setBomId(id);
+  }, [params]);
+
+  useEffect(() => {
+    console.log('Data fetch useEffect - bomId:', bomId);
     
     if (!bomId) {
-      alert('BOM ID is missing from URL. Params: ' + JSON.stringify(params));
+      console.log('No bomId available yet');
       return;
     }
+    
+    console.log('Fetching data for BOM ID:', bomId);
     fetchBOM();
     fetchRouting();
     fetchWorkStations();
