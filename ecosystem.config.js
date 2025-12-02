@@ -31,15 +31,15 @@ module.exports = {
     {
       name: 'sak-web',
       script: 'npm',
-      args: 'run dev',  // INTENTIONALLY DEV MODE - Production builds fail on t2.micro
+      args: 'start',  // PRODUCTION MODE - Now possible with t3.small (2GB RAM)
       cwd: '/home/ubuntu/sak-erp/apps/web',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '300M',
+      max_memory_restart: '800M',
       env: {
-        NODE_ENV: 'development',  // Keep as development
+        NODE_ENV: 'production',
         PORT: 3000
       },
       error_file: '/home/ubuntu/.pm2/logs/sak-web-error.log',
