@@ -583,7 +583,12 @@ export default function ProductionPage() {
                             Complete Assembly
                           </button>
                         )}
-                        <button className="text-orange-600 hover:text-orange-900 font-medium">View</button>
+                        <button 
+                          onClick={() => toggleOrderExpansion(order.id)}
+                          className="text-orange-600 hover:text-orange-900 font-medium"
+                        >
+                          {expandedOrders.has(order.id) ? 'Hide Details' : 'View Details'}
+                        </button>
                       </td>
                     </tr>
                     
