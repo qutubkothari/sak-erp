@@ -483,16 +483,22 @@ export default function BOMPage() {
                       console.log('[BOM] View Details clicked:', bom.id);
                       setSelectedBom(bom);
                     }}
-                    className="flex-1 bg-amber-100 text-amber-700 px-4 py-2 rounded hover:bg-amber-200"
+                    className="flex-1 bg-amber-100 text-amber-700 px-4 py-2 rounded hover:bg-amber-200 text-sm"
                   >
                     View Details
+                  </button>
+                  <button
+                    onClick={() => router.push(`/dashboard/bom/${bom.id}/routing`)}
+                    className="flex-1 bg-blue-100 text-blue-700 px-4 py-2 rounded hover:bg-blue-200 text-sm"
+                  >
+                    Routing
                   </button>
                   <button
                     onClick={() => {
                       console.log('[BOM] Generate PR clicked:', bom.id);
                       handleGeneratePR(bom.id);
                     }}
-                    className="flex-1 bg-green-100 text-green-700 px-4 py-2 rounded hover:bg-green-200"
+                    className="flex-1 bg-green-100 text-green-700 px-4 py-2 rounded hover:bg-green-200 text-sm"
                   >
                     Generate PR
                   </button>
