@@ -54,6 +54,8 @@ export class RoutingService {
     tenantId: string,
     dto: CreateProductionRoutingDto,
   ): Promise<ProductionRouting> {
+    console.log('[RoutingService] create called with:', { tenantId, dto });
+    
     // Verify BOM exists
     const { data: bom, error: bomError } = await this.supabase
       .from('bom')
@@ -61,6 +63,8 @@ export class RoutingService {
       .eq('tenant_id', tenantId)
       .eq('id', dto.bom_id)
       .single();
+
+    console.log('[RoutingService] BOM lookup result:', { bom, bomError });
 
     if (bomError || !bom) {
       throw new NotFoundException(`BOM with ID ${dto.bom_id} not found`);
