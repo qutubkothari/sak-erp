@@ -35,14 +35,13 @@ export class ProductionService {
   async create(tenantId: string, userId: string, data: any) {
     const orderNumber = await this.generateOrderNumber(tenantId);
 
-    // Create production order
+    // Create production order (omit bom_id - not in legacy schema)
     const { data: order, error } = await this.supabase
       .from('production_orders')
       .insert({
         tenant_id: tenantId,
         order_number: orderNumber,
         item_id: data.itemId,
-        bom_id: data.bomId,
         quantity: data.quantity,
         plant_code: data.plantCode || 'KOL',
         start_date: data.startDate,
