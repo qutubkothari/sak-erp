@@ -49,6 +49,25 @@ interface ProductionOrder {
   }>;
 }
 
+interface StationCompletion {
+  id: string;
+  routing_id: string;
+  quantity_completed: number;
+  quantity_rejected: number;
+  start_time: string;
+  end_time: string | null;
+  status: string;
+  routing: {
+    sequence: number;
+    operation_description: string;
+    standard_time_minutes: number;
+  };
+  work_station: {
+    name: string;
+    code: string;
+  };
+}
+
 export default function ProductionPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<ProductionOrder[]>([]);
@@ -57,6 +76,8 @@ export default function ProductionPage() {
   const [showAssemblyModal, setShowAssemblyModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState('ALL');
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [orderCompletions, setOrderCompletions] = useState<Record<string, StationCompletion[]>>({});
   
   // New state for BOM and UID selection
   const [availableBOMs, setAvailableBOMs] = useState<BOM[]>([]);
@@ -209,6 +230,36 @@ export default function ProductionPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchOrderCompletions = async (orderId: string) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/production/completions/order/${orderId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setOrderCompletions(prev => ({ ...prev, [orderId]: data }));
+      }
+    } catch (error) {
+      console.error('Error fetching order completions:', error);
+    }
+  };
+
+  const toggleOrderExpansion = async (orderId: string) => {
+    const newExpanded = new Set(expandedOrders);
+    if (newExpanded.has(orderId)) {
+      newExpanded.delete(orderId);
+    } else {
+      newExpanded.add(orderId);
+      // Fetch completions if not already loaded
+      if (!orderCompletions[orderId]) {
+        await fetchOrderCompletions(orderId);
+      }
+    }
+    setExpandedOrders(newExpanded);
   };
 
   const handleCreate = async () => {
@@ -436,96 +487,176 @@ export default function ProductionPage() {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
-                      {order.order_number}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">{order.item.name}</div>
-                      <div className="text-sm text-gray-500">{order.item.code}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {order.quantity} {order.item.uom}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {order.produced_quantity} / {order.quantity}
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
-                        <div
-                          className="bg-orange-600 h-2 rounded-full"
-                          style={{
-                            width: `${(order.produced_quantity / order.quantity) * 100}%`,
-                          }}
-                        />
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {order.production_assemblies.length > 0 ? (
-                        <div className="font-mono text-green-600">
-                          ✓ {order.production_assemblies.length} assemblies
+                  <>
+                    <tr key={order.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                        <div className="flex items-center">
+                          <button
+                            onClick={() => toggleOrderExpansion(order.id)}
+                            className="mr-2 text-gray-500 hover:text-gray-700"
+                          >
+                            {expandedOrders.has(order.id) ? '▼' : '▶'}
+                          </button>
+                          {order.order_number}
                         </div>
-                      ) : (
-                        <div className="text-gray-400">No assemblies</div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`font-semibold ${getPriorityColor(order.priority)}`}>
-                        {order.priority}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(order.status)}`}>
-                        {order.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                      {order.status === 'DRAFT' && (
-                        <button
-                          onClick={() => handleStartProduction(order.id)}
-                          className="text-orange-600 hover:text-orange-900 font-medium"
-                        >
-                          Start
-                        </button>
-                      )}
-                      {(order.status === 'RELEASED' || order.status === 'IN_PROGRESS') && (
-                        <button
-                          onClick={async () => {
-                            setSelectedOrder(order.id);
-                            setAssemblyData({ ...assemblyData, productionOrderId: order.id });
-                            
-                            // Fetch the production order's BOM details
-                            const token = localStorage.getItem('accessToken');
-                            const response = await fetch(`http://13.205.17.214:4000/api/v1/production/${order.id}`, {
-                              headers: { Authorization: `Bearer ${token}` },
-                            });
-                            if (response.ok) {
-                              const orderDetails = await response.json();
-                              if (orderDetails.bomId) {
-                                // Fetch BOM details
-                                const bomResponse = await fetch(`http://13.205.17.214:4000/api/v1/bom/${orderDetails.bomId}`, {
-                                  headers: { Authorization: `Bearer ${token}` },
-                                });
-                                if (bomResponse.ok) {
-                                  const bomData = await bomResponse.json();
-                                  setSelectedBOM(bomData);
-                                  setFormData({ ...formData, bomId: orderDetails.bomId, quantity: orderDetails.quantity });
-                                  // Fetch available UIDs
-                                  await fetchAvailableUIDsForBOM(orderDetails.bomId);
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-gray-900">{order.item.name}</div>
+                        <div className="text-sm text-gray-500">{order.item.code}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {order.quantity} {order.item.uom}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {order.produced_quantity} / {order.quantity}
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                          <div
+                            className="bg-orange-600 h-2 rounded-full"
+                            style={{
+                              width: `${(order.produced_quantity / order.quantity) * 100}%`,
+                            }}
+                          />
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {order.production_assemblies.length > 0 ? (
+                          <div className="font-mono text-green-600">
+                            ✓ {order.production_assemblies.length} assemblies
+                          </div>
+                        ) : (
+                          <div className="text-gray-400">No assemblies</div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`font-semibold ${getPriorityColor(order.priority)}`}>
+                          {order.priority}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(order.status)}`}>
+                          {order.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                        {order.status === 'DRAFT' && (
+                          <button
+                            onClick={() => handleStartProduction(order.id)}
+                            className="text-orange-600 hover:text-orange-900 font-medium"
+                          >
+                            Start
+                          </button>
+                        )}
+                        {(order.status === 'RELEASED' || order.status === 'IN_PROGRESS') && (
+                          <button
+                            onClick={async () => {
+                              setSelectedOrder(order.id);
+                              setAssemblyData({ ...assemblyData, productionOrderId: order.id });
+                              
+                              // Fetch the production order's BOM details
+                              const token = localStorage.getItem('accessToken');
+                              const response = await fetch(`http://13.205.17.214:4000/api/v1/production/${order.id}`, {
+                                headers: { Authorization: `Bearer ${token}` },
+                              });
+                              if (response.ok) {
+                                const orderDetails = await response.json();
+                                if (orderDetails.bomId) {
+                                  // Fetch BOM details
+                                  const bomResponse = await fetch(`http://13.205.17.214:4000/api/v1/bom/${orderDetails.bomId}`, {
+                                    headers: { Authorization: `Bearer ${token}` },
+                                  });
+                                  if (bomResponse.ok) {
+                                    const bomData = await bomResponse.json();
+                                    setSelectedBOM(bomData);
+                                    setFormData({ ...formData, bomId: orderDetails.bomId, quantity: orderDetails.quantity });
+                                    // Fetch available UIDs
+                                    await fetchAvailableUIDsForBOM(orderDetails.bomId);
+                                  }
                                 }
                               }
-                            }
-                            
-                            setShowAssemblyModal(true);
-                          }}
-                          className="text-green-600 hover:text-green-900 font-medium"
-                        >
-                          Complete Assembly
-                        </button>
-                      )}
-                      <button className="text-orange-600 hover:text-orange-900 font-medium">View</button>
-                    </td>
-                  </tr>
+                              
+                              setShowAssemblyModal(true);
+                            }}
+                            className="text-green-600 hover:text-green-900 font-medium"
+                          >
+                            Complete Assembly
+                          </button>
+                        )}
+                        <button className="text-orange-600 hover:text-orange-900 font-medium">View</button>
+                      </td>
+                    </tr>
+                    
+                    {/* Expanded Routing Progress */}
+                    {expandedOrders.has(order.id) && (
+                      <tr className="bg-blue-50">
+                        <td colSpan={8} className="px-6 py-4">
+                          <div className="pl-8">
+                            <h4 className="font-semibold text-gray-900 mb-3">Operation Progress</h4>
+                            {orderCompletions[order.id] && orderCompletions[order.id].length > 0 ? (
+                              <div className="space-y-2">
+                                {orderCompletions[order.id]
+                                  .sort((a, b) => a.routing.sequence - b.routing.sequence)
+                                  .map((completion) => (
+                                    <div key={completion.id} className="bg-white rounded-lg p-3 shadow-sm">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex-1">
+                                          <div className="flex items-center space-x-3">
+                                            <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded">
+                                              Op {completion.routing.sequence}
+                                            </span>
+                                            <span className="font-medium text-gray-900">
+                                              {completion.routing.operation_description}
+                                            </span>
+                                            <span className="text-sm text-gray-600">
+                                              @ {completion.work_station.name}
+                                            </span>
+                                          </div>
+                                          <div className="mt-2 flex items-center space-x-4 text-sm">
+                                            <span className="text-gray-600">
+                                              Completed: <span className="font-medium text-green-600">{completion.quantity_completed}</span>
+                                            </span>
+                                            {completion.quantity_rejected > 0 && (
+                                              <span className="text-gray-600">
+                                                Rejected: <span className="font-medium text-red-600">{completion.quantity_rejected}</span>
+                                              </span>
+                                            )}
+                                            <span className="text-gray-600">
+                                              Duration: <span className="font-medium">{completion.routing.standard_time_minutes} min std</span>
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <div className="ml-4">
+                                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                            completion.status === 'COMPLETED' 
+                                              ? 'bg-green-100 text-green-800'
+                                              : completion.status === 'IN_PROGRESS'
+                                              ? 'bg-blue-100 text-blue-800'
+                                              : 'bg-yellow-100 text-yellow-800'
+                                          }`}>
+                                            {completion.status}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      {completion.start_time && (
+                                        <div className="mt-2 text-xs text-gray-500">
+                                          Started: {new Date(completion.start_time).toLocaleString()}
+                                          {completion.end_time && ` • Ended: ${new Date(completion.end_time).toLocaleString()}`}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                              </div>
+                            ) : (
+                              <div className="text-center py-4 text-gray-500">
+                                No operations completed yet
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>
