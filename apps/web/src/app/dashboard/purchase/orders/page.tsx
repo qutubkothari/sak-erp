@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import DrawingManager from '../../../../components/DrawingManager';
+import { useSelection } from '../../../../../hooks/useSelection';
 
 interface PurchaseOrder {
   id: string;
@@ -44,6 +45,8 @@ function PurchaseOrdersContent() {
   const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [currentPrId, setCurrentPrId] = useState<string | null>(null);
+
+  const orderSelection = useSelection(orders);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -433,6 +436,22 @@ function PurchaseOrdersContent() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (!confirm(`Are you sure you want to delete ${orderSelection.selectedItems.length} purchase orders? This action cannot be undone.`)) return;
+
+    try {
+      await Promise.all(
+        orderSelection.selectedItems.map(order => apiClient.delete(`/purchase/orders/${order.id}`))
+      );
+      orderSelection.deselectAll();
+      fetchOrders();
+      setAlertMessage({ type: 'success', message: `${orderSelection.selectedItems.length} purchase orders deleted successfully` });
+    } catch (error) {
+      console.error('Error deleting purchase orders:', error);
+      setAlertMessage({ type: 'error', message: 'Failed to delete some purchase orders' });
+    }
+  };
+
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       DRAFT: 'bg-gray-100 text-gray-800',
@@ -460,12 +479,22 @@ function PurchaseOrdersContent() {
             <h1 className="text-4xl font-bold text-amber-900">Purchase Orders</h1>
             <p className="text-amber-700">Create and manage purchase orders to vendors</p>
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold"
-          >
-            + Create Purchase Order
-          </button>
+          <div className="flex gap-4">
+            {orderSelection.hasSelections && (
+              <button
+                onClick={handleDeleteAll}
+                className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold"
+              >
+                Delete Selected ({orderSelection.selectedItems.length})
+              </button>
+            )}
+            <button
+              onClick={() => setShowModal(true)}
+              className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold"
+            >
+              + Create Purchase Order
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -498,6 +527,29 @@ function PurchaseOrdersContent() {
               />
             </div>
           </div>
+          {orders.length > 0 && (
+            <div className="mt-4 flex items-center gap-4">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={orderSelection.isAllSelected}
+                  onChange={orderSelection.toggleSelectAll}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  Select All ({orders.length} orders)
+                </span>
+              </label>
+              {orderSelection.hasSelections && (
+                <button
+                  onClick={orderSelection.deselectAll}
+                  className="text-sm text-amber-600 hover:text-amber-800"
+                >
+                  Deselect All
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Orders List */}
@@ -514,6 +566,7 @@ function PurchaseOrdersContent() {
             <table className="w-full">
               <thead className="bg-amber-50">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase w-12"></th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">PO Number</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Vendor</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Order Date</th>
@@ -526,7 +579,15 @@ function PurchaseOrdersContent() {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-gray-50">
+                  <tr key={order.id} className={`hover:bg-gray-50 ${orderSelection.isSelected(order.id) ? 'bg-amber-50' : ''}`}>
+                    <td className="px-6 py-4">
+                      <input
+                        type="checkbox"
+                        checked={orderSelection.isSelected(order.id)}
+                        onChange={() => orderSelection.toggleSelection(order.id)}
+                        className="w-4 h-4"
+                      />
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{order.po_number}</td>
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900">{order.vendor.name}</div>

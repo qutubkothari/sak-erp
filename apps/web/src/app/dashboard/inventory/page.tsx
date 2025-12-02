@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
+import { useSelection } from '../../../../hooks/useSelection';
 
 interface StockLevel {
   id: string;
@@ -93,6 +94,11 @@ export default function InventoryPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
 
+  const stockSelection = useSelection(stockLevels);
+  const movementSelection = useSelection(movements);
+  const alertSelection = useSelection(alerts);
+  const demoSelection = useSelection(demoItems);
+
   useEffect(() => {
     fetchData();
   }, [activeTab, categoryFilter, showLowStockOnly]);
@@ -129,6 +135,50 @@ export default function InventoryPage() {
       fetchData();
     } catch (error) {
       console.error('Error acknowledging alert:', error);
+    }
+  };
+
+  const deleteStockEntries = async (ids: string[]) => {
+    if (!confirm(`Are you sure you want to delete ${ids.length} stock entries? This action cannot be undone.`)) return;
+    try {
+      await Promise.all(ids.map(id => apiClient.delete(`/inventory/stock/${id}`)));
+      stockSelection.deselectAll();
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting stock entries:', error);
+    }
+  };
+
+  const deleteMovements = async (ids: string[]) => {
+    if (!confirm(`Are you sure you want to delete ${ids.length} movements? This action cannot be undone.`)) return;
+    try {
+      await Promise.all(ids.map(id => apiClient.delete(`/inventory/movements/${id}`)));
+      movementSelection.deselectAll();
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting movements:', error);
+    }
+  };
+
+  const deleteAlerts = async (ids: string[]) => {
+    if (!confirm(`Are you sure you want to delete ${ids.length} alerts? This action cannot be undone.`)) return;
+    try {
+      await Promise.all(ids.map(id => apiClient.delete(`/inventory/alerts/${id}`)));
+      alertSelection.deselectAll();
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting alerts:', error);
+    }
+  };
+
+  const deleteDemoItems = async (ids: string[]) => {
+    if (!confirm(`Are you sure you want to delete ${ids.length} demo items? This action cannot be undone.`)) return;
+    try {
+      await Promise.all(ids.map(id => apiClient.delete(`/inventory/demo/${id}`)));
+      demoSelection.deselectAll();
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting demo items:', error);
     }
   };
 
@@ -266,9 +316,43 @@ export default function InventoryPage() {
 
           {/* Stock Table */}
           <div className="bg-white rounded-lg shadow overflow-hidden">
+            {stockLevels.length > 0 && (
+              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={stockSelection.isAllSelected}
+                      onChange={stockSelection.toggleSelectAll}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      Select All ({stockLevels.length} entries)
+                    </span>
+                  </label>
+                  {stockSelection.hasSelections && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => deleteStockEntries(Array.from(stockSelection.selectedIds))}
+                        className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                      >
+                        Delete Selected ({stockSelection.selectedItems.length})
+                      </button>
+                      <button
+                        onClick={stockSelection.deselectAll}
+                        className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm"
+                      >
+                        Deselect All
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-12"></th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Warehouse</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
@@ -294,7 +378,15 @@ export default function InventoryPage() {
                   </tr>
                 ) : (
                   stockLevels.map((stock) => (
-                    <tr key={stock.id} className="hover:bg-gray-50">
+                    <tr key={stock.id} className={`hover:bg-gray-50 ${stockSelection.isSelected(stock.id) ? 'bg-amber-50' : ''}`}>
+                      <td className="px-6 py-4">
+                        <input
+                          type="checkbox"
+                          checked={stockSelection.isSelected(stock.id)}
+                          onChange={() => stockSelection.toggleSelection(stock.id)}
+                          className="w-4 h-4"
+                        />
+                      </td>
                       <td className="px-6 py-4">
                         <div className="text-sm font-medium text-gray-900">{stock.items.name}</div>
                         <div className="text-sm text-gray-500">{stock.items.code}</div>
@@ -341,9 +433,43 @@ export default function InventoryPage() {
       {/* Movements Tab */}
       {activeTab === 'movements' && (
         <div className="bg-white rounded-lg shadow overflow-hidden">
+          {movements.length > 0 && (
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={movementSelection.isAllSelected}
+                    onChange={movementSelection.toggleSelectAll}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Select All ({movements.length} movements)
+                  </span>
+                </label>
+                {movementSelection.hasSelections && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => deleteMovements(Array.from(movementSelection.selectedIds))}
+                      className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                    >
+                      Delete Selected ({movementSelection.selectedItems.length})
+                    </button>
+                    <button
+                      onClick={movementSelection.deselectAll}
+                      className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm"
+                    >
+                      Deselect All
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-12"></th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Movement #</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
@@ -369,7 +495,15 @@ export default function InventoryPage() {
                 </tr>
               ) : (
                 movements.map((movement) => (
-                  <tr key={movement.id} className="hover:bg-gray-50">
+                  <tr key={movement.id} className={`hover:bg-gray-50 ${movementSelection.isSelected(movement.id) ? 'bg-amber-50' : ''}`}>
+                    <td className="px-6 py-4">
+                      <input
+                        type="checkbox"
+                        checked={movementSelection.isSelected(movement.id)}
+                        onChange={() => movementSelection.toggleSelection(movement.id)}
+                        className="w-4 h-4"
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900">{movement.movement_number}</div>
                       {movement.reference_number && (
@@ -414,7 +548,41 @@ export default function InventoryPage() {
 
       {/* Alerts Tab */}
       {activeTab === 'alerts' && (
-        <div className="space-y-4">
+        <div>
+          {alerts.length > 0 && (
+            <div className="mb-4 p-4 bg-white rounded-lg shadow">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={alertSelection.isAllSelected}
+                    onChange={alertSelection.toggleSelectAll}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Select All ({alerts.length} alerts)
+                  </span>
+                </label>
+                {alertSelection.hasSelections && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => deleteAlerts(Array.from(alertSelection.selectedIds))}
+                      className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                    >
+                      Delete Selected ({alertSelection.selectedItems.length})
+                    </button>
+                    <button
+                      onClick={alertSelection.deselectAll}
+                      className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm"
+                    >
+                      Deselect All
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <div className="space-y-4">
           {loading ? (
             <div className="text-center py-8 text-gray-500">Loading...</div>
           ) : alerts.length === 0 ? (
@@ -429,10 +597,17 @@ export default function InventoryPage() {
                   alert.severity === 'CRITICAL' ? 'border-red-500' :
                   alert.severity === 'HIGH' ? 'border-orange-500' :
                   alert.severity === 'MEDIUM' ? 'border-yellow-500' : 'border-amber-500'
-                }`}
+                } ${alertSelection.isSelected(alert.id) ? 'ring-2 ring-amber-500' : ''}`}
               >
                 <div className="flex items-start justify-between">
-                  <div className="flex-1">
+                  <div className="flex items-start gap-3 flex-1">
+                    <input
+                      type="checkbox"
+                      checked={alertSelection.isSelected(alert.id)}
+                      onChange={() => alertSelection.toggleSelection(alert.id)}
+                      className="w-4 h-4 mt-1"
+                    />
+                    <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <span className={`px-2 py-1 text-xs rounded-full ${getSeverityColor(alert.severity)}`}>
                         {alert.severity}
@@ -464,9 +639,43 @@ export default function InventoryPage() {
       {/* Demo Inventory Tab */}
       {activeTab === 'demo' && (
         <div className="bg-white rounded-lg shadow overflow-hidden">
+          {demoItems.length > 0 && (
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={demoSelection.isAllSelected}
+                    onChange={demoSelection.toggleSelectAll}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Select All ({demoItems.length} demo items)
+                  </span>
+                </label>
+                {demoSelection.hasSelections && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => deleteDemoItems(Array.from(demoSelection.selectedIds))}
+                      className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                    >
+                      Delete Selected ({demoSelection.selectedItems.length})
+                    </button>
+                    <button
+                      onClick={demoSelection.deselectAll}
+                      className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm"
+                    >
+                      Deselect All
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-12"></th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Demo ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">UID</th>
@@ -492,7 +701,15 @@ export default function InventoryPage() {
                 </tr>
               ) : (
                 demoItems.map((demo) => (
-                  <tr key={demo.id} className="hover:bg-gray-50">
+                  <tr key={demo.id} className={`hover:bg-gray-50 ${demoSelection.isSelected(demo.id) ? 'bg-amber-50' : ''}`}>
+                    <td className="px-6 py-4">
+                      <input
+                        type="checkbox"
+                        checked={demoSelection.isSelected(demo.id)}
+                        onChange={() => demoSelection.toggleSelection(demo.id)}
+                        className="w-4 h-4"
+                      />
+                    </td>
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">
                       {demo.demo_id}
                     </td>

@@ -49,6 +49,11 @@ export class InventoryController {
     return this.inventoryService.getStockLevels(req, filters);
   }
 
+  @Delete('stock/:id')
+  async deleteStockEntry(@Request() req: any, @Param('id') id: string) {
+    return this.inventoryService.deleteStockEntry(req, id);
+  }
+
   // Stock movements
   @Get('movements')
   async getStockMovements(@Request() req: any, @Query() filters: any) {
@@ -58,6 +63,11 @@ export class InventoryController {
   @Post('movements')
   async createStockMovement(@Request() req: any, @Body() movementData: any) {
     return this.inventoryService.createStockMovement(req, movementData);
+  }
+
+  @Delete('movements/:id')
+  async deleteStockMovement(@Request() req: any, @Param('id') id: string) {
+    return this.inventoryService.deleteStockMovement(req, id);
   }
 
   // Reservations
@@ -83,6 +93,11 @@ export class InventoryController {
     return this.inventoryService.acknowledgeAlert(req, alertId);
   }
 
+  @Delete('alerts/:id')
+  async deleteAlert(@Request() req: any, @Param('id') alertId: string) {
+    return this.inventoryService.deleteAlert(req, alertId);
+  }
+
   // Demo inventory
   @Get('demo')
   async getDemoInventory(@Request() req: any, @Query() filters: any) {
@@ -106,6 +121,11 @@ export class InventoryController {
     @Body() body: { sales_order_id: string }
   ) {
     return this.inventoryService.convertDemoToSale(req, demoId, body.sales_order_id);
+  }
+
+  @Delete('demo/:id')
+  async deleteDemoItem(@Request() req: any, @Param('id') id: string) {
+    return this.inventoryService.deleteDemoItem(req, id);
   }
 
   // Warehouses

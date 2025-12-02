@@ -759,4 +759,72 @@ export class InventoryService {
     if (error) throw new BadRequestException(error.message);
     return data;
   }
+
+  // Delete stock entry
+  async deleteStockEntry(req: Request, id: string) {
+    const { tenantId } = req.user as any;
+
+    const { data, error } = await this.supabase
+      .from('stock_entries')
+      .delete()
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Stock entry not found');
+    return data;
+  }
+
+  // Delete stock movement
+  async deleteStockMovement(req: Request, id: string) {
+    const { tenantId } = req.user as any;
+
+    const { data, error } = await this.supabase
+      .from('stock_movements')
+      .delete()
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Stock movement not found');
+    return data;
+  }
+
+  // Delete alert
+  async deleteAlert(req: Request, id: string) {
+    const { tenantId } = req.user as any;
+
+    const { data, error } = await this.supabase
+      .from('inventory_alerts')
+      .delete()
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Alert not found');
+    return data;
+  }
+
+  // Delete demo item
+  async deleteDemoItem(req: Request, id: string) {
+    const { tenantId } = req.user as any;
+
+    const { data, error } = await this.supabase
+      .from('demo_inventory')
+      .delete()
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Demo item not found');
+    return data;
+  }
 }
