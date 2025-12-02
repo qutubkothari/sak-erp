@@ -12,6 +12,9 @@ export interface ProductionRouting {
   cycle_time_minutes: number;
   qc_required: boolean;
   notes: string | null;
+  estimated_start_offset_hours: number; // Hours after previous operation
+  estimated_duration_hours: number; // Total time for this operation
+  manhours_required: number; // Labor hours needed
   created_at: string;
 }
 
@@ -24,6 +27,9 @@ export interface CreateProductionRoutingDto {
   cycle_time_minutes?: number;
   qc_required?: boolean;
   notes?: string;
+  estimated_start_offset_hours?: number;
+  estimated_duration_hours?: number;
+  manhours_required?: number;
 }
 
 export interface UpdateProductionRoutingDto {
@@ -34,6 +40,9 @@ export interface UpdateProductionRoutingDto {
   cycle_time_minutes?: number;
   qc_required?: boolean;
   notes?: string;
+  estimated_start_offset_hours?: number;
+  estimated_duration_hours?: number;
+  manhours_required?: number;
 }
 
 @Injectable()
@@ -109,6 +118,9 @@ export class RoutingService {
         cycle_time_minutes: dto.cycle_time_minutes || 0,
         qc_required: dto.qc_required !== undefined ? dto.qc_required : false,
         notes: dto.notes || null,
+        estimated_start_offset_hours: dto.estimated_start_offset_hours || 0,
+        estimated_duration_hours: dto.estimated_duration_hours || 1,
+        manhours_required: dto.manhours_required || 1,
       })
       .select()
       .single();

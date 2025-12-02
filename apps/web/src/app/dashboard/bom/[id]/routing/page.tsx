@@ -19,6 +19,9 @@ interface RoutingStep {
   setup_time_minutes: number;
   qc_required: boolean;
   notes: string | null;
+  estimated_start_offset_hours: number;
+  estimated_duration_hours: number;
+  manhours_required: number;
   work_station?: WorkStation;
 }
 
@@ -78,6 +81,9 @@ export default function BOMRoutingPage() {
     workStationId: '',
     estimatedTime: 60,
     description: '',
+    startOffsetHours: 0,
+    durationHours: 1,
+    manhoursRequired: 1,
   });
 
   // Set bomId when params become available
@@ -180,6 +186,9 @@ export default function BOMRoutingPage() {
         setup_time_minutes: 0,
         qc_required: false,
         notes: null,
+        estimated_start_offset_hours: formData.startOffsetHours,
+        estimated_duration_hours: formData.durationHours,
+        manhours_required: formData.manhoursRequired,
       } : {
         bom_id: bomId,
         work_station_id: formData.workStationId,
@@ -189,6 +198,9 @@ export default function BOMRoutingPage() {
         qc_required: false,
         notes: null,
         sequence_no: routingSteps.length + 1,
+        estimated_start_offset_hours: formData.startOffsetHours,
+        estimated_duration_hours: formData.durationHours,
+        manhours_required: formData.manhoursRequired,
       };
 
       console.log('Submitting routing payload:', payload);
@@ -239,6 +251,9 @@ export default function BOMRoutingPage() {
       workStationId: step.work_station_id,
       estimatedTime: step.cycle_time_minutes,
       description: '',
+      startOffsetHours: step.estimated_start_offset_hours || 0,
+      durationHours: step.estimated_duration_hours || 1,
+      manhoursRequired: step.manhours_required || 1,
     });
     setEditingId(step.id);
     setShowForm(true);
@@ -269,6 +284,9 @@ export default function BOMRoutingPage() {
       workStationId: '',
       estimatedTime: 60,
       description: '',
+      startOffsetHours: 0,
+      durationHours: 1,
+      manhoursRequired: 1,
     });
     setEditingId(null);
     setShowForm(false);
@@ -356,6 +374,65 @@ export default function BOMRoutingPage() {
               />
             </div>
 
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start After (hours) <span className="text-red-600">*</span>
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  step="0.5"
+                  value={formData.startOffsetHours}
+                  onChange={(e) =>
+                    setFormData({ ...formData, startOffsetHours: parseFloat(e.target.value) })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="0"
+                />
+                <p className="text-xs text-gray-500 mt-1">Hours after previous operation</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Duration (hours) <span className="text-red-600">*</span>
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="0.1"
+                  step="0.1"
+                  value={formData.durationHours}
+                  onChange={(e) =>
+                    setFormData({ ...formData, durationHours: parseFloat(e.target.value) })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="1"
+                />
+                <p className="text-xs text-gray-500 mt-1">Total operation time</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Manhours <span className="text-red-600">*</span>
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="0.1"
+                  step="0.1"
+                  value={formData.manhoursRequired}
+                  onChange={(e) =>
+                    setFormData({ ...formData, manhoursRequired: parseFloat(e.target.value) })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="1"
+                />
+                <p className="text-xs text-gray-500 mt-1">Labor hours needed</p>
+              </div>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
               <textarea
@@ -394,7 +471,7 @@ export default function BOMRoutingPage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Sequence
+                  Seq
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Operation
@@ -403,7 +480,13 @@ export default function BOMRoutingPage() {
                   Work Station
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Est. Time
+                  Start After
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Duration
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Manhours
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
@@ -431,12 +514,19 @@ export default function BOMRoutingPage() {
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">
                       <div className="font-medium">{step.operation_name}</div>
+                      <div className="text-xs text-gray-500">{step.cycle_time_minutes} min cycle time</div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">
                       {step.work_station?.station_code} - {step.work_station?.station_name}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {step.cycle_time_minutes} min
+                      {step.estimated_start_offset_hours || 0}h
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {step.estimated_duration_hours || 1}h
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {step.manhours_required || 1}h
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-3">
                       <button
