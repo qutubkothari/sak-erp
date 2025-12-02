@@ -55,7 +55,16 @@ export class ProductionService {
       .select()
       .single();
 
-    if (error) throw new BadRequestException(error.message);
+    if (error) {
+      console.error('[Production] Failed to create order', {
+        tenantId,
+        userId,
+        orderNumber,
+        payload: data,
+        error,
+      });
+      throw new BadRequestException(error.message);
+    }
 
     // If BOM provided, explode BOM and create component requirements
     if (data.bomId) {
@@ -528,11 +537,7 @@ export class ProductionService {
   async findAll(tenantId: string, filters?: any) {
     let query = this.supabase
       .from('production_orders')
-      .select(`
-        *,
-        item:items(id, code, name, uom),
-        production_assemblies(id, finished_product_uid, qc_status)
-      `)
+      .select('*')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false });
 
@@ -544,10 +549,74 @@ export class ProductionService {
       query = query.or(`order_number.ilike.%${filters.search}%`);
     }
 
-    const { data, error } = await query;
+    const { data: orders, error } = await query;
 
-    if (error) throw new BadRequestException(error.message);
-    return data;
+    if (error) {
+      console.error('[Production] Failed to fetch orders', {
+        tenantId,
+        filters,
+        error,
+      });
+      throw new BadRequestException(error.message);
+    }
+
+    if (!orders || orders.length === 0) {
+      return [];
+    }
+
+    const itemIds = Array.from(
+      new Set(orders.map(order => order.item_id).filter(Boolean)),
+    );
+    const orderIds = orders.map(order => order.id);
+
+    const itemsById: Record<string, any> = {};
+    if (itemIds.length > 0) {
+      const { data: items, error: itemsError } = await this.supabase
+        .from('items')
+        .select('id, code, name, uom')
+        .in('id', itemIds);
+
+      if (itemsError) {
+        console.error('[Production] Failed to fetch linked items', {
+          tenantId,
+          itemIds,
+          itemsError,
+        });
+      } else if (items) {
+        items.forEach(item => {
+          itemsById[item.id] = item;
+        });
+      }
+    }
+
+    const assembliesByOrderId: Record<string, any[]> = {};
+    if (orderIds.length > 0) {
+      const { data: assemblies, error: assembliesError } = await this.supabase
+        .from('production_assemblies')
+        .select('id, production_order_id, finished_product_uid, qc_status')
+        .in('production_order_id', orderIds);
+
+      if (assembliesError) {
+        console.error('[Production] Failed to fetch assemblies', {
+          tenantId,
+          orderIds,
+          assembliesError,
+        });
+      } else if (assemblies) {
+        assemblies.forEach(assembly => {
+          if (!assembliesByOrderId[assembly.production_order_id]) {
+            assembliesByOrderId[assembly.production_order_id] = [];
+          }
+          assembliesByOrderId[assembly.production_order_id].push(assembly);
+        });
+      }
+    }
+
+    return orders.map(order => ({
+      ...order,
+      item: order.item_id ? itemsById[order.item_id] || null : null,
+      production_assemblies: assembliesByOrderId[order.id] || [],
+    }));
   }
 
   /**

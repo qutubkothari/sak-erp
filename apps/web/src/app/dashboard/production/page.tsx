@@ -4,16 +4,20 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ItemSearch from '@/components/ItemSearch';
 
+interface BOMComponent {
+  id: string;
+  componentType: string;
+  quantity: number;
+  uom: string;
+  item: { id: string; code: string; name: string; };
+}
+
 interface BOM {
   id: string;
   version: string;
-  description: string;
-  status: string;
-  items: Array<{
-    item: { id: string; code: string; name: string; };
-    quantity: number;
-    uom: string;
-  }>;
+  description?: string;
+  status?: string;
+  items: BOMComponent[];
 }
 
 interface AvailableUID {
@@ -78,6 +82,37 @@ export default function ProductionPage() {
     componentUids: [''],
   });
 
+  const normalizeBomFromApi = (bom: any): BOM => {
+    const components = Array.isArray(bom?.bom_items) ? bom.bom_items : [];
+    const normalizedItems: BOMComponent[] = components
+      .map((component: any) => {
+        const resolvedItem = component?.item || component?.child_bom?.item;
+        if (!resolvedItem) {
+          return null;
+        }
+        return {
+          id: component.id,
+          componentType: component.component_type || 'ITEM',
+          quantity: Number(component.quantity) || 0,
+          uom: resolvedItem.uom || '',
+          item: {
+            id: resolvedItem.id,
+            code: resolvedItem.code || 'UNKNOWN',
+            name: resolvedItem.name || 'Unnamed Component',
+          },
+        };
+      })
+      .filter(Boolean) as BOMComponent[];
+
+    return {
+      id: bom.id,
+      version: String(bom.version ?? ''),
+      description: bom.notes || bom.description || '',
+      status: bom.is_active ? 'ACTIVE' : 'INACTIVE',
+      items: normalizedItems,
+    };
+  };
+
   // Fetch BOMs when item is selected
   const fetchBOMsForItem = async (itemId: string) => {
     try {
@@ -88,7 +123,10 @@ export default function ProductionPage() {
       
       if (response.ok) {
         const data = await response.json();
-        setAvailableBOMs(Array.isArray(data) ? data : []);
+        const normalized = Array.isArray(data)
+          ? data.map((bom: any) => normalizeBomFromApi(bom))
+          : [];
+        setAvailableBOMs(normalized);
       }
     } catch (error) {
       console.error('Error fetching BOMs:', error);
@@ -200,9 +238,17 @@ export default function ProductionPage() {
           priority: 'NORMAL',
           notes: '',
         });
+      } else {
+        const errorBody = await response
+          .json()
+          .catch(() => ({ message: 'Unexpected server error' }));
+        const message = errorBody?.message || errorBody?.error || 'Failed to create production order';
+        console.error('Error creating production order:', errorBody);
+        alert(`❌ Unable to create production order.\n${message}`);
       }
     } catch (error) {
       console.error('Error creating production order:', error);
+      alert('Unable to create production order. Please try again.');
     }
   };
 
