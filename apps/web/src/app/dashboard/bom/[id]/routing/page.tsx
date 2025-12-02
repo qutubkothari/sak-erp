@@ -29,7 +29,7 @@ interface BOM {
 export default function BOMRoutingPage() {
   const router = useRouter();
   const params = useParams();
-  const bomId = params.id as string;
+  const bomId = (params?.id || params?.['id']) as string;
 
   const [bom, setBom] = useState<BOM | null>(null);
   const [routingSteps, setRoutingSteps] = useState<RoutingStep[]>([]);
@@ -46,6 +46,11 @@ export default function BOMRoutingPage() {
   });
 
   useEffect(() => {
+    console.log('BOM ID from params:', bomId);
+    if (!bomId) {
+      alert('BOM ID is missing from URL');
+      return;
+    }
     fetchBOM();
     fetchRouting();
     fetchWorkStations();
@@ -111,6 +116,12 @@ export default function BOMRoutingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!bomId) {
+      alert('BOM ID is missing');
+      return;
+    }
+    
     setLoading(true);
 
     try {
@@ -123,6 +134,8 @@ export default function BOMRoutingPage() {
         description: formData.description || null,
         sequence: editingId ? undefined : routingSteps.length + 1,
       };
+
+      console.log('Submitting routing payload:', payload);
 
       let response;
       if (editingId) {
