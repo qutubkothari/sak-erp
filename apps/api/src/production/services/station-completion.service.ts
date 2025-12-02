@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 export interface StationCompletion {
   id: string;
@@ -38,7 +38,14 @@ export interface PauseOperationDto {
 
 @Injectable()
 export class StationCompletionService {
-  constructor(private readonly supabase: SupabaseClient) {}
+  private supabase: SupabaseClient;
+
+  constructor() {
+    this.supabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_KEY!,
+    );
+  }
 
   /**
    * Start an operation at a workstation

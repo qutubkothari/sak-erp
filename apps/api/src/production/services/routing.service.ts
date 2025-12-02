@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 export interface ProductionRouting {
   id: string;
@@ -36,7 +36,14 @@ export interface UpdateProductionRoutingDto {
 
 @Injectable()
 export class RoutingService {
-  constructor(private readonly supabase: SupabaseClient) {}
+  private supabase: SupabaseClient;
+
+  constructor() {
+    this.supabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_KEY!,
+    );
+  }
 
   /**
    * Create a new routing operation for a BOM
