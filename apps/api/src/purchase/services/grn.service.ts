@@ -291,6 +291,19 @@ export class GrnService {
           const acceptedQty = item.accepted_qty || item.accepted_quantity || 0;
           if (acceptedQty > 0) {
             await this.generateUIDsForItem(tenantId, userId, grn, item);
+            
+            // Ensure stock entry is created even if UID generation fails
+            await this.createStockEntry({
+              tenant_id: tenantId,
+              item_id: item.item_id,
+              warehouse_id: grn.warehouse_id,
+              quantity: acceptedQty,
+              available_quantity: acceptedQty,
+              allocated_quantity: 0,
+              unit_price: item.unit_price || 0,
+              batch_number: item.batch_number,
+              grn_reference: grn.grn_number
+            });
           } else {
             console.log('Skipping item due to accepted_qty <= 0. Value was:', acceptedQty);
           }
