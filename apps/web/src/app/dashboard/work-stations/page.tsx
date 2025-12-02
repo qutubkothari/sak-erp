@@ -119,11 +119,11 @@ export default function WorkStationsPage() {
 
   const handleEdit = (station: WorkStation) => {
     setFormData({
-      name: station.name,
-      code: station.code,
-      station_type: station.station_type,
-      capacity: station.capacity,
-      is_active: station.is_active,
+      stationName: station.station_name,
+      stationCode: station.station_code,
+      stationType: station.station_type,
+      capacity: station.capacity_per_hour,
+      isActive: station.is_active,
       description: station.description || '',
     });
     setEditingId(station.id);
