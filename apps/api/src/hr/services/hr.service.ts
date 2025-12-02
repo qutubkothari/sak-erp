@@ -61,9 +61,16 @@ export class HrService {
 
   // Attendance
   async recordAttendance(tenantId: string, data: any) {
+    // Convert time strings to timestamps
+    const attendanceData = {
+      ...data,
+      check_in_time: data.check_in_time ? `${data.attendance_date} ${data.check_in_time}:00` : null,
+      check_out_time: data.check_out_time ? `${data.attendance_date} ${data.check_out_time}:00` : null,
+    };
+
     const { data: result, error } = await this.supabase
       .from('attendance_records')
-      .insert([data])
+      .insert([attendanceData])
       .select();
     if (error) throw new Error(error.message);
     return result;
