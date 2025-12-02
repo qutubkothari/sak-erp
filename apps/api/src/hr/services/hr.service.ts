@@ -206,13 +206,10 @@ export class HrService {
       throw new Error('No employees found for this tenant');
     }
 
-    // Generate payslips for each employee
+    // Generate payslips for each employee with only the fields that exist in the table
     const payslips = employees.map(employee => ({
       employee_id: employee.id,
-      payroll_run_id: data.run_id,
-      gross_salary: employee.salary || 0,
-      deductions: 0,
-      net_salary: employee.salary || 0,
+      amount: employee.salary || 0,
       payment_date: new Date().toISOString().split('T')[0],
       tenant_id: tenantId
     }));
