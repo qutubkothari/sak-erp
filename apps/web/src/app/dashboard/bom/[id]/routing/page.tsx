@@ -12,11 +12,13 @@ interface WorkStation {
 
 interface RoutingStep {
   id: string;
-  sequence: number;
-  operation_description: string;
+  sequence_no: number;
+  operation_name: string;
   work_station_id: string;
-  standard_time_minutes: number;
+  cycle_time_minutes: number;
   setup_time_minutes: number;
+  qc_required: boolean;
+  notes: string | null;
   work_station?: WorkStation;
 }
 
@@ -173,16 +175,20 @@ export default function BOMRoutingPage() {
       // Map frontend field names to backend API field names
       const payload = editingId ? {
         work_station_id: formData.workStationId,
-        operation_description: formData.operationName,
-        standard_time_minutes: formData.estimatedTime,
+        operation_name: formData.operationName,
+        cycle_time_minutes: formData.estimatedTime,
         setup_time_minutes: 0,
+        qc_required: false,
+        notes: null,
       } : {
         bom_id: bomId,
         work_station_id: formData.workStationId,
-        operation_description: formData.operationName,
-        standard_time_minutes: formData.estimatedTime,
+        operation_name: formData.operationName,
+        cycle_time_minutes: formData.estimatedTime,
         setup_time_minutes: 0,
-        sequence: routingSteps.length + 1,
+        qc_required: false,
+        notes: null,
+        sequence_no: routingSteps.length + 1,
       };
 
       console.log('Submitting routing payload:', payload);
@@ -229,9 +235,9 @@ export default function BOMRoutingPage() {
 
   const handleEdit = (step: RoutingStep) => {
     setFormData({
-      operationName: step.operation_description,
+      operationName: step.operation_name,
       workStationId: step.work_station_id,
-      estimatedTime: step.standard_time_minutes,
+      estimatedTime: step.cycle_time_minutes,
       description: '',
     });
     setEditingId(step.id);
@@ -421,16 +427,16 @@ export default function BOMRoutingPage() {
                 routingSteps.map((step) => (
                   <tr key={step.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {step.sequence}
+                      {step.sequence_no}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">
-                      <div className="font-medium">{step.operation_description}</div>
+                      <div className="font-medium">{step.operation_name}</div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">
                       {step.work_station?.station_code} - {step.work_station?.station_name}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {step.standard_time_minutes} min
+                      {step.cycle_time_minutes} min
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-3">
                       <button

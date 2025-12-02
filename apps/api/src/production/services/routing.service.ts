@@ -5,33 +5,35 @@ export interface ProductionRouting {
   id: string;
   tenant_id: string;
   bom_id: string;
-  sequence: number;
+  sequence_no: number;
   work_station_id: string;
-  operation_description: string;
-  standard_time_minutes: number;
+  operation_name: string;
   setup_time_minutes: number;
-  is_active: boolean;
+  cycle_time_minutes: number;
+  qc_required: boolean;
+  notes: string | null;
   created_at: string;
-  updated_at: string;
 }
 
 export interface CreateProductionRoutingDto {
   bom_id: string;
-  sequence: number;
+  sequence_no: number;
   work_station_id: string;
-  operation_description: string;
-  standard_time_minutes?: number;
+  operation_name: string;
   setup_time_minutes?: number;
-  is_active?: boolean;
+  cycle_time_minutes?: number;
+  qc_required?: boolean;
+  notes?: string;
 }
 
 export interface UpdateProductionRoutingDto {
-  sequence?: number;
+  sequence_no?: number;
   work_station_id?: string;
-  operation_description?: string;
-  standard_time_minutes?: number;
+  operation_name?: string;
   setup_time_minutes?: number;
-  is_active?: boolean;
+  cycle_time_minutes?: number;
+  qc_required?: boolean;
+  notes?: string;
 }
 
 @Injectable()
@@ -82,12 +84,12 @@ export class RoutingService {
       .select('id')
       .eq('tenant_id', tenantId)
       .eq('bom_id', dto.bom_id)
-      .eq('sequence', dto.sequence)
+      .eq('sequence_no', dto.sequence_no)
       .maybeSingle();
 
     if (existing) {
       throw new BadRequestException(
-        `Sequence ${dto.sequence} already exists for this BOM`,
+        `Sequence ${dto.sequence_no} already exists for this BOM`,
       );
     }
 
@@ -96,12 +98,13 @@ export class RoutingService {
       .insert({
         tenant_id: tenantId,
         bom_id: dto.bom_id,
-        sequence: dto.sequence,
+        sequence_no: dto.sequence_no,
         work_station_id: dto.work_station_id,
-        operation_description: dto.operation_description,
-        standard_time_minutes: dto.standard_time_minutes || 0,
+        operation_name: dto.operation_name,
         setup_time_minutes: dto.setup_time_minutes || 0,
-        is_active: dto.is_active !== undefined ? dto.is_active : true,
+        cycle_time_minutes: dto.cycle_time_minutes || 0,
+        qc_required: dto.qc_required !== undefined ? dto.qc_required : false,
+        notes: dto.notes || null,
       })
       .select()
       .single();
@@ -122,7 +125,7 @@ export class RoutingService {
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('bom_id', bomId)
-      .order('sequence', { ascending: true });
+      .order('sequence_no', { ascending: true });
 
     if (error) {
       throw new BadRequestException(`Failed to fetch routing: ${error.message}`);
@@ -141,7 +144,7 @@ export class RoutingService {
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('bom_id', bomId)
-      .order('sequence', { ascending: true });
+      .order('sequence_no', { ascending: true});
 
     if (routingError) {
       throw new BadRequestException(`Failed to fetch routing: ${routingError.message}`);
@@ -217,29 +220,26 @@ export class RoutingService {
     }
 
     // If changing sequence, check for conflicts
-    if (dto.sequence !== undefined && dto.sequence !== existing.sequence) {
+    if (dto.sequence_no !== undefined && dto.sequence_no !== existing.sequence_no) {
       const { data: conflict } = await this.supabase
         .from('production_routing')
         .select('id')
         .eq('tenant_id', tenantId)
         .eq('bom_id', existing.bom_id)
-        .eq('sequence', dto.sequence)
+        .eq('sequence_no', dto.sequence_no)
         .neq('id', id)
         .maybeSingle();
 
       if (conflict) {
         throw new BadRequestException(
-          `Sequence ${dto.sequence} already exists for this BOM`,
+          `Sequence ${dto.sequence_no} already exists for this BOM`,
         );
       }
     }
 
     const { data, error } = await this.supabase
       .from('production_routing')
-      .update({
-        ...dto,
-        updated_at: new Date().toISOString(),
-      })
+      .update(dto)
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .select()
@@ -324,12 +324,13 @@ export class RoutingService {
     const newRoutings = sourceRouting.map((r) => ({
       tenant_id: tenantId,
       bom_id: targetBomId,
-      sequence: r.sequence,
+      sequence_no: r.sequence_no,
       work_station_id: r.work_station_id,
-      operation_description: r.operation_description,
-      standard_time_minutes: r.standard_time_minutes,
+      operation_name: r.operation_name,
       setup_time_minutes: r.setup_time_minutes,
-      is_active: r.is_active,
+      cycle_time_minutes: r.cycle_time_minutes,
+      qc_required: r.qc_required,
+      notes: r.notes,
     }));
 
     const { data, error } = await this.supabase
@@ -372,7 +373,7 @@ export class RoutingService {
     const updates = routingIds.map((id, index) =>
       this.supabase
         .from('production_routing')
-        .update({ sequence: (index + 1) * 10, updated_at: new Date().toISOString() })
+        .update({ sequence_no: (index + 1) * 10 })
         .eq('tenant_id', tenantId)
         .eq('id', id),
     );
