@@ -237,9 +237,22 @@ export class HrService {
       throw new Error('No employees found for this tenant');
     }
 
+    // Get salary components for all employees
+    const { data: salaryComponents, error: salError } = await this.supabase
+      .from('salary_components')
+      .select('*')
+      .eq('tenant_id', tenantId);
+    
+    if (salError) throw new Error(salError.message);
+
     // Generate payslips for each employee with correct schema
     const payslips = employees.map((employee, index) => {
-      const grossSalary = employee.basic_salary || employee.salary || 0;
+      // Calculate gross salary from salary components
+      const employeeSalaryComponents = salaryComponents?.filter(
+        sc => sc.employee_id === employee.id && sc.component_type === 'BASIC'
+      ) || [];
+      
+      const grossSalary = employeeSalaryComponents.reduce((sum, sc) => sum + (parseFloat(sc.amount) || 0), 0);
       const totalDeductions = 0;
       const netSalary = grossSalary - totalDeductions;
       
