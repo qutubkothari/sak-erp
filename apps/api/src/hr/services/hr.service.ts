@@ -14,9 +14,13 @@ export class HrService {
 
   // Employee CRUD
   async createEmployee(tenantId: string, data: any) {
+    const employeeData = {
+      ...data,
+      tenant_id: tenantId
+    };
     const { data: result, error } = await this.supabase
       .from('employees')
-      .insert([data])
+      .insert([employeeData])
       .select();
     if (error) throw new Error(error.message);
     return result;
@@ -64,6 +68,7 @@ export class HrService {
     // Convert time strings to timestamps
     const attendanceData = {
       ...data,
+      tenant_id: tenantId,
       check_in_time: data.check_in_time ? `${data.attendance_date} ${data.check_in_time}:00` : null,
       check_out_time: data.check_out_time ? `${data.attendance_date} ${data.check_out_time}:00` : null,
     };
@@ -96,9 +101,13 @@ export class HrService {
 
   // Leave Requests
   async applyLeave(tenantId: string, data: any) {
+    const leaveData = {
+      ...data,
+      tenant_id: tenantId
+    };
     const { data: result, error } = await this.supabase
       .from('leave_requests')
-      .insert([data])
+      .insert([leaveData])
       .select();
     if (error) throw new Error(error.message);
     return result;
@@ -137,9 +146,13 @@ export class HrService {
 
   // Salary Components
   async addSalaryComponent(tenantId: string, data: any) {
+    const componentData = {
+      ...data,
+      tenant_id: tenantId
+    };
     const { data: result, error } = await this.supabase
       .from('salary_components')
-      .insert([data])
+      .insert([componentData])
       .select();
     if (error) throw new Error(error.message);
     return result;
@@ -160,9 +173,13 @@ export class HrService {
 
   // Payroll Run
   async createPayrollRun(tenantId: string, data: any) {
+    const payrollData = {
+      ...data,
+      tenant_id: tenantId
+    };
     const { data: result, error } = await this.supabase
       .from('payroll_runs')
-      .insert([data])
+      .insert([payrollData])
       .select();
     if (error) throw new Error(error.message);
     return result;
@@ -177,9 +194,13 @@ export class HrService {
 
   // Payslip Generation
   async generatePayslip(tenantId: string, data: any) {
+    const payslipData = {
+      ...data,
+      tenant_id: tenantId
+    };
     const { data: result, error } = await this.supabase
       .from('payslips')
-      .insert([data])
+      .insert([payslipData])
       .select();
     if (error) throw new Error(error.message);
     return result;
