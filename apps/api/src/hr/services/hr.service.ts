@@ -241,7 +241,7 @@ export class HrService {
     const { data: salaryComponents, error: salError } = await this.supabase
       .from('salary_components')
       .select('*')
-      .eq('tenant_id', tenantId);
+      .in('employee_id', employees.map(e => e.id));
     
     if (salError) throw new Error(salError.message);
 
