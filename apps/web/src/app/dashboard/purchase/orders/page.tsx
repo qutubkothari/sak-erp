@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import DrawingManager from '../../../../components/DrawingManager';
-import { useSelection } from '../../../../../hooks/useSelection';
+import { useSelection } from '../../../../hooks/useSelection';
 
 interface PurchaseOrder {
   id: string;
