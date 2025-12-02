@@ -122,7 +122,7 @@ export default function WorkStationsPage() {
       stationName: station.station_name,
       stationCode: station.station_code,
       stationType: station.station_type,
-      capacity: station.capacity_per_hour,
+      capacity: station.capacity,
       isActive: station.is_active,
       description: station.description || '',
     });

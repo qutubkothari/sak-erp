@@ -109,19 +109,6 @@ function PurchaseOrdersContent() {
       setLoadingPR(true);
       console.log('Loading PR data for ID:', prId);
       
-      // Check if PO already exists for this PR
-      const token = localStorage.getItem('accessToken');
-      const existingPOsResponse = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders?prId=${prId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const existingPOs = await existingPOsResponse.json();
-      
-      if (existingPOs && existingPOs.length > 0) {
-        setAlertMessage({ type: 'error', message: `A Purchase Order (${existingPOs[0].po_number}) already exists for this PR. Cannot create duplicate PO.` });
-        setLoadingPR(false);
-        return;
-      }
-      
       const prData = await apiClient.get(`/purchase/requisitions/${prId}`);
       console.log('PR Data received:', prData);
       console.log('PR Items:', prData.purchase_requisition_items);
@@ -154,7 +141,7 @@ function PurchaseOrdersContent() {
 
       // Open modal automatically
       setShowModal(true);
-      setAlertMessage({ type: 'success', message: `PO form pre-filled with ${poItems.length} items from PR ${prData.pr_number}` });
+      setAlertMessage({ type: 'success', message: `PO form pre-filled with ${poItems.length} items from PR ${prData.pr_number}. You can select vendor and create PO for specific items.` });
     } catch (error) {
       console.error('Error loading PR data:', error);
       setAlertMessage({ type: 'error', message: 'Failed to load PR data. Please try again.' });
