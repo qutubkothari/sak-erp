@@ -15,53 +15,7 @@ export class ProductionController {
     private readonly stationCompletionService: StationCompletionService,
   ) {}
 
-  @Post()
-  create(@Request() req: any, @Body() createDto: any) {
-    return this.productionService.create(req.user.tenantId, req.user.userId, createDto);
-  }
-
-  @Get()
-  findAll(@Request() req: any, @Query() filters: any) {
-    return this.productionService.findAll(req.user.tenantId, filters);
-  }
-
-  @Get('available-uids/:bomId')
-  getAvailableUIDs(@Request() req: any, @Param('bomId') bomId: string) {
-    return this.productionService.getAvailableUIDs(req.user.tenantId, bomId);
-  }
-
-  @Get(':id')
-  findOne(@Request() req: any, @Param('id') id: string) {
-    return this.productionService.findOne(req.user.tenantId, id);
-  }
-
-  @Put(':id/start')
-  startProduction(@Request() req: any, @Param('id') id: string) {
-    return this.productionService.startProduction(req.user.tenantId, id, req.user.userId);
-  }
-
-  @Post('assembly/complete')
-  completeAssembly(@Request() req: any, @Body() data: any) {
-    return this.productionService.completeAssembly(req.user.tenantId, {
-      ...data,
-      assembledBy: req.user.userId,
-    });
-  }
-
-  @Put('assembly/:id/qc')
-  approveQC(@Request() req: any, @Param('id') id: string, @Body() data: any) {
-    return this.productionService.approveQC(req.user.tenantId, id, {
-      ...data,
-      qcBy: req.user.userId,
-    });
-  }
-
-  @Put(':id/complete')
-  complete(@Request() req: any, @Param('id') id: string) {
-    return this.productionService.complete(req.user.tenantId, id, req.user.userId);
-  }
-
-  // Work Stations
+  // Work Stations - Must come BEFORE wildcard routes like :id
   @Post('work-stations')
   createWorkStation(@Request() req: any, @Body() createDto: any) {
     return this.workStationService.create(req.user.tenantId, createDto);
@@ -92,7 +46,7 @@ export class ProductionController {
     return this.workStationService.delete(req.user.tenantId, id);
   }
 
-  // Routing
+  // Routing - Must come BEFORE wildcard routes
   @Post('routing')
   createRouting(@Request() req: any, @Body() createDto: any) {
     return this.routingService.create(req.user.tenantId, createDto);
@@ -126,28 +80,13 @@ export class ProductionController {
     return this.routingService.resequence(req.user.tenantId, bomId, data.routingIds);
   }
 
-  // Station Completions
+  // Station Completions - Must come BEFORE wildcard routes
   @Post('completions/start')
   startOperation(@Request() req: any, @Body() startDto: any) {
     return this.stationCompletionService.startOperation(req.user.tenantId, {
       ...startDto,
       operator_id: req.user.userId,
     });
-  }
-
-  @Put('completions/:id/complete')
-  completeOperation(@Request() req: any, @Param('id') id: string, @Body() completeDto: any) {
-    return this.stationCompletionService.completeOperation(req.user.tenantId, id, completeDto);
-  }
-
-  @Put('completions/:id/pause')
-  pauseOperation(@Request() req: any, @Param('id') id: string, @Body() pauseDto: any) {
-    return this.stationCompletionService.pauseOperation(req.user.tenantId, id, pauseDto);
-  }
-
-  @Put('completions/:id/resume')
-  resumeOperation(@Request() req: any, @Param('id') id: string) {
-    return this.stationCompletionService.resumeOperation(req.user.tenantId, id);
   }
 
   @Get('completions/my-active')
@@ -173,5 +112,67 @@ export class ProductionController {
     @Query('endDate') endDate: string,
   ) {
     return this.stationCompletionService.getOperatorProductivity(req.user.tenantId, operatorId, startDate, endDate);
+  }
+
+  @Put('completions/:id/complete')
+  completeOperation(@Request() req: any, @Param('id') id: string, @Body() completeDto: any) {
+    return this.stationCompletionService.completeOperation(req.user.tenantId, id, completeDto);
+  }
+
+  @Put('completions/:id/pause')
+  pauseOperation(@Request() req: any, @Param('id') id: string, @Body() pauseDto: any) {
+    return this.stationCompletionService.pauseOperation(req.user.tenantId, id, pauseDto);
+  }
+
+  @Put('completions/:id/resume')
+  resumeOperation(@Request() req: any, @Param('id') id: string) {
+    return this.stationCompletionService.resumeOperation(req.user.tenantId, id);
+  }
+
+  // Production Orders - Wildcard routes MUST come last
+  @Post()
+  create(@Request() req: any, @Body() createDto: any) {
+    return this.productionService.create(req.user.tenantId, req.user.userId, createDto);
+  }
+
+  @Get()
+  findAll(@Request() req: any, @Query() filters: any) {
+    return this.productionService.findAll(req.user.tenantId, filters);
+  }
+
+  @Get('available-uids/:bomId')
+  getAvailableUIDs(@Request() req: any, @Param('bomId') bomId: string) {
+    return this.productionService.getAvailableUIDs(req.user.tenantId, bomId);
+  }
+
+  @Post('assembly/complete')
+  completeAssembly(@Request() req: any, @Body() data: any) {
+    return this.productionService.completeAssembly(req.user.tenantId, {
+      ...data,
+      assembledBy: req.user.userId,
+    });
+  }
+
+  @Put('assembly/:id/qc')
+  approveQC(@Request() req: any, @Param('id') id: string, @Body() data: any) {
+    return this.productionService.approveQC(req.user.tenantId, id, {
+      ...data,
+      qcBy: req.user.userId,
+    });
+  }
+
+  @Put(':id/start')
+  startProduction(@Request() req: any, @Param('id') id: string) {
+    return this.productionService.startProduction(req.user.tenantId, id, req.user.userId);
+  }
+
+  @Put(':id/complete')
+  complete(@Request() req: any, @Param('id') id: string) {
+    return this.productionService.complete(req.user.tenantId, id, req.user.userId);
+  }
+
+  @Get(':id')
+  findOne(@Request() req: any, @Param('id') id: string) {
+    return this.productionService.findOne(req.user.tenantId, id);
   }
 }
