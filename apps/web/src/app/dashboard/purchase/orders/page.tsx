@@ -141,7 +141,7 @@ function PurchaseOrdersContent() {
 
       // Open modal automatically
       setShowModal(true);
-      setAlertMessage({ type: 'success', message: `PO form pre-filled with ${poItems.length} items from PR ${prData.pr_number}. You can select vendor and create PO for specific items.` });
+      setAlertMessage({ type: 'info', message: `Loaded ${poItems.length} items from PR ${prData.pr_number}. Select vendor and REMOVE items not from this vendor (click × button) before creating PO. You can create multiple POs from this PR.` });
     } catch (error) {
       console.error('Error loading PR data:', error);
       setAlertMessage({ type: 'error', message: 'Failed to load PR data. Please try again.' });
@@ -705,7 +705,7 @@ function PurchaseOrdersContent() {
 
               {/* Items */}
               <div>
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-2">
                   <h3 className="text-lg font-semibold text-gray-900">Items</h3>
                   <button
                     onClick={handleAddItem}
@@ -714,6 +714,13 @@ function PurchaseOrdersContent() {
                     + Add Item
                   </button>
                 </div>
+                {currentPrId && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-800">
+                      <strong>Multiple Vendors?</strong> Remove items not from the selected vendor (click × button), then create PO. You can create another PO from the same PR for different vendors.
+                    </p>
+                  </div>
+                )}
 
                 {formData.items.length === 0 ? (
                   <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
@@ -800,7 +807,8 @@ function PurchaseOrdersContent() {
                             <span className="font-medium">₹{item.totalPrice.toFixed(2)}</span>
                             <button
                               onClick={() => handleRemoveItem(index)}
-                              className="text-red-600 hover:text-red-900"
+                              className="ml-2 px-2 py-1 bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-800 rounded font-bold text-lg"
+                              title="Remove this item"
                             >
                               ×
                             </button>
