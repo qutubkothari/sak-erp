@@ -195,14 +195,33 @@ export class HrService {
 
   // Payslip Generation
   async generatePayslip(tenantId: string, data: any) {
-    const payslipData = {
-      ...data,
+    // Get all employees for this tenant
+    const { data: employees, error: empError } = await this.supabase
+      .from('employees')
+      .select('*')
+      .eq('tenant_id', tenantId);
+    
+    if (empError) throw new Error(empError.message);
+    if (!employees || employees.length === 0) {
+      throw new Error('No employees found for this tenant');
+    }
+
+    // Generate payslips for each employee
+    const payslips = employees.map(employee => ({
+      employee_id: employee.id,
+      payroll_run_id: data.run_id,
+      gross_salary: employee.salary || 0,
+      deductions: 0,
+      net_salary: employee.salary || 0,
+      payment_date: new Date().toISOString().split('T')[0],
       tenant_id: tenantId
-    };
+    }));
+
     const { data: result, error } = await this.supabase
       .from('payslips')
-      .insert([payslipData])
+      .insert(payslips)
       .select();
+    
     if (error) throw new Error(error.message);
     return result;
   }
