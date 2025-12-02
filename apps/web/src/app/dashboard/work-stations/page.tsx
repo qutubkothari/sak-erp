@@ -51,9 +51,12 @@ export default function WorkStationsPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
-      setWorkStations(data);
+      // Ensure data is always an array
+      const stationsArray = Array.isArray(data) ? data : (data?.data ? data.data : []);
+      setWorkStations(stationsArray);
     } catch (error) {
       console.error('Failed to fetch work stations:', error);
+      setWorkStations([]);
       alert('Failed to load work stations');
     } finally {
       setLoading(false);

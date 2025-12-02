@@ -58,9 +58,11 @@ export default function ShopFloorPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
-      setWorkStations(data);
+      const stationsArray = Array.isArray(data) ? data : (data?.data ? data.data : []);
+      setWorkStations(stationsArray);
     } catch (error) {
       console.error('Failed to fetch work stations:', error);
+      setWorkStations([]);
     }
   };
 
@@ -84,9 +86,11 @@ export default function ShopFloorPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
-      setQueue(data);
+      const queueArray = Array.isArray(data) ? data : (data?.data ? data.data : []);
+      setQueue(queueArray);
     } catch (error) {
       console.error('Failed to fetch queue:', error);
+      setQueue([]);
     }
   };
 
