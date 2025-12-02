@@ -195,6 +195,16 @@ export class HrService {
 
   // Payslip Generation
   async generatePayslip(tenantId: string, data: any) {
+    // Get the payroll run details
+    const { data: payrollRun, error: runError } = await this.supabase
+      .from('payroll_runs')
+      .select('*')
+      .eq('id', data.run_id)
+      .single();
+    
+    if (runError) throw new Error(runError.message);
+    if (!payrollRun) throw new Error('Payroll run not found');
+
     // Get all employees for this tenant
     const { data: employees, error: empError } = await this.supabase
       .from('employees')
@@ -206,11 +216,24 @@ export class HrService {
       throw new Error('No employees found for this tenant');
     }
 
-    // Generate payslips for each employee with minimal fields
-    const payslips = employees.map(employee => ({
-      employee_id: employee.id,
-      tenant_id: tenantId
-    }));
+    // Generate payslips for each employee with correct schema
+    const payslips = employees.map((employee, index) => {
+      const grossSalary = employee.salary || 0;
+      const totalDeductions = 0;
+      const netSalary = grossSalary - totalDeductions;
+      
+      return {
+        payroll_run_id: data.run_id,
+        employee_id: employee.id,
+        payslip_number: `PAY-${payrollRun.payroll_month}-${String(index + 1).padStart(4, '0')}`,
+        salary_month: payrollRun.payroll_month,
+        gross_salary: grossSalary,
+        total_deductions: totalDeductions,
+        net_salary: netSalary,
+        attendance_days: 30, // Default, should be calculated from attendance records
+        leave_days: 0
+      };
+    });
 
     const { data: result, error } = await this.supabase
       .from('payslips')
