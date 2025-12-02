@@ -21,7 +21,7 @@ export default function WorkStationsPage() {
 
   // Form state
   const [formData, setFormData] = useState({
-    name: '',
+    stationName: '',
     stationCode: '',
     stationType: 'MACHINING',
     capacity: 1,
@@ -151,7 +151,7 @@ export default function WorkStationsPage() {
 
   const resetForm = () => {
     setFormData({
-      name: '',
+      stationName: '',
       stationCode: '',
       stationType: 'MACHINING',
       capacity: 1,
@@ -193,8 +193,8 @@ export default function WorkStationsPage() {
                 <input
                   type="text"
                   required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  value={formData.stationName}
+                  onChange={(e) => setFormData({ ...formData, stationName: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="e.g., CNC Machine 1"
                 />
