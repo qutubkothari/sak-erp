@@ -31,7 +31,7 @@ module.exports = {
     {
       name: 'sak-web',
       script: 'npm',
-      args: 'start',  // PRODUCTION MODE - Now possible with t3.small (2GB RAM)
+      args: 'run dev',  // DEV MODE - Will switch to production after disk is extended to 20GB
       cwd: '/home/ubuntu/sak-erp/apps/web',
       instances: 1,
       exec_mode: 'fork',
@@ -39,7 +39,7 @@ module.exports = {
       watch: false,
       max_memory_restart: '800M',
       env: {
-        NODE_ENV: 'production',
+        NODE_ENV: 'development',
         PORT: 3000
       },
       error_file: '/home/ubuntu/.pm2/logs/sak-web-error.log',

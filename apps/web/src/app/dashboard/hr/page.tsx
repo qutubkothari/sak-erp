@@ -388,6 +388,86 @@ export default function HrPage() {
     }
   };
 
+  const handlePrintPayslip = (slip: any) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Payslip - ${slip.payslip_number}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 40px; }
+          .header { text-align: center; margin-bottom: 30px; }
+          .company { font-size: 24px; font-weight: bold; }
+          .payslip-title { font-size: 18px; margin-top: 10px; }
+          .info-section { margin: 20px 0; }
+          .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+          .label { font-weight: bold; }
+          .salary-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+          .salary-table th, .salary-table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+          .salary-table th { background-color: #f5f5f5; }
+          .total-row { font-weight: bold; background-color: #f9f9f9; }
+          .net-pay { font-size: 20px; color: #16a34a; }
+          @media print { body { padding: 20px; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="company">SAK ERP</div>
+          <div class="payslip-title">PAYSLIP</div>
+        </div>
+        
+        <div class="info-section">
+          <div class="info-row">
+            <span><span class="label">Employee:</span> ${slip.employee_name}</span>
+            <span><span class="label">Payslip #:</span> ${slip.payslip_number}</span>
+          </div>
+          <div class="info-row">
+            <span><span class="label">Month:</span> ${slip.salary_month}</span>
+            <span><span class="label">Generated:</span> ${new Date().toLocaleDateString()}</span>
+          </div>
+          <div class="info-row">
+            <span><span class="label">Attendance Days:</span> ${slip.attendance_days}</span>
+            <span><span class="label">Leave Days:</span> ${slip.leave_days}</span>
+          </div>
+        </div>
+
+        <table class="salary-table">
+          <thead>
+            <tr>
+              <th>Earnings</th>
+              <th>Amount (₹)</th>
+              <th>Deductions</th>
+              <th>Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Gross Salary</td>
+              <td>${slip.gross_salary.toFixed(2)}</td>
+              <td>Total Deductions</td>
+              <td>${slip.total_deductions.toFixed(2)}</td>
+            </tr>
+            <tr class="total-row">
+              <td colspan="3">Net Pay</td>
+              <td class="net-pay">₹${slip.net_salary.toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="margin-top: 40px; text-align: center; color: #666;">
+          <p>This is a computer-generated payslip and does not require a signature.</p>
+        </div>
+      </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    printWindow.print();
+  };
+
   const getStatusColor = (status: string) => {
     const colors: { [key: string]: string } = {
       'ACTIVE': 'bg-green-100 text-green-800',
@@ -754,7 +834,11 @@ export default function HrPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">₹{slip.total_deductions.toFixed(2)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">₹{slip.net_salary.toFixed(2)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{slip.attendance_days} / {slip.leave_days}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm"><button onClick={() => alert('Download feature coming soon')} className="text-blue-600 hover:text-blue-800"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></button></td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                          <button onClick={() => handlePrintPayslip(slip)} className="text-blue-600 hover:text-blue-800" title="Print Payslip">
+                            <svg className="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

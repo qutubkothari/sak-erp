@@ -218,7 +218,7 @@ export class HrService {
 
     // Generate payslips for each employee with correct schema
     const payslips = employees.map((employee, index) => {
-      const grossSalary = employee.salary || 0;
+      const grossSalary = employee.basic_salary || employee.salary || 0;
       const totalDeductions = 0;
       const netSalary = grossSalary - totalDeductions;
       
@@ -241,6 +241,15 @@ export class HrService {
       .select();
     
     if (error) throw new Error(error.message);
+
+    // Update payroll run status to COMPLETED
+    const { error: updateError } = await this.supabase
+      .from('payroll_runs')
+      .update({ status: 'COMPLETED' })
+      .eq('id', data.run_id);
+    
+    if (updateError) throw new Error(updateError.message);
+
     return result;
   }
   async getPayslips(tenantId: string, employeeId?: string) {
