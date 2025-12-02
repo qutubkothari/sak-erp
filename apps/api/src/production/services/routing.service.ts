@@ -58,7 +58,7 @@ export class RoutingService {
     
     // Verify BOM exists
     const { data: bom, error: bomError } = await this.supabase
-      .from('bom')
+      .from('bom_headers')
       .select('id')
       .eq('tenant_id', tenantId)
       .eq('id', dto.bom_id)
@@ -295,7 +295,7 @@ export class RoutingService {
   ): Promise<ProductionRouting[]> {
     // Verify target BOM exists
     const { data: targetBom, error: bomError } = await this.supabase
-      .from('bom')
+      .from('bom_headers')
       .select('id')
       .eq('tenant_id', tenantId)
       .eq('id', targetBomId)
