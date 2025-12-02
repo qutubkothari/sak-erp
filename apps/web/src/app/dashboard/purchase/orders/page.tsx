@@ -60,6 +60,7 @@ function PurchaseOrdersContent() {
       itemId: string;
       itemCode: string;
       itemName: string;
+      vendorId: string;
       quantity: number;
       unitPrice: number;
       taxRate: number;
@@ -123,6 +124,7 @@ function PurchaseOrdersContent() {
           itemId: item.item_id || '',
           itemCode: item.item_code || '',
           itemName: item.item_name || '',
+          vendorId: '', // Will be set by master vendor selector
           quantity: item.requested_qty || 0,
           unitPrice: item.estimated_rate || 0,
           taxRate: 18, // Default GST rate
@@ -141,7 +143,7 @@ function PurchaseOrdersContent() {
 
       // Open modal automatically
       setShowModal(true);
-      setAlertMessage({ type: 'info', message: `Loaded ${poItems.length} items from PR ${prData.pr_number}. Select vendor and REMOVE items not from this vendor (click × button) before creating PO. You can create multiple POs from this PR.` });
+      setAlertMessage({ type: 'info', message: `Loaded ${poItems.length} items from PR ${prData.pr_number}. Select vendor for each item. System will automatically create separate POs for different vendors.` });
     } catch (error) {
       console.error('Error loading PR data:', error);
       setAlertMessage({ type: 'error', message: 'Failed to load PR data. Please try again.' });
@@ -183,13 +185,6 @@ function PurchaseOrdersContent() {
       setSubmitting(true);
       const token = localStorage.getItem('accessToken');
       
-      // Validate required fields
-      if (!formData.vendorId) {
-        setAlertMessage({ type: 'error', message: 'Please select a vendor' });
-        setSubmitting(false);
-        return;
-      }
-      
       if (!formData.orderDate) {
         setAlertMessage({ type: 'error', message: 'Please select an order date' });
         setSubmitting(false);
@@ -202,6 +197,14 @@ function PurchaseOrdersContent() {
         return;
       }
       
+      // Check if all items have vendor selected
+      const itemsWithoutVendor = formData.items.filter(item => !item.vendorId);
+      if (itemsWithoutVendor.length > 0) {
+        setAlertMessage({ type: 'error', message: 'Please select vendor for all items' });
+        setSubmitting(false);
+        return;
+      }
+      
       // Check if all items have itemId (or at least itemCode for pre-filled items)
       const invalidItems = formData.items.filter(item => !item.itemId && !item.itemCode);
       if (invalidItems.length > 0) {
@@ -210,91 +213,93 @@ function PurchaseOrdersContent() {
         return;
       }
 
-      // Check for drawings for each item
-      for (let i = 0; i < formData.items.length; i++) {
-        const item = formData.items[i];
-        let itemId = item.itemId;
-        
-        // If no itemId but has itemCode, look it up
-        if (!itemId && item.itemCode) {
-          const foundItem = items.find(it => it.code === item.itemCode);
-          if (foundItem) {
-            itemId = foundItem.id;
-          }
-        }
-
-        // Drawing check removed - drawings are now optional for PO creation
-      }
-      
       console.log('FormData before transformation:', formData);
-      console.log('Items validation:', formData.items.map(item => ({
-        itemId: item.itemId,
-        itemCode: item.itemCode,
-        itemName: item.itemName
-      })));
       
-      // Transform items to match API expected field names
-      // If itemId is missing but itemCode exists, find itemId from items list
-      // API expects camelCase field names, NOT snake_case
-      const transformedItems = formData.items.map(item => {
-        let finalItemId = item.itemId;
-        
-        // If no itemId but has itemCode, look it up
-        if (!finalItemId && item.itemCode) {
-          const foundItem = items.find(i => i.code === item.itemCode);
-          if (foundItem) {
-            finalItemId = foundItem.id;
-          }
+      // Group items by vendor
+      const itemsByVendor = formData.items.reduce((acc, item) => {
+        if (!acc[item.vendorId]) {
+          acc[item.vendorId] = [];
         }
-        
-        return {
-          itemCode: item.itemCode || '',
-          itemName: item.itemName || '',
-          orderedQty: item.quantity,
-          rate: item.unitPrice,
-          taxPercent: item.taxRate,
-          amount: item.totalPrice,
-          remarks: item.specifications || '',
-        };
-      });
+        acc[item.vendorId].push(item);
+        return acc;
+      }, {} as Record<string, typeof formData.items>);
 
-      const payload = {
-        prId: currentPrId, // Include PR ID if creating from PR
-        vendorId: formData.vendorId,
-        poDate: formData.orderDate,
-        deliveryDate: formData.expectedDelivery || null, // Send null if empty to avoid validation error
-        paymentTerms: formData.paymentTerms,
-        deliveryAddress: formData.deliveryAddress,
-        remarks: formData.notes,
-        status: 'DRAFT',
-        totalAmount: formData.items.reduce((sum, item) => sum + item.totalPrice, 0),
-        items: transformedItems,
-      };      console.log('Creating PO with payload:', payload);
+      const vendorIds = Object.keys(itemsByVendor);
+      console.log(`Creating ${vendorIds.length} PO(s) for ${vendorIds.length} vendor(s)`);
+
+      const createdPOs = [];
       
-      const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      // Create a PO for each vendor
+      for (const vendorId of vendorIds) {
+        const vendorItems = itemsByVendor[vendorId];
+        
+        // Transform items for API
+        const transformedItems = vendorItems.map(item => {
+          let finalItemId = item.itemId;
+          
+          if (!finalItemId && item.itemCode) {
+            const foundItem = items.find(i => i.code === item.itemCode);
+            if (foundItem) {
+              finalItemId = foundItem.id;
+            }
+          }
+          
+          return {
+            itemCode: item.itemCode || '',
+            itemName: item.itemName || '',
+            orderedQty: item.quantity,
+            rate: item.unitPrice,
+            taxPercent: item.taxRate,
+            amount: item.totalPrice,
+            remarks: item.specifications || '',
+          };
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('PO created successfully:', data);
-        setShowModal(false);
-        fetchOrders();
-        resetForm();
-        setAlertMessage({ type: 'success', message: 'Purchase Order created successfully!' });
-      } else {
-        const errorData = await response.json();
-        console.error('PO creation failed:', errorData);
-        setAlertMessage({ type: 'error', message: `Failed to create PO: ${errorData.message || 'Unknown error'}` });
+        const payload = {
+          prId: currentPrId,
+          vendorId: vendorId,
+          poDate: formData.orderDate,
+          deliveryDate: formData.expectedDelivery || null,
+          paymentTerms: formData.paymentTerms,
+          deliveryAddress: formData.deliveryAddress,
+          remarks: formData.notes,
+          status: 'DRAFT',
+          totalAmount: vendorItems.reduce((sum, item) => sum + item.totalPrice, 0),
+          items: transformedItems,
+        };
+
+        console.log(`Creating PO for vendor ${vendorId}:`, payload);
+        
+        const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          createdPOs.push(data.po_number || data.id);
+          console.log('PO created successfully:', data);
+        } else {
+          const errorData = await response.json();
+          console.error('PO creation failed:', errorData);
+          throw new Error(`Failed to create PO for vendor: ${errorData.message || 'Unknown error'}`);
+        }
       }
-    } catch (error) {
+
+      setShowModal(false);
+      fetchOrders();
+      resetForm();
+      setAlertMessage({ 
+        type: 'success', 
+        message: `Successfully created ${createdPOs.length} Purchase Order(s): ${createdPOs.join(', ')}` 
+      });
+    } catch (error: any) {
       console.error('Error creating order:', error);
-      setAlertMessage({ type: 'error', message: 'Failed to create PO. Please try again.' });
+      setAlertMessage({ type: 'error', message: error.message || 'Failed to create PO. Please try again.' });
     } finally {
       setSubmitting(false);
     }
@@ -309,6 +314,7 @@ function PurchaseOrdersContent() {
           itemId: '',
           itemCode: '',
           itemName: '',
+          vendorId: '',
           quantity: 1,
           unitPrice: 0,
           taxRate: 18,
@@ -355,6 +361,15 @@ function PurchaseOrdersContent() {
     });
   };
 
+  // Helper function to set vendor for all items
+  const handleSetAllVendors = (vendorId: string) => {
+    setFormData({
+      ...formData,
+      vendorId: vendorId,
+      items: formData.items.map(item => ({ ...item, vendorId }))
+    });
+  };
+
   const resetForm = () => {
     setFormData({
       vendorId: '',
@@ -398,6 +413,7 @@ function PurchaseOrdersContent() {
         itemId: item.item_id || '',
         itemCode: item.item_code || '',
         itemName: item.item_name || '',
+        vendorId: data.vendor_id || '', // Use PO's vendor for all items
         quantity: item.ordered_qty || 0,
         unitPrice: item.rate || 0,
         taxRate: item.tax_percent || 18,
@@ -643,20 +659,24 @@ function PurchaseOrdersContent() {
               {/* Order Details */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Vendor *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Master Vendor (sets all items)
+                  </label>
                   <select
                     value={formData.vendorId}
-                    onChange={(e) => setFormData({ ...formData, vendorId: e.target.value })}
+                    onChange={(e) => handleSetAllVendors(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
                   >
-                    <option value="">Select Vendor</option>
+                    <option value="">Select Vendor to apply to all items</option>
                     {vendors.map((vendor) => (
                       <option key={vendor.id} value={vendor.id}>
                         {vendor.name} - {vendor.contact_person}
                       </option>
                     ))}
                   </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    You can override individual item vendors in the items grid below
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
@@ -729,8 +749,9 @@ function PurchaseOrdersContent() {
                 ) : (
                   <div className="space-y-4">
                     {/* Column Headers */}
-                    <div className="grid grid-cols-6 gap-4 px-4 pb-2 border-b border-gray-300">
+                    <div className="grid grid-cols-7 gap-4 px-4 pb-2 border-b border-gray-300">
                       <div className="col-span-2 text-sm font-semibold text-gray-700">Item</div>
+                      <div className="text-sm font-semibold text-gray-700">Vendor</div>
                       <div className="text-sm font-semibold text-gray-700">Quantity</div>
                       <div className="text-sm font-semibold text-gray-700">Unit Price</div>
                       <div className="text-sm font-semibold text-gray-700">Tax %</div>
@@ -739,7 +760,7 @@ function PurchaseOrdersContent() {
                     
                     {formData.items.map((item, index) => (
                       <div key={index} className="border border-gray-300 rounded-lg p-4">
-                        <div className="grid grid-cols-6 gap-4">
+                        <div className="grid grid-cols-7 gap-4">
                           <div className="col-span-2">
                             {item.itemCode && item.itemName ? (
                               <div className="space-y-1">
@@ -774,6 +795,21 @@ function PurchaseOrdersContent() {
                                 ))}
                               </select>
                             )}
+                          </div>
+                          <div>
+                            <select
+                              value={item.vendorId}
+                              onChange={(e) => handleUpdateItem(index, 'vendorId', e.target.value)}
+                              className="w-full border border-gray-300 rounded px-3 py-2"
+                              required
+                            >
+                              <option value="">Select Vendor</option>
+                              {vendors.map((vendor) => (
+                                <option key={vendor.id} value={vendor.id}>
+                                  {vendor.name}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                           <div>
                             <input
