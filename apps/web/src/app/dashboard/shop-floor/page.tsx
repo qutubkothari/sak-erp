@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
 
 interface Operation {
   id: string;
@@ -54,8 +53,12 @@ export default function ShopFloorPage() {
 
   const fetchWorkStations = async () => {
     try {
-      const response = await api.get('/production/work-stations?isActive=true');
-      setWorkStations(response.data);
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://13.205.17.214:4000/api/v1/production/work-stations?isActive=true', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      setWorkStations(data);
     } catch (error) {
       console.error('Failed to fetch work stations:', error);
     }
@@ -63,8 +66,12 @@ export default function ShopFloorPage() {
 
   const fetchActiveOperation = async () => {
     try {
-      const response = await api.get('/production/completions/my-active');
-      setActiveOperation(response.data);
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://13.205.17.214:4000/api/v1/production/completions/my-active', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      setActiveOperation(data);
     } catch (error) {
       console.error('Failed to fetch active operation:', error);
     }
@@ -72,8 +79,12 @@ export default function ShopFloorPage() {
 
   const fetchQueue = async () => {
     try {
-      const response = await api.get(`/production/work-stations/${selectedStation}/queue`);
-      setQueue(response.data);
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/production/work-stations/${selectedStation}/queue`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      setQueue(data);
     } catch (error) {
       console.error('Failed to fetch queue:', error);
     }
@@ -82,12 +93,21 @@ export default function ShopFloorPage() {
   const handleStartOperation = async (operation: Operation) => {
     setLoading(true);
     try {
-      const response = await api.post('/production/completions/start', {
-        production_order_id: operation.id.split('_')[0], // Extract order ID from composite key
-        routing_id: operation.id.split('_')[1], // Extract routing ID
-        notes: null,
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://13.205.17.214:4000/api/v1/production/completions/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          production_order_id: operation.id.split('_')[0], // Extract order ID from composite key
+          routing_id: operation.id.split('_')[1], // Extract routing ID
+          notes: null,
+        }),
       });
-      setActiveOperation(response.data);
+      const data = await response.json();
+      setActiveOperation(data);
       fetchQueue(); // Refresh queue
       alert('Operation started successfully');
     } catch (error: any) {
@@ -106,10 +126,18 @@ export default function ShopFloorPage() {
 
     setLoading(true);
     try {
-      await api.put(`/production/completions/${activeOperation.id}/complete`, {
-        quantity_completed: quantityCompleted,
-        quantity_rejected: quantityRejected,
-        notes: notes || null,
+      const token = localStorage.getItem('accessToken');
+      await fetch(`http://13.205.17.214:4000/api/v1/production/completions/${activeOperation.id}/complete`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          quantity_completed: quantityCompleted,
+          quantity_rejected: quantityRejected,
+          notes: notes || null,
+        }),
       });
       setActiveOperation(null);
       setQuantityCompleted(0);
@@ -129,8 +157,16 @@ export default function ShopFloorPage() {
 
     setLoading(true);
     try {
-      await api.put(`/production/completions/${activeOperation.id}/pause`, {
-        notes: notes || null,
+      const token = localStorage.getItem('accessToken');
+      await fetch(`http://13.205.17.214:4000/api/v1/production/completions/${activeOperation.id}/pause`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          notes: notes || null,
+        }),
       });
       setActiveOperation(null);
       setNotes('');

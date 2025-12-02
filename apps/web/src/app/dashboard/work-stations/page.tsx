@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
 
 interface WorkStation {
   id: string;
@@ -47,8 +46,12 @@ export default function WorkStationsPage() {
   const fetchWorkStations = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/production/work-stations');
-      setWorkStations(response.data);
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://13.205.17.214:4000/api/v1/production/work-stations', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      setWorkStations(data);
     } catch (error) {
       console.error('Failed to fetch work stations:', error);
       alert('Failed to load work stations');
@@ -62,11 +65,26 @@ export default function WorkStationsPage() {
     setLoading(true);
 
     try {
+      const token = localStorage.getItem('accessToken');
       if (editingId) {
-        await api.put(`/production/work-stations/${editingId}`, formData);
+        await fetch(`http://13.205.17.214:4000/api/v1/production/work-stations/${editingId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(formData),
+        });
         alert('Work station updated successfully');
       } else {
-        await api.post('/production/work-stations', formData);
+        await fetch('http://13.205.17.214:4000/api/v1/production/work-stations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(formData),
+        });
         alert('Work station created successfully');
       }
 
@@ -97,7 +115,11 @@ export default function WorkStationsPage() {
 
     setLoading(true);
     try {
-      await api.delete(`/production/work-stations/${id}`);
+      const token = localStorage.getItem('accessToken');
+      await fetch(`http://13.205.17.214:4000/api/v1/production/work-stations/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
       alert('Work station deleted successfully');
       fetchWorkStations();
     } catch (error: any) {
