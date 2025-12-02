@@ -6,11 +6,12 @@ const nextConfig = {
   swcMinify: true,
   output: enableStandalone ? 'standalone' : undefined,
   
-  // Multi-language support
-  i18n: {
-    locales: ['en', 'hi', 'bn', 'te'],
-    defaultLocale: 'en',
-  },
+  // Disable static page generation to avoid SSR context issues
+  // Multi-language support disabled temporarily
+  // i18n: {
+  //   locales: ['en', 'hi', 'bn', 'te'],
+  //   defaultLocale: 'en',
+  // },
 
   // Environment variables
   env: {
