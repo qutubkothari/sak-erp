@@ -39,6 +39,8 @@ const navigation = [
     children: [
       { name: 'Production Orders', href: '/dashboard/production' },
       { name: 'BOM', href: '/dashboard/bom' },
+      { name: 'Shop Floor', href: '/dashboard/shop-floor' },
+      { name: 'Work Stations', href: '/dashboard/work-stations' },
     ],
   },
   {
