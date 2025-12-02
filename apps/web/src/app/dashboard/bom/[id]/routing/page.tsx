@@ -29,7 +29,16 @@ interface BOM {
 export default function BOMRoutingPage() {
   const router = useRouter();
   const params = useParams();
-  const bomId = (params?.id || params?.['id']) as string;
+  
+  // Get BOM ID from URL - handle both 'id' and array format
+  const getBomId = () => {
+    if (!params) return null;
+    if (typeof params.id === 'string') return params.id;
+    if (Array.isArray(params.id)) return params.id[0];
+    return null;
+  };
+  
+  const bomId = getBomId();
 
   const [bom, setBom] = useState<BOM | null>(null);
   const [routingSteps, setRoutingSteps] = useState<RoutingStep[]>([]);
@@ -46,9 +55,12 @@ export default function BOMRoutingPage() {
   });
 
   useEffect(() => {
+    console.log('Params object:', params);
     console.log('BOM ID from params:', bomId);
+    console.log('URL:', window.location.href);
+    
     if (!bomId) {
-      alert('BOM ID is missing from URL');
+      alert('BOM ID is missing from URL. Params: ' + JSON.stringify(params));
       return;
     }
     fetchBOM();
