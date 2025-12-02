@@ -307,7 +307,7 @@ export default function ProductionPage() {
     try {
       const token = localStorage.getItem('accessToken');
       await fetch(`http://13.205.17.214:4000/api/v1/production/${orderId}/start`, {
-        method: 'POST',
+        method: 'PUT',
         headers: { Authorization: `Bearer ${token}` },
       });
       fetchOrders();
@@ -487,8 +487,8 @@ export default function ProductionPage() {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {orders.map((order) => (
-                  <>
-                    <tr key={order.id} className="hover:bg-gray-50">
+                  <React.Fragment key={order.id}>
+                    <tr className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
                         <div className="flex items-center">
                           <button
@@ -656,7 +656,7 @@ export default function ProductionPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
