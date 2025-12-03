@@ -361,20 +361,60 @@ export class JobOrderService {
 
     // Start transaction-like operations
     try {
-      // 1. Consume materials from inventory
+      // 1. Consume materials from inventory (stock_entries)
       for (const material of jobOrder.job_order_materials) {
         const consumeQty = material.required_quantity;
 
-        // Update inventory stock
-        const { error: stockError } = await this.supabase.rpc('consume_inventory', {
-          p_tenant_id: tenantId,
-          p_item_id: material.item_id,
-          p_quantity: consumeQty,
-        });
+        // Get item details
+        const { data: item } = await this.supabase
+          .from('items')
+          .select('code, name')
+          .eq('id', material.item_id)
+          .single();
 
-        if (stockError) {
-          console.error('Error consuming inventory:', stockError);
-          throw new BadRequestException(`Failed to consume ${material.item_code}: ${stockError.message}`);
+        // Get available stock entries for this material
+        const { data: stockEntries } = await this.supabase
+          .from('stock_entries')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('item_id', material.item_id)
+          .gt('available_quantity', 0)
+          .order('created_at', { ascending: true });
+
+        if (!stockEntries || stockEntries.length === 0) {
+          throw new BadRequestException(`Failed to consume ${item?.code}: Item not found in inventory`);
+        }
+
+        // Calculate total available
+        const totalAvailable = stockEntries.reduce((sum, entry) => sum + parseFloat(entry.available_quantity.toString()), 0);
+        
+        if (totalAvailable < consumeQty) {
+          throw new BadRequestException(`Failed to consume ${item?.code}: Insufficient stock. Need ${consumeQty}, have ${totalAvailable}`);
+        }
+
+        // Consume from stock entries using FIFO
+        let remainingToConsume = consumeQty;
+        for (const entry of stockEntries) {
+          if (remainingToConsume <= 0) break;
+
+          const entryAvailable = parseFloat(entry.available_quantity.toString());
+          const toConsumeFromEntry = Math.min(entryAvailable, remainingToConsume);
+          const newAvailable = entryAvailable - toConsumeFromEntry;
+
+          const { error: updateError } = await this.supabase
+            .from('stock_entries')
+            .update({ 
+              available_quantity: newAvailable,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', entry.id);
+
+          if (updateError) {
+            console.error('Error updating stock entry:', updateError);
+            throw new BadRequestException(`Failed to consume ${item?.code}: ${updateError.message}`);
+          }
+
+          remainingToConsume -= toConsumeFromEntry;
         }
 
         // Update material issued quantity
@@ -387,12 +427,22 @@ export class JobOrderService {
           .eq('id', material.id);
       }
 
-      // 2. Add finished goods to inventory
-      const { error: addError } = await this.supabase.rpc('add_to_inventory', {
-        p_tenant_id: tenantId,
-        p_item_id: jobOrder.item_id,
-        p_quantity: jobOrder.quantity,
-      });
+      // 2. Add finished goods to inventory (create new stock entry)
+      const { error: addError } = await this.supabase
+        .from('stock_entries')
+        .insert({
+          tenant_id: tenantId,
+          item_id: jobOrder.item_id,
+          warehouse_id: null, // You may want to specify a default warehouse
+          quantity: jobOrder.quantity,
+          available_quantity: jobOrder.quantity,
+          allocated_quantity: 0,
+          metadata: {
+            created_from: 'JOB_ORDER_COMPLETION',
+            job_order_id: jobOrderId,
+            job_order_number: jobOrder.job_order_number,
+          }
+        });
 
       if (addError) {
         console.error('Error adding finished goods:', addError);
