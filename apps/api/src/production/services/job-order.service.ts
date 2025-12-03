@@ -433,29 +433,27 @@ export class JobOrderService {
 
     if (!jobOrder) throw new NotFoundException('Job order not found');
 
-    // Get current stock for finished item
-    const { data: finishedStock } = await this.supabase
-      .from('inventory_stock')
-      .select('total_quantity, available_quantity, reserved_quantity')
+    // Get current stock for finished item from stock_entries
+    const { data: finishedStockEntries } = await this.supabase
+      .from('stock_entries')
+      .select('available_quantity')
       .eq('tenant_id', tenantId)
-      .eq('item_id', jobOrder.item_id)
-      .maybeSingle();
+      .eq('item_id', jobOrder.item_id);
 
-    const currentFinishedStock = finishedStock?.available_quantity ? parseFloat(finishedStock.available_quantity.toString()) : 0;
+    const currentFinishedStock = finishedStockEntries?.reduce((sum, entry) => sum + (parseFloat(entry.available_quantity?.toString() || '0')), 0) || 0;
     const newFinishedStock = currentFinishedStock + jobOrder.quantity;
 
-    // Get current stock for each material
+    // Get current stock for each material from stock_entries
     const materialsWithStock = await Promise.all(
       jobOrder.job_order_materials.map(async (material: any) => {
-        const { data: stock } = await this.supabase
-          .from('inventory_stock')
-          .select('total_quantity, available_quantity, reserved_quantity')
+        const { data: stockEntries } = await this.supabase
+          .from('stock_entries')
+          .select('available_quantity, allocated_quantity')
           .eq('tenant_id', tenantId)
-          .eq('item_id', material.item_id)
-          .maybeSingle();
+          .eq('item_id', material.item_id);
 
-        const currentStock = stock?.available_quantity ? parseFloat(stock.available_quantity.toString()) : 0;
-        const reservedStock = stock?.reserved_quantity ? parseFloat(stock.reserved_quantity.toString()) : 0;
+        const currentStock = stockEntries?.reduce((sum, entry) => sum + (parseFloat(entry.available_quantity?.toString() || '0')), 0) || 0;
+        const reservedStock = stockEntries?.reduce((sum, entry) => sum + (parseFloat(entry.allocated_quantity?.toString() || '0')), 0) || 0;
         const newStock = currentStock - material.required_quantity;
 
         return {
