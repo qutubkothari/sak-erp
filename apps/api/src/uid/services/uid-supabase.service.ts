@@ -791,7 +791,6 @@ export class UidSupabaseService {
    */
   async getAllUIDs(req: any, status?: string, entityType?: string, itemId?: string, page?: number, limit?: number) {
     const tenantId = req.user?.tenantId || req.tenantId;
-    
     console.log('[getAllUIDs] Called with:', { tenantId, status, entityType, itemId, page, limit });
     
     if (!tenantId) {
