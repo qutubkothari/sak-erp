@@ -291,38 +291,7 @@ export class GrnService {
           const acceptedQty = item.accepted_qty || item.accepted_quantity || 0;
           if (acceptedQty > 0) {
             await this.generateUIDsForItem(tenantId, userId, grn, item);
-            
-            // Get item_id from item_code if not present
-            let itemId = item.item_id;
-            if (!itemId && item.item_code) {
-              const { data: itemData } = await this.supabase
-                .from('items')
-                .select('id')
-                .eq('code', item.item_code)
-                .eq('tenant_id', tenantId)
-                .single();
-              
-              itemId = itemData?.id;
-              console.log(`Looked up item_id for ${item.item_code}: ${itemId}`);
-            }
-            
-            if (!itemId) {
-              console.error(`Cannot create stock entry: item_id is null for item_code ${item.item_code}`);
-              continue; // Skip this item
-            }
-            
-            // Ensure stock entry is created even if UID generation fails
-            await this.createStockEntry({
-              tenant_id: tenantId,
-              item_id: itemId,
-              warehouse_id: grn.warehouse_id,
-              quantity: acceptedQty,
-              available_quantity: acceptedQty,
-              allocated_quantity: 0,
-              unit_price: item.unit_price || 0,
-              batch_number: item.batch_number,
-              grn_reference: grn.grn_number
-            });
+            // Note: Stock entry creation is handled inside generateUIDsForItem
           } else {
             console.log('Skipping item due to accepted_qty <= 0. Value was:', acceptedQty);
           }
@@ -360,6 +329,18 @@ export class GrnService {
       if (acceptedQty === 0) {
         console.log('Skipping UID generation - acceptedQty is 0');
         return [];
+      }
+
+      // Check if UIDs already exist for this GRN item to prevent duplicates
+      const { data: existingUIDs, count } = await this.supabase
+        .from('uid_registry')
+        .select('uid', { count: 'exact' })
+        .eq('grn_id', grn.id)
+        .eq('tenant_id', tenantId);
+      
+      if (count && count > 0) {
+        console.log(`UIDs already exist for this GRN (${count} UIDs found). Skipping generation to prevent duplicates.`);
+        return existingUIDs.map(u => u.uid);
       }
 
       // Get item details
