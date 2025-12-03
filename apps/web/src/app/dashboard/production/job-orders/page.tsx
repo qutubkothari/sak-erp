@@ -102,6 +102,7 @@ export default function JobOrdersPage() {
     fetchItems();
     fetchWorkstations();
     fetchUsers();
+    console.log('Initial data fetch triggered');
   }, []);
 
   const fetchJobOrders = async () => {
@@ -130,9 +131,11 @@ export default function JobOrdersPage() {
   const fetchItems = async () => {
     try {
       const data = await apiClient.get('/items');
-      setItems(data);
+      console.log('Fetched items:', data?.length || 0, 'items');
+      setItems(data || []);
     } catch (error) {
       console.error('Error fetching items:', error);
+      setItems([]);
     }
   };
 
@@ -712,15 +715,21 @@ export default function JobOrdersPage() {
               </div>
 
               <div className="space-y-2">
+                {materials.length === 0 && (
+                  <p className="text-sm text-gray-500 italic">No materials added. Click &quot;+ Add Material&quot; or select an item with BOM to auto-load materials.</p>
+                )}
                 {materials.map((mat, idx) => (
                   <div key={idx} className="flex gap-3 items-center border rounded p-3 bg-gray-50">
                     <div className="flex-1">
                       <select
                         value={mat.itemId}
-                        onChange={(e) => updateMaterial(idx, 'itemId', e.target.value)}
+                        onChange={(e) => {
+                          console.log(`Material ${idx} changed to:`, e.target.value);
+                          updateMaterial(idx, 'itemId', e.target.value);
+                        }}
                         className="w-full border rounded px-2 py-1 text-sm"
                       >
-                        <option value="">Select Item...</option>
+                        <option value="">{`Select Item... (${items.length} available)`}</option>
                         {items.map(item => (
                           <option key={item.id} value={item.id}>
                             {item.code} - {item.name} {item.type && `(${item.type})`}
