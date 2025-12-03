@@ -194,43 +194,6 @@ export default function JobOrdersPage() {
     }
   };
 
-  const fetchBOMData = async (itemId: string) => {
-    try {
-      // Get BOM header for this item
-      const boms = await apiClient.get(`/bom?itemId=${itemId}`);
-      if (boms && boms.length > 0) {
-        const bom = boms[0];
-        setFormData(prev => ({ ...prev, bomId: bom.id }));
-
-        // Fetch BOM items (materials)
-        const bomItems = await apiClient.get(`/bom/${bom.id}/items`);
-        const materials = bomItems.map((item: any) => ({
-          itemId: item.component_id,
-          itemCode: item.component_code,
-          itemName: item.component_name,
-          requiredQuantity: item.quantity,
-        }));
-        setMaterials(materials);
-
-        // Fetch routing (operations)
-        const routing = await apiClient.get(`/production/routing/bom/${bom.id}?withStations=true`);
-        if (routing && routing.length > 0) {
-          const operations = routing.map((route: any) => ({
-            sequenceNumber: route.sequence_no,
-            operationName: route.operation_name,
-            workstationId: route.work_station_id,
-            acceptedVariationPercent: 5,
-          }));
-          setOperations(operations);
-        }
-        
-        alert('BOM data loaded! Materials and operations have been added.');
-      }
-    } catch (error) {
-      console.error('Error fetching BOM data:', error);
-    }
-  };
-
   const addOperation = () => {
     const newSequence = operations.length > 0 
       ? Math.max(...operations.map(op => op.sequenceNumber)) + 10 
