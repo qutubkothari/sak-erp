@@ -87,7 +87,9 @@ export default function UIDTrackingPage() {
       if (filters.entity_type) queryParams.append('entity_type', filters.entity_type);
       if (filters.location) queryParams.append('location', filters.location);
 
-      const data = await apiClient.get<UIDRecord[]>(`/uid?${queryParams}`);
+      const response = await apiClient.get<any>(`/uid?${queryParams}`);
+      // Handle both old array format and new paginated format
+      const data = Array.isArray(response) ? response : response.data || [];
       setUids(data);
     } catch (error) {
       console.error('Error fetching UIDs:', error);
