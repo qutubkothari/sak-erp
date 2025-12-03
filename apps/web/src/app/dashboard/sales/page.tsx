@@ -519,7 +519,7 @@ export default function SalesPage() {
     try {
       // Fetch UIDs with status GENERATED (newly received UIDs ready for dispatch)
       const response = await apiClient.get(`/uid?item_id=${itemId}&status=GENERATED`);
-      // Handle paginated response: { data: [...], pagination: {...} }
+      // Handle paginated response structure: { data: [...], pagination: {...} }
       const uids = response?.data || (Array.isArray(response) ? response : []);
       setAvailableUIDs({ ...availableUIDs, [itemId]: uids });
       
