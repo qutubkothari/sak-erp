@@ -163,6 +163,9 @@ export default function JobOrdersPage() {
     }
   };
 
+  // Store base BOM quantities for recalculation
+  const [baseMaterialQuantities, setBaseMaterialQuantities] = useState<{ [key: string]: number }>({});
+
   const fetchBOMData = async (itemId: string) => {
     console.log('fetchBOMData called with itemId:', itemId);
     try {
@@ -181,12 +184,18 @@ export default function JobOrdersPage() {
         const bomItems = await apiClient.get(`/bom/${bom.id}/items`);
         console.log('BOM items response:', bomItems);
         
-        const materials = bomItems.map((item: any) => ({
-          itemId: item.component_id,
-          itemCode: item.component_code,
-          itemName: item.component_name,
-          requiredQuantity: item.quantity,
-        }));
+        // Store base quantities from BOM (per 1 unit)
+        const baseQuantities: { [key: string]: number } = {};
+        const materials = bomItems.map((item: any) => {
+          baseQuantities[item.component_id] = item.quantity;
+          return {
+            itemId: item.component_id,
+            itemCode: item.component_code,
+            itemName: item.component_name,
+            requiredQuantity: item.quantity * formData.quantity, // Multiply by current quantity
+          };
+        });
+        setBaseMaterialQuantities(baseQuantities);
         setMaterials(materials);
         console.log('Materials set:', materials);
 
@@ -532,7 +541,20 @@ export default function JobOrdersPage() {
                 <input
                   type="number"
                   value={formData.quantity}
-                  onChange={(e) => setFormData({...formData, quantity: Number(e.target.value)})}
+                  onChange={(e) => {
+                    const newQuantity = Number(e.target.value);
+                    setFormData({...formData, quantity: newQuantity});
+                    
+                    // Update material quantities based on new job order quantity
+                    if (Object.keys(baseMaterialQuantities).length > 0) {
+                      const updatedMaterials = materials.map(mat => ({
+                        ...mat,
+                        requiredQuantity: baseMaterialQuantities[mat.itemId] * newQuantity
+                      }));
+                      setMaterials(updatedMaterials);
+                      console.log('Materials updated for quantity:', newQuantity, updatedMaterials);
+                    }
+                  }}
                   className="w-full border rounded px-3 py-2"
                   min="1"
                   required
