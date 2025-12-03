@@ -84,6 +84,7 @@ export default function JobOrdersPage() {
   // Form state
   const [formData, setFormData] = useState({
     itemId: '',
+    bomId: '',
     quantity: 1,
     startDate: new Date().toISOString().split('T')[0],
     endDate: '',
@@ -334,6 +335,7 @@ export default function JobOrdersPage() {
   const resetForm = () => {
     setFormData({
       itemId: '',
+      bomId: '',
       quantity: 1,
       startDate: new Date().toISOString().split('T')[0],
       endDate: '',
