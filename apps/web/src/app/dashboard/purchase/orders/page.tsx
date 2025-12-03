@@ -110,6 +110,15 @@ function PurchaseOrdersContent() {
       setLoadingPR(true);
       console.log('Loading PR data for ID:', prId);
       
+      // Fetch fresh items data to ensure we have prices
+      const token = localStorage.getItem('accessToken');
+      const itemsResponse = await fetch('http://13.205.17.214:4000/api/v1/inventory/items', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const itemsData = await itemsResponse.json();
+      const freshItems = itemsData || [];
+      console.log('Fetched items for price lookup:', freshItems.length);
+      
       const prData = await apiClient.get(`/purchase/requisitions/${prId}`);
       console.log('PR Data received:', prData);
       console.log('PR Items:', prData.purchase_requisition_items);
@@ -123,8 +132,8 @@ function PurchaseOrdersContent() {
         
         // Try to find item in items master to get actual price
         let unitPrice = item.estimated_rate || 0;
-        if (item.item_id && items.length > 0) {
-          const masterItem = items.find(i => i.id === item.item_id);
+        if (item.item_id && freshItems.length > 0) {
+          const masterItem = freshItems.find((i: any) => i.id === item.item_id);
           if (masterItem) {
             unitPrice = masterItem.standard_cost || masterItem.selling_price || unitPrice;
             console.log(`Found price for ${item.item_code}: ${unitPrice}`);
