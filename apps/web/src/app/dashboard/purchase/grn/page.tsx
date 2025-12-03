@@ -44,6 +44,10 @@ interface UIDRecord {
   location: string;
   batch_number: string;
   created_at: string;
+  item?: {
+    code: string;
+    name: string;
+  };
 }
 
 interface PurchaseTrail {
@@ -1270,6 +1274,11 @@ export default function GRNPage() {
                           <div className="font-mono text-sm font-semibold text-blue-600">
                             {uidRecord.uid}
                           </div>
+                          {uidRecord.item && (
+                            <div className="text-sm font-medium text-gray-900 mt-1">
+                              {uidRecord.item.name} ({uidRecord.item.code})
+                            </div>
+                          )}
                           <div className="text-sm text-gray-600 mt-1">
                             Type: {uidRecord.entity_type} | Status: {uidRecord.status}
                           </div>

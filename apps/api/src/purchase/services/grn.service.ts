@@ -568,7 +568,10 @@ export class GrnService {
     
     const { data, error } = await this.supabase
       .from('uid_registry')
-      .select('*')
+      .select(`
+        *,
+        item:items(code, name)
+      `)
       .eq('tenant_id', tenantId)
       .eq('grn_id', grnId)
       .order('created_at', { ascending: false });
@@ -576,7 +579,11 @@ export class GrnService {
     console.log('UIDs found:', data?.length || 0);
     if (data && data.length > 0) {
       console.log('First UID grn_id:', data[0].grn_id);
-      console.log('Sample UIDs:', data.slice(0, 3).map(u => ({ uid: u.uid, grn_id: u.grn_id })));
+      console.log('Sample UIDs with items:', data.slice(0, 3).map(u => ({ 
+        uid: u.uid, 
+        grn_id: u.grn_id,
+        item: u.item 
+      })));
     }
     
     if (error) {
