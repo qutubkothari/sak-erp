@@ -74,7 +74,8 @@ export class JobOrderController {
   @Post(':id/complete')
   async completeJobOrder(@Request() req: any, @Param('id') id: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
-    return this.jobOrderService.completeJobOrder(tenantId, id);
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.completeJobOrder(tenantId, id, userId);
   }
 
   @Get(':id/completion-preview')

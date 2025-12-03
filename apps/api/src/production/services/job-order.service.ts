@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 import { CreateJobOrderDto, UpdateJobOrderDto, UpdateOperationDto } from '../dto/job-order.dto';
+import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
 
 @Injectable()
 export class JobOrderService {
@@ -8,6 +9,8 @@ export class JobOrderService {
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_KEY!,
   );
+
+  constructor(private readonly uidService: UidSupabaseService) {}
 
   async create(tenantId: string, userId: string, dto: CreateJobOrderDto) {
     // Get item details
@@ -345,7 +348,7 @@ export class JobOrderService {
     };
   }
 
-  async completeJobOrder(tenantId: string, jobOrderId: string) {
+  async completeJobOrder(tenantId: string, jobOrderId: string, userId?: string) {
     // Get job order with materials
     const { data: jobOrder } = await this.supabase
       .from('production_job_orders')
@@ -441,6 +444,77 @@ export class JobOrderService {
 
       const warehouseId = warehouses[0].id;
 
+      // Get finished item details for UID generation
+      const { data: finishedItem } = await this.supabase
+        .from('items')
+        .select('id, code, name, category')
+        .eq('id', jobOrder.item_id)
+        .single();
+
+      if (!finishedItem) {
+        throw new BadRequestException('Finished item not found');
+      }
+
+      // 3. Generate UIDs for finished goods
+      const quantityProduced = jobOrder.quantity;
+      const uidsCreated = [];
+
+      // Determine entity type based on item category
+      let entityType = 'FG'; // Finished Good
+      if (finishedItem.category?.includes('SUB_ASSEMBLY') || finishedItem.category?.includes('ASSEMBLY')) {
+        entityType = 'SA'; // Sub Assembly
+      } else if (finishedItem.category?.includes('COMPONENT')) {
+        entityType = 'CP';
+      }
+
+      console.log(`[JobOrder] Generating ${quantityProduced} UIDs for ${finishedItem.code}, entityType: ${entityType}`);
+
+      for (let i = 0; i < quantityProduced; i++) {
+        // Generate UID
+        const uid = await this.uidService.generateUID(
+          'SAIF', // tenant code
+          'MFG',  // plant code
+          entityType,
+        );
+
+        // Create UID record with job order trail
+        const { error: uidError } = await this.supabase
+          .from('uid_registry')
+          .insert({
+            tenant_id: tenantId,
+            uid: uid,
+            entity_type: entityType,
+            entity_id: finishedItem.id,
+            job_order_id: jobOrderId,
+            location: 'Production',
+            status: 'GENERATED',
+            lifecycle: JSON.stringify([
+              {
+                stage: 'PRODUCED',
+                timestamp: new Date().toISOString(),
+                location: 'Production',
+                reference: `JOB ORDER ${jobOrder.job_order_number}`,
+                user: userId,
+              },
+            ]),
+            metadata: JSON.stringify({
+              item_code: finishedItem.code,
+              item_name: finishedItem.name,
+              job_order_id: jobOrderId,
+              job_order_number: jobOrder.job_order_number,
+              production_date: new Date().toISOString(),
+            }),
+          });
+
+        if (!uidError) {
+          uidsCreated.push(uid);
+        } else {
+          console.error('[JobOrder] UID generation error:', uidError);
+        }
+      }
+
+      console.log(`[JobOrder] Generated ${uidsCreated.length} UIDs for job order ${jobOrder.job_order_number}`);
+
       const { error: addError } = await this.supabase
         .from('stock_entries')
         .insert({
@@ -454,6 +528,7 @@ export class JobOrderService {
             created_from: 'JOB_ORDER_COMPLETION',
             job_order_id: jobOrderId,
             job_order_number: jobOrder.job_order_number,
+            uids_generated: uidsCreated.length,
           }
         });
 
