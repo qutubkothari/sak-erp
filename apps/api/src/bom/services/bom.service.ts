@@ -257,9 +257,14 @@ export class BomService {
 
     if (error) throw new BadRequestException(error.message);
 
+    console.log('[BomService] getBomItems - Raw BOM items:', bomItems);
+
     // Fetch component items and child BOMs
     const itemIds = bomItems?.filter((bi: any) => bi.component_type === 'ITEM').map((bi: any) => bi.item_id) || [];
     const childBomIds = bomItems?.filter((bi: any) => bi.component_type === 'BOM').map((bi: any) => bi.child_bom_id) || [];
+
+    console.log('[BomService] getBomItems - Item IDs to fetch:', itemIds);
+    console.log('[BomService] getBomItems - Child BOM IDs:', childBomIds);
 
     let items = [];
     let childBoms = [];
@@ -267,6 +272,7 @@ export class BomService {
     if (itemIds.length > 0) {
       const { data } = await this.supabase.from('items').select('*').in('id', itemIds);
       items = data || [];
+      console.log('[BomService] getBomItems - Fetched items:', items);
     }
 
     if (childBomIds.length > 0) {
@@ -278,7 +284,7 @@ export class BomService {
     const itemsMap = new Map(items.map((i: any) => [i.id, i]));
     const childBomsMap = new Map(childBoms.map((b: any) => [b.id, b]));
 
-    return bomItems.map((bi: any) => {
+    const result = bomItems.map((bi: any) => {
       if (bi.component_type === 'BOM') {
         const childBom = childBomsMap.get(bi.child_bom_id);
         return {
@@ -290,6 +296,7 @@ export class BomService {
         };
       } else {
         const item = itemsMap.get(bi.item_id);
+        console.log('[BomService] getBomItems - Mapping item:', { bomItemId: bi.item_id, foundItem: item });
         return {
           ...bi,
           component_id: bi.item_id,
@@ -299,6 +306,9 @@ export class BomService {
         };
       }
     });
+
+    console.log('[BomService] getBomItems - Final result:', result);
+    return result;
   }
 
   async findOne(tenantId: string, id: string) {
