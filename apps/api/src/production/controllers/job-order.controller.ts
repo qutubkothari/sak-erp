@@ -71,6 +71,12 @@ export class JobOrderController {
     return this.jobOrderService.updateOperation(tenantId, id, operationId, dto);
   }
 
+  @Post(':id/complete')
+  async completeJobOrder(@Request() req: any, @Param('id') id: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.jobOrderService.completeJobOrder(tenantId, id);
+  }
+
   @Delete(':id')
   async delete(@Request() req: any, @Param('id') id: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];

@@ -332,6 +332,26 @@ export default function JobOrdersPage() {
     }
   };
 
+  const handleCompleteJobOrder = async (id: string) => {
+    if (!confirm('Complete this job order? This will consume materials from inventory and add finished goods.')) {
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      await apiClient.post(`/job-orders/${id}/complete`, {});
+      fetchJobOrders();
+      alert('Job Order completed successfully. Inventory updated.');
+    } catch (error: any) {
+      console.error('Error completing job order:', error);
+      // Show detailed error message for material shortages
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to complete job order';
+      alert(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       itemId: '',
@@ -433,8 +453,9 @@ export default function JobOrdersPage() {
                   )}
                   {jo.status === 'IN_PROGRESS' && (
                     <button
-                      onClick={() => handleUpdateStatus(jo.id, 'COMPLETED')}
+                      onClick={() => handleCompleteJobOrder(jo.id)}
                       className="text-green-600 hover:text-green-800"
+                      disabled={loading}
                     >
                       Complete
                     </button>

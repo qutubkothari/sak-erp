@@ -19,6 +19,18 @@ export class JobOrderService {
 
     if (!item) throw new NotFoundException('Item not found');
 
+    // Check material availability if materials are provided
+    if (dto.materials && dto.materials.length > 0) {
+      const availability = await this.checkMaterialAvailability(tenantId, dto.materials, dto.quantity);
+      if (!availability.available) {
+        throw new BadRequestException(
+          `Insufficient materials:\n${availability.shortages.map(s => 
+            `${s.itemCode} - ${s.itemName}: Need ${s.required}, Available ${s.available}, Short ${s.shortage}`
+          ).join('\n')}`
+        );
+      }
+    }
+
     // Create job order
     const { data: jobOrder, error } = await this.supabase
       .from('production_job_orders')
@@ -279,5 +291,113 @@ export class JobOrderService {
       operations,
       materials,
     });
+  }
+
+  private async checkMaterialAvailability(tenantId: string, materials: any[], jobQuantity: number) {
+    const shortages = [];
+
+    for (const material of materials) {
+      const required = material.requiredQuantity * jobQuantity;
+
+      // Get available stock from inventory
+      const { data: stock } = await this.supabase
+        .from('inventory_stock')
+        .select('available_quantity, item:items(code, name)')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', material.itemId)
+        .maybeSingle();
+
+      const available = stock?.available_quantity || 0;
+
+      if (available < required) {
+        const item = stock?.item as any;
+        shortages.push({
+          itemId: material.itemId,
+          itemCode: item?.code || 'Unknown',
+          itemName: item?.name || 'Unknown',
+          required,
+          available,
+          shortage: required - available,
+        });
+      }
+    }
+
+    return {
+      available: shortages.length === 0,
+      shortages,
+    };
+  }
+
+  async completeJobOrder(tenantId: string, jobOrderId: string) {
+    // Get job order with materials
+    const { data: jobOrder } = await this.supabase
+      .from('production_job_orders')
+      .select('*, job_order_materials(*)')
+      .eq('tenant_id', tenantId)
+      .eq('id', jobOrderId)
+      .single();
+
+    if (!jobOrder) throw new NotFoundException('Job order not found');
+    if (jobOrder.status !== 'IN_PROGRESS') {
+      throw new BadRequestException('Job order must be IN_PROGRESS to complete');
+    }
+
+    // Start transaction-like operations
+    try {
+      // 1. Consume materials from inventory
+      for (const material of jobOrder.job_order_materials) {
+        const consumeQty = material.required_quantity;
+
+        // Update inventory stock
+        const { error: stockError } = await this.supabase.rpc('consume_inventory', {
+          p_tenant_id: tenantId,
+          p_item_id: material.item_id,
+          p_quantity: consumeQty,
+        });
+
+        if (stockError) {
+          console.error('Error consuming inventory:', stockError);
+          throw new BadRequestException(`Failed to consume ${material.item_code}: ${stockError.message}`);
+        }
+
+        // Update material issued quantity
+        await this.supabase
+          .from('job_order_materials')
+          .update({ 
+            issued_quantity: consumeQty,
+            status: 'ISSUED'
+          })
+          .eq('id', material.id);
+      }
+
+      // 2. Add finished goods to inventory
+      const { error: addError } = await this.supabase.rpc('add_to_inventory', {
+        p_tenant_id: tenantId,
+        p_item_id: jobOrder.item_id,
+        p_quantity: jobOrder.quantity,
+      });
+
+      if (addError) {
+        console.error('Error adding finished goods:', addError);
+        throw new BadRequestException(`Failed to add finished goods: ${addError.message}`);
+      }
+
+      // 3. Update job order status
+      const { error: updateError } = await this.supabase
+        .from('production_job_orders')
+        .update({
+          status: 'COMPLETED',
+          actual_end_date: new Date().toISOString(),
+          completed_quantity: jobOrder.quantity,
+        })
+        .eq('id', jobOrderId);
+
+      if (updateError) throw new BadRequestException(updateError.message);
+
+      return this.findOne(tenantId, jobOrderId);
+    } catch (error) {
+      console.error('Error completing job order:', error);
+      throw error;
+    }
   }
 }
