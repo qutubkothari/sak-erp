@@ -724,12 +724,12 @@ export default function JobOrdersPage() {
                       <select
                         value={mat.itemId}
                         onChange={(e) => {
-                          console.log(`Material ${idx} changed to:`, e.target.value);
+                          console.log('Material changed to:', e.target.value);
                           updateMaterial(idx, 'itemId', e.target.value);
                         }}
                         className="w-full border rounded px-2 py-1 text-sm"
                       >
-                        <option value="">{`Select Item... (${items.length} available)`}</option>
+                        <option value="">Select Item... ({items.length} available)</option>
                         {items.map(item => (
                           <option key={item.id} value={item.id}>
                             {item.code} - {item.name} {item.type && `(${item.type})`}
