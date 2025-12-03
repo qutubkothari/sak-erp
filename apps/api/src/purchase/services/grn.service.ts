@@ -566,7 +566,7 @@ export class GrnService {
     console.log('TenantId:', tenantId);
     console.log('GRN ID:', grnId);
     
-    // First, get UIDs with their item_ids
+    // First, get UIDs from uid_registry
     const { data: uidData, error: uidError } = await this.supabase
       .from('uid_registry')
       .select('*')
@@ -586,27 +586,35 @@ export class GrnService {
 
     console.log('UIDs found:', uidData.length);
 
-    // Get unique item_ids
-    const itemIds = [...new Set(uidData.map(uid => uid.item_id).filter(Boolean))];
+    // Get unique entity_ids where entity_type is ITEM or similar
+    const itemEntityIds = [...new Set(
+      uidData
+        .filter(uid => uid.entity_type && uid.entity_id)
+        .map(uid => uid.entity_id)
+    )].filter(Boolean);
     
-    // Fetch items data
-    const { data: itemsData } = await this.supabase
-      .from('items')
-      .select('id, code, name')
-      .in('id', itemIds);
+    // Fetch items data if we have entity_ids
+    let itemsMap = new Map();
+    if (itemEntityIds.length > 0) {
+      const { data: itemsData } = await this.supabase
+        .from('items')
+        .select('id, code, name')
+        .in('id', itemEntityIds);
 
-    // Create a map of item_id -> item data
-    const itemsMap = new Map(itemsData?.map(item => [item.id, item]) || []);
+      itemsMap = new Map(itemsData?.map(item => [item.id, item]) || []);
+    }
 
-    // Attach item data to each UID
+    // Attach item data to each UID based on entity_id
     const enrichedData = uidData.map(uid => ({
       ...uid,
-      item: uid.item_id ? itemsMap.get(uid.item_id) : null,
+      item: uid.entity_id ? itemsMap.get(uid.entity_id) : null,
     }));
 
     console.log('Sample UIDs with items:', enrichedData.slice(0, 3).map(u => ({ 
       uid: u.uid, 
       grn_id: u.grn_id,
+      entity_type: u.entity_type,
+      entity_id: u.entity_id,
       item: u.item 
     })));
     
