@@ -792,6 +792,8 @@ export class UidSupabaseService {
   async getAllUIDs(req: any, status?: string, entityType?: string, itemId?: string, page?: number, limit?: number) {
     const tenantId = req.user?.tenantId || req.tenantId;
     
+    console.log('[getAllUIDs] Called with:', { tenantId, status, entityType, itemId, page, limit });
+    
     if (!tenantId) {
       throw new Error('Tenant ID is required');
     }
@@ -837,6 +839,8 @@ export class UidSupabaseService {
 
     const { data, error, count } = await query;
 
+    console.log('[getAllUIDs] Query result:', { dataCount: data?.length, error, totalCount: count });
+
     if (error) {
       console.error('[getAllUIDs] Error:', error);
       throw new Error(`Failed to fetch UIDs: ${error.message}`);
@@ -844,13 +848,18 @@ export class UidSupabaseService {
 
     // Fetch item details separately if we have UIDs
     if (data && data.length > 0) {
+      console.log('[getAllUIDs] Fetching item details for', data.length, 'UIDs');
       const entityIds = [...new Set(data.map(uid => uid.entity_id).filter(Boolean))];
+      
+      console.log('[getAllUIDs] Unique entity IDs:', entityIds);
       
       if (entityIds.length > 0) {
         const { data: items } = await this.supabase
           .from('items')
           .select('id, code, name')
           .in('id', entityIds);
+        
+        console.log('[getAllUIDs] Fetched items:', items?.length);
         
         if (items) {
           const itemsMap = new Map(items.map(item => [item.id, item]));
@@ -864,7 +873,11 @@ export class UidSupabaseService {
           });
         }
       }
+    } else {
+      console.log('[getAllUIDs] No UIDs found matching criteria');
     }
+
+    console.log('[getAllUIDs] Returning data with', data?.length, 'UIDs');
 
     return {
       data,
