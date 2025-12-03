@@ -24,11 +24,19 @@ export class UidSupabaseController {
 
   @Get()
   findAll(@Request() req: any, @Query() filters: any) {
+    // Support both itemId and item_id (snake_case from frontend)
+    const itemId = filters.itemId || filters.item_id;
+    
+    // If requesting with item_id and status (dispatch scenario), use getAllUIDs
+    if (itemId && filters.status) {
+      return this.uidService.getAllUIDs(req, filters.status, filters.entityType, itemId);
+    }
+    
     // If requesting for quality inspection (simple list), use getAllUIDs
     if (filters.forInspection === 'true') {
       const page = filters.page ? parseInt(filters.page) : undefined;
       const limit = filters.limit ? parseInt(filters.limit) : undefined;
-      return this.uidService.getAllUIDs(req, filters.status, filters.entityType, filters.itemId, page, limit);
+      return this.uidService.getAllUIDs(req, filters.status, filters.entityType, itemId, page, limit);
     }
     // Otherwise use the full findAll
     return this.uidService.findAll(req, filters);
