@@ -184,18 +184,27 @@ export default function JobOrdersPage() {
   };
 
   const handleCreateJobOrder = async () => {
+    console.log('Create button clicked', { formData, operations, materials });
+    
     if (!formData.itemId || !formData.quantity || !formData.startDate) {
+      console.log('Validation failed', { 
+        itemId: formData.itemId, 
+        quantity: formData.quantity, 
+        startDate: formData.startDate 
+      });
       alert('Please fill in all required fields');
       return;
     }
 
     setLoading(true);
     try {
-      await apiClient.post('/job-orders', {
+      console.log('Sending request to /job-orders');
+      const response = await apiClient.post('/job-orders', {
         ...formData,
         operations: operations.length > 0 ? operations : undefined,
         materials: materials.length > 0 ? materials : undefined,
       });
+      console.log('Job order created successfully', response);
 
       setShowCreateModal(false);
       resetForm();
