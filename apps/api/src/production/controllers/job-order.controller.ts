@@ -3,7 +3,7 @@ import { JobOrderService } from '../services/job-order.service';
 import { CreateJobOrderDto, UpdateJobOrderDto, UpdateOperationDto } from '../dto/job-order.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@Controller('production/job-orders')
+@Controller('job-orders')
 @UseGuards(JwtAuthGuard)
 export class JobOrderController {
   constructor(private readonly jobOrderService: JobOrderService) {}

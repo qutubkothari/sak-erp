@@ -103,7 +103,7 @@ export default function JobOrdersPage() {
 
   const fetchJobOrders = async () => {
     try {
-      const data = await apiClient.get('/production/job-orders');
+      const data = await apiClient.get('/job-orders');
       setJobOrders(data);
     } catch (error) {
       console.error('Error fetching job orders:', error);
@@ -191,7 +191,7 @@ export default function JobOrdersPage() {
 
     setLoading(true);
     try {
-      await apiClient.post('/production/job-orders', {
+      await apiClient.post('/job-orders', {
         ...formData,
         operations: operations.length > 0 ? operations : undefined,
         materials: materials.length > 0 ? materials : undefined,
@@ -211,7 +211,7 @@ export default function JobOrdersPage() {
 
   const handleUpdateStatus = async (id: string, status: string) => {
     try {
-      await apiClient.put(`/production/job-orders/${id}/status`, { status });
+      await apiClient.put(`/job-orders/${id}/status`, { status });
       fetchJobOrders();
       alert(`Job Order status updated to ${status}`);
     } catch (error) {
