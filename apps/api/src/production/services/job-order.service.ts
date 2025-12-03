@@ -299,18 +299,24 @@ export class JobOrderService {
     for (const material of materials) {
       const required = material.requiredQuantity * jobQuantity;
 
-      // Get available stock from inventory
-      const { data: stock } = await this.supabase
-        .from('inventory_stock')
-        .select('available_quantity, item:items(code, name)')
+      // Get available stock from stock_entries
+      const { data: stockEntries } = await this.supabase
+        .from('stock_entries')
+        .select('available_quantity, item_id')
         .eq('tenant_id', tenantId)
-        .eq('item_id', material.itemId)
-        .maybeSingle();
+        .eq('item_id', material.itemId);
 
-      const available = stock?.available_quantity || 0;
+      // Sum up available quantity across all stock entries for this item
+      const available = stockEntries?.reduce((sum, entry) => sum + (Number(entry.available_quantity) || 0), 0) || 0;
 
       if (available < required) {
-        const item = stock?.item as any;
+        // Fetch item details
+        const { data: item } = await this.supabase
+          .from('items')
+          .select('code, name')
+          .eq('id', material.itemId)
+          .single();
+
         shortages.push({
           itemId: material.itemId,
           itemCode: item?.code || 'Unknown',
