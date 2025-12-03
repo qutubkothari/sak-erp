@@ -289,7 +289,7 @@ export class BomService {
         const childBom = childBomsMap.get(bi.child_bom_id);
         return {
           ...bi,
-          component_id: bi.child_bom_id,
+          component_id: childBom?.item_id || bi.child_bom_id, // Use the item_id from the child BOM's items table
           component_code: childBom?.items?.code || 'N/A',
           component_name: childBom?.items?.name || 'Unknown BOM',
           component_type: 'BOM'
