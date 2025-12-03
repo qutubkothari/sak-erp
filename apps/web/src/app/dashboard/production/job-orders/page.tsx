@@ -122,7 +122,13 @@ export default function JobOrdersPage() {
   const fetchWorkstations = async () => {
     try {
       const data = await apiClient.get('/production/work-stations');
-      setWorkstations(data);
+      // Map station_code and station_name to code and name for dropdown compatibility
+      const mapped = data.map((ws: any) => ({
+        id: ws.id,
+        code: ws.station_code,
+        name: ws.station_name,
+      }));
+      setWorkstations(mapped);
     } catch (error) {
       console.error('Error fetching workstations:', error);
     }
