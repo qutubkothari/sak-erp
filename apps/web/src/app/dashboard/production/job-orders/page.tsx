@@ -80,6 +80,8 @@ export default function JobOrdersPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedJobOrder, setSelectedJobOrder] = useState<JobOrder | null>(null);
   const [loading, setLoading] = useState(false);
+  const [completionPreview, setCompletionPreview] = useState<any>(null);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -333,18 +335,34 @@ export default function JobOrdersPage() {
   };
 
   const handleCompleteJobOrder = async (id: string) => {
-    if (!confirm('Complete this job order? This will consume materials from inventory and add finished goods.')) {
-      return;
+    // First, fetch completion preview
+    setLoading(true);
+    try {
+      const preview = await apiClient.get(`/job-orders/${id}/completion-preview`);
+      setCompletionPreview(preview);
+      setShowCompletionModal(true);
+    } catch (error: any) {
+      console.error('Error fetching completion preview:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to load completion preview';
+      alert(errorMsg);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const confirmCompletion = async () => {
+    if (!completionPreview) return;
     
     setLoading(true);
     try {
-      await apiClient.post(`/job-orders/${id}/complete`, {});
+      const jobOrderId = jobOrders.find(jo => jo.jobOrderNumber === completionPreview.jobOrderNumber)?.id;
+      await apiClient.post(`/job-orders/${jobOrderId}/complete`, {});
+      setShowCompletionModal(false);
+      setCompletionPreview(null);
       fetchJobOrders();
-      alert('Job Order completed successfully. Inventory updated.');
+      alert('✅ Job Order completed successfully!\n\nInventory has been updated.');
     } catch (error: any) {
       console.error('Error completing job order:', error);
-      // Show detailed error message for material shortages
       const errorMsg = error.response?.data?.message || error.message || 'Failed to complete job order';
       alert(errorMsg);
     } finally {
@@ -904,6 +922,143 @@ export default function JobOrdersPage() {
                 className="px-4 py-2 border rounded hover:bg-gray-100"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Completion Preview Modal */}
+      {showCompletionModal && completionPreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b">
+              <h2 className="text-2xl font-bold text-gray-900">Complete Job Order - Stock Impact Preview</h2>
+              <p className="text-gray-600 mt-1">Job Order: {completionPreview.jobOrderNumber}</p>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Finished Product Section */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-green-900 mb-3">✅ Finished Product to Add</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Product</p>
+                    <p className="text-base font-semibold text-gray-900">
+                      {completionPreview.finishedProduct.itemCode} - {completionPreview.finishedProduct.itemName}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Quantity to Add</p>
+                    <p className="text-2xl font-bold text-green-600">+{completionPreview.finishedProduct.quantityToAdd}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Current Stock</p>
+                    <p className="text-lg font-medium text-gray-700">{completionPreview.finishedProduct.currentStock}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">New Stock</p>
+                    <p className="text-lg font-bold text-green-700">{completionPreview.finishedProduct.newStock}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Materials to Consume Section */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">📦 Materials to Consume</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 border">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">To Consume</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Current Stock</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Reserved</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">New Stock</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {completionPreview.materialsToConsume.map((material: any, index: number) => (
+                        <tr key={index} className={material.sufficient ? '' : 'bg-red-50'}>
+                          <td className="px-4 py-3 text-sm">
+                            <div className="font-medium text-gray-900">{material.itemCode}</div>
+                            <div className="text-gray-500 text-xs">{material.itemName}</div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">-{material.toConsume}</td>
+                          <td className="px-4 py-3 text-sm text-right">{material.currentStock}</td>
+                          <td className="px-4 py-3 text-sm text-right text-yellow-600">{material.reservedStock}</td>
+                          <td className="px-4 py-3 text-sm text-right font-medium">
+                            {material.newStock >= 0 ? (
+                              <span className="text-gray-900">{material.newStock}</span>
+                            ) : (
+                              <span className="text-red-600 font-bold">{material.newStock}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {material.sufficient ? (
+                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                ✓ OK
+                              </span>
+                            ) : (
+                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                                ⚠ Insufficient
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Warning for insufficient materials */}
+              {!completionPreview.canComplete && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold text-red-900 mb-2">⚠️ Cannot Complete Job Order</h3>
+                  <p className="text-sm text-red-700 mb-3">
+                    The following materials have insufficient stock:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
+                    {completionPreview.insufficientMaterials.map((mat: any, idx: number) => (
+                      <li key={idx}>
+                        {mat.itemCode} - {mat.itemName}: Need {mat.toConsume}, Have {mat.currentStock}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Summary */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> Completing this job order will automatically update inventory. 
+                  Materials will be consumed and finished goods will be added. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 border-t flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowCompletionModal(false);
+                  setCompletionPreview(null);
+                }}
+                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmCompletion}
+                disabled={!completionPreview.canComplete || loading}
+                className={`px-6 py-2 rounded-lg font-semibold ${
+                  completionPreview.canComplete && !loading
+                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                {loading ? 'Completing...' : 'Confirm & Complete'}
               </button>
             </div>
           </div>

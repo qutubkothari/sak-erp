@@ -467,15 +467,17 @@ export class BomService {
 
     // Check stock availability for each exploded item
     const itemsToOrder = [];
+    const stockStatus = []; // Track all items with stock info
 
     for (const explodedItem of explodedItems) {
-      // Check current stock AND get reorder level
+      // Check current stock from inventory_stock table (new unified table)
       const [stockRes, itemRes] = await Promise.all([
         this.supabase
-          .from('stock_entries')
-          .select('available_quantity')
+          .from('inventory_stock')
+          .select('available_quantity, reserved_quantity, total_quantity')
           .eq('tenant_id', tenantId)
-          .eq('item_id', explodedItem.itemId),
+          .eq('item_id', explodedItem.itemId)
+          .maybeSingle(),
         this.supabase
           .from('items')
           .select('code, name, reorder_level')
@@ -483,14 +485,31 @@ export class BomService {
           .single(),
       ]);
 
-      const availableQty = stockRes.data?.reduce((sum, s) => sum + parseFloat(s.available_quantity.toString()), 0) || 0;
+      const totalQty = stockRes.data?.total_quantity ? parseFloat(stockRes.data.total_quantity.toString()) : 0;
+      const availableQty = stockRes.data?.available_quantity ? parseFloat(stockRes.data.available_quantity.toString()) : 0;
+      const reservedQty = stockRes.data?.reserved_quantity ? parseFloat(stockRes.data.reserved_quantity.toString()) : 0;
       const reorderLevel = itemRes.data?.reorder_level ? parseFloat(itemRes.data.reorder_level.toString()) : 0;
       
       // Calculate usable stock (available minus reorder level safety stock)
       const usableStock = Math.max(0, availableQty - reorderLevel);
       const shortfall = explodedItem.quantity - usableStock;
 
-      console.log(`[BOM PR] Item ${explodedItem.itemId}: Required=${explodedItem.quantity}, Available=${availableQty}, ReorderLevel=${reorderLevel}, Usable=${usableStock}, Shortfall=${shortfall}`);
+      console.log(`[BOM PR] Item ${explodedItem.itemId}: Required=${explodedItem.quantity}, Total=${totalQty}, Available=${availableQty}, Reserved=${reservedQty}, ReorderLevel=${reorderLevel}, Usable=${usableStock}, Shortfall=${shortfall}`);
+
+      // Add to stock status for display
+      stockStatus.push({
+        itemId: explodedItem.itemId,
+        itemCode: itemRes.data?.code || 'Unknown',
+        itemName: itemRes.data?.name || 'Unknown',
+        required: explodedItem.quantity,
+        totalStock: totalQty,
+        availableStock: availableQty,
+        reservedStock: reservedQty,
+        reorderLevel: reorderLevel,
+        usableStock: usableStock,
+        shortfall: Math.max(0, shortfall),
+        needsPR: shortfall > 0,
+      });
 
       if (shortfall > 0) {
         if (itemRes.data) {
@@ -507,7 +526,11 @@ export class BomService {
     }
 
     if (itemsToOrder.length === 0) {
-      return { message: 'All items are in stock', itemsToOrder: [] };
+      return { 
+        message: 'All items are in stock', 
+        itemsToOrder: [],
+        stockStatus: stockStatus, // Include stock status even when no PR needed
+      };
     }
 
     // Create Purchase Requisition
@@ -593,6 +616,7 @@ export class BomService {
       prNumber: pr.pr_number,
       prId: pr.id,
       itemsToOrder,
+      stockStatus, // Include detailed stock status
     };
   }
 

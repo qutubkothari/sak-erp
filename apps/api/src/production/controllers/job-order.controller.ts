@@ -77,6 +77,12 @@ export class JobOrderController {
     return this.jobOrderService.completeJobOrder(tenantId, id);
   }
 
+  @Get(':id/completion-preview')
+  async getCompletionPreview(@Request() req: any, @Param('id') id: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.jobOrderService.getCompletionPreview(tenantId, id);
+  }
+
   @Delete(':id')
   async delete(@Request() req: any, @Param('id') id: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];

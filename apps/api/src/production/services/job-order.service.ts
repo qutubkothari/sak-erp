@@ -400,4 +400,72 @@ export class JobOrderService {
       throw error;
     }
   }
+
+  async getCompletionPreview(tenantId: string, jobOrderId: string) {
+    // Get job order with materials and finished item
+    const { data: jobOrder } = await this.supabase
+      .from('production_job_orders')
+      .select(`
+        *,
+        job_order_materials(*, item:items(code, name)),
+        finished_item:items!production_job_orders_item_id_fkey(code, name)
+      `)
+      .eq('tenant_id', tenantId)
+      .eq('id', jobOrderId)
+      .single();
+
+    if (!jobOrder) throw new NotFoundException('Job order not found');
+
+    // Get current stock for finished item
+    const { data: finishedStock } = await this.supabase
+      .from('inventory_stock')
+      .select('total_quantity, available_quantity, reserved_quantity')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', jobOrder.item_id)
+      .maybeSingle();
+
+    const currentFinishedStock = finishedStock?.available_quantity ? parseFloat(finishedStock.available_quantity.toString()) : 0;
+    const newFinishedStock = currentFinishedStock + jobOrder.quantity;
+
+    // Get current stock for each material
+    const materialsWithStock = await Promise.all(
+      jobOrder.job_order_materials.map(async (material: any) => {
+        const { data: stock } = await this.supabase
+          .from('inventory_stock')
+          .select('total_quantity, available_quantity, reserved_quantity')
+          .eq('tenant_id', tenantId)
+          .eq('item_id', material.item_id)
+          .maybeSingle();
+
+        const currentStock = stock?.available_quantity ? parseFloat(stock.available_quantity.toString()) : 0;
+        const reservedStock = stock?.reserved_quantity ? parseFloat(stock.reserved_quantity.toString()) : 0;
+        const newStock = currentStock - material.required_quantity;
+
+        return {
+          itemId: material.item_id,
+          itemCode: material.item?.code || 'Unknown',
+          itemName: material.item?.name || 'Unknown',
+          toConsume: material.required_quantity,
+          currentStock: currentStock,
+          reservedStock: reservedStock,
+          newStock: newStock,
+          sufficient: currentStock >= material.required_quantity,
+        };
+      })
+    );
+
+    return {
+      jobOrderNumber: jobOrder.job_order_number,
+      finishedProduct: {
+        itemCode: jobOrder.finished_item?.code || 'Unknown',
+        itemName: jobOrder.finished_item?.name || 'Unknown',
+        quantityToAdd: jobOrder.quantity,
+        currentStock: currentFinishedStock,
+        newStock: newFinishedStock,
+      },
+      materialsToConsume: materialsWithStock,
+      canComplete: materialsWithStock.every(m => m.sufficient),
+      insufficientMaterials: materialsWithStock.filter(m => !m.sufficient),
+    };
+  }
 }

@@ -81,6 +81,7 @@ export default function BOMPage() {
   const [showPRModal, setShowPRModal] = useState(false);
   const [prBomId, setPrBomId] = useState<string>('');
   const [prQuantity, setPrQuantity] = useState<number>(1);
+  const [prStockStatus, setPrStockStatus] = useState<any[]>([]);
   const [showTrailModal, setShowTrailModal] = useState(false);
   const [purchaseTrail, setPurchaseTrail] = useState<PurchaseTrail | null>(null);
   const [loadingTrail, setLoadingTrail] = useState(false);
@@ -263,22 +264,29 @@ export default function BOMPage() {
       const data = await response.json();
       console.log('[BOM] PR response data:', data);
       
+      // Store stock status for display
+      if (data.stockStatus && data.stockStatus.length > 0) {
+        setPrStockStatus(data.stockStatus);
+      }
+      
       if (response.ok) {
-        setShowPRModal(false);
         if (data.itemsToOrder && data.itemsToOrder.length > 0) {
-          const itemsList = data.itemsToOrder
-            .map((item: any) => `  • ${item.itemCode} - ${item.itemName}: ${item.quantity} units`)
-            .join('\n');
+          // Show success with stock details - don't close modal yet
           alert(
             `✅ Purchase Requisition ${data.prNumber} generated!\n\n` +
-            `Items to order (${data.itemsToOrder.length}):\n${itemsList}\n\n` +
-            `Only items with insufficient stock are included.`
+            `Items to order (${data.itemsToOrder.length}):\n${data.itemsToOrder.map((item: any) => 
+              `  • ${item.itemCode} - ${item.itemName}: ${item.quantity} units`
+            ).join('\n')}\n\n` +
+            `Check the detailed stock status below.`
           );
+          // Keep modal open to show stock status
         } else {
-          alert('✅ All items are in stock! No PR needed.');
+          alert('✅ All items are in stock! No PR needed.\n\nCheck the detailed stock status below.');
+          // Keep modal open to show stock status
         }
       } else {
         alert(`❌ Error: ${data.message || response.statusText}`);
+        setShowPRModal(false);
       }
     } catch (error) {
       console.error('[BOM] Error generating PR:', error);
@@ -1029,8 +1037,8 @@ export default function BOMPage() {
 
       {/* Generate PR Modal */}
       {showPRModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto my-8">
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-xl font-bold text-gray-900">Generate Purchase Requisition</h2>
               <p className="text-gray-600 text-sm mt-1">Enter production quantity to calculate material requirements</p>
@@ -1043,7 +1051,10 @@ export default function BOMPage() {
               <input
                 type="number"
                 value={prQuantity}
-                onChange={(e) => setPrQuantity(Number(e.target.value))}
+                onChange={(e) => {
+                  setPrQuantity(Number(e.target.value));
+                  setPrStockStatus([]); // Clear previous status when quantity changes
+                }}
                 min="1"
                 step="1"
                 className="w-full border border-gray-300 rounded-lg px-4 py-3 text-lg focus:ring-2 focus:ring-green-500"
@@ -1055,19 +1066,84 @@ export default function BOMPage() {
               </p>
             </div>
 
+            {/* Stock Status Table */}
+            {prStockStatus.length > 0 && (
+              <div className="px-6 pb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Material Stock Status</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 border">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Required</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Available</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Reserved</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Usable</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Shortfall</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">PR Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {prStockStatus.map((item: any, index: number) => (
+                        <tr key={index} className={item.needsPR ? 'bg-red-50' : 'bg-green-50'}>
+                          <td className="px-4 py-3 text-sm">
+                            <div className="font-medium text-gray-900">{item.itemCode}</div>
+                            <div className="text-gray-500 text-xs">{item.itemName}</div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-medium">{item.required}</td>
+                          <td className="px-4 py-3 text-sm text-right">{item.availableStock}</td>
+                          <td className="px-4 py-3 text-sm text-right text-yellow-600">{item.reservedStock}</td>
+                          <td className="px-4 py-3 text-sm text-right font-medium">{item.usableStock}</td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            {item.shortfall > 0 ? (
+                              <span className="text-red-600 font-semibold">{item.shortfall}</span>
+                            ) : (
+                              <span className="text-green-600">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {item.needsPR ? (
+                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                                PR Created
+                              </span>
+                            ) : (
+                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                In Stock
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <strong>Note:</strong> Usable Stock = Available Stock - Reorder Level (safety stock). 
+                    PR will be generated only for items with shortfall.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
               <button
-                onClick={() => setShowPRModal(false)}
+                onClick={() => {
+                  setShowPRModal(false);
+                  setPrStockStatus([]);
+                }}
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Close
               </button>
-              <button
-                onClick={handleConfirmGeneratePR}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-              >
-                Generate PR
-              </button>
+              {prStockStatus.length === 0 && (
+                <button
+                  onClick={handleConfirmGeneratePR}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                >
+                  Generate PR
+                </button>
+              )}
             </div>
           </div>
         </div>
