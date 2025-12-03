@@ -83,11 +83,38 @@ export class UidSupabaseService {
   async findAll(req: any, filters?: any) {
     const tenantId = req.user.tenantId;
 
+    // Pagination parameters
+    const page = filters?.page ? parseInt(filters.page) : 1;
+    const limit = filters?.limit ? parseInt(filters.limit) : 50;
+    const offset = (page - 1) * limit;
+
+    // Get total count first
+    let countQuery = this.supabase
+      .from('uid_registry')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId);
+
+    if (filters?.status) {
+      countQuery = countQuery.eq('status', filters.status);
+    }
+
+    if (filters?.entity_type) {
+      countQuery = countQuery.eq('entity_type', filters.entity_type);
+    }
+
+    if (filters?.location) {
+      countQuery = countQuery.ilike('location', `%${filters.location}%`);
+    }
+
+    const { count, error: countError } = await countQuery;
+    if (countError) throw new Error(countError.message);
+
     let query = this.supabase
       .from('uid_registry')
       .select('*')
       .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (filters?.status) {
       query = query.eq('status', filters.status);
@@ -135,7 +162,15 @@ export class UidSupabaseService {
       });
     }
     
-    return processedData;
+    return {
+      data: processedData,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limit)
+      }
+    };
   }
 
   /**
@@ -754,12 +789,17 @@ export class UidSupabaseService {
   /**
    * Get all UIDs with filtering - for quality inspection form
    */
-  async getAllUIDs(req: any, status?: string, entityType?: string, itemId?: string) {
+  async getAllUIDs(req: any, status?: string, entityType?: string, itemId?: string, page?: number, limit?: number) {
     const tenantId = req.user?.tenantId || req.tenantId;
     
     if (!tenantId) {
       throw new Error('Tenant ID is required');
     }
+
+    // Pagination parameters
+    const currentPage = page || 1;
+    const pageLimit = limit || 50;
+    const offset = (currentPage - 1) * pageLimit;
     
     let query = this.supabase
       .from('uid_registry')
@@ -777,10 +817,10 @@ export class UidSupabaseService {
           code,
           name
         )
-      `)
+      `, { count: 'exact' })
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
-      .limit(1000);
+      .range(offset, offset + pageLimit - 1);
 
     if (status) {
       // Support comma-separated statuses
@@ -800,14 +840,22 @@ export class UidSupabaseService {
       query = query.eq('entity_id', itemId);
     }
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
 
     if (error) {
       console.error('[getAllUIDs] Error:', error);
       throw new Error(`Failed to fetch UIDs: ${error.message}`);
     }
 
-    return data || [];
+    return {
+      data,
+      pagination: {
+        page: currentPage,
+        limit: pageLimit,
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / pageLimit)
+      }
+    };
   }
 
   /**

@@ -26,7 +26,9 @@ export class UidSupabaseController {
   findAll(@Request() req: any, @Query() filters: any) {
     // If requesting for quality inspection (simple list), use getAllUIDs
     if (filters.forInspection === 'true') {
-      return this.uidService.getAllUIDs(req, filters.status, filters.entityType);
+      const page = filters.page ? parseInt(filters.page) : undefined;
+      const limit = filters.limit ? parseInt(filters.limit) : undefined;
+      return this.uidService.getAllUIDs(req, filters.status, filters.entityType, filters.itemId, page, limit);
     }
     // Otherwise use the full findAll
     return this.uidService.findAll(req, filters);
