@@ -19,8 +19,9 @@ interface Workstation {
 
 interface User {
   id: string;
-  full_name: string;
-  email: string;
+  employee_name: string;
+  employee_code: string;
+  designation?: string;
 }
 
 interface Operation {
@@ -120,7 +121,7 @@ export default function JobOrdersPage() {
 
   const fetchWorkstations = async () => {
     try {
-      const data = await apiClient.get('/workstations');
+      const data = await apiClient.get('/production/work-stations');
       setWorkstations(data);
     } catch (error) {
       console.error('Error fetching workstations:', error);
@@ -129,7 +130,7 @@ export default function JobOrdersPage() {
 
   const fetchUsers = async () => {
     try {
-      const data = await apiClient.get('/users');
+      const data = await apiClient.get('/hr/employees');
       setUsers(data);
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -468,7 +469,9 @@ export default function JobOrdersPage() {
                         >
                           <option value="">Unassigned</option>
                           {users.map(user => (
-                            <option key={user.id} value={user.id}>{user.full_name}</option>
+                            <option key={user.id} value={user.id}>
+                              {user.employee_name} {user.designation && `(${user.designation})`}
+                            </option>
                           ))}
                         </select>
                       </div>
