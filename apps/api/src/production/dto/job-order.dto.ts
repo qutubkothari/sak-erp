@@ -74,6 +74,7 @@ export class CreateJobOrderDto {
   startDate: string;
 
   @IsOptional()
+  @IsOptional()
   @IsDateString()
   endDate?: string;
 
