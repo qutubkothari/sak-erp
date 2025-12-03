@@ -104,7 +104,21 @@ export default function JobOrdersPage() {
   const fetchJobOrders = async () => {
     try {
       const data = await apiClient.get('/job-orders');
-      setJobOrders(data);
+      // Map snake_case to camelCase
+      const mapped = data.map((jo: any) => ({
+        ...jo,
+        jobOrderNumber: jo.job_order_number,
+        itemId: jo.item_id,
+        itemCode: jo.item_code,
+        itemName: jo.item_name,
+        bomId: jo.bom_id,
+        startDate: jo.start_date,
+        endDate: jo.end_date,
+        createdBy: jo.created_by,
+        createdAt: jo.created_at,
+        updatedAt: jo.updated_at,
+      }));
+      setJobOrders(mapped);
     } catch (error) {
       console.error('Error fetching job orders:', error);
     }
@@ -135,11 +149,83 @@ export default function JobOrdersPage() {
   };
 
   const fetchUsers = async () => {
-    try {
-      const data = await apiClient.get('/hr/employees');
+    try {\n      const data = await apiClient.get('/hr/employees');
       setUsers(data);
     } catch (error) {
       console.error('Error fetching users:', error);
+    }
+  };
+
+  const fetchBOMData = async (itemId: string) => {
+    try {
+      // Get BOM header for this item
+      const boms = await apiClient.get(`/bom?itemId=${itemId}`);\n      if (boms && boms.length > 0) {
+        const bom = boms[0];
+        setFormData(prev => ({ ...prev, bomId: bom.id }));
+
+        // Fetch BOM items (materials)
+        const bomItems = await apiClient.get(`/bom/${bom.id}/items`);
+        const materials = bomItems.map((item: any) => ({
+          itemId: item.component_id,
+          itemCode: item.component_code,
+          itemName: item.component_name,
+          requiredQuantity: item.quantity,
+        }));
+        setMaterials(materials);
+
+        // Fetch routing (operations)
+        const routing = await apiClient.get(`/production/routing/bom/${bom.id}?withStations=true`);
+        if (routing && routing.length > 0) {
+          const operations = routing.map((route: any) => ({
+            sequenceNumber: route.sequence_no,
+            operationName: route.operation_name,
+            workstationId: route.work_station_id,
+            acceptedVariationPercent: 5,
+          }));
+          setOperations(operations);
+        }
+        
+        alert('BOM data loaded! Materials and operations have been added.');
+      }
+    } catch (error) {
+      console.error('Error fetching BOM data:', error);
+    }
+  };
+
+  const fetchBOMData = async (itemId: string) => {
+    try {
+      // Get BOM header for this item
+      const boms = await apiClient.get(`/bom?itemId=${itemId}`);
+      if (boms && boms.length > 0) {
+        const bom = boms[0];
+        setFormData(prev => ({ ...prev, bomId: bom.id }));
+
+        // Fetch BOM items (materials)
+        const bomItems = await apiClient.get(`/bom/${bom.id}/items`);
+        const materials = bomItems.map((item: any) => ({
+          itemId: item.component_id,
+          itemCode: item.component_code,
+          itemName: item.component_name,
+          requiredQuantity: item.quantity,
+        }));
+        setMaterials(materials);
+
+        // Fetch routing (operations)
+        const routing = await apiClient.get(`/production/routing/bom/${bom.id}?withStations=true`);
+        if (routing && routing.length > 0) {
+          const operations = routing.map((route: any) => ({
+            sequenceNumber: route.sequence_no,
+            operationName: route.operation_name,
+            workstationId: route.work_station_id,
+            acceptedVariationPercent: 5,
+          }));
+          setOperations(operations);
+        }
+        
+        alert('BOM data loaded! Materials and operations have been added.');
+      }
+    } catch (error) {
+      console.error('Error fetching BOM data:', error);
     }
   };
 
@@ -351,7 +437,12 @@ export default function JobOrdersPage() {
                 <label className="block text-sm font-medium mb-1">Item *</label>
                 <select
                   value={formData.itemId}
-                  onChange={(e) => setFormData({...formData, itemId: e.target.value})}
+                  onChange={(e) => {
+                    setFormData({...formData, itemId: e.target.value});
+                    if (e.target.value) {
+                      fetchBOMData(e.target.value);
+                    }
+                  }}
                   className="w-full border rounded px-3 py-2 text-sm"
                   required
                 >
