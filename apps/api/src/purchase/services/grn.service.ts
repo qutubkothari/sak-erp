@@ -566,31 +566,51 @@ export class GrnService {
     console.log('TenantId:', tenantId);
     console.log('GRN ID:', grnId);
     
-    const { data, error } = await this.supabase
+    // First, get UIDs with their item_ids
+    const { data: uidData, error: uidError } = await this.supabase
       .from('uid_registry')
-      .select(`
-        *,
-        item:items(code, name)
-      `)
+      .select('*')
       .eq('tenant_id', tenantId)
       .eq('grn_id', grnId)
       .order('created_at', { ascending: false });
 
-    console.log('UIDs found:', data?.length || 0);
-    if (data && data.length > 0) {
-      console.log('First UID grn_id:', data[0].grn_id);
-      console.log('Sample UIDs with items:', data.slice(0, 3).map(u => ({ 
-        uid: u.uid, 
-        grn_id: u.grn_id,
-        item: u.item 
-      })));
+    if (uidError) {
+      console.error('Error fetching UIDs:', uidError);
+      throw new BadRequestException(uidError.message);
     }
+
+    if (!uidData || uidData.length === 0) {
+      console.log('No UIDs found');
+      return [];
+    }
+
+    console.log('UIDs found:', uidData.length);
+
+    // Get unique item_ids
+    const itemIds = [...new Set(uidData.map(uid => uid.item_id).filter(Boolean))];
     
-    if (error) {
-      console.error('Error fetching UIDs:', error);
-      throw new BadRequestException(error.message);
-    }
-    return data || [];
+    // Fetch items data
+    const { data: itemsData } = await this.supabase
+      .from('items')
+      .select('id, code, name')
+      .in('id', itemIds);
+
+    // Create a map of item_id -> item data
+    const itemsMap = new Map(itemsData?.map(item => [item.id, item]) || []);
+
+    // Attach item data to each UID
+    const enrichedData = uidData.map(uid => ({
+      ...uid,
+      item: uid.item_id ? itemsMap.get(uid.item_id) : null,
+    }));
+
+    console.log('Sample UIDs with items:', enrichedData.slice(0, 3).map(u => ({ 
+      uid: u.uid, 
+      grn_id: u.grn_id,
+      item: u.item 
+    })));
+    
+    return enrichedData;
   }
 
   private async updateGRNTotals(grnId: string) {
