@@ -34,13 +34,11 @@ const navigation = [
   },
   {
     name: 'Production',
-    href: '/dashboard/production',
+    href: '/dashboard/production/job-orders',
     icon: '🏭',
     children: [
       { name: 'Job Orders', href: '/dashboard/production/job-orders' },
-      { name: 'Production Orders', href: '/dashboard/production' },
       { name: 'BOM', href: '/dashboard/bom' },
-      { name: 'Shop Floor', href: '/dashboard/shop-floor' },
       { name: 'Work Stations', href: '/dashboard/work-stations' },
     ],
   },
