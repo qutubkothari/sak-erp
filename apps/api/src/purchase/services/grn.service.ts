@@ -464,34 +464,23 @@ export class GrnService {
   // Helper method to create stock entries
   private async createStockEntry(stockData: any) {
     try {
-      // Check if stock entry already exists
+      // Check if stock entry already exists for this GRN reference to prevent duplicates
       const { data: existingStock } = await this.supabase
         .from('stock_entries')
         .select('*')
         .eq('tenant_id', stockData.tenant_id)
         .eq('item_id', stockData.item_id)
         .eq('warehouse_id', stockData.warehouse_id)
-        .eq('batch_number', stockData.batch_number || '')
+        .contains('metadata', { grn_reference: stockData.grn_reference })
         .maybeSingle();
 
       if (existingStock) {
-        // Update existing stock
-        const newQuantity = parseFloat(existingStock.quantity || 0) + parseFloat(stockData.quantity);
-        const newAvailable = parseFloat(existingStock.available_quantity || 0) + parseFloat(stockData.available_quantity);
-        
-        await this.supabase
-          .from('stock_entries')
-          .update({
-            quantity: newQuantity,
-            available_quantity: newAvailable,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingStock.id);
-        
-        console.log(`Updated existing stock entry for item ${stockData.item_id}`);
-      } else {
-        // Create new stock entry
-        const { error } = await this.supabase
+        console.log(`Stock entry already exists for GRN ${stockData.grn_reference}, item ${stockData.item_id}. Skipping to prevent duplicate.`);
+        return;
+      }
+      
+      // Create new stock entry
+      const { error } = await this.supabase
           .from('stock_entries')
           .insert({
             tenant_id: stockData.tenant_id,
@@ -513,7 +502,6 @@ export class GrnService {
         } else {
           console.log(`Created new stock entry for item ${stockData.item_id}`);
         }
-      }
     } catch (error) {
       console.error('Error in createStockEntry:', error);
       // Don't throw - allow GRN to continue even if stock creation fails
