@@ -331,19 +331,7 @@ export class GrnService {
         return [];
       }
 
-      // Check if UIDs already exist for this GRN item to prevent duplicates
-      const { data: existingUIDs, count } = await this.supabase
-        .from('uid_registry')
-        .select('uid', { count: 'exact' })
-        .eq('grn_id', grn.id)
-        .eq('tenant_id', tenantId);
-      
-      if (count && count > 0) {
-        console.log(`UIDs already exist for this GRN (${count} UIDs found). Skipping generation to prevent duplicates.`);
-        return existingUIDs.map(u => u.uid);
-      }
-
-      // Get item details
+      // Get item details first
       const { data: item } = await this.supabase
         .from('items')
         .select('id, code, name, category')
@@ -352,6 +340,19 @@ export class GrnService {
 
       console.log('Item found:', item ? item.code : 'NOT FOUND');
       if (!item) return; // Skip if item not found
+
+      // Check if UIDs already exist for THIS SPECIFIC ITEM in this GRN to prevent duplicates
+      const { data: existingUIDs, count } = await this.supabase
+        .from('uid_registry')
+        .select('uid', { count: 'exact' })
+        .eq('grn_id', grn.id)
+        .eq('entity_id', item.id)
+        .eq('tenant_id', tenantId);
+      
+      if (count && count > 0) {
+        console.log(`UIDs already exist for item ${item.code} in this GRN (${count} UIDs found). Skipping generation to prevent duplicates.`);
+        return existingUIDs.map(u => u.uid);
+      }
 
       // Determine entity type based on item category
       let entityType = 'RM'; // Raw Material
