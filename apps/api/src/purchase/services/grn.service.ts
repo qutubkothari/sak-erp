@@ -292,10 +292,29 @@ export class GrnService {
           if (acceptedQty > 0) {
             await this.generateUIDsForItem(tenantId, userId, grn, item);
             
+            // Get item_id from item_code if not present
+            let itemId = item.item_id;
+            if (!itemId && item.item_code) {
+              const { data: itemData } = await this.supabase
+                .from('items')
+                .select('id')
+                .eq('code', item.item_code)
+                .eq('tenant_id', tenantId)
+                .single();
+              
+              itemId = itemData?.id;
+              console.log(`Looked up item_id for ${item.item_code}: ${itemId}`);
+            }
+            
+            if (!itemId) {
+              console.error(`Cannot create stock entry: item_id is null for item_code ${item.item_code}`);
+              continue; // Skip this item
+            }
+            
             // Ensure stock entry is created even if UID generation fails
             await this.createStockEntry({
               tenant_id: tenantId,
-              item_id: item.item_id,
+              item_id: itemId,
               warehouse_id: grn.warehouse_id,
               quantity: acceptedQty,
               available_quantity: acceptedQty,
