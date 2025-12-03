@@ -17,16 +17,26 @@ export class PurchaseOrdersService {
     if (data.prId && data.vendorId) {
       const { data: existingPOs, error: checkError } = await this.supabase
         .from('purchase_orders')
-        .select('id, po_number, vendor:vendors(name)')
+        .select('id, po_number, vendor_id')
         .eq('tenant_id', tenantId)
         .eq('pr_id', data.prId)
         .eq('vendor_id', data.vendorId)
         .limit(1);
 
-      if (checkError) throw new BadRequestException(checkError.message);
+      if (checkError) {
+        console.error('Duplicate check error:', checkError);
+        throw new BadRequestException(checkError.message);
+      }
       
       if (existingPOs && existingPOs.length > 0) {
-        const vendorName = existingPOs[0].vendor?.name || 'this vendor';
+        // Fetch vendor name separately to avoid relation issues
+        const { data: vendorData } = await this.supabase
+          .from('vendors')
+          .select('name')
+          .eq('id', existingPOs[0].vendor_id)
+          .single();
+        
+        const vendorName = vendorData?.name || 'this vendor';
         throw new BadRequestException(
           `A Purchase Order (${existingPOs[0].po_number}) already exists for this PR and ${vendorName}. Cannot create duplicate PO.`
         );
