@@ -505,6 +505,26 @@ export class BomService {
       throw new BadRequestException(itemsError.message);
     }
 
+    // Fetch item prices and update PR items with estimated_rate
+    for (const prItem of prItems) {
+      const { data: itemData } = await this.supabase
+        .from('items')
+        .select('standard_cost, selling_price')
+        .eq('code', prItem.item_code)
+        .single();
+
+      if (itemData) {
+        const estimatedRate = itemData.standard_cost || itemData.selling_price || 0;
+        await this.supabase
+          .from('purchase_requisition_items')
+          .update({ estimated_rate: estimatedRate })
+          .eq('pr_id', pr.id)
+          .eq('item_code', prItem.item_code);
+        
+        console.log(`[BOM PR] Updated price for ${prItem.item_code}: ${estimatedRate}`);
+      }
+    }
+
     return {
       message: 'Purchase Requisition generated from BOM',
       prNumber: pr.pr_number,
