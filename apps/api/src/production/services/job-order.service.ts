@@ -428,12 +428,25 @@ export class JobOrderService {
       }
 
       // 2. Add finished goods to inventory (create new stock entry)
+      // Get a warehouse - try to find default or use first available
+      const { data: warehouses } = await this.supabase
+        .from('warehouses')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .limit(1);
+
+      if (!warehouses || warehouses.length === 0) {
+        throw new BadRequestException('No warehouse configured. Please create a warehouse first.');
+      }
+
+      const warehouseId = warehouses[0].id;
+
       const { error: addError } = await this.supabase
         .from('stock_entries')
         .insert({
           tenant_id: tenantId,
           item_id: jobOrder.item_id,
-          warehouse_id: null, // You may want to specify a default warehouse
+          warehouse_id: warehouseId,
           quantity: jobOrder.quantity,
           available_quantity: jobOrder.quantity,
           allocated_quantity: 0,
