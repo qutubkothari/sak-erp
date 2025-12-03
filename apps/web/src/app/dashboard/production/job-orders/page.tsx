@@ -183,13 +183,22 @@ export default function JobOrdersPage() {
         console.log('Fetching BOM items for bomId:', bom.id);
         const bomItems = await apiClient.get(`/bom/${bom.id}/items`);
         console.log('BOM items response:', bomItems);
+        console.log('First BOM item structure:', bomItems[0]);
         
         // Store base quantities from BOM (per 1 unit)
         const baseQuantities: { [key: string]: number } = {};
         const materials = bomItems.map((item: any) => {
-          baseQuantities[item.component_id] = item.quantity;
+          console.log('Processing BOM item:', {
+            component_id: item.component_id,
+            item_id: item.item_id,
+            component_code: item.component_code,
+            component_name: item.component_name,
+            quantity: item.quantity
+          });
+          const itemId = item.component_id || item.item_id;
+          baseQuantities[itemId] = item.quantity;
           return {
-            itemId: item.component_id,
+            itemId: itemId,
             itemCode: item.component_code,
             itemName: item.component_name,
             requiredQuantity: item.quantity * formData.quantity, // Multiply by current quantity
@@ -198,6 +207,7 @@ export default function JobOrdersPage() {
         setBaseMaterialQuantities(baseQuantities);
         setMaterials(materials);
         console.log('Materials set:', materials);
+        console.log('Base quantities:', baseQuantities);
 
         // Fetch routing (operations)
         console.log('Fetching routing for bomId:', bom.id);
