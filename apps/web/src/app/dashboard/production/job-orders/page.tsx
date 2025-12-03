@@ -7,6 +7,8 @@ interface Item {
   id: string;
   code: string;
   name: string;
+  type?: string;
+  category?: string;
 }
 
 interface Workstation {
@@ -334,12 +336,14 @@ export default function JobOrdersPage() {
                 <select
                   value={formData.itemId}
                   onChange={(e) => setFormData({...formData, itemId: e.target.value})}
-                  className="w-full border rounded px-3 py-2"
+                  className="w-full border rounded px-3 py-2 text-sm"
                   required
                 >
                   <option value="">Select Item...</option>
                   {items.map(item => (
-                    <option key={item.id} value={item.id}>{item.code} - {item.name}</option>
+                    <option key={item.id} value={item.id}>
+                      {item.code} - {item.name} {item.type && `(${item.type})`}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -540,7 +544,9 @@ export default function JobOrdersPage() {
                       >
                         <option value="">Select Item...</option>
                         {items.map(item => (
-                          <option key={item.id} value={item.id}>{item.code} - {item.name}</option>
+                          <option key={item.id} value={item.id}>
+                            {item.code} - {item.name} {item.type && `(${item.type})`}
+                          </option>
                         ))}
                       </select>
                     </div>
