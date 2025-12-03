@@ -149,7 +149,8 @@ export default function JobOrdersPage() {
   };
 
   const fetchUsers = async () => {
-    try {\n      const data = await apiClient.get('/hr/employees');
+    try {
+      const data = await apiClient.get('/hr/employees');
       setUsers(data);
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -159,7 +160,8 @@ export default function JobOrdersPage() {
   const fetchBOMData = async (itemId: string) => {
     try {
       // Get BOM header for this item
-      const boms = await apiClient.get(`/bom?itemId=${itemId}`);\n      if (boms && boms.length > 0) {
+      const boms = await apiClient.get(`/bom?itemId=${itemId}`);
+      if (boms && boms.length > 0) {
         const bom = boms[0];
         setFormData(prev => ({ ...prev, bomId: bom.id }));
 
