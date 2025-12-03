@@ -426,9 +426,17 @@ export default function JobOrdersPage() {
                   {jo.status === 'SCHEDULED' && (
                     <button
                       onClick={() => handleUpdateStatus(jo.id, 'IN_PROGRESS')}
-                      className="text-yellow-600 hover:text-yellow-800"
+                      className="text-yellow-600 hover:text-yellow-800 mr-3"
                     >
                       Start
+                    </button>
+                  )}
+                  {jo.status === 'IN_PROGRESS' && (
+                    <button
+                      onClick={() => handleUpdateStatus(jo.id, 'COMPLETED')}
+                      className="text-green-600 hover:text-green-800"
+                    >
+                      Complete
                     </button>
                   )}
                 </td>
@@ -770,6 +778,7 @@ export default function JobOrdersPage() {
                       <th className="border px-3 py-2 text-left text-sm">Assigned To</th>
                       <th className="border px-3 py-2 text-left text-sm">Duration</th>
                       <th className="border px-3 py-2 text-left text-sm">Status</th>
+                      <th className="border px-3 py-2 text-left text-sm">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -784,6 +793,55 @@ export default function JobOrdersPage() {
                           <span className={`px-2 py-1 text-xs rounded ${getStatusColor(op.status || 'NOT_STARTED')}`}>
                             {op.status || 'NOT_STARTED'}
                           </span>
+                        </td>
+                        <td className="border px-3 py-2 text-sm">
+                          {selectedJobOrder.status === 'IN_PROGRESS' && (
+                            <>
+                              {(!op.status || op.status === 'NOT_STARTED') && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      await apiClient.put(`/job-orders/${selectedJobOrder.id}/operations/${op.id}`, {
+                                        status: 'IN_PROGRESS',
+                                        actualStartDatetime: new Date().toISOString()
+                                      });
+                                      alert('Operation started');
+                                      setSelectedJobOrder(null);
+                                      fetchJobOrders();
+                                    } catch (error) {
+                                      console.error('Error starting operation:', error);
+                                      alert('Failed to start operation');
+                                    }
+                                  }}
+                                  className="text-blue-600 hover:text-blue-800 text-xs mr-2"
+                                >
+                                  Start
+                                </button>
+                              )}
+                              {op.status === 'IN_PROGRESS' && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      await apiClient.put(`/job-orders/${selectedJobOrder.id}/operations/${op.id}`, {
+                                        status: 'COMPLETED',
+                                        actualEndDatetime: new Date().toISOString(),
+                                        completedQuantity: selectedJobOrder.quantity
+                                      });
+                                      alert('Operation completed');
+                                      setSelectedJobOrder(null);
+                                      fetchJobOrders();
+                                    } catch (error) {
+                                      console.error('Error completing operation:', error);
+                                      alert('Failed to complete operation');
+                                    }
+                                  }}
+                                  className="text-green-600 hover:text-green-800 text-xs"
+                                >
+                                  Complete
+                                </button>
+                              )}
+                            </>
+                          )}
                         </td>
                       </tr>
                     ))}
