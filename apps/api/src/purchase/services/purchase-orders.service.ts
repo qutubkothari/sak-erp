@@ -17,7 +17,7 @@ export class PurchaseOrdersService {
     if (data.prId && data.vendorId) {
       const { data: existingPOs, error: checkError } = await this.supabase
         .from('purchase_orders')
-        .select('id, po_number')
+        .select('id, po_number, vendor:vendors(name)')
         .eq('tenant_id', tenantId)
         .eq('pr_id', data.prId)
         .eq('vendor_id', data.vendorId)
@@ -26,8 +26,9 @@ export class PurchaseOrdersService {
       if (checkError) throw new BadRequestException(checkError.message);
       
       if (existingPOs && existingPOs.length > 0) {
+        const vendorName = existingPOs[0].vendor?.name || 'this vendor';
         throw new BadRequestException(
-          `A Purchase Order (${existingPOs[0].po_number}) already exists for this PR and vendor. Cannot create duplicate PO.`
+          `A Purchase Order (${existingPOs[0].po_number}) already exists for this PR and ${vendorName}. Cannot create duplicate PO.`
         );
       }
     }
