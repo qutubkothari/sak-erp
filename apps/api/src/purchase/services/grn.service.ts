@@ -24,7 +24,7 @@ export class GrnService {
     
     // Check if GRN already exists for this PO
     const { data: existingGRN } = await this.supabase
-      .from('grn')
+      .from('grns')
       .select('id, grn_number')
       .eq('tenant_id', tenantId)
       .eq('po_id', data.poId)
@@ -40,18 +40,18 @@ export class GrnService {
     const grnNumber = await this.generateGRNNumber(tenantId);
 
     const { data: grn, error} = await this.supabase
-      .from('grn')
+      .from('grns')
       .insert({
         tenant_id: tenantId,
         grn_number: grnNumber,
         po_id: data.poId,
         vendor_id: data.vendorId,
-        grn_date: data.grnDate || new Date().toISOString().split('T')[0],
+        receipt_date: data.grnDate || new Date().toISOString().split('T')[0],
         invoice_number: data.invoiceNumber || null,
         invoice_date: data.invoiceDate || null,
         warehouse_id: data.warehouseId,
         status: data.status || 'DRAFT',
-        remarks: data.remarks || null,
+        notes: data.remarks || null,
         received_by: userId,
       })
       .select()
@@ -123,7 +123,7 @@ export class GrnService {
     }
 
     let query = this.supabase
-      .from('grn')
+      .from('grns')
       .select(`
         *,
         purchase_order:purchase_orders(id, po_number, po_date),
@@ -132,7 +132,7 @@ export class GrnService {
         grn_items(*)
       `)
       .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false});
 
     if (filters?.status) {
       query = query.eq('status', filters.status);
@@ -162,11 +162,11 @@ export class GrnService {
 
   async findOne(tenantId: string, id: string) {
     const { data, error } = await this.supabase
-      .from('grn')
+      .from('grns')
       .select(`
         *,
         purchase_order:purchase_orders(id, po_number, po_date),
-        vendor:vendors(id, code, name, contact_person, email, phone),
+        vendor:vendors(id, code, name, contact_person),
         warehouse:warehouses(id, code, name),
         grn_items(*)
       `)
@@ -180,13 +180,13 @@ export class GrnService {
 
   async update(tenantId: string, id: string, data: any) {
     const { error } = await this.supabase
-      .from('grn')
+      .from('grns')
       .update({
-        grn_date: data.grnDate || null,
+        receipt_date: data.grnDate || null,
         invoice_number: data.invoiceNumber || null,
         invoice_date: data.invoiceDate || null,
         warehouse_id: data.warehouseId,
-        remarks: data.remarks || null,
+        notes: data.remarks || null,
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
@@ -231,7 +231,7 @@ export class GrnService {
     
     // Update GRN status
     const { error } = await this.supabase
-      .from('grn')
+      .from('grns')
       .update({
         status: 'COMPLETED',
         updated_at: new Date().toISOString(),
@@ -316,7 +316,7 @@ export class GrnService {
 
     // Update GRN status
     const { error } = await this.supabase
-      .from('grn')
+      .from('grns')
       .update({
         status: dbStatus,
         updated_at: new Date().toISOString(),
@@ -451,7 +451,7 @@ export class GrnService {
 
   async delete(tenantId: string, id: string) {
     const { error } = await this.supabase
-      .from('grn')
+      .from('grns')
       .delete()
       .eq('tenant_id', tenantId)
       .eq('id', id);
@@ -639,7 +639,7 @@ export class GrnService {
       );
 
       await this.supabase
-        .from('grn')
+        .from('grns')
         .update({
           total_quantity: totals.total,
           accepted_quantity: totals.accepted,
@@ -656,7 +656,7 @@ export class GrnService {
     const prefix = `GRN-${year}-${month}`;
 
     const { data } = await this.supabase
-      .from('grn')
+      .from('grns')
       .select('grn_number')
       .eq('tenant_id', tenantId)
       .like('grn_number', `${prefix}%`)

@@ -299,24 +299,26 @@ export class ProductionService {
 
     // Reduce inventory for each component
     for (const uid of uidDetails) {
-      // Check if inventory record exists
-      const { data: invData } = await this.supabase
-        .from('inventory')
-        .select('quantity')
+      // Check if stock entry exists
+      const { data: stockData } = await this.supabase
+        .from('stock_entries')
+        .select('quantity, available_quantity, warehouse_id')
         .eq('tenant_id', tenantId)
         .eq('item_id', uid.entity_id)
-        .single();
+        .maybeSingle();
 
-      if (invData && invData.quantity > 0) {
-        // Reduce inventory by 1 unit (each UID = 1 unit)
+      if (stockData && stockData.available_quantity > 0) {
+        // Reduce stock by 1 unit (each UID = 1 unit)
         await this.supabase
-          .from('inventory')
+          .from('stock_entries')
           .update({
-            quantity: invData.quantity - 1,
+            quantity: stockData.quantity - 1,
+            available_quantity: stockData.available_quantity - 1,
             updated_at: new Date().toISOString(),
           })
           .eq('tenant_id', tenantId)
-          .eq('item_id', uid.entity_id);
+          .eq('item_id', uid.entity_id)
+          .eq('warehouse_id', stockData.warehouse_id);
 
         // Log inventory movement
         await this.supabase
@@ -336,34 +338,48 @@ export class ProductionService {
       }
     }
 
-    // Add finished goods to inventory
-    const { data: fgInventory } = await this.supabase
-      .from('inventory')
-      .select('quantity')
+    // Add finished goods to stock
+    const { data: fgStock } = await this.supabase
+      .from('stock_entries')
+      .select('quantity, available_quantity, warehouse_id')
       .eq('tenant_id', tenantId)
       .eq('item_id', order.item_id)
-      .single();
+      .maybeSingle();
 
-    if (fgInventory) {
-      // Update existing inventory
+    if (fgStock) {
+      // Update existing stock
       await this.supabase
-        .from('inventory')
+        .from('stock_entries')
         .update({
-          quantity: fgInventory.quantity + 1,
+          quantity: fgStock.quantity + 1,
+          available_quantity: fgStock.available_quantity + 1,
           updated_at: new Date().toISOString(),
         })
         .eq('tenant_id', tenantId)
-        .eq('item_id', order.item_id);
+        .eq('item_id', order.item_id)
+        .eq('warehouse_id', fgStock.warehouse_id);
     } else {
-      // Create new inventory record
+      // Create new stock entry (use first available warehouse)
+      const { data: warehouse } = await this.supabase
+        .from('warehouses')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .limit(1)
+        .single();
+
       await this.supabase
-        .from('inventory')
+        .from('stock_entries')
         .insert({
           tenant_id: tenantId,
           item_id: order.item_id,
+          warehouse_id: warehouse?.id,
           quantity: 1,
-          reorder_level: 0,
-          max_level: 100,
+          available_quantity: 1,
+          allocated_quantity: 0,
+          metadata: {
+            created_from: 'PRODUCTION',
+            production_order: order.order_number
+          }
         });
     }
 

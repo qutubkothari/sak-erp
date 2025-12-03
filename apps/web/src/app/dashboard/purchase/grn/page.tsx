@@ -358,6 +358,7 @@ export default function GRNPage() {
         remarks: formData.notes || null,
         status: 'DRAFT',
         items: formData.items.map(item => ({
+          itemId: item.itemId,
           poItemId: item.poItemId,
           itemCode: item.itemCode,
           itemName: item.itemName,

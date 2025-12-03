@@ -19,6 +19,7 @@ interface Item {
   lead_time_days?: number;
   is_active: boolean;
   created_at: string;
+  total_stock?: number;
 }
 
 export default function ItemsPage() {
@@ -326,6 +327,7 @@ export default function ItemsPage() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">UOM</th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -335,7 +337,7 @@ export default function ItemsPage() {
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
                   <p className="text-lg">No items found</p>
                   <p className="text-sm mt-2">Create your first item to get started</p>
                 </td>
@@ -349,6 +351,11 @@ export default function ItemsPage() {
                     {item.category.replace(/_/g, ' ')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.uom}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold">
+                    <span className={item.total_stock && item.total_stock > 0 ? 'text-green-700' : 'text-gray-400'}>
+                      {item.total_stock ?? 0} {item.uom}
+                    </span>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {item.standard_cost ? `₹${item.standard_cost.toFixed(2)}` : '-'}
                   </td>

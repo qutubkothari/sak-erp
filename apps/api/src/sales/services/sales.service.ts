@@ -583,6 +583,9 @@ export class SalesService {
 
     if (itemsError) throw new BadRequestException(itemsError.message);
 
+    // ✅ CRITICAL FIX: Reduce stock for dispatched items
+    await this.reduceStockForDispatch(tenantId, dispatchData.items, dispatchRecord.dn_number);
+
     // Update sales order item dispatched quantities
     for (const item of dispatchData.items) {
       const { data: soItem } = await this.supabase
@@ -625,6 +628,79 @@ export class SalesService {
       .eq('tenant_id', tenantId);
 
     return `DN-${String((count || 0) + 1).padStart(6, '0')}`;
+  }
+
+  /**
+   * 🔧 CRITICAL FIX: Reduce stock when items are dispatched
+   * This was missing and causing inventory to never decrease on sales!
+   */
+  private async reduceStockForDispatch(
+    tenantId: string,
+    dispatchItems: any[],
+    dispatchNumber: string
+  ) {
+    for (const item of dispatchItems) {
+      // Get current stock entry
+      const { data: stockEntry, error: stockError } = await this.supabase
+        .from('stock_entries')
+        .select('quantity, available_quantity, warehouse_id')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', item.item_id)
+        .maybeSingle();
+
+      if (stockError) {
+        throw new BadRequestException(`Error checking stock for item ${item.item_id}: ${stockError.message}`);
+      }
+
+      if (!stockEntry) {
+        throw new BadRequestException(
+          `No stock available for item ${item.item_id}. Please receive inventory first.`
+        );
+      }
+
+      if (stockEntry.available_quantity < item.quantity) {
+        throw new BadRequestException(
+          `Insufficient stock for item ${item.item_id}. ` +
+          `Available: ${stockEntry.available_quantity}, Required: ${item.quantity}`
+        );
+      }
+
+      // Reduce stock quantities
+      const { error: updateError } = await this.supabase
+        .from('stock_entries')
+        .update({
+          quantity: stockEntry.quantity - item.quantity,
+          available_quantity: stockEntry.available_quantity - item.quantity,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('tenant_id', tenantId)
+        .eq('item_id', item.item_id)
+        .eq('warehouse_id', stockEntry.warehouse_id);
+
+      if (updateError) {
+        throw new BadRequestException(`Error reducing stock: ${updateError.message}`);
+      }
+
+      // Create stock movement record for audit trail
+      await this.supabase
+        .from('stock_movements')
+        .insert({
+          tenant_id: tenantId,
+          movement_type: 'OUTBOUND',
+          item_id: item.item_id,
+          uid: item.uid,
+          from_warehouse_id: stockEntry.warehouse_id,
+          quantity: item.quantity,
+          reference_type: 'DISPATCH',
+          reference_number: dispatchNumber,
+          notes: `Dispatched via ${dispatchNumber} to customer`,
+          movement_date: new Date().toISOString(),
+        });
+
+      console.log(
+        `✅ Stock reduced for item ${item.item_id}: -${item.quantity} units (DN: ${dispatchNumber})`
+      );
+    }
   }
 
   // ==================== WARRANTY ====================

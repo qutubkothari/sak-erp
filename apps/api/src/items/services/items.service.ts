@@ -49,6 +49,29 @@ export class ItemsService {
     }
 
     console.log('[ItemsService] Query successful:', { count: data?.length || 0 });
+    
+    // Fetch stock totals for each item
+    if (data && data.length > 0) {
+      const itemIds = data.map(item => item.id);
+      const { data: stockData } = await this.supabase
+        .from('stock_entries')
+        .select('item_id, available_quantity')
+        .eq('tenant_id', tenantId)
+        .in('item_id', itemIds);
+
+      // Sum up stock per item
+      const stockTotals = (stockData || []).reduce((acc: any, entry: any) => {
+        acc[entry.item_id] = (acc[entry.item_id] || 0) + (parseFloat(entry.available_quantity) || 0);
+        return acc;
+      }, {});
+
+      // Add total_stock to each item
+      return data.map(item => ({
+        ...item,
+        total_stock: stockTotals[item.id] || 0
+      }));
+    }
+
     return data || [];
   }
 
