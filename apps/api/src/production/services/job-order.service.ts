@@ -294,20 +294,30 @@ export class JobOrderService {
   }
 
   private async checkMaterialAvailability(tenantId: string, materials: any[], jobQuantity: number) {
+    console.log('[JobOrderService] checkMaterialAvailability - tenantId:', tenantId);
+    console.log('[JobOrderService] checkMaterialAvailability - materials:', materials);
+    console.log('[JobOrderService] checkMaterialAvailability - jobQuantity:', jobQuantity);
+    
     const shortages = [];
 
     for (const material of materials) {
       const required = material.requiredQuantity * jobQuantity;
 
       // Get available stock from stock_entries
-      const { data: stockEntries } = await this.supabase
+      const { data: stockEntries, error } = await this.supabase
         .from('stock_entries')
         .select('available_quantity, item_id')
         .eq('tenant_id', tenantId)
         .eq('item_id', material.itemId);
 
+      console.log('[JobOrderService] Stock check for item:', material.itemId);
+      console.log('[JobOrderService] Stock entries found:', stockEntries);
+      console.log('[JobOrderService] Stock query error:', error);
+
       // Sum up available quantity across all stock entries for this item
       const available = stockEntries?.reduce((sum, entry) => sum + (Number(entry.available_quantity) || 0), 0) || 0;
+      
+      console.log('[JobOrderService] Required:', required, 'Available:', available);
 
       if (available < required) {
         // Fetch item details
@@ -328,6 +338,7 @@ export class JobOrderService {
       }
     }
 
+    console.log('[JobOrderService] Final shortages:', shortages);
     return {
       available: shortages.length === 0,
       shortages,
