@@ -36,6 +36,12 @@ export class BomController {
     }
   }
 
+  @Get(':id/items')
+  async getBomItems(@Request() req: any, @Param('id') id: string) {
+    console.log('[BomController] getBomItems called:', { tenantId: req.user.tenantId, bomId: id });
+    return this.bomService.getBomItems(req.user.tenantId, id);
+  }
+
   @Get(':id')
   async findOne(@Request() req: any, @Param('id') id: string) {
     return this.bomService.findOne(req.user.tenantId, id);

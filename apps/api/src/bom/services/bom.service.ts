@@ -238,6 +238,69 @@ export class BomService {
     }));
   }
 
+  async getBomItems(tenantId: string, bomId: string) {
+    // Verify BOM belongs to tenant
+    const { data: header } = await this.supabase
+      .from('bom_headers')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('id', bomId)
+      .single();
+
+    if (!header) throw new NotFoundException('BOM not found');
+
+    // Fetch BOM items
+    const { data: bomItems, error } = await this.supabase
+      .from('bom_items')
+      .select('*')
+      .eq('bom_id', bomId);
+
+    if (error) throw new BadRequestException(error.message);
+
+    // Fetch component items and child BOMs
+    const itemIds = bomItems?.filter((bi: any) => bi.component_type === 'ITEM').map((bi: any) => bi.item_id) || [];
+    const childBomIds = bomItems?.filter((bi: any) => bi.component_type === 'BOM').map((bi: any) => bi.child_bom_id) || [];
+
+    let items = [];
+    let childBoms = [];
+
+    if (itemIds.length > 0) {
+      const { data } = await this.supabase.from('items').select('*').in('id', itemIds);
+      items = data || [];
+    }
+
+    if (childBomIds.length > 0) {
+      const { data } = await this.supabase.from('bom_headers').select('*, items(*)').in('id', childBomIds);
+      childBoms = data || [];
+    }
+
+    // Map items to include details
+    const itemsMap = new Map(items.map((i: any) => [i.id, i]));
+    const childBomsMap = new Map(childBoms.map((b: any) => [b.id, b]));
+
+    return bomItems.map((bi: any) => {
+      if (bi.component_type === 'BOM') {
+        const childBom = childBomsMap.get(bi.child_bom_id);
+        return {
+          ...bi,
+          component_id: bi.child_bom_id,
+          component_code: childBom?.items?.code || 'N/A',
+          component_name: childBom?.items?.name || 'Unknown BOM',
+          component_type: 'BOM'
+        };
+      } else {
+        const item = itemsMap.get(bi.item_id);
+        return {
+          ...bi,
+          component_id: bi.item_id,
+          component_code: item?.code || 'N/A',
+          component_name: item?.name || 'Unknown',
+          component_type: 'ITEM'
+        };
+      }
+    });
+  }
+
   async findOne(tenantId: string, id: string) {
     // Fetch BOM header
     const { data: header, error } = await this.supabase

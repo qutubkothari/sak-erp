@@ -158,15 +158,23 @@ export default function JobOrdersPage() {
   };
 
   const fetchBOMData = async (itemId: string) => {
+    console.log('fetchBOMData called with itemId:', itemId);
     try {
       // Get BOM header for this item
+      console.log('Fetching BOM for itemId:', itemId);
       const boms = await apiClient.get(`/bom?itemId=${itemId}`);
+      console.log('BOM response:', boms);
+      
       if (boms && boms.length > 0) {
         const bom = boms[0];
+        console.log('Found BOM:', bom);
         setFormData(prev => ({ ...prev, bomId: bom.id }));
 
         // Fetch BOM items (materials)
+        console.log('Fetching BOM items for bomId:', bom.id);
         const bomItems = await apiClient.get(`/bom/${bom.id}/items`);
+        console.log('BOM items response:', bomItems);
+        
         const materials = bomItems.map((item: any) => ({
           itemId: item.component_id,
           itemCode: item.component_code,
@@ -174,9 +182,13 @@ export default function JobOrdersPage() {
           requiredQuantity: item.quantity,
         }));
         setMaterials(materials);
+        console.log('Materials set:', materials);
 
         // Fetch routing (operations)
+        console.log('Fetching routing for bomId:', bom.id);
         const routing = await apiClient.get(`/production/routing/bom/${bom.id}?withStations=true`);
+        console.log('Routing response:', routing);
+        
         if (routing && routing.length > 0) {
           const operations = routing.map((route: any) => ({
             sequenceNumber: route.sequence_no,
@@ -185,12 +197,17 @@ export default function JobOrdersPage() {
             acceptedVariationPercent: 5,
           }));
           setOperations(operations);
+          console.log('Operations set:', operations);
         }
         
         alert('BOM data loaded! Materials and operations have been added.');
+      } else {
+        console.log('No BOM found for this item');
+        alert('No BOM found for this item');
       }
     } catch (error) {
       console.error('Error fetching BOM data:', error);
+      alert('Error loading BOM data. Check console for details.');
     }
   };
 
@@ -403,9 +420,13 @@ export default function JobOrdersPage() {
                 <select
                   value={formData.itemId}
                   onChange={(e) => {
+                    console.log('Item dropdown changed, value:', e.target.value);
                     setFormData({...formData, itemId: e.target.value});
                     if (e.target.value) {
+                      console.log('Calling fetchBOMData...');
                       fetchBOMData(e.target.value);
+                    } else {
+                      console.log('No item selected, skipping BOM fetch');
                     }
                   }}
                   className="w-full border rounded px-3 py-2 text-sm"
