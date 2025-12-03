@@ -267,11 +267,45 @@ export default function JobOrdersPage() {
     setLoading(true);
     try {
       console.log('Sending request to /job-orders');
-      const response = await apiClient.post('/job-orders', {
-        ...formData,
-        operations: operations.length > 0 ? operations : undefined,
-        materials: materials.length > 0 ? materials : undefined,
-      });
+      
+      // Clean up the payload - remove empty endDate and extra fields from materials
+      const payload: any = {
+        itemId: formData.itemId,
+        bomId: formData.bomId || undefined,
+        quantity: formData.quantity,
+        startDate: formData.startDate,
+        priority: formData.priority,
+        notes: formData.notes,
+      };
+      
+      // Only include endDate if it's not empty
+      if (formData.endDate) {
+        payload.endDate = formData.endDate;
+      }
+      
+      // Clean materials - only send itemId and requiredQuantity
+      if (materials.length > 0) {
+        payload.materials = materials.map(m => ({
+          itemId: m.itemId,
+          requiredQuantity: m.requiredQuantity,
+          warehouseId: m.warehouseId || undefined,
+        }));
+      }
+      
+      // Clean operations - only send required fields
+      if (operations.length > 0) {
+        payload.operations = operations.map(op => ({
+          sequenceNumber: op.sequenceNumber,
+          operationName: op.operationName,
+          workstationId: op.workstationId,
+          assignedUserId: op.assignedUserId || undefined,
+          acceptedVariationPercent: op.acceptedVariationPercent || 0,
+          notes: op.notes || undefined,
+        }));
+      }
+      
+      console.log('Cleaned payload:', payload);
+      const response = await apiClient.post('/job-orders', payload);
       console.log('Job order created successfully', response);
 
       setShowCreateModal(false);
