@@ -811,12 +811,7 @@ export class UidSupabaseService {
         location, 
         batch_number, 
         quality_status, 
-        created_at,
-        items!entity_id (
-          id,
-          code,
-          name
-        )
+        created_at
       `, { count: 'exact' })
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
@@ -845,6 +840,30 @@ export class UidSupabaseService {
     if (error) {
       console.error('[getAllUIDs] Error:', error);
       throw new Error(`Failed to fetch UIDs: ${error.message}`);
+    }
+
+    // Fetch item details separately if we have UIDs
+    if (data && data.length > 0) {
+      const entityIds = [...new Set(data.map(uid => uid.entity_id).filter(Boolean))];
+      
+      if (entityIds.length > 0) {
+        const { data: items } = await this.supabase
+          .from('items')
+          .select('id, code, name')
+          .in('id', entityIds);
+        
+        if (items) {
+          const itemsMap = new Map(items.map(item => [item.id, item]));
+          
+          // Attach item details to UIDs
+          data.forEach((uid: any) => {
+            const item = itemsMap.get(uid.entity_id);
+            if (item) {
+              uid.items = item;
+            }
+          });
+        }
+      }
     }
 
     return {
