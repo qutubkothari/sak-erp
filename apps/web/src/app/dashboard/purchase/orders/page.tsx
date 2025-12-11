@@ -18,6 +18,8 @@ interface PurchaseOrder {
   status: string;
   total_amount: number;
   remarks?: string;
+  payment_status?: string;
+  payment_notes?: string;
   purchase_order_items: Array<{
     item: { name: string };
     quantity: number;
@@ -57,6 +59,8 @@ function PurchaseOrdersContent() {
     orderDate: new Date().toISOString().split('T')[0],
     expectedDelivery: '',
     paymentTerms: 'NET_30',
+    paymentStatus: 'UNPAID',
+    paymentNotes: '',
     deliveryAddress: '',
     notes: '',
     items: [] as Array<{
@@ -391,6 +395,8 @@ function PurchaseOrdersContent() {
           poDate: formData.orderDate,
           deliveryDate: formData.expectedDelivery || null,
           paymentTerms: formData.paymentTerms,
+          paymentStatus: formData.paymentStatus,
+          paymentNotes: formData.paymentNotes || null,
           deliveryAddress: formData.deliveryAddress,
           remarks: formData.notes,
           status: 'DRAFT',
@@ -541,6 +547,8 @@ function PurchaseOrdersContent() {
       orderDate: new Date().toISOString().split('T')[0],
       expectedDelivery: '',
       paymentTerms: 'NET_30',
+      paymentStatus: 'UNPAID',
+      paymentNotes: '',
       deliveryAddress: '',
       notes: '',
       items: [],
@@ -747,6 +755,7 @@ function PurchaseOrdersContent() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Expected Delivery</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Items</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Amount</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Payment</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Actions</th>
                 </tr>
@@ -790,6 +799,16 @@ function PurchaseOrdersContent() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       ₹{order.total_amount?.toLocaleString() || 0}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                        order.payment_status === 'PAID' ? 'bg-green-100 text-green-800' :
+                        order.payment_status === 'CHEQUE_ISSUED' ? 'bg-blue-100 text-blue-800' :
+                        order.payment_status === 'OTHER' ? 'bg-purple-100 text-purple-800' :
+                        'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {order.payment_status === 'CHEQUE_ISSUED' ? 'CHEQUE' : order.payment_status || 'UNPAID'}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(order.status)}`}>
@@ -864,6 +883,19 @@ function PurchaseOrdersContent() {
                   </select>
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Status</label>
+                  <select
+                    value={formData.paymentStatus}
+                    onChange={(e) => setFormData({ ...formData, paymentStatus: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                  >
+                    <option value="UNPAID">Unpaid</option>
+                    <option value="PAID">Paid</option>
+                    <option value="CHEQUE_ISSUED">Cheque Issued</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Order Date</label>
                   <input
                     type="date"
@@ -893,6 +925,19 @@ function PurchaseOrdersContent() {
                   placeholder="Enter delivery address..."
                 />
               </div>
+
+              {formData.paymentStatus === 'OTHER' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Notes</label>
+                  <textarea
+                    value={formData.paymentNotes}
+                    onChange={(e) => setFormData({ ...formData, paymentNotes: e.target.value })}
+                    rows={2}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="Enter payment details or notes..."
+                  />
+                </div>
+              )}
 
               {/* Items */}
               <div>
