@@ -997,7 +997,7 @@ function PurchaseOrdersContent() {
                                   </button>
                                   
                                   {hoveredItem === index && (
-                                    <div className="absolute z-50 left-full ml-2 top-0 w-80 bg-white border border-gray-300 rounded-lg shadow-xl p-4">
+                                    <div className="absolute z-50 right-0 mr-2 top-0 w-80 bg-white border border-gray-300 rounded-lg shadow-xl p-4">
                                       <div className="text-sm font-semibold text-gray-700 mb-2">Last 3 Purchase Prices</div>
                                       {(() => {
                                         const key = `${item.itemId}-${item.vendorId}`;

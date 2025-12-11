@@ -105,21 +105,22 @@ RETURNS TABLE (
     po_date DATE,
     unit_price NUMERIC(15,2),
     quantity NUMERIC(15,2),
-    po_status VARCHAR(50)
+    po_status TEXT
 ) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
         po.po_number,
         po.po_date,
-        poi.rate as unit_price,
-        poi.ordered_qty as quantity,
-        po.status as po_status
+        poi.rate,
+        poi.ordered_qty,
+        po.status::TEXT
     FROM purchase_order_items poi
     INNER JOIN purchase_orders po ON poi.po_id = po.id
-    WHERE poi.item_id = p_item_id
+    INNER JOIN items i ON poi.item_code = i.code
+    WHERE i.id = p_item_id
       AND po.vendor_id = p_vendor_id
-      AND po.status IN ('approved', 'completed', 'partially_received')
+      AND po.status IN ('APPROVED', 'COMPLETED', 'CLOSED')
     ORDER BY po.po_date DESC, po.created_at DESC
     LIMIT 3;
 END;
