@@ -646,7 +646,7 @@ export default function GRNPage() {
                       <div className="text-sm text-gray-500">{grn.vendor.code}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(grn.grn_date).toLocaleDateString()}
+                      {grn.grn_date ? new Date(grn.grn_date).toLocaleDateString() : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <div>{grn.invoice_number || '-'}</div>
