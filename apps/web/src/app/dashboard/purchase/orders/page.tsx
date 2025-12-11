@@ -599,6 +599,8 @@ function PurchaseOrdersContent() {
         orderDate: data.po_date || new Date().toISOString().split('T')[0],
         expectedDelivery: data.delivery_date || '',
         paymentTerms: data.payment_terms || 'NET_30',
+        paymentStatus: data.payment_status || 'UNPAID',
+        paymentNotes: data.payment_notes || '',
         deliveryAddress: data.delivery_address || '',
         notes: data.remarks || '',
         items: editItems,
