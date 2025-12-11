@@ -25,7 +25,7 @@ interface GRN {
   grn_items: Array<{
     item_code?: string;
     item_name?: string;
-    item?: { name: string; code: string };
+    item?: { name: string; code: string; hsn_code?: string };
     received_qty?: number;
     accepted_qty?: number;
     rejected_qty?: number;
@@ -34,6 +34,7 @@ interface GRN {
     rejected_quantity?: number;
     uid?: string;
     batch_number?: string;
+    supplier_hsn_code?: string;
   }>;
 }
 
@@ -84,6 +85,9 @@ interface PurchaseOrder {
     item_name: string;
     ordered_qty: number;
     rate: number;
+    item?: {
+      hsn_code?: string;
+    };
   }>;
 }
 
@@ -167,6 +171,8 @@ export default function GRNPage() {
       batchNumber: string;
       expiryDate: string;
       notes: string;
+      supplierHsnCode?: string;
+      masterHsnCode?: string;
     }>,
   });
 
@@ -272,6 +278,8 @@ export default function GRNPage() {
           batchNumber: '',
           expiryDate: '',
           notes: '',
+          masterHsnCode: item.item?.hsn_code || '',
+          supplierHsnCode: item.item?.hsn_code || '',
         })),
       });
     }
@@ -380,13 +388,33 @@ export default function GRNPage() {
           batchNumber: item.batchNumber || null,
           expiryDate: item.expiryDate || null,
           remarks: item.notes || null,
+          supplierHsnCode: item.supplierHsnCode || null,
         })),
       };
       
       console.log('Creating GRN with payload:', payload);
       console.log('Items with acceptedQty:', payload.items.map(i => `${i.itemCode}: ${i.acceptedQty}`));
       
+      // Update item HSN codes if different from master
       const token = localStorage.getItem('accessToken');
+      for (const item of formData.items) {
+        if (item.supplierHsnCode && item.supplierHsnCode !== item.masterHsnCode) {
+          console.log(`Updating HSN for ${item.itemCode}: ${item.masterHsnCode} → ${item.supplierHsnCode}`);
+          try {
+            await fetch(`http://13.205.17.214:4000/api/v1/inventory/items/${item.itemId}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ hsn_code: item.supplierHsnCode }),
+            });
+          } catch (err) {
+            console.error(`Failed to update HSN for ${item.itemCode}:`, err);
+          }
+        }
+      }
+      
       const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/grn', {
         method: 'POST',
         headers: {
@@ -862,6 +890,26 @@ export default function GRNPage() {
                             <div className="text-sm font-medium text-gray-900 mt-1">
                               {item.itemCode} - {item.itemName}
                             </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Master HSN: {item.masterHsnCode || 'N/A'}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-600">Supplier HSN</label>
+                            <input
+                              type="text"
+                              value={item.supplierHsnCode || ''}
+                              onChange={(e) => handleUpdateItem(index, 'supplierHsnCode', e.target.value)}
+                              className={`w-full border rounded px-3 py-2 text-sm ${
+                                item.supplierHsnCode && item.supplierHsnCode !== item.masterHsnCode
+                                  ? 'border-amber-500 bg-amber-50'
+                                  : 'border-gray-300'
+                              }`}
+                              placeholder="HSN from invoice"
+                            />
+                            {item.supplierHsnCode && item.supplierHsnCode !== item.masterHsnCode && (
+                              <div className="text-xs text-amber-600 mt-1">⚠ HSN differs</div>
+                            )}
                           </div>
                           <div>
                             <label className="text-xs text-gray-600 font-semibold">Ordered</label>

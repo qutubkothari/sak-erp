@@ -112,7 +112,7 @@ export class PurchaseOrdersService {
       .select(`
         *,
         vendor:vendors(id, code, name, contact_person, email),
-        purchase_order_items(id, item_code, item_name, ordered_qty)
+        purchase_order_items(id, item_id, item_code, item_name, ordered_qty, rate, item:items(hsn_code))
       `)
       .eq('tenant_id', tenantId);
 
