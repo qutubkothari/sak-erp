@@ -43,6 +43,23 @@ export class PurchaseOrdersController {
     return this.poService.updateStatus(req.user.tenantId, id, body.status);
   }
 
+  @Post(':id/tracking')
+  async updateTracking(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: {
+      tracking_number?: string;
+      shipped_date?: string;
+      estimated_delivery_date?: string;
+      actual_delivery_date?: string;
+      carrier_name?: string;
+      tracking_url?: string;
+      delivery_status?: string;
+    }
+  ) {
+    return this.poService.updateTracking(req.user.tenantId, id, body);
+  }
+
   @Delete(':id')
   async delete(@Request() req: any, @Param('id') id: string) {
     return this.poService.delete(req.user.tenantId, id);

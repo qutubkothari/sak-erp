@@ -229,6 +229,52 @@ export class PurchaseOrdersService {
     return this.findOne(tenantId, id);
   }
 
+  async updateTracking(tenantId: string, id: string, trackingData: any) {
+    console.log('Updating PO tracking:', { tenantId, id, trackingData });
+    
+    const updateData: any = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (trackingData.tracking_number !== undefined) {
+      updateData.tracking_number = trackingData.tracking_number;
+    }
+    if (trackingData.shipped_date !== undefined) {
+      updateData.shipped_date = trackingData.shipped_date;
+    }
+    if (trackingData.estimated_delivery_date !== undefined) {
+      updateData.estimated_delivery_date = trackingData.estimated_delivery_date;
+    }
+    if (trackingData.actual_delivery_date !== undefined) {
+      updateData.actual_delivery_date = trackingData.actual_delivery_date;
+    }
+    if (trackingData.carrier_name !== undefined) {
+      updateData.carrier_name = trackingData.carrier_name;
+    }
+    if (trackingData.tracking_url !== undefined) {
+      updateData.tracking_url = trackingData.tracking_url;
+    }
+    if (trackingData.delivery_status !== undefined) {
+      updateData.delivery_status = trackingData.delivery_status;
+    }
+
+    const { data, error } = await this.supabase
+      .from('purchase_orders')
+      .update(updateData)
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Tracking update error:', error);
+      throw new BadRequestException(error.message);
+    }
+    
+    console.log('Tracking updated successfully:', data);
+    return this.findOne(tenantId, id);
+  }
+
   async delete(tenantId: string, id: string) {
     const { error } = await this.supabase
       .from('purchase_orders')

@@ -48,6 +48,7 @@ function PurchaseOrdersContent() {
   const [showModal, setShowModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [editingPOId, setEditingPOId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [loadingPR, setLoadingPR] = useState(false);
@@ -75,6 +76,12 @@ function PurchaseOrdersContent() {
     notes: '',
     customsDuty: 0,
     otherCharges: 0,
+    trackingNumber: '',
+    shippedDate: '',
+    estimatedDeliveryDate: '',
+    carrierName: '',
+    trackingUrl: '',
+    deliveryStatus: 'PENDING',
     items: [] as Array<{
       itemId: string;
       itemCode: string;
@@ -606,9 +613,16 @@ function PurchaseOrdersContent() {
       notes: '',
       customsDuty: 0,
       otherCharges: 0,
+      trackingNumber: '',
+      shippedDate: '',
+      estimatedDeliveryDate: '',
+      carrierName: '',
+      trackingUrl: '',
+      deliveryStatus: 'PENDING',
       items: [],
     });
     setCurrentPrId(null); // Clear PR ID on form reset
+    setEditingPOId(null); // Clear editing state
   };
 
   const handleViewDetails = async (poId: string) => {
@@ -624,6 +638,43 @@ function PurchaseOrdersContent() {
     } catch (error) {
       console.error('Error fetching PO details:', error);
       setAlertMessage({ type: 'error', message: 'Failed to load PO details' });
+    }
+  };
+
+  const handleSaveTracking = async (poId: string) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      
+      const trackingData = {
+        tracking_number: formData.trackingNumber || null,
+        shipped_date: formData.shippedDate || null,
+        estimated_delivery_date: formData.estimatedDeliveryDate || null,
+        carrier_name: formData.carrierName || null,
+        tracking_url: formData.trackingUrl || null,
+        delivery_status: formData.deliveryStatus || 'PENDING',
+      };
+
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders/${poId}/tracking`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(trackingData),
+      });
+
+      if (response.ok) {
+        setAlertMessage({ type: 'success', message: 'Tracking information saved successfully' });
+        fetchOrders();
+        setShowModal(false);
+        resetForm();
+      } else {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to save tracking information');
+      }
+    } catch (error: any) {
+      console.error('Error saving tracking:', error);
+      setAlertMessage({ type: 'error', message: error.message || 'Failed to save tracking information' });
     }
   };
 
@@ -660,9 +711,16 @@ function PurchaseOrdersContent() {
         notes: data.remarks || '',
         customsDuty: data.customs_duty || 0,
         otherCharges: data.other_charges || 0,
+        trackingNumber: data.tracking_number || '',
+        shippedDate: data.shipped_date || '',
+        estimatedDeliveryDate: data.estimated_delivery_date || '',
+        carrierName: data.carrier_name || '',
+        trackingUrl: data.tracking_url || '',
+        deliveryStatus: data.delivery_status || 'PENDING',
         items: editItems,
       });
       
+      setEditingPOId(poId);
       setShowModal(true);
       setAlertMessage({ type: 'info', message: 'Edit mode: Update the PO details below' });
     } catch (error) {
@@ -901,7 +959,9 @@ function PurchaseOrdersContent() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-2xl font-bold text-gray-900">Create Purchase Order</h2>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {editingPOId ? 'Update Tracking Information' : 'Create Purchase Order'}
+              </h2>
             </div>
 
             <div className="p-6 space-y-6">
@@ -985,6 +1045,77 @@ function PurchaseOrdersContent() {
                 />
               </div>
 
+              {/* Tracking Information */}
+              {editingPOId && (
+                <div className="border-t pt-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Tracking Information</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Tracking Number</label>
+                      <input
+                        type="text"
+                        value={formData.trackingNumber}
+                        onChange={(e) => setFormData({ ...formData, trackingNumber: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                        placeholder="Enter tracking number..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Status</label>
+                      <select
+                        value={formData.deliveryStatus}
+                        onChange={(e) => setFormData({ ...formData, deliveryStatus: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                      >
+                        <option value="PENDING">Pending</option>
+                        <option value="SHIPPED">Shipped</option>
+                        <option value="IN_TRANSIT">In Transit</option>
+                        <option value="DELIVERED">Delivered</option>
+                        <option value="DELAYED">Delayed</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Carrier Name</label>
+                      <input
+                        type="text"
+                        value={formData.carrierName}
+                        onChange={(e) => setFormData({ ...formData, carrierName: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                        placeholder="e.g., Blue Dart, DTDC..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Shipped Date</label>
+                      <input
+                        type="date"
+                        value={formData.shippedDate}
+                        onChange={(e) => setFormData({ ...formData, shippedDate: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Estimated Delivery Date</label>
+                      <input
+                        type="date"
+                        value={formData.estimatedDeliveryDate}
+                        onChange={(e) => setFormData({ ...formData, estimatedDeliveryDate: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Tracking URL</label>
+                      <input
+                        type="url"
+                        value={formData.trackingUrl}
+                        onChange={(e) => setFormData({ ...formData, trackingUrl: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                        placeholder="https://..."
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {formData.paymentStatus === 'OTHER' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Payment Notes</label>
@@ -999,23 +1130,24 @@ function PurchaseOrdersContent() {
               )}
 
               {/* Items */}
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-lg font-semibold text-gray-900">Items</h3>
-                  <button
-                    onClick={handleAddItem}
-                    className="text-amber-600 hover:text-amber-800 font-medium"
-                  >
-                    + Add Item
-                  </button>
-                </div>
-                {currentPrId && (
-                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <p className="text-sm text-blue-800">
-                      <strong>Multiple Vendors?</strong> Remove items not from the selected vendor (click × button), then create PO. You can create another PO from the same PR for different vendors.
-                    </p>
+              {!editingPOId && (
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-lg font-semibold text-gray-900">Items</h3>
+                    <button
+                      onClick={handleAddItem}
+                      className="text-amber-600 hover:text-amber-800 font-medium"
+                    >
+                      + Add Item
+                    </button>
                   </div>
-                )}
+                  {currentPrId && (
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-sm text-blue-800">
+                        <strong>Multiple Vendors?</strong> Remove items not from the selected vendor (click × button), then create PO. You can create another PO from the same PR for different vendors.
+                      </p>
+                    </div>
+                  )}
 
                 {formData.items.length === 0 ? (
                   <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
@@ -1226,8 +1358,10 @@ function PurchaseOrdersContent() {
                   placeholder="Additional notes..."
                 />
               </div>
+              )}
 
               {/* Additional Charges */}
+              {!editingPOId && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Customs Duty (₹)</label>
@@ -1288,6 +1422,7 @@ function PurchaseOrdersContent() {
                   </div>
                 </div>
               </div>
+              )}
             </div>
 
             <div className="p-6 border-t border-gray-200 flex justify-end gap-4">
@@ -1300,13 +1435,23 @@ function PurchaseOrdersContent() {
               >
                 Cancel
               </button>
-              <button
-                onClick={handleCreateOrder}
-                disabled={submitting}
-                className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {submitting ? 'Creating...' : 'Create Purchase Order'}
-              </button>
+              {editingPOId ? (
+                <button
+                  onClick={() => handleSaveTracking(editingPOId)}
+                  disabled={submitting}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Saving...' : 'Save Tracking Info'}
+                </button>
+              ) : (
+                <button
+                  onClick={handleCreateOrder}
+                  disabled={submitting}
+                  className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Creating...' : 'Create Purchase Order'}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1409,6 +1554,61 @@ function PurchaseOrdersContent() {
                   </table>
                 </div>
               </div>
+
+              {/* Tracking Information */}
+              {(selectedPO as any).tracking_number && (
+                <div className="border-t pt-4">
+                  <h3 className="text-lg font-semibold mb-3">Tracking Information</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600">Tracking Number</p>
+                      <p className="font-semibold">{(selectedPO as any).tracking_number}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Delivery Status</p>
+                      <span className={`inline-block px-2 py-1 text-xs font-semibold rounded ${
+                        (selectedPO as any).delivery_status === 'DELIVERED' ? 'bg-green-100 text-green-800' :
+                        (selectedPO as any).delivery_status === 'SHIPPED' ? 'bg-blue-100 text-blue-800' :
+                        (selectedPO as any).delivery_status === 'DELAYED' ? 'bg-red-100 text-red-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {(selectedPO as any).delivery_status || 'PENDING'}
+                      </span>
+                    </div>
+                    {(selectedPO as any).carrier_name && (
+                      <div>
+                        <p className="text-sm text-gray-600">Carrier</p>
+                        <p className="font-semibold">{(selectedPO as any).carrier_name}</p>
+                      </div>
+                    )}
+                    {(selectedPO as any).shipped_date && (
+                      <div>
+                        <p className="text-sm text-gray-600">Shipped Date</p>
+                        <p className="font-semibold">{new Date((selectedPO as any).shipped_date).toLocaleDateString()}</p>
+                      </div>
+                    )}
+                    {(selectedPO as any).estimated_delivery_date && (
+                      <div>
+                        <p className="text-sm text-gray-600">Estimated Delivery</p>
+                        <p className="font-semibold">{new Date((selectedPO as any).estimated_delivery_date).toLocaleDateString()}</p>
+                      </div>
+                    )}
+                    {(selectedPO as any).tracking_url && (
+                      <div className="col-span-2">
+                        <p className="text-sm text-gray-600 mb-1">Track Shipment</p>
+                        <a 
+                          href={(selectedPO as any).tracking_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 underline text-sm"
+                        >
+                          {(selectedPO as any).tracking_url}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Notes */}
               {selectedPO.remarks && (
