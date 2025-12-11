@@ -46,6 +46,7 @@ function PurchaseOrdersContent() {
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [currentPrId, setCurrentPrId] = useState<string | null>(null);
   const [priceHistory, setPriceHistory] = useState<Record<string, Array<{ po_number: string; po_date: string; unit_price: number; quantity: number; po_status: string }>>>({});
+  const [stockInfo, setStockInfo] = useState<Record<string, { total_quantity: number; available_quantity: number; allocated_quantity: number }>>({});
   const [hoveredItem, setHoveredItem] = useState<number | null>(null);
 
   const orderSelection = useSelection(orders);
@@ -124,6 +125,25 @@ function PurchaseOrdersContent() {
       }
     } catch (error) {
       console.error('Error fetching price history:', error);
+    }
+  };
+
+  const fetchStockInfo = async (itemId: string) => {
+    if (stockInfo[itemId]) return; // Already fetched
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(
+        `http://13.205.17.214:4000/api/v1/items/${itemId}/stock`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        setStockInfo(prev => ({ ...prev, [itemId]: data }));
+      }
+    } catch (error) {
+      console.error('Error fetching stock info:', error);
     }
   };
 
@@ -449,6 +469,9 @@ function PurchaseOrdersContent() {
           itemName: selectedItem.name,
           unitPrice: selectedItem.standard_cost || selectedItem.selling_price || 0,
         };
+        
+        // Fetch stock info for this item
+        fetchStockInfo(value);
         
         // Fetch preferred vendor for this item
         try {
@@ -914,6 +937,22 @@ function PurchaseOrdersContent() {
                               <div className="space-y-1">
                                 <div className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50">
                                   <div className="font-medium text-sm">{item.itemCode} - {item.itemName}</div>
+                                  {item.itemId && stockInfo[item.itemId] && (
+                                    <div className="text-xs text-gray-600 mt-1 space-y-0.5">
+                                      <div className="flex justify-between">
+                                        <span>Stock in Hand:</span>
+                                        <span className="font-semibold text-blue-600">{stockInfo[item.itemId].total_quantity || 0}</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span>Available:</span>
+                                        <span className="font-semibold text-green-600">{stockInfo[item.itemId].available_quantity || 0}</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span>Allocated:</span>
+                                        <span className="font-semibold text-amber-600">{stockInfo[item.itemId].allocated_quantity || 0}</span>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                                 <select
                                   value={item.itemId}

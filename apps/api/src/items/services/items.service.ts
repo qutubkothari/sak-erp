@@ -548,4 +548,17 @@ export class ItemsService {
 
     return data || [];
   }
+
+  async getItemStock(itemId: string, tenantId: string) {
+    const { data, error } = await this.supabase.rpc('get_item_stock_summary', {
+      p_item_id: itemId,
+      p_tenant_id: tenantId,
+    });
+
+    if (error) {
+      throw new Error(`Failed to get item stock: ${error.message}`);
+    }
+
+    return data && data.length > 0 ? data[0] : { total_quantity: 0, available_quantity: 0, allocated_quantity: 0 };
+  }
 }

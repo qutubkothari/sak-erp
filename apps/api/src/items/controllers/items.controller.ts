@@ -96,4 +96,12 @@ export class ItemsController {
   ) {
     return this.itemsService.getPurchasePriceHistory(itemId, vendorId);
   }
+
+  @Get(':id/stock')
+  async getItemStock(
+    @Request() req: any,
+    @Param('id') itemId: string
+  ) {
+    return this.itemsService.getItemStock(itemId, req.user.tenantId);
+  }
 }
