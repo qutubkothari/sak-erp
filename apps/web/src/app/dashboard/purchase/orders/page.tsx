@@ -126,17 +126,40 @@ function PurchaseOrdersContent() {
       // Store PR ID for later use
       setCurrentPrId(prId);
       
-      // Map PR items to PO items
-      const poItems = prData.purchase_requisition_items?.map((item: any) => {
+      // Map PR items to PO items and fetch preferred vendors
+      const poItemsPromises = prData.purchase_requisition_items?.map(async (item: any) => {
         console.log('Mapping PR item:', item);
         
         // Try to find item in items master to get actual price
         let unitPrice = item.estimated_rate || 0;
+        let preferredVendorId = '';
+        
         if (item.item_id && freshItems.length > 0) {
           const masterItem = freshItems.find((i: any) => i.id === item.item_id);
           if (masterItem) {
             unitPrice = masterItem.standard_cost || masterItem.selling_price || unitPrice;
             console.log(`Found price for ${item.item_code}: ${unitPrice}`);
+          }
+          
+          // Fetch preferred vendor for this item
+          try {
+            const vendorResponse = await fetch(`http://13.205.17.214:4000/api/v1/items/${item.item_id}/vendors/preferred`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            
+            if (vendorResponse.ok) {
+              const preferredVendor = await vendorResponse.json();
+              if (preferredVendor && preferredVendor.vendor_id) {
+                preferredVendorId = preferredVendor.vendor_id;
+                // Use vendor price if available
+                if (preferredVendor.unit_price) {
+                  unitPrice = preferredVendor.unit_price;
+                }
+                console.log(`Auto-selected preferred vendor for ${item.item_code}: ${preferredVendor.vendor_name}`);
+              }
+            }
+          } catch (error) {
+            console.log(`No preferred vendor found for ${item.item_code}:`, error);
           }
         }
         
@@ -148,7 +171,7 @@ function PurchaseOrdersContent() {
           itemId: item.item_id || '',
           itemCode: item.item_code || '',
           itemName: item.item_name || '',
-          vendorId: '', // Will be set by master vendor selector
+          vendorId: preferredVendorId, // Auto-selected preferred vendor
           quantity: quantity,
           unitPrice: unitPrice,
           taxRate: 18, // Default GST rate
@@ -157,7 +180,8 @@ function PurchaseOrdersContent() {
         };
       }) || [];
 
-      console.log('Mapped PO Items:', poItems);
+      const poItems = await Promise.all(poItemsPromises);
+      console.log('Mapped PO Items with preferred vendors:', poItems);
 
       setFormData({
         ...formData,
@@ -167,7 +191,11 @@ function PurchaseOrdersContent() {
 
       // Open modal automatically
       setShowModal(true);
-      setAlertMessage({ type: 'info', message: `Loaded ${poItems.length} items from PR ${prData.pr_number}. Select vendor for each item. System will automatically create separate POs for different vendors.` });
+      const autoSelectedCount = poItems.filter(item => item.vendorId).length;
+      setAlertMessage({ 
+        type: 'info', 
+        message: `Loaded ${poItems.length} items from PR ${prData.pr_number}. ${autoSelectedCount} items have preferred vendors auto-selected. You can override vendor selection if needed. System will automatically create separate POs for different vendors.` 
+      });
     } catch (error) {
       console.error('Error loading PR data:', error);
       setAlertMessage({ type: 'error', message: 'Failed to load PR data. Please try again.' });
@@ -349,10 +377,10 @@ function PurchaseOrdersContent() {
     });
   };
 
-  const handleUpdateItem = (index: number, field: string, value: any) => {
+  const handleUpdateItem = async (index: number, field: string, value: any) => {
     const updatedItems = [...formData.items];
     
-    // If selecting an item from dropdown, populate itemCode, itemName, and unitPrice
+    // If selecting an item from dropdown, populate itemCode, itemName, unitPrice, and preferred vendor
     if (field === 'itemId' && value) {
       const selectedItem = items.find(item => item.id === value);
       if (selectedItem) {
@@ -361,8 +389,30 @@ function PurchaseOrdersContent() {
           itemId: value,
           itemCode: selectedItem.code,
           itemName: selectedItem.name,
-          unitPrice: selectedItem.standard_cost || selectedItem.selling_price || 0, // Pull unit price from item
+          unitPrice: selectedItem.standard_cost || selectedItem.selling_price || 0,
         };
+        
+        // Fetch preferred vendor for this item
+        try {
+          const token = localStorage.getItem('accessToken');
+          const response = await fetch(`http://13.205.17.214:4000/api/v1/items/${value}/vendors/preferred`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          
+          if (response.ok) {
+            const preferredVendor = await response.json();
+            if (preferredVendor && preferredVendor.vendor_id) {
+              updatedItems[index].vendorId = preferredVendor.vendor_id;
+              // Update unit price from preferred vendor if available
+              if (preferredVendor.unit_price) {
+                updatedItems[index].unitPrice = preferredVendor.unit_price;
+              }
+              console.log(`Auto-selected preferred vendor: ${preferredVendor.vendor_name} for item ${selectedItem.code}`);
+            }
+          }
+        } catch (error) {
+          console.log('No preferred vendor found for this item:', error);
+        }
       }
     } else {
       updatedItems[index] = { ...updatedItems[index], [field]: value };
