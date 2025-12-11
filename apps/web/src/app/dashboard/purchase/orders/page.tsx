@@ -279,9 +279,10 @@ function PurchaseOrdersContent() {
         console.log('PO Date:', data[0].po_date);
         console.log('Delivery Date:', data[0].delivery_date);
       }
-      setOrders(data);
+      setOrders(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching orders:', error);
+      setOrders([]);
     } finally {
       setLoading(false);
     }
