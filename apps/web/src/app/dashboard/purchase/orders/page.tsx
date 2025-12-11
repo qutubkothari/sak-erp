@@ -35,7 +35,15 @@ function PurchaseOrdersContent() {
   
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<Array<{ id: string; name: string; contact_person: string }>>([]);
-  const [items, setItems] = useState<Array<{ id: string; code: string; name: string; uom: string; standard_cost?: number; selling_price?: number }>>([]);
+  const [items, setItems] = useState<Array<{ 
+    id: string; 
+    code: string; 
+    name: string; 
+    uom: string; 
+    standard_cost?: number; 
+    selling_price?: number;
+    drawing_required?: string;
+  }>>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -349,6 +357,40 @@ function PurchaseOrdersContent() {
         setAlertMessage({ type: 'error', message: 'Please select items for all rows' });
         setSubmitting(false);
         return;
+      }
+
+      // Check for compulsory drawings
+      const compulsoryItems = formData.items.filter(item => {
+        const itemDetails = items.find(i => i.id === item.itemId || i.code === item.itemCode);
+        return itemDetails?.drawing_required === 'COMPULSORY';
+      });
+
+      if (compulsoryItems.length > 0) {
+        // Fetch drawings for compulsory items
+        const itemsWithoutDrawings = [];
+        
+        for (const item of compulsoryItems) {
+          try {
+            const drawings = await apiClient.get(`/inventory/items/${item.itemId}/drawings`);
+            if (!drawings || drawings.length === 0) {
+              const itemDetails = items.find(i => i.id === item.itemId);
+              itemsWithoutDrawings.push(itemDetails?.name || item.itemName || item.itemCode);
+            }
+          } catch (error) {
+            console.error(`Error checking drawings for item ${item.itemId}:`, error);
+            const itemDetails = items.find(i => i.id === item.itemId);
+            itemsWithoutDrawings.push(itemDetails?.name || item.itemName || item.itemCode);
+          }
+        }
+
+        if (itemsWithoutDrawings.length > 0) {
+          setAlertMessage({ 
+            type: 'error', 
+            message: `Drawing upload is compulsory for: ${itemsWithoutDrawings.join(', ')}. Please upload drawings before creating PO.` 
+          });
+          setSubmitting(false);
+          return;
+        }
       }
 
       console.log('FormData before transformation:', formData);
