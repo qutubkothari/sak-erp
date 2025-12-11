@@ -447,4 +447,92 @@ export class ItemsService {
 
     return { message: 'Drawing deleted successfully' };
   }
+
+  // Item-Vendor Relationship Methods
+  async getItemVendors(itemId: string) {
+    const { data, error } = await this.supabase.rpc('get_item_vendors', {
+      p_item_id: itemId,
+    });
+
+    if (error) {
+      throw new Error(`Failed to fetch item vendors: ${error.message}`);
+    }
+
+    return data || [];
+  }
+
+  async getPreferredVendor(itemId: string) {
+    const { data, error } = await this.supabase.rpc('get_preferred_vendor', {
+      p_item_id: itemId,
+    });
+
+    if (error) {
+      throw new Error(`Failed to fetch preferred vendor: ${error.message}`);
+    }
+
+    return data?.[0] || null;
+  }
+
+  async addVendor(itemId: string, body: any) {
+    const { data, error } = await this.supabase
+      .from('item_vendors')
+      .insert({
+        item_id: itemId,
+        vendor_id: body.vendor_id,
+        priority: body.priority || 1,
+        unit_price: this.normalizeNumber(body.unit_price),
+        lead_time_days: this.normalizeNumber(body.lead_time_days, 'int'),
+        vendor_item_code: body.vendor_item_code || null,
+        minimum_order_quantity: this.normalizeNumber(body.minimum_order_quantity),
+        payment_terms: body.payment_terms || null,
+        notes: body.notes || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to add vendor: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  async updateVendor(itemId: string, vendorId: string, body: any) {
+    const { data, error } = await this.supabase
+      .from('item_vendors')
+      .update({
+        priority: body.priority,
+        unit_price: this.normalizeNumber(body.unit_price),
+        lead_time_days: this.normalizeNumber(body.lead_time_days, 'int'),
+        vendor_item_code: body.vendor_item_code,
+        minimum_order_quantity: this.normalizeNumber(body.minimum_order_quantity),
+        payment_terms: body.payment_terms,
+        notes: body.notes,
+        is_active: body.is_active !== undefined ? body.is_active : true,
+      })
+      .eq('item_id', itemId)
+      .eq('vendor_id', vendorId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to update vendor: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  async removeVendor(itemId: string, vendorId: string) {
+    const { error } = await this.supabase
+      .from('item_vendors')
+      .delete()
+      .eq('item_id', itemId)
+      .eq('vendor_id', vendorId);
+
+    if (error) {
+      throw new Error(`Failed to remove vendor: ${error.message}`);
+    }
+
+    return { message: 'Vendor removed successfully' };
+  }
 }

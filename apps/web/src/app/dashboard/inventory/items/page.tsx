@@ -22,6 +22,20 @@ interface Item {
   total_stock?: number;
 }
 
+interface Vendor {
+  id: string;
+  code: string;
+  name: string;
+}
+
+interface ItemVendor {
+  vendor_id: string;
+  priority: number;
+  unit_price?: number;
+  lead_time_days?: number;
+  vendor_item_code?: string;
+}
+
 export default function ItemsPage() {
   const router = useRouter();
   const [items, setItems] = useState<Item[]>([]);
@@ -37,6 +51,16 @@ export default function ItemsPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [newCategory, setNewCategory] = useState('');
   const [editingCategory, setEditingCategory] = useState<{ id: string; name: string } | null>(null);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [itemVendors, setItemVendors] = useState<ItemVendor[]>([]);
+  const [showVendorForm, setShowVendorForm] = useState(false);
+  const [vendorForm, setVendorForm] = useState({
+    vendor_id: '',
+    priority: 1,
+    unit_price: '',
+    lead_time_days: '',
+    vendor_item_code: '',
+  });
 
   const [formData, setFormData] = useState({
     code: '',
@@ -102,6 +126,15 @@ export default function ItemsPage() {
     }
   };
 
+  const fetchVendors = async () => {
+    try {
+      const data = await apiClient.get('/vendors');
+      setVendors(data);
+    } catch (error) {
+      console.error('Error fetching vendors:', error);
+    }
+  };
+
   const seedCategories = async () => {
     try {
       await apiClient.post('/categories/seed', {});
@@ -115,6 +148,7 @@ export default function ItemsPage() {
 
   useEffect(() => {
     fetchCategories();
+    fetchVendors();
   }, []);
 
   const uomOptions = [
@@ -191,6 +225,61 @@ export default function ItemsPage() {
       is_active: item.is_active,
     });
     setShowForm(true);
+    fetchItemVendors(item.id);
+  };
+
+  const fetchItemVendors = async (itemId: string) => {
+    try {
+      const data = await apiClient.get(`/items/${itemId}/vendors`);
+      setItemVendors(data || []);
+    } catch (error) {
+      console.error('Error fetching item vendors:', error);
+      setItemVendors([]);
+    }
+  };
+
+  const addItemVendor = async () => {
+    if (!editingItem || !vendorForm.vendor_id) {
+      alert('Please select a vendor');
+      return;
+    }
+
+    try {
+      await apiClient.post(`/items/${editingItem.id}/vendors`, {
+        vendor_id: vendorForm.vendor_id,
+        priority: vendorForm.priority,
+        unit_price: vendorForm.unit_price ? parseFloat(vendorForm.unit_price) : null,
+        lead_time_days: vendorForm.lead_time_days ? parseInt(vendorForm.lead_time_days) : null,
+        vendor_item_code: vendorForm.vendor_item_code || null,
+      });
+      
+      alert('Vendor added successfully!');
+      setShowVendorForm(false);
+      setVendorForm({
+        vendor_id: '',
+        priority: 1,
+        unit_price: '',
+        lead_time_days: '',
+        vendor_item_code: '',
+      });
+      fetchItemVendors(editingItem.id);
+    } catch (error: any) {
+      console.error('Error adding vendor:', error);
+      alert(error.message || 'Failed to add vendor');
+    }
+  };
+
+  const removeItemVendor = async (vendorId: string) => {
+    if (!editingItem || !confirm('Remove this vendor?')) return;
+
+    try {
+      await apiClient.delete(`/items/${editingItem.id}/vendors/${vendorId}`);
+      alert('Vendor removed successfully!');
+      fetchItemVendors(editingItem.id);
+    } catch (error) {
+      console.error('Error removing vendor:', error);
+      alert('Failed to remove vendor');
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -582,6 +671,135 @@ export default function ItemsPage() {
                     Active
                   </label>
                 </div>
+
+                {/* Vendor Management Section */}
+                {editingItem && (
+                  <div className="border-t pt-4 mt-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="text-lg font-semibold text-gray-900">Vendors</h3>
+                      <button
+                        type="button"
+                        onClick={() => setShowVendorForm(!showVendorForm)}
+                        className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+                      >
+                        {showVendorForm ? 'Cancel' : 'Add Vendor'}
+                      </button>
+                    </div>
+
+                    {showVendorForm && (
+                      <div className="bg-gray-50 p-4 rounded-lg mb-4 space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Vendor *</label>
+                            <select
+                              value={vendorForm.vendor_id}
+                              onChange={(e) => setVendorForm({ ...vendorForm, vendor_id: e.target.value })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              required
+                            >
+                              <option value="">Select Vendor</option>
+                              {vendors.map(v => (
+                                <option key={v.id} value={v.id}>{v.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Priority *</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="10"
+                              value={vendorForm.priority}
+                              onChange={(e) => setVendorForm({ ...vendorForm, priority: parseInt(e.target.value) })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              placeholder="1 = Preferred"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Unit Price (₹)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={vendorForm.unit_price}
+                              onChange={(e) => setVendorForm({ ...vendorForm, unit_price: e.target.value })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Lead Time (days)</label>
+                            <input
+                              type="number"
+                              value={vendorForm.lead_time_days}
+                              onChange={(e) => setVendorForm({ ...vendorForm, lead_time_days: e.target.value })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Vendor Item Code</label>
+                            <input
+                              type="text"
+                              value={vendorForm.vendor_item_code}
+                              onChange={(e) => setVendorForm({ ...vendorForm, vendor_item_code: e.target.value })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addItemVendor}
+                          className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                        >
+                          Add Vendor
+                        </button>
+                      </div>
+                    )}
+
+                    {itemVendors.length > 0 ? (
+                      <div className="space-y-2">
+                        {itemVendors.map((iv: any) => {
+                          const vendor = vendors.find(v => v.id === iv.vendor_id);
+                          return (
+                            <div key={iv.vendor_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-gray-900">{vendor?.name || iv.vendor_name}</span>
+                                  {iv.is_preferred && (
+                                    <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs font-medium rounded">
+                                      Preferred
+                                    </span>
+                                  )}
+                                  <span className="text-xs text-gray-500">Priority: {iv.priority}</span>
+                                </div>
+                                <div className="text-sm text-gray-600 mt-1">
+                                  {iv.unit_price && <span>₹{iv.unit_price}</span>}
+                                  {iv.unit_price && iv.lead_time_days && <span className="mx-2">•</span>}
+                                  {iv.lead_time_days && <span>{iv.lead_time_days} days lead time</span>}
+                                  {iv.vendor_item_code && (
+                                    <>
+                                      <span className="mx-2">•</span>
+                                      <span>Code: {iv.vendor_item_code}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeItemVendor(iv.vendor_id)}
+                                className="text-red-600 hover:text-red-800 text-sm font-medium ml-4"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 text-center py-4">No vendors assigned yet</p>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-3 mt-6">
                   <button

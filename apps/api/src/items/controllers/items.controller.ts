@@ -56,4 +56,35 @@ export class ItemsController {
   async delete(@Request() req: any, @Param('id') id: string) {
     return this.itemsService.delete(req.user.tenantId, id);
   }
+
+  // Item-Vendor Relationships
+  @Get(':id/vendors')
+  async getItemVendors(@Request() req: any, @Param('id') id: string) {
+    return this.itemsService.getItemVendors(id);
+  }
+
+  @Get(':id/vendors/preferred')
+  async getPreferredVendor(@Request() req: any, @Param('id') id: string) {
+    return this.itemsService.getPreferredVendor(id);
+  }
+
+  @Post(':id/vendors')
+  async addVendor(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.itemsService.addVendor(id, body);
+  }
+
+  @Put(':id/vendors/:vendorId')
+  async updateVendor(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('vendorId') vendorId: string,
+    @Body() body: any
+  ) {
+    return this.itemsService.updateVendor(id, vendorId, body);
+  }
+
+  @Delete(':id/vendors/:vendorId')
+  async removeVendor(@Request() req: any, @Param('id') id: string, @Param('vendorId') vendorId: string) {
+    return this.itemsService.removeVendor(id, vendorId);
+  }
 }

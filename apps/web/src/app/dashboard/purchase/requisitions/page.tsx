@@ -153,15 +153,38 @@ export default function PurchaseRequisitionsPage() {
     );
   });
 
-  const selectItem = (item: Item) => {
+  const selectItem = async (item: Item) => {
     setSelectedItemId(item.id);
-    setItemForm({
-      ...itemForm,
-      itemName: `${item.code} - ${item.name}`,
-      estimatedPrice: item.standard_cost?.toString() || '',
-    });
     setSearchTerm(`${item.code} - ${item.name}`);
     setShowDropdown(false);
+
+    // Fetch preferred vendor
+    try {
+      const preferredVendor = await apiClient.get(`/items/${item.id}/vendors/preferred`);
+      
+      if (preferredVendor) {
+        setItemForm({
+          ...itemForm,
+          itemName: `${item.code} - ${item.name}`,
+          estimatedPrice: preferredVendor.unit_price?.toString() || item.standard_cost?.toString() || '',
+          specifications: preferredVendor.vendor_name ? `Preferred Vendor: ${preferredVendor.vendor_name}` : '',
+        });
+      } else {
+        setItemForm({
+          ...itemForm,
+          itemName: `${item.code} - ${item.name}`,
+          estimatedPrice: item.standard_cost?.toString() || '',
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching preferred vendor:', error);
+      // Fallback to item without vendor
+      setItemForm({
+        ...itemForm,
+        itemName: `${item.code} - ${item.name}`,
+        estimatedPrice: item.standard_cost?.toString() || '',
+      });
+    }
   };
 
   const addItem = () => {
