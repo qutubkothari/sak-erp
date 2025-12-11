@@ -135,7 +135,7 @@ SELECT
     (SELECT id FROM tenants LIMIT 1),
     '{item_code}',
     '{item_name}',
-    'RAW_MATERIAL',
+    'RAW_MATERIAL'::item_type,
     '{uom}',
     true,
     NOW(),
@@ -175,29 +175,30 @@ LIMIT 1;
     if current_stock > 0:
         rm_stock_sql.append(f"""-- Stock for {item_name}
 INSERT INTO stock_entries (
+    tenant_id,
     item_id, 
+    warehouse_id,
     quantity, 
-    transaction_type, 
-    reference_type, 
-    reference_number, 
-    notes,
-    created_at
+    available_quantity,
+    allocated_quantity,
+    created_at,
+    updated_at
 )
 SELECT 
-    id,
+    (SELECT id FROM tenants LIMIT 1),
+    i.id,
+    (SELECT id FROM warehouses WHERE tenant_id = (SELECT id FROM tenants LIMIT 1) LIMIT 1),
     {current_stock},
-    'IN',
-    'OPENING_STOCK',
-    'INITIAL-IMPORT',
-    'Imported from Stock List 2024-2025.xlsx',
+    {current_stock},
+    0,
+    NOW(),
     NOW()
-FROM items 
-WHERE code = '{item_code}'
+FROM items i
+WHERE i.code = '{item_code}'
   AND NOT EXISTS (
-      SELECT 1 FROM stock_entries 
-      WHERE item_id = items.id 
-        AND reference_type = 'OPENING_STOCK'
-        AND reference_number = 'INITIAL-IMPORT'
+      SELECT 1 FROM stock_entries se
+      WHERE se.item_id = i.id 
+        AND se.warehouse_id = (SELECT id FROM warehouses WHERE tenant_id = (SELECT id FROM tenants LIMIT 1) LIMIT 1)
   )
 LIMIT 1;
 """)
@@ -227,7 +228,7 @@ SELECT
     (SELECT id FROM tenants LIMIT 1),
     '{item_code}',
     '{item_name}',
-    'SUB_ASSEMBLY',
+    'SUB_ASSEMBLY'::item_type,
     '{uom}',
     true,
     NOW(),
@@ -261,11 +262,20 @@ for idx, row in bom_df.iterrows():
         bom_number = f"BOM-{assembly_code}"
         
         bom_sql.append(f"""-- BOM for {assembly_name}
-INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
-SELECT '{bom_number}', id, '1.0', 'ACTIVE', false, NOW(), NOW()
+INSERT INTO bom_headers (tenant_id, item_id, version, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    id, 
+    1, 
+    true, 
+    NOW(), 
+    NOW()
 FROM items 
-WHERE name = '{assembly_name}' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
-  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = '{bom_number}')
+WHERE name = '{assembly_name}' AND type IN ('SUB_ASSEMBLY'::item_type, 'FINISHED_GOODS'::item_type)
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_headers bh2 
+      WHERE bh2.item_id = items.id
+  )
 LIMIT 1;
 """)
     
@@ -274,17 +284,15 @@ LIMIT 1;
         quantity = clean_number(row['UNITS']) or 1
         uom = clean_string(row['UoM']) or 'PCS'
         
-        bom_sql.append(f"""INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
+        bom_sql.append(f"""INSERT INTO bom_items (bom_id, item_id, quantity, created_at)
 SELECT 
     bh.id,
     i.id,
     {quantity},
-    '{uom}',
-    NOW(),
     NOW()
 FROM bom_headers bh
 CROSS JOIN items i
-WHERE bh.bom_number = '{bom_number}'
+WHERE bh.item_id = (SELECT id FROM items WHERE name = '{assembly_name}' AND type = 'SUB_ASSEMBLY'::item_type LIMIT 1)
   AND i.name = '{rm_name}'
   AND NOT EXISTS (
       SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
@@ -315,6 +323,13 @@ with open(output_file, 'w', encoding='utf-8') as f:
     f.write("-- 2. Run add-item-vendor-relationships.sql (creates item_vendors table)\n")
     f.write("-- 3. Then run this script\n")
     f.write("-- ============================================================================\n\n")
+    
+    f.write("-- Ensure item_type enum exists\n")
+    f.write("DO $$ BEGIN\n")
+    f.write("    CREATE TYPE item_type AS ENUM ('RAW_MATERIAL', 'COMPONENT', 'SUB_ASSEMBLY', 'FINISHED_GOODS', 'CONSUMABLE', 'TOOL', 'SERVICE');\n")
+    f.write("EXCEPTION\n")
+    f.write("    WHEN duplicate_object THEN null;\n")
+    f.write("END $$;\n\n")
     
     f.write("BEGIN;\n\n")
     

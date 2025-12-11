@@ -46,15 +46,19 @@ CREATE INDEX IF NOT EXISTS idx_item_vendors_active ON item_vendors(is_active);
 -- Add RLS policies
 ALTER TABLE item_vendors ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "item_vendors_select_policy" ON item_vendors;
 CREATE POLICY "item_vendors_select_policy" ON item_vendors
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "item_vendors_insert_policy" ON item_vendors;
 CREATE POLICY "item_vendors_insert_policy" ON item_vendors
     FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "item_vendors_update_policy" ON item_vendors;
 CREATE POLICY "item_vendors_update_policy" ON item_vendors
     FOR UPDATE USING (true);
 
+DROP POLICY IF EXISTS "item_vendors_delete_policy" ON item_vendors;
 CREATE POLICY "item_vendors_delete_policy" ON item_vendors
     FOR DELETE USING (true);
 
@@ -67,6 +71,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS item_vendors_updated_at_trigger ON item_vendors;
 CREATE TRIGGER item_vendors_updated_at_trigger
     BEFORE UPDATE ON item_vendors
     FOR EACH ROW
@@ -79,18 +84,18 @@ CREATE TRIGGER item_vendors_updated_at_trigger
 CREATE OR REPLACE FUNCTION get_preferred_vendor(p_item_id UUID)
 RETURNS TABLE (
     vendor_id UUID,
-    vendor_code TEXT,
-    vendor_name TEXT,
+    vendor_code VARCHAR(50),
+    vendor_name VARCHAR(200),
     vendor_item_code TEXT,
-    unit_price NUMERIC,
+    unit_price NUMERIC(15,2),
     lead_time_days INTEGER
 ) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
         v.id,
-        v.vendor_code,
-        v.vendor_name,
+        v.code,
+        v.name,
         iv.vendor_item_code,
         iv.unit_price,
         iv.lead_time_days
@@ -111,11 +116,11 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION get_item_vendors(p_item_id UUID)
 RETURNS TABLE (
     vendor_id UUID,
-    vendor_code TEXT,
-    vendor_name TEXT,
+    vendor_code VARCHAR(50),
+    vendor_name VARCHAR(200),
     priority INTEGER,
     vendor_item_code TEXT,
-    unit_price NUMERIC,
+    unit_price NUMERIC(15,2),
     lead_time_days INTEGER,
     is_preferred BOOLEAN
 ) AS $$
@@ -123,8 +128,8 @@ BEGIN
     RETURN QUERY
     SELECT 
         v.id,
-        v.vendor_code,
-        v.vendor_name,
+        v.code,
+        v.name,
         iv.priority,
         iv.vendor_item_code,
         iv.unit_price,
