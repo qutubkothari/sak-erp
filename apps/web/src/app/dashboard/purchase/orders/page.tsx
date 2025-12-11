@@ -143,23 +143,33 @@ function PurchaseOrdersContent() {
           
           // Fetch preferred vendor for this item
           try {
+            console.log(`[PR→PO] Fetching preferred vendor for ${item.item_code} (ID: ${item.item_id})...`);
             const vendorResponse = await fetch(`http://13.205.17.214:4000/api/v1/items/${item.item_id}/vendors/preferred`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             
+            console.log(`[PR→PO] Vendor API response status for ${item.item_code}: ${vendorResponse.status}`);
+            
             if (vendorResponse.ok) {
               const preferredVendor = await vendorResponse.json();
+              console.log(`[PR→PO] Vendor data for ${item.item_code}:`, preferredVendor);
+              
               if (preferredVendor && preferredVendor.vendor_id) {
                 preferredVendorId = preferredVendor.vendor_id;
                 // Use vendor price if available
                 if (preferredVendor.unit_price) {
                   unitPrice = preferredVendor.unit_price;
                 }
-                console.log(`Auto-selected preferred vendor for ${item.item_code}: ${preferredVendor.vendor_name}`);
+                console.log(`✓ [PR→PO] Auto-selected preferred vendor for ${item.item_code}: ${preferredVendor.vendor_name} (ID: ${preferredVendorId})`);
+              } else {
+                console.log(`⚠ [PR→PO] No vendor_id in response for ${item.item_code}:`, preferredVendor);
               }
+            } else {
+              const errorText = await vendorResponse.text();
+              console.log(`⚠ [PR→PO] Vendor API error for ${item.item_code} (${vendorResponse.status}): ${errorText}`);
             }
           } catch (error) {
-            console.log(`No preferred vendor found for ${item.item_code}:`, error);
+            console.error(`❌ [PR→PO] Exception fetching vendor for ${item.item_code}:`, error);
           }
         }
         
@@ -395,23 +405,33 @@ function PurchaseOrdersContent() {
         // Fetch preferred vendor for this item
         try {
           const token = localStorage.getItem('accessToken');
+          console.log(`Fetching preferred vendor for item ${value}...`);
           const response = await fetch(`http://13.205.17.214:4000/api/v1/items/${value}/vendors/preferred`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           
+          console.log(`Preferred vendor API response status: ${response.status}`);
+          
           if (response.ok) {
             const preferredVendor = await response.json();
+            console.log('Preferred vendor data:', preferredVendor);
+            
             if (preferredVendor && preferredVendor.vendor_id) {
               updatedItems[index].vendorId = preferredVendor.vendor_id;
               // Update unit price from preferred vendor if available
               if (preferredVendor.unit_price) {
                 updatedItems[index].unitPrice = preferredVendor.unit_price;
               }
-              console.log(`Auto-selected preferred vendor: ${preferredVendor.vendor_name} for item ${selectedItem.code}`);
+              console.log(`✓ Auto-selected preferred vendor: ${preferredVendor.vendor_name} (ID: ${preferredVendor.vendor_id}) for item ${selectedItem.code}`);
+            } else {
+              console.log('⚠ No preferred vendor ID in response:', preferredVendor);
             }
+          } else {
+            const errorText = await response.text();
+            console.log(`⚠ Preferred vendor API returned ${response.status}: ${errorText}`);
           }
         } catch (error) {
-          console.log('No preferred vendor found for this item:', error);
+          console.error('❌ Error fetching preferred vendor:', error);
         }
       }
     } else {
