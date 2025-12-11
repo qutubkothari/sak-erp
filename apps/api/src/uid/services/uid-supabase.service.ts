@@ -10,8 +10,33 @@ export class UidSupabaseService {
 
   /**
    * Generate UID with format: UID-{TENANT}-{PLANT}-{TYPE}-{SEQUENCE}-{CHECKSUM}
+   * Uses database function for atomic sequence generation to prevent race conditions
    */
   async generateUID(
+    tenantCode: string,
+    plantCode: string,
+    entityType: string,
+  ): Promise<string> {
+    // Use database function for atomic UID generation
+    const { data, error } = await this.supabase.rpc('generate_next_uid', {
+      p_tenant_code: tenantCode,
+      p_plant_code: plantCode,
+      p_entity_type: entityType,
+    });
+
+    if (error) {
+      console.error('Error calling generate_next_uid:', error);
+      // Fallback to old method if function doesn't exist yet
+      return this.generateUIDLegacy(tenantCode, plantCode, entityType);
+    }
+
+    return data;
+  }
+
+  /**
+   * Legacy UID generation (fallback only)
+   */
+  private async generateUIDLegacy(
     tenantCode: string,
     plantCode: string,
     entityType: string,
