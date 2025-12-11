@@ -476,6 +476,94 @@ export class GrnService {
     return { message: 'GRN deleted successfully' };
   }
 
+  async qcAccept(tenantId: string, grnId: string, userId: string, body: any) {
+    // body contains: items array with { itemId, acceptedQty, rejectedQty, qcNotes, rejectionReason }
+    try {
+      const now = new Date().toISOString();
+      
+      // Update each GRN item with QC results
+      for (const item of body.items) {
+        const qcStatus = 
+          item.rejectedQty > 0 && item.acceptedQty > 0 ? 'PARTIAL' :
+          item.rejectedQty > 0 ? 'REJECTED' :
+          'ACCEPTED';
+
+        const { error } = await this.supabase
+          .from('grn_items')
+          .update({
+            accepted_qty: item.acceptedQty,
+            rejected_qty: item.rejectedQty,
+            qc_status: qcStatus,
+            qc_date: now,
+            qc_by: userId,
+            qc_notes: item.qcNotes || null,
+            rejection_reason: item.rejectionReason || null,
+          })
+          .eq('id', item.itemId)
+          .eq('tenant_id', tenantId);
+
+        if (error) throw new Error(`Failed to update item ${item.itemId}: ${error.message}`);
+
+        // Update stock entries: only accepted quantity goes to available stock
+        // Rejected quantity may require debit note creation (future enhancement)
+        if (item.acceptedQty > 0) {
+          // Find the stock entry for this GRN item and update available quantity
+          const { data: grnItem } = await this.supabase
+            .from('grn_items')
+            .select('item_id, grn_id')
+            .eq('id', item.itemId)
+            .single();
+
+          if (grnItem) {
+            const { data: stockEntry } = await this.supabase
+              .from('stock_entries')
+              .select('*')
+              .eq('tenant_id', tenantId)
+              .eq('item_id', grnItem.item_id)
+              .contains('metadata', { grn_id: grnItem.grn_id })
+              .maybeSingle();
+
+            if (stockEntry) {
+              // Update available quantity based on accepted qty
+              await this.supabase
+                .from('stock_entries')
+                .update({
+                  available_quantity: item.acceptedQty,
+                  updated_at: now,
+                })
+                .eq('id', stockEntry.id);
+            }
+          }
+        }
+      }
+
+      // Update GRN status if all items have QC completed
+      const { data: allItems } = await this.supabase
+        .from('grn_items')
+        .select('qc_status')
+        .eq('grn_id', grnId)
+        .eq('tenant_id', tenantId);
+
+      const allCompleted = allItems?.every(item => 
+        item.qc_status === 'ACCEPTED' || 
+        item.qc_status === 'REJECTED' || 
+        item.qc_status === 'PARTIAL'
+      );
+
+      if (allCompleted) {
+        await this.supabase
+          .from('grns')
+          .update({ qc_completed: true, updated_at: now })
+          .eq('id', grnId)
+          .eq('tenant_id', tenantId);
+      }
+
+      return { message: 'QC acceptance recorded successfully', qcCompleted: allCompleted };
+    } catch (error) {
+      throw new BadRequestException(`QC acceptance failed: ${error.message}`);
+    }
+  }
+
   // Helper method to create stock entries
   private async createStockEntry(stockData: any) {
     try {

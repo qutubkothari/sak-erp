@@ -112,7 +112,17 @@ export default function GRNPage() {
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
+  const [showQCModal, setShowQCModal] = useState(false);
   const [selectedGRN, setSelectedGRN] = useState<GRN | null>(null);
+  const [qcFormData, setQcFormData] = useState<Array<{
+    itemId: string;
+    itemName: string;
+    receivedQty: number;
+    acceptedQty: number;
+    rejectedQty: number;
+    qcNotes: string;
+    rejectionReason: string;
+  }>>([]);
   const [editMode, setEditMode] = useState(false);
   const [editFormData, setEditFormData] = useState<{
     invoiceNumber: string;
