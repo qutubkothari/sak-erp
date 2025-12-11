@@ -449,10 +449,16 @@ export class ItemsService {
   }
 
   // Item-Vendor Relationship Methods
-  async getItemVendors(itemId: string) {
-    const { data, error } = await this.supabase.rpc('get_item_vendors', {
-      p_item_id: itemId,
-    });
+  async getItemVendors(tenantId: string, itemId: string) {
+    const { data, error } = await this.supabase
+      .from('item_vendors')
+      .select(`
+        *,
+        vendor:vendors(id, code, name, contact_person, email, phone)
+      `)
+      .eq('item_id', itemId)
+      .eq('is_active', true)
+      .order('priority', { ascending: true });
 
     if (error) {
       throw new Error(`Failed to fetch item vendors: ${error.message}`);
@@ -473,7 +479,7 @@ export class ItemsService {
     return data?.[0] || null;
   }
 
-  async addVendor(itemId: string, body: any) {
+  async addItemVendor(tenantId: string, userId: string, itemId: string, body: any) {
     const { data, error } = await this.supabase
       .from('item_vendors')
       .insert({
@@ -486,6 +492,7 @@ export class ItemsService {
         minimum_order_quantity: this.normalizeNumber(body.minimum_order_quantity),
         payment_terms: body.payment_terms || null,
         notes: body.notes || null,
+        created_by: userId,
       })
       .select()
       .single();
@@ -497,7 +504,7 @@ export class ItemsService {
     return data;
   }
 
-  async updateVendor(itemId: string, vendorId: string, body: any) {
+  async updateItemVendor(tenantId: string, userId: string, itemId: string, vendorId: string, body: any) {
     const { data, error } = await this.supabase
       .from('item_vendors')
       .update({
@@ -509,6 +516,7 @@ export class ItemsService {
         payment_terms: body.payment_terms,
         notes: body.notes,
         is_active: body.is_active !== undefined ? body.is_active : true,
+        updated_by: userId,
       })
       .eq('item_id', itemId)
       .eq('vendor_id', vendorId)
@@ -522,10 +530,10 @@ export class ItemsService {
     return data;
   }
 
-  async removeVendor(itemId: string, vendorId: string) {
+  async deleteItemVendor(tenantId: string, itemId: string, vendorId: string) {
     const { error } = await this.supabase
       .from('item_vendors')
-      .delete()
+      .update({ is_active: false })
       .eq('item_id', itemId)
       .eq('vendor_id', vendorId);
 

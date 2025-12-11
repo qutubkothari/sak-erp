@@ -172,4 +172,30 @@ export class InventoryController {
   ) {
     return this.itemsService.deleteDrawing(req.user.tenantId, itemId, drawingId);
   }
+
+  // Item-Vendor Relationships
+  @Get('items/:id/vendors')
+  async getItemVendors(@Request() req: any, @Param('id') itemId: string) {
+    return this.itemsService.getItemVendors(req.user.tenantId, itemId);
+  }
+
+  @Post('items/:id/vendors')
+  async addItemVendor(@Request() req: any, @Param('id') itemId: string, @Body() body: any) {
+    return this.itemsService.addItemVendor(req.user.tenantId, req.user.userId, itemId, body);
+  }
+
+  @Put('items/:id/vendors/:vendorId')
+  async updateItemVendor(
+    @Request() req: any,
+    @Param('id') itemId: string,
+    @Param('vendorId') vendorId: string,
+    @Body() body: any
+  ) {
+    return this.itemsService.updateItemVendor(req.user.tenantId, req.user.userId, itemId, vendorId, body);
+  }
+
+  @Delete('items/:id/vendors/:vendorId')
+  async deleteItemVendor(@Request() req: any, @Param('id') itemId: string, @Param('vendorId') vendorId: string) {
+    return this.itemsService.deleteItemVendor(req.user.tenantId, itemId, vendorId);
+  }
 }

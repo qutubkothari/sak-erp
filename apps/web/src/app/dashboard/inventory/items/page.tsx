@@ -246,7 +246,7 @@ export default function ItemsPage() {
 
   const fetchItemVendors = async (itemId: string) => {
     try {
-      const data = await apiClient.get(`/items/${itemId}/vendors`);
+      const data = await apiClient.get(`/inventory/items/${itemId}/vendors`);
       setItemVendors(data || []);
     } catch (error) {
       console.error('Error fetching item vendors:', error);
@@ -261,7 +261,7 @@ export default function ItemsPage() {
     }
 
     try {
-      await apiClient.post(`/items/${editingItem.id}/vendors`, {
+      await apiClient.post(`/inventory/items/${editingItem.id}/vendors`, {
         vendor_id: vendorForm.vendor_id,
         priority: vendorForm.priority,
         unit_price: vendorForm.unit_price ? parseFloat(vendorForm.unit_price) : null,
@@ -289,7 +289,7 @@ export default function ItemsPage() {
     if (!editingItem || !confirm('Remove this vendor?')) return;
 
     try {
-      await apiClient.delete(`/items/${editingItem.id}/vendors/${vendorId}`);
+      await apiClient.delete(`/inventory/items/${editingItem.id}/vendors/${vendorId}`);
       alert('Vendor removed successfully!');
       fetchItemVendors(editingItem.id);
     } catch (error) {
