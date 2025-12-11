@@ -21,21 +21,13 @@ CREATE SCHEMA IF NOT EXISTS backup_20251211;
 CREATE TABLE backup_20251211.items AS 
 SELECT * FROM public.items;
 
--- Backup item_categories table
-CREATE TABLE backup_20251211.item_categories AS 
-SELECT * FROM public.item_categories;
+-- Backup warehouses table
+CREATE TABLE backup_20251211.warehouses AS 
+SELECT * FROM public.warehouses;
 
--- Backup stock table
-CREATE TABLE backup_20251211.stock AS 
-SELECT * FROM public.stock;
-
--- Backup stock_transactions table
-CREATE TABLE backup_20251211.stock_transactions AS 
-SELECT * FROM public.stock_transactions;
-
--- Backup storage_locations table
-CREATE TABLE backup_20251211.storage_locations AS 
-SELECT * FROM public.storage_locations;
+-- Backup stock_entries table
+CREATE TABLE backup_20251211.stock_entries AS 
+SELECT * FROM public.stock_entries;
 
 -- ============================================================================
 -- BACKUP BOM TABLES
@@ -93,6 +85,14 @@ SELECT * FROM public.uid_registry;
 -- BACKUP PURCHASE TABLES
 -- ============================================================================
 
+-- Backup purchase_requisitions table
+CREATE TABLE backup_20251211.purchase_requisitions AS 
+SELECT * FROM public.purchase_requisitions;
+
+-- Backup purchase_requisition_items table
+CREATE TABLE backup_20251211.purchase_requisition_items AS 
+SELECT * FROM public.purchase_requisition_items;
+
 -- Backup purchase_orders table
 CREATE TABLE backup_20251211.purchase_orders AS 
 SELECT * FROM public.purchase_orders;
@@ -101,9 +101,9 @@ SELECT * FROM public.purchase_orders;
 CREATE TABLE backup_20251211.purchase_order_items AS 
 SELECT * FROM public.purchase_order_items;
 
--- Backup grn_headers table
-CREATE TABLE backup_20251211.grn_headers AS 
-SELECT * FROM public.grn_headers;
+-- Backup grns table
+CREATE TABLE backup_20251211.grns AS 
+SELECT * FROM public.grns;
 
 -- Backup grn_items table
 CREATE TABLE backup_20251211.grn_items AS 
@@ -113,17 +113,9 @@ SELECT * FROM public.grn_items;
 -- BACKUP PRODUCTION TABLES
 -- ============================================================================
 
--- Backup job_orders table
-CREATE TABLE backup_20251211.job_orders AS 
-SELECT * FROM public.job_orders;
-
--- Backup job_order_items table (if exists)
-DO $$ 
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'job_order_items') THEN
-        EXECUTE 'CREATE TABLE backup_20251211.job_order_items AS SELECT * FROM public.job_order_items';
-    END IF;
-END $$;
+-- Backup production_orders table
+CREATE TABLE backup_20251211.production_orders AS 
+SELECT * FROM public.production_orders;
 
 -- ============================================================================
 -- BACKUP SALES TABLES
@@ -133,21 +125,37 @@ END $$;
 CREATE TABLE backup_20251211.customers AS 
 SELECT * FROM public.customers;
 
--- Backup sales_orders table
-CREATE TABLE backup_20251211.sales_orders AS 
-SELECT * FROM public.sales_orders;
+-- Backup sales_orders table (if exists)
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'sales_orders') THEN
+        EXECUTE 'CREATE TABLE backup_20251211.sales_orders AS SELECT * FROM public.sales_orders';
+    END IF;
+END $$;
 
--- Backup sales_order_items table
-CREATE TABLE backup_20251211.sales_order_items AS 
-SELECT * FROM public.sales_order_items;
+-- Backup sales_order_items table (if exists)
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'sales_order_items') THEN
+        EXECUTE 'CREATE TABLE backup_20251211.sales_order_items AS SELECT * FROM public.sales_order_items';
+    END IF;
+END $$;
 
--- Backup dispatch_notes table
-CREATE TABLE backup_20251211.dispatch_notes AS 
-SELECT * FROM public.dispatch_notes;
+-- Backup dispatch_notes table (if exists)
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'dispatch_notes') THEN
+        EXECUTE 'CREATE TABLE backup_20251211.dispatch_notes AS SELECT * FROM public.dispatch_notes';
+    END IF;
+END $$;
 
--- Backup dispatch_items table
-CREATE TABLE backup_20251211.dispatch_items AS 
-SELECT * FROM public.dispatch_items;
+-- Backup dispatch_items table (if exists)
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'dispatch_items') THEN
+        EXECUTE 'CREATE TABLE backup_20251211.dispatch_items AS SELECT * FROM public.dispatch_items';
+    END IF;
+END $$;
 
 -- ============================================================================
 -- BACKUP COMPLETE - VERIFICATION QUERIES
