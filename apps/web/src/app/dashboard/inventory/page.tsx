@@ -403,7 +403,7 @@ export default function InventoryPage() {
                       </td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-1 text-xs rounded-full ${getCategoryColor(stock.items.category)}`}>
-                          {stock.items.category.replace('_', ' ')}
+                          {stock.items.category ? stock.items.category.replace('_', ' ') : 'N/A'}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right text-sm text-gray-900">
