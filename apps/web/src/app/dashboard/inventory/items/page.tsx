@@ -337,6 +337,11 @@ export default function ItemsPage() {
       reorder_quantity: '',
       lead_time_days: '',
       is_active: true,
+      uid_tracking: true,
+      uid_strategy: 'SERIALIZED',
+      batch_uom: '',
+      batch_quantity: '',
+      drawing_required: 'OPTIONAL',
     });
   };
 
