@@ -129,6 +129,7 @@ function PurchaseOrdersContent() {
       // Map PR items to PO items and fetch preferred vendors
       const poItemsPromises = prData.purchase_requisition_items?.map(async (item: any) => {
         console.log('Mapping PR item:', item);
+        console.log(`Item ID: ${item.item_id}, Items count: ${freshItems.length}`);
         
         // Try to find item in items master to get actual price
         let unitPrice = item.estimated_rate || 0;
@@ -140,8 +141,10 @@ function PurchaseOrdersContent() {
             unitPrice = masterItem.standard_cost || masterItem.selling_price || unitPrice;
             console.log(`Found price for ${item.item_code}: ${unitPrice}`);
           }
-          
-          // Fetch preferred vendor for this item
+        }
+        
+        // Fetch preferred vendor for this item (unconditional - try even if item not in master)
+        if (item.item_id) {
           try {
             console.log(`[PR→PO] Fetching preferred vendor for ${item.item_code} (ID: ${item.item_id})...`);
             const vendorResponse = await fetch(`http://13.205.17.214:4000/api/v1/items/${item.item_id}/vendors/preferred`, {
@@ -171,6 +174,8 @@ function PurchaseOrdersContent() {
           } catch (error) {
             console.error(`❌ [PR→PO] Exception fetching vendor for ${item.item_code}:`, error);
           }
+        } else {
+          console.log(`⚠ [PR→PO] No item_id found for ${item.item_code}, skipping vendor fetch`);
         }
         
         const quantity = item.requested_qty || 0;
