@@ -129,13 +129,25 @@ function PurchaseOrdersContent() {
       // Map PR items to PO items and fetch preferred vendors
       const poItemsPromises = prData.purchase_requisition_items?.map(async (item: any) => {
         console.log('Mapping PR item:', item);
-        console.log(`Item ID: ${item.item_id}, Items count: ${freshItems.length}`);
+        console.log(`Item ID: ${item.item_id}, Item Code: ${item.item_code}, Items count: ${freshItems.length}`);
         
         // Try to find item in items master to get actual price
         let unitPrice = item.estimated_rate || 0;
         let preferredVendorId = '';
+        let itemId = item.item_id;
         
-        if (item.item_id && freshItems.length > 0) {
+        // If no item_id, try to find by item_code
+        if (!itemId && item.item_code && freshItems.length > 0) {
+          const masterItem = freshItems.find((i: any) => i.code === item.item_code);
+          if (masterItem) {
+            itemId = masterItem.id;
+            console.log(`✓ Found item by code ${item.item_code}: ID = ${itemId}`);
+          } else {
+            console.log(`⚠ Could not find item with code: ${item.item_code}`);
+          }
+        }
+        
+        if (itemId && freshItems.length > 0) {
           const masterItem = freshItems.find((i: any) => i.id === item.item_id);
           if (masterItem) {
             unitPrice = masterItem.standard_cost || masterItem.selling_price || unitPrice;
@@ -143,11 +155,19 @@ function PurchaseOrdersContent() {
           }
         }
         
+        if (itemId && freshItems.length > 0) {
+          const masterItem = freshItems.find((i: any) => i.id === itemId);
+          if (masterItem) {
+            unitPrice = masterItem.standard_cost || masterItem.selling_price || unitPrice;
+            console.log(`Found price for ${item.item_code}: ${unitPrice}`);
+          }
+        }
+        
         // Fetch preferred vendor for this item (unconditional - try even if item not in master)
-        if (item.item_id) {
+        if (itemId) {
           try {
-            console.log(`[PR→PO] Fetching preferred vendor for ${item.item_code} (ID: ${item.item_id})...`);
-            const vendorResponse = await fetch(`http://13.205.17.214:4000/api/v1/items/${item.item_id}/vendors/preferred`, {
+            console.log(`[PR→PO] Fetching preferred vendor for ${item.item_code} (ID: ${itemId})...`);
+            const vendorResponse = await fetch(`http://13.205.17.214:4000/api/v1/items/${itemId}/vendors/preferred`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             
@@ -183,7 +203,7 @@ function PurchaseOrdersContent() {
         const totalWithTax = subtotal + (subtotal * 18 / 100);
         
         return {
-          itemId: item.item_id || '',
+          itemId: itemId || '',
           itemCode: item.item_code || '',
           itemName: item.item_name || '',
           vendorId: preferredVendorId, // Auto-selected preferred vendor
