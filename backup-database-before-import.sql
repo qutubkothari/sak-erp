@@ -161,11 +161,10 @@ END $$;
 -- BACKUP COMPLETE - VERIFICATION QUERIES
 -- ============================================================================
 
--- Count records in backup schema
+-- List all backed up tables
 SELECT 
     schemaname,
-    tablename,
-    (SELECT COUNT(*) FROM backup_20251211."' || tablename || '") as record_count
+    tablename
 FROM pg_tables 
 WHERE schemaname = 'backup_20251211'
 ORDER BY tablename;
@@ -177,6 +176,28 @@ SELECT
     current_timestamp as backup_time
 FROM pg_tables 
 WHERE schemaname = 'backup_20251211';
+
+-- Count records in each backup table
+SELECT 'items' as table_name, COUNT(*) as record_count FROM backup_20251211.items
+UNION ALL
+SELECT 'vendors', COUNT(*) FROM backup_20251211.vendors
+UNION ALL
+SELECT 'customers', COUNT(*) FROM backup_20251211.customers
+UNION ALL
+SELECT 'bom_headers', COUNT(*) FROM backup_20251211.bom_headers
+UNION ALL
+SELECT 'bom_items', COUNT(*) FROM backup_20251211.bom_items
+UNION ALL
+SELECT 'stock_entries', COUNT(*) FROM backup_20251211.stock_entries
+UNION ALL
+SELECT 'uid_registry', COUNT(*) FROM backup_20251211.uid_registry
+UNION ALL
+SELECT 'purchase_orders', COUNT(*) FROM backup_20251211.purchase_orders
+UNION ALL
+SELECT 'grns', COUNT(*) FROM backup_20251211.grns
+UNION ALL
+SELECT 'production_orders', COUNT(*) FROM backup_20251211.production_orders
+ORDER BY table_name;
 
 -- ============================================================================
 -- RESTORE INSTRUCTIONS (IF NEEDED)
