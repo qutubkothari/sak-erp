@@ -111,16 +111,16 @@ export default function InventoryPage() {
         if (categoryFilter) params.category = categoryFilter;
         if (showLowStockOnly) params.low_stock = true;
         const data = await apiClient.get('/inventory/stock', params);
-        setStockLevels(data);
+        setStockLevels(Array.isArray(data) ? data : []);
       } else if (activeTab === 'movements') {
         const data = await apiClient.get('/inventory/movements', { limit: 50 });
-        setMovements(data);
+        setMovements(Array.isArray(data) ? data : []);
       } else if (activeTab === 'alerts') {
         const data = await apiClient.get('/inventory/alerts', { acknowledged: false });
-        setAlerts(data);
+        setAlerts(Array.isArray(data) ? data : []);
       } else if (activeTab === 'demo') {
         const data = await apiClient.get('/inventory/demo');
-        setDemoItems(data);
+        setDemoItems(Array.isArray(data) ? data : []);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
