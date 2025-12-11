@@ -20,6 +20,8 @@ interface PurchaseOrder {
   remarks?: string;
   payment_status?: string;
   payment_notes?: string;
+  customs_duty?: number;
+  other_charges?: number;
   purchase_order_items: Array<{
     item: { name: string };
     quantity: number;
@@ -63,6 +65,8 @@ function PurchaseOrdersContent() {
     paymentNotes: '',
     deliveryAddress: '',
     notes: '',
+    customsDuty: 0,
+    otherCharges: 0,
     items: [] as Array<{
       itemId: string;
       itemCode: string;
@@ -389,6 +393,11 @@ function PurchaseOrdersContent() {
           };
         });
 
+        const itemsSubtotal = vendorItems.reduce((sum, item) => sum + item.totalPrice, 0);
+        const customsDuty = parseFloat(formData.customsDuty?.toString() || '0');
+        const otherCharges = parseFloat(formData.otherCharges?.toString() || '0');
+        const grandTotal = itemsSubtotal + customsDuty + otherCharges;
+
         const payload = {
           prId: currentPrId,
           vendorId: vendorId,
@@ -399,8 +408,10 @@ function PurchaseOrdersContent() {
           paymentNotes: formData.paymentNotes || null,
           deliveryAddress: formData.deliveryAddress,
           remarks: formData.notes,
+          customsDuty: customsDuty,
+          otherCharges: otherCharges,
           status: 'DRAFT',
-          totalAmount: vendorItems.reduce((sum, item) => sum + item.totalPrice, 0),
+          totalAmount: grandTotal,
           items: transformedItems,
         };
 
@@ -551,6 +562,8 @@ function PurchaseOrdersContent() {
       paymentNotes: '',
       deliveryAddress: '',
       notes: '',
+      customsDuty: 0,
+      otherCharges: 0,
       items: [],
     });
     setCurrentPrId(null); // Clear PR ID on form reset
@@ -603,6 +616,8 @@ function PurchaseOrdersContent() {
         paymentNotes: data.payment_notes || '',
         deliveryAddress: data.delivery_address || '',
         notes: data.remarks || '',
+        customsDuty: data.customs_duty || 0,
+        otherCharges: data.other_charges || 0,
         items: editItems,
       });
       
@@ -1170,10 +1185,65 @@ function PurchaseOrdersContent() {
                 />
               </div>
 
+              {/* Additional Charges */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Customs Duty (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.customsDuty}
+                    onChange={(e) => setFormData({ ...formData, customsDuty: parseFloat(e.target.value) || 0 })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Other Charges (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.otherCharges}
+                    onChange={(e) => setFormData({ ...formData, otherCharges: parseFloat(e.target.value) || 0 })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
               {/* Total */}
               <div className="border-t pt-4">
-                <div className="flex justify-end text-xl font-bold text-gray-900">
-                  Total: ₹{formData.items.reduce((sum, item) => sum + item.totalPrice, 0).toFixed(2)}
+                <div className="space-y-2 text-right">
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>Items Subtotal:</span>
+                    <span>₹{formData.items.reduce((sum, item) => sum + item.totalPrice, 0).toFixed(2)}</span>
+                  </div>
+                  {(formData.customsDuty > 0 || formData.otherCharges > 0) && (
+                    <>
+                      {formData.customsDuty > 0 && (
+                        <div className="flex justify-between text-sm text-gray-600">
+                          <span>Customs Duty:</span>
+                          <span>₹{formData.customsDuty.toFixed(2)}</span>
+                        </div>
+                      )}
+                      {formData.otherCharges > 0 && (
+                        <div className="flex justify-between text-sm text-gray-600">
+                          <span>Other Charges:</span>
+                          <span>₹{formData.otherCharges.toFixed(2)}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <div className="flex justify-between text-xl font-bold text-gray-900 border-t pt-2">
+                    <span>Grand Total:</span>
+                    <span>₹{(
+                      formData.items.reduce((sum, item) => sum + item.totalPrice, 0) +
+                      (formData.customsDuty || 0) +
+                      (formData.otherCharges || 0)
+                    ).toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
             </div>
