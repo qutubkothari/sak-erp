@@ -44,7 +44,7 @@ SELECT
   CURRENT_DATE - COALESCE(po.estimated_delivery_date, po.delivery_date) as days_overdue
 FROM purchase_orders po
 JOIN vendors v ON po.vendor_id = v.id
-WHERE po.status IN ('SENT', 'ACKNOWLEDGED', 'PARTIAL')
+WHERE po.status IN ('APPROVED', 'COMPLETED')
   AND po.delivery_status != 'DELIVERED'
   AND COALESCE(po.estimated_delivery_date, po.delivery_date) < CURRENT_DATE
 ORDER BY days_overdue DESC;
@@ -74,7 +74,7 @@ BEGIN
     po.delivery_status
   FROM purchase_orders po
   JOIN vendors v ON po.vendor_id = v.id
-  WHERE po.status IN ('SENT', 'ACKNOWLEDGED', 'PARTIAL')
+  WHERE po.status IN ('APPROVED', 'COMPLETED')
     AND po.delivery_status != 'DELIVERED'
     AND COALESCE(po.estimated_delivery_date, po.delivery_date) BETWEEN CURRENT_DATE AND CURRENT_DATE + days_ahead
   ORDER BY estimated_delivery ASC;
