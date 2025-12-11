@@ -8,9 +8,10 @@ import { PurchaseOrdersService } from './services/purchase-orders.service';
 import { VendorsService } from './services/vendors.service';
 import { GrnService } from './services/grn.service';
 import { UidModule } from '../uid/uid.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
-  imports: [UidModule],
+  imports: [UidModule, EmailModule],
   controllers: [
     PurchaseRequisitionsController,
     PurchaseOrdersController,

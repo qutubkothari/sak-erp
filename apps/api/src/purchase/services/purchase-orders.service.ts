@@ -1,11 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { EmailService } from '../../email/email.service';
 
 @Injectable()
 export class PurchaseOrdersService {
   private supabase: SupabaseClient;
 
-  constructor() {
+  constructor(private emailService: EmailService) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_KEY!,
@@ -308,4 +309,57 @@ export class PurchaseOrdersService {
     const lastNumber = parseInt(data.po_number.split('-').pop() || '0');
     return `${prefix}-${String(lastNumber + 1).padStart(3, '0')}`;
   }
+
+  async sendPOEmail(tenantId: string, poId: string) {
+    const po = await this.findOne(tenantId, poId);
+    
+    if (!po.vendor?.email) {
+      throw new BadRequestException('Vendor email not found');
+    }
+
+    const emailData = {
+      po_number: po.po_number,
+      po_date: po.po_date,
+      delivery_date: po.delivery_date,
+      payment_terms: po.payment_terms,
+      vendor_name: po.vendor.name,
+      items: po.purchase_order_items.map(item => ({
+        item_name: item.item_name,
+        quantity: item.ordered_qty,
+        unit_price: item.rate,
+        tax_percent: item.tax_percent,
+        amount: item.amount,
+      })),
+      customs_duty: po.customs_duty,
+      other_charges: po.other_charges,
+      total_amount: po.total_amount,
+      delivery_address: po.delivery_address,
+      remarks: po.remarks,
+    };
+
+    await this.emailService.sendPO(po.vendor.email, emailData);
+
+    return { message: 'PO email sent successfully', recipient: po.vendor.email };
+  }
+
+  async sendTrackingReminder(tenantId: string, poId: string) {
+    const po = await this.findOne(tenantId, poId);
+    
+    if (!po.vendor?.email) {
+      throw new BadRequestException('Vendor email not found');
+    }
+
+    const emailData = {
+      po_number: po.po_number,
+      po_date: po.po_date,
+      delivery_date: po.delivery_date,
+      vendor_name: po.vendor.name,
+      items: po.purchase_order_items,
+    };
+
+    await this.emailService.sendPOTrackingReminder(po.vendor.email, emailData);
+
+    return { message: 'Tracking reminder sent successfully', recipient: po.vendor.email };
+  }
 }
+

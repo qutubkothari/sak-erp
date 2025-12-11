@@ -60,6 +60,16 @@ export class PurchaseOrdersController {
     return this.poService.updateTracking(req.user.tenantId, id, body);
   }
 
+  @Post(':id/send-email')
+  async sendPOEmail(@Request() req: any, @Param('id') id: string) {
+    return this.poService.sendPOEmail(req.user.tenantId, id);
+  }
+
+  @Post(':id/send-tracking-reminder')
+  async sendTrackingReminder(@Request() req: any, @Param('id') id: string) {
+    return this.poService.sendTrackingReminder(req.user.tenantId, id);
+  }
+
   @Delete(':id')
   async delete(@Request() req: any, @Param('id') id: string) {
     return this.poService.delete(req.user.tenantId, id);

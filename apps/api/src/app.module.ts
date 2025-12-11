@@ -36,6 +36,7 @@ import { WorkflowModule } from './workflow/workflow.module';
 import { UidModule } from './uid/uid.module';
 import { NotificationModule } from './notification/notification.module';
 import { AuditModule } from './audit/audit.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -96,6 +97,7 @@ import { AuditModule } from './audit/audit.module';
     UidModule,
     NotificationModule,
     AuditModule,
+    EmailModule,
   ],
   controllers: [MigrationController],
   providers: [
