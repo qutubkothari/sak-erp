@@ -24,6 +24,7 @@ interface Item {
   uid_strategy?: string;
   batch_uom?: string;
   batch_quantity?: number;
+  drawing_required?: string;
 }
 
 interface Vendor {
@@ -82,6 +83,7 @@ export default function ItemsPage() {
     uid_strategy: 'SERIALIZED',
     batch_uom: '',
     batch_quantity: '',
+    drawing_required: 'OPTIONAL',
   });
 
   const addCategory = async () => {
@@ -236,6 +238,7 @@ export default function ItemsPage() {
       uid_strategy: item.uid_strategy || 'SERIALIZED',
       batch_uom: item.batch_uom || '',
       batch_quantity: item.batch_quantity?.toString() || '',
+      drawing_required: item.drawing_required || 'OPTIONAL',
     });
     setShowForm(true);
     fetchItemVendors(item.id);
@@ -791,6 +794,24 @@ export default function ItemsPage() {
                       )}
                     </div>
                   )}
+                </div>
+
+                {/* Drawing Required Section */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Drawing Required
+                    </label>
+                    <select
+                      value={formData.drawing_required}
+                      onChange={(e) => setFormData({ ...formData, drawing_required: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="OPTIONAL">Optional</option>
+                      <option value="COMPULSORY">Compulsory</option>
+                      <option value="NOT_REQUIRED">Not Required</option>
+                    </select>
+                  </div>
                 </div>
 
                 {/* Vendor Management Section */}
