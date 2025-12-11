@@ -74,7 +74,7 @@ function PurchaseOrdersContent() {
   useEffect(() => {
     fetchOrders();
     fetchVendors();
-    fetchItems();
+    // Items are lazy-loaded when modal opens
     // Check if PR ID is provided in URL
     if (prId) {
       loadPRData(prId);
@@ -633,7 +633,13 @@ function PurchaseOrdersContent() {
               </button>
             )}
             <button
-              onClick={() => setShowModal(true)}
+              onClick={() => {
+                setShowModal(true);
+                // Lazy load items when modal opens
+                if (items.length === 0) {
+                  fetchItems();
+                }
+              }}
               className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold"
             >
               + Create Purchase Order

@@ -129,7 +129,7 @@ export class GrnService {
         purchase_order:purchase_orders(id, po_number, po_date),
         vendor:vendors(id, code, name, contact_person),
         warehouse:warehouses(id, code, name),
-        grn_items(*)
+        grn_items(id, accepted_qty, rejected_qty, received_qty, uid_count)
       `)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false});
