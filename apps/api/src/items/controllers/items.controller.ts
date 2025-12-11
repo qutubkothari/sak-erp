@@ -60,7 +60,7 @@ export class ItemsController {
   // Item-Vendor Relationships
   @Get(':id/vendors')
   async getItemVendors(@Request() req: any, @Param('id') id: string) {
-    return this.itemsService.getItemVendors(id);
+    return this.itemsService.getItemVendors(req.user.tenantId, id);
   }
 
   @Get(':id/vendors/preferred')
@@ -70,7 +70,7 @@ export class ItemsController {
 
   @Post(':id/vendors')
   async addVendor(@Request() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.itemsService.addVendor(id, body);
+    return this.itemsService.addItemVendor(req.user.tenantId, req.user.userId, id, body);
   }
 
   @Put(':id/vendors/:vendorId')
@@ -80,12 +80,12 @@ export class ItemsController {
     @Param('vendorId') vendorId: string,
     @Body() body: any
   ) {
-    return this.itemsService.updateVendor(id, vendorId, body);
+    return this.itemsService.updateItemVendor(req.user.tenantId, req.user.userId, id, vendorId, body);
   }
 
   @Delete(':id/vendors/:vendorId')
   async removeVendor(@Request() req: any, @Param('id') id: string, @Param('vendorId') vendorId: string) {
-    return this.itemsService.removeVendor(id, vendorId);
+    return this.itemsService.deleteItemVendor(req.user.tenantId, id, vendorId);
   }
 
   @Get(':id/vendors/:vendorId/price-history')
