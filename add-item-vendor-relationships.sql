@@ -93,9 +93,9 @@ RETURNS TABLE (
 BEGIN
     RETURN QUERY
     SELECT 
-        v.id,
-        v.code,
-        v.name,
+        v.id as vendor_id,
+        v.code as vendor_code,
+        v.name as vendor_name,
         iv.vendor_item_code,
         iv.unit_price,
         iv.lead_time_days
@@ -127,14 +127,14 @@ RETURNS TABLE (
 BEGIN
     RETURN QUERY
     SELECT 
-        v.id,
-        v.code,
-        v.name,
+        v.id as vendor_id,
+        v.code as vendor_code,
+        v.name as vendor_name,
         iv.priority,
         iv.vendor_item_code,
         iv.unit_price,
         iv.lead_time_days,
-        (iv.priority = 1) as is_preferred
+        (iv.priority = 1)::BOOLEAN as is_preferred
     FROM item_vendors iv
     INNER JOIN vendors v ON iv.vendor_id = v.id
     WHERE iv.item_id = p_item_id
