@@ -112,11 +112,11 @@ BEGIN
     SELECT 
         po.po_number,
         po.po_date,
-        poi.unit_price,
-        poi.quantity,
+        poi.rate as unit_price,
+        poi.ordered_qty as quantity,
         po.status as po_status
     FROM purchase_order_items poi
-    INNER JOIN purchase_orders po ON poi.purchase_order_id = po.id
+    INNER JOIN purchase_orders po ON poi.po_id = po.id
     WHERE poi.item_id = p_item_id
       AND po.vendor_id = p_vendor_id
       AND po.status IN ('approved', 'completed', 'partially_received')
