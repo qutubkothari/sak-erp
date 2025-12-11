@@ -20,10 +20,10 @@ ADD COLUMN IF NOT EXISTS qc_by UUID REFERENCES users(id),
 ADD COLUMN IF NOT EXISTS qc_notes TEXT,
 ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
 
--- Update existing data: copy quantity to received_qty and accepted_qty for completed GRNs
+-- Update existing data: copy ordered_qty to received_qty and accepted_qty for completed GRNs
 UPDATE grn_items 
-SET received_qty = quantity,
-    accepted_qty = quantity,
+SET received_qty = ordered_qty,
+    accepted_qty = ordered_qty,
     qc_status = 'ACCEPTED'
 WHERE received_qty IS NULL 
   AND EXISTS (
@@ -34,7 +34,7 @@ WHERE received_qty IS NULL
 
 -- For pending GRNs, just set received_qty
 UPDATE grn_items 
-SET received_qty = quantity
+SET received_qty = ordered_qty
 WHERE received_qty IS NULL;
 
 -- Create index for QC status filtering
