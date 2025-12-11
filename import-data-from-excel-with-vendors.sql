@@ -1,7 +1,7 @@
 -- ============================================================================
 -- DATA IMPORT FROM Stock List 2024-2025.xlsx
 -- WITH ITEM-VENDOR RELATIONSHIPS SUPPORT
--- Generated: 2025-12-11 12:51:16
+-- Generated: 2025-12-11 13:03:01
 -- ============================================================================
 -- Features:
 -- - Splits multi-vendor entries (e.g., 'Robu / Vyom' → 2 vendors)
@@ -21,205 +21,655 @@ BEGIN;
 -- INSERT VENDORS/SUPPLIERS (with multi-vendor support)
 -- ============================================================================
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('ARBACCESSORIES', 'ARB Accessories', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ARBACCESSORIES',
+    'ARB Accessories',
+    'ARB Accessories',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'ARBACCESSORIES'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('AGARWALALUMINIUM', 'Agarwal Aluminium', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'AGARWALALUMINIUM',
+    'Agarwal Aluminium',
+    'Agarwal Aluminium',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'AGARWALALUMINIUM'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('ALIIRANIKOLKATA', 'Ali Irani - Kolkata', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ALIIRANIKOLKATA',
+    'Ali Irani - Kolkata',
+    'Ali Irani - Kolkata',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'ALIIRANIKOLKATA'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('ALIHUSSAINBHARMAL', 'AliHussain Bharmal', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ALIHUSSAINBHARMAL',
+    'AliHussain Bharmal',
+    'AliHussain Bharmal',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'ALIHUSSAINBHARMAL'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('AMPOWERINDIA', 'Ampower India', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'AMPOWERINDIA',
+    'Ampower India',
+    'Ampower India',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'AMPOWERINDIA'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('ATTITUDEMASTERVIZAG', 'Attitude Master Vizag', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ATTITUDEMASTERVIZAG',
+    'Attitude Master Vizag',
+    'Attitude Master Vizag',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'ATTITUDEMASTERVIZAG'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('BAGNAN', 'Bagnan', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BAGNAN',
+    'Bagnan',
+    'Bagnan',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'BAGNAN'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('BALAJIPBMANUFACTURIN', 'Balaji - PB Manufacturing', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BALAJIPBMANUFACTURIN',
+    'Balaji - PB Manufacturing',
+    'Balaji - PB Manufacturing',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'BALAJIPBMANUFACTURIN'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('BLUEROBOTICS', 'BlueRobotics', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BLUEROBOTICS',
+    'BlueRobotics',
+    'BlueRobotics',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'BLUEROBOTICS'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('CABLEFORT', 'Cable Fort', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CABLEFORT',
+    'Cable Fort',
+    'Cable Fort',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'CABLEFORT'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('CANNERCONNECTORS', 'Canner Connectors', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CANNERCONNECTORS',
+    'Canner Connectors',
+    'Canner Connectors',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'CANNERCONNECTORS'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('COMMERCIALENGINEERIN', 'Commercial Engineering', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'COMMERCIALENGINEERIN',
+    'Commercial Engineering',
+    'Commercial Engineering',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'COMMERCIALENGINEERIN'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('DOLPHINRUBBER', 'Dolphin Rubber', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'DOLPHINRUBBER',
+    'Dolphin Rubber',
+    'Dolphin Rubber',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'DOLPHINRUBBER'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('DONORRC', 'Donor RC', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'DONORRC',
+    'Donor RC',
+    'Donor RC',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'DONORRC'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('DYNAMICINDUSTRIALSUP', 'Dynamic Industrial Supplier', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'DYNAMICINDUSTRIALSUP',
+    'Dynamic Industrial Supplier',
+    'Dynamic Industrial Supplier',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'DYNAMICINDUSTRIALSUP'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('ELEGANTENTERPRISES', 'Elegant Enterprises', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ELEGANTENTERPRISES',
+    'Elegant Enterprises',
+    'Elegant Enterprises',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'ELEGANTENTERPRISES'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('EVELTA', 'Evelta', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'EVELTA',
+    'Evelta',
+    'Evelta',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'EVELTA'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('HITECH', 'Hi Tech', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HITECH',
+    'Hi Tech',
+    'Hi Tech',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'HITECH'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('HIMALAYATRADERS', 'Himalaya Traders', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HIMALAYATRADERS',
+    'Himalaya Traders',
+    'Himalaya Traders',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'HIMALAYATRADERS'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('HOBBYWING', 'Hobbywing', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HOBBYWING',
+    'Hobbywing',
+    'Hobbywing',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'HOBBYWING'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('HYDROPNUEMATIC', 'Hydro Pnuematic', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HYDROPNUEMATIC',
+    'Hydro Pnuematic',
+    'Hydro Pnuematic',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'HYDROPNUEMATIC'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('INHOUSE', 'In-house', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'INHOUSE',
+    'In-house',
+    'In-house',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'INHOUSE'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('INNOVINETECHMARKETIN', 'Innovine Tech Marketing PVt. Ltd.', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'INNOVINETECHMARKETIN',
+    'Innovine Tech Marketing PVt. Ltd.',
+    'Innovine Tech Marketing PVt. Ltd.',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'INNOVINETECHMARKETIN'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('JLC', 'JLC', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JLC',
+    'JLC',
+    'JLC',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'JLC'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('JAINWIRENETTING', 'Jain Wire Netting', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JAINWIRENETTING',
+    'Jain Wire Netting',
+    'Jain Wire Netting',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'JAINWIRENETTING'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('JANKIDIE', 'Janki Die', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JANKIDIE',
+    'Janki Die',
+    'Janki Die',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'JANKIDIE'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('LEOPARD', 'Leopard', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LEOPARD',
+    'Leopard',
+    'Leopard',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'LEOPARD'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('LOCALMARKET', 'Local Market', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LOCALMARKET',
+    'Local Market',
+    'Local Market',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'LOCALMARKET'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('LOCALMARKETKOLKATA', 'Local Market Kolkata', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LOCALMARKETKOLKATA',
+    'Local Market Kolkata',
+    'Local Market Kolkata',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'LOCALMARKETKOLKATA'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('MARHASHTOROIDRINGS', 'Marhash Toroid Rings', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MARHASHTOROIDRINGS',
+    'Marhash Toroid Rings',
+    'Marhash Toroid Rings',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'MARHASHTOROIDRINGS'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('NDP', 'NDP', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'NDP',
+    'NDP',
+    'NDP',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'NDP'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('NSKELECTRONICS', 'NSK Electronics', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'NSKELECTRONICS',
+    'NSK Electronics',
+    'NSK Electronics',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'NSKELECTRONICS'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('NAVEEN', 'Naveen', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'NAVEEN',
+    'Naveen',
+    'Naveen',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'NAVEEN'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('POPULARPNUEMATIC', 'Popular Pnuematic', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'POPULARPNUEMATIC',
+    'Popular Pnuematic',
+    'Popular Pnuematic',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'POPULARPNUEMATIC'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('PRATHAMESHTECHNOLOGY', 'PrathameshTechnology & Industries', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PRATHAMESHTECHNOLOGY',
+    'PrathameshTechnology & Industries',
+    'PrathameshTechnology & Industries',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'PRATHAMESHTECHNOLOGY'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('PREMIERELECTRONICS', 'Premier Electronics', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PREMIERELECTRONICS',
+    'Premier Electronics',
+    'Premier Electronics',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'PREMIERELECTRONICS'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('RRINNOVATIONS', 'RR Innovations', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RRINNOVATIONS',
+    'RR Innovations',
+    'RR Innovations',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'RRINNOVATIONS'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('ROBU', 'Robu', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ROBU',
+    'Robu',
+    'Robu',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'ROBU'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('ROBU3DPRINT', 'Robu 3D print', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ROBU3DPRINT',
+    'Robu 3D print',
+    'Robu 3D print',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'ROBU3DPRINT'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('ROLAND', 'Roland', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ROLAND',
+    'Roland',
+    'Roland',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'ROLAND'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('SEUTES', 'Seutes', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SEUTES',
+    'Seutes',
+    'Seutes',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'SEUTES'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('SHENZENISDTECHNOLOGY', 'Shenzen ISD Technology', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SHENZENISDTECHNOLOGY',
+    'Shenzen ISD Technology',
+    'Shenzen ISD Technology',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'SHENZENISDTECHNOLOGY'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('SUZHOUVOLSUNELECTRON', 'Suzhou Volsun Electronics Technology', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SUZHOUVOLSUNELECTRON',
+    'Suzhou Volsun Electronics Technology',
+    'Suzhou Volsun Electronics Technology',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'SUZHOUVOLSUNELECTRON'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('SVTHERMTECHNOLOGIES', 'Svtherm Technologies', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SVTHERMTECHNOLOGIES',
+    'Svtherm Technologies',
+    'Svtherm Technologies',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'SVTHERMTECHNOLOGIES'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('SYNERGY', 'Synergy', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SYNERGY',
+    'Synergy',
+    'Synergy',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'SYNERGY'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('TANVEERINTERNATIONAL', 'Tanveer International', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'TANVEERINTERNATIONAL',
+    'Tanveer International',
+    'Tanveer International',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'TANVEERINTERNATIONAL'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('VINODRAI', 'Vinod Rai', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'VINODRAI',
+    'Vinod Rai',
+    'Vinod Rai',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'VINODRAI'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('VYOM', 'Vyom', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'VYOM',
+    'Vyom',
+    'Vyom',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'VYOM'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('WEBEL', 'Webel', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WEBEL',
+    'Webel',
+    'Webel',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'WEBEL'
+);
 
-INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('WEIPU', 'Weipu', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WEIPU',
+    'Weipu',
+    'Weipu',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = 'WEIPU'
+);
 
 
 
@@ -227,2209 +677,7719 @@ ON CONFLICT (vendor_code) DO NOTHING;
 -- INSERT RAW MATERIALS (Category: RM)
 -- ============================================================================
 
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('QX7-TRANSMITTER-WITH', 'QX7 Transmitter with R9M', 'RM', 'Number', 12000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('RECEIVER-MODULE-R9MMR9MXR9', 'Receiver Module R9MM/R9MX/R9', 'RM', 'Number', 2200.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('R9M-MINI-RECEIVER', 'R9M Mini Receiver Module', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FREE-WHEEL-DIODE', 'Free Wheel Diode SMD M7', 'RM', 'Number', 1.7, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('AMS1117-50V', 'AMS1117 5.0v', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('AMS1117-33V', 'AMS1117 3.3v', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('NEO6M-GPSL80-GPS', 'NEO-6M GPS/L80 GPS', 'RM', 'Number', 245.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LC86G-GPS', 'LC86G GPS', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HERE3GPS', 'Here3+GPS', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('55MM-FEMALE-BULLET', '5.5mm Female Bullet connector', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('4MM-MALE-BULLET', '4mm Male Bullet connector', 'RM', 'Number', 22.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('4MM-FEMALE-BULLET', '4mm Female Bullet connector', 'RM', 'Number', 22.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('2MM-MALE-BULLET', '2mm male bullet connector', 'RM', 'Number', 9.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('2MM-FEMALE-BULLET', '2mm Female Bullet connector', 'RM', 'Number', 9.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('6MM-MALE-BULLET', '6mm male bullet connector', 'RM', 'Number', 50.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('6MM-FEMALE-BULLET', '6mm female bullet connector', 'RM', 'Number', 50.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('8MM-MALE-BULLET', '8mm male bullet connector', 'RM', 'Number', 56.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('8MM-FEMALE-BULLET', '8mm female bullet connector', 'RM', 'Number', 56.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ULTRA-FLEXIBLE-BLACK', 'Ultra Flexible Black 8AWG', 'RM', 'Meter', 263.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ULTRA-FLEXIBLE-RED', 'Ultra Flexible  Red 8AWG', 'RM', 'Meter', 263.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ULTRA-FLEXIBLE-BLACK', 'Ultra Flexible Black 12AWG', 'RM', 'Meter', 110.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ULTRA-FLEXIBLE-RED', 'Ultra Flexible Red 12AWG', 'RM', 'Meter', 110.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ULTRA-FLEXIBLE-BLACK', 'Ultra Flexible Black 18 AWG', 'RM', 'Meter', 35.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ULTRA-FLEXIBLE-RED', 'Ultra Flexible Red 18 AWG', 'RM', 'Meter', 35.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ULTRA-FLEXIBLE-BLACK', 'Ultra Flexible Black 20 AWG', 'RM', 'Meter', 26.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ULTRA-FLEXIBLE-RED', 'Ultra Flexible Red 20 AWG', 'RM', 'Meter', 26.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ULTRA-FLEXIBLE-BLUE', 'Ultra Flexible Blue 20 AWG', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('WATER-FLOW-SENSOR', 'Water flow sensor YFS401', 'RM', 'Number', 200.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('WATER-PUMP-550', 'Water pump 550 diaphragm', 'RM', 'Number', 473.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('1S-LIPO-INDICATOR', '1S Lipo indicator (Not Using)', 'RM', 'Number', 91.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('2S-LIPO-INDICATOR', '2S Lipo indicator', 'RM', 'Number', 100.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LIPO-INDICATOR-CASINGS', 'Lipo Indicator Casings', 'RM', 'Number', 120.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BUCK-CONVERTER-XL7015', 'Buck converter XL7015 50v', 'RM', 'Number', 78.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LM2596-IN-AMCA', 'LM2596 in AMCA', 'RM', 'Number', 65.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('XL4015XL4005-5A-BUCK', 'XL4015/XL4005 5A buck converter', 'RM', 'Number', 72.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('XT90-FEMALE-HOUSING', 'XT90 Female housing', 'RM', 'Number', 48.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('XT30', 'XT30', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('XT60', 'XT60', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('24V-ACDC-MODULE', '24v AC/DC module', 'RM', 'Number', 372.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MOMENTARY-SWITCH-JCB', 'Momentary Switch JCB', 'RM', 'Number', 200.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LATCHING-POWER-SWITCH', 'Latching Power switch JCB', 'RM', 'Number', 215.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PWB-FOR-IFU', 'PWB for IFU', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PWB-FOR-JCB', 'PWB for JCB', 'RM', 'Number', 100.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PWB-OF-STBD', 'PWB of STBD flash light', 'RM', 'Number', 30.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PWB-OF-PORT', 'PWB of PORT flash light', 'RM', 'Number', 30.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PWB-OF-A4', 'PWB of A4 Motherboard', 'RM', 'Number', 200.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PWB-OF-CURRENT', 'PWB of Current Sensor', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PWB-OF-BUTTON', 'PWB of Button -2', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PWB-FOR-PC', 'PWB for PC (in charger)', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PWB-FOR-BATHEMETRY', 'PWB for Bathemetry Sensor', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('GENERAL-PCB-6X6', 'General PCB 6x6', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('GENERAL-PCB-6X4', 'General PCB 6X4', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PCB-OF-ROHM', 'PCB of ROHM Buck  on Murata Foot Print', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PCB-OF-ROHM', 'PCB of ROHM buck on XL4007 Foot Print', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PCB-OF-MP9486', 'PCB of MP9486 on Murata FootPrint', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('AMCA-ONBOARD-CHARGING', 'AMCA Onboard Charging Circuit', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SBUS-GENERATOR-CIRCUIT', 'SBus Generator Circuit (Tailored Solution)', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('A5-BOARD-WITH', 'A5 Board with own bucks', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('WCS1700-CURRENT-SENSOR', 'WCS1700 current Sensor', 'RM', 'Number', 185.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('6X3-BATTERY-BLOCKS', '6X3 BATTERY blocks', 'RM', 'Number', 450.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('21700-BATTERRIES', '21700 Batterries', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('18650-CELLS-LIION', '18650 cells Li-Ion for JCB', 'RM', 'Number', 750.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('18650-CELL-HOLDER', '18650 Cell Holder', 'RM', 'Number', 68.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('USB-DATA-CHARGING', 'USB Data & Charging Cable 1.5m length Black', 'RM', 'Number', 35.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('DC-JACK-PANEL', 'DC Jack Panel Mount', 'RM', 'Number', 5.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEAT-SINK-PASTE', 'Heat Sink Paste', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LEAD-PASTE', 'Lead paste', 'RM', 'Grm', 5.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LEAD-WIRE-22AWG', 'Lead wire 22AWG', 'RM', 'grm', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEAT-SINK-PAD', 'Heat Sink Pad', 'RM', 'Packet', 800.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LM358DT-SMD', 'LM358DT SMD', 'RM', 'Number', 8.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('01UF-0805', '0.1uF 0805', 'RM', 'Number', 0.7, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('001UF-0805', '0.01uF 0805', 'RM', 'Number', 0.7, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LED-0805-SMD', 'LED 0805 SMD', 'RM', 'Number', 0.7, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('TS5A3157DBVR-SSR-ENCODER', 'TS5A3157DBVR SSR Encoder Signal Cut-Off', 'RM', 'Number', 27.48, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('TACTILE-SWITCH-FOR', 'Tactile Switch for IFU four leg', 'RM', 'Number', 11.58, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LM2596HVSADJ-BUCK-ONLY', 'LM2596HVS-ADJ Buck only IC', 'RM', 'Number', 628.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MP9486AGNZ-100V-BUCK', 'MP9486AGN-Z 100v Buck converter IC', 'RM', 'Number', 215.71, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('12V-FIXED-BUCK', '12v Fixed Buck 18-75 In MultiCom Pro', 'RM', 'Number', 2288.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('5V-FIXED-BUCK', '5v Fixed Buck 18-75 In MultiCom Pro', 'RM', 'Number', 2288.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('1N4148-SMD', '1N4148 SMD', 'RM', 'Number', 0.75, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('18PF-0805-CAPACITOR', '18pF 0805 capacitor', 'RM', 'Number', 0.7, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10UF-0805-CAPACITOR', '10uF 0805 capacitor', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10UF-10V-TANTALUM', '10uF 10v Tantalum Capacitor Case A', 'RM', 'Number', 4.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('1K-0805-RESISTOR', '1k 0805 Resistor', 'RM', 'Number', 0.25, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10K-0805-RESISTOR', '10k 0805 resistor', 'RM', 'Number', 0.25, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('510K-RESISTOR', '510K Resistor', 'RM', 'PCS', 0.25, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('560K-RESISTOR', '560K Resistor', 'RM', 'PCS', 0.25, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('330E-0805-RESISTOR', '330E 0805 Resistor', 'RM', 'Number', 0.25, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MURATA-12V-45A', 'Murata 12v 4.5A buck', 'RM', 'Number', 2750.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MURATA-5V-10A', 'Murata 5v 10A buck', 'RM', 'Number', 2750.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('1-MEG-3296', '1 Meg 3296', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('1K-3296-RESISTOR', '1K 3296 Resistor', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('2K-3296-RESISTOR', '2K 3296 Resistor', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('5-W-1', '5 W 1 Ω Resistor', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('5-W-5', '5 W 5 Ω Resistor', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FUSE-500MA', 'Fuse 500mA', 'RM', 'Number', 35.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MCP3208', 'MCP3208', 'RM', 'Number', 311.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('23A-24V-POWER', '23A 24v Power relay', 'RM', 'Number', 90.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LM61-TEMPERATURE-SENSOR', 'LM61 Temperature Sensor', 'RM', 'Number', 104.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('47K-0805', '47k 0805', 'RM', 'Number', 0.25, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('470K-0805-PANASONICBOURNSMURATA', '470k 0805 PANASONIC/BOURNS/MURATA', 'RM', 'Number', 3.3, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('20K-0805-PANASONICBOURNSMURATA', '20k 0805 PANASONIC/BOURNS/MURATA', 'RM', 'Number', 3.3, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('1UF-0805-PANASONIC', '1uF 0805 PANASONIC', 'RM', 'Number', 5.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('16MHZ-CRYSTAL-OSCILLATOR', '16MHz Crystal Oscillator', 'RM', 'Number', 46.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ULN2004-SMD', 'ULN2004 SMD', 'RM', 'Number', 57.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SSR-AQW282SX', 'SSR AQW282SX', 'RM', 'Number', 208.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ATMEGA328P-CONTROLLER', 'Atmega328P Controller', 'RM', 'Number', 319.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('POWER-RELAY-120A', 'Power Relay 120A 12v Y7', 'RM', 'Number', 2600.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('POWER-RELAY-90A', 'Power Relay 90A 12v Y6', 'RM', 'Number', 2067.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SPST-RELAY-5A12V', 'SPST relay 5A-12v ANTI_S & KILL', 'RM', 'Number', 90.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BALANCING-1A-DPDT', 'Balancing 1A DPDT 24v Relay', 'RM', 'Number', 90.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BALANCING-RELAY-5A2A', 'Balancing relay 5A/2A 24v SPST', 'RM', 'Number', 55.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('5V-2A-USB', '5v 2A USB Adapter', 'RM', 'Number', 120.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('5V-3A-POWER', '5v 3A Power adapter DC Plug Orange', 'RM', 'Number', 408.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('5V-3A-POWER', '5v 3A Power adapter DC Plug Ordinary', 'RM', 'Number', 168.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('9V-2A-POWER', '9v 2A Power adapter DC Plug Orange', 'RM', 'Number', 368.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('32GB-SD-CARD', '32Gb SD Card', 'RM', 'Number', 300.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('16PIN-IC-BASE', '16pin IC base', 'RM', 'Number', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BLUETOOTH-MODULE', 'BlueTooth Module', 'RM', 'Number', 215.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('24AWG-SOLDERING-WIRE', '24AWG Soldering Wire', 'RM', 'Grm', 3.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('12E-2W-RESISTOR', '12E 2W Resistor THT', 'RM', 'Number', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IMAX-B3-CHARGER', 'iMAx B3 Charger', 'RM', 'Number', 220.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('9V-PIEZO-ELECTRIC', '9v Piezo Electric Buzzer', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FEMALE-BERGSTRIP-40X1', 'Female Bergstrip 40x1 2.54mm', 'RM', 'Number', 5.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MALE-BERGSTRIP-40X1', 'Male Bergstrip 40x1 2.54mm', 'RM', 'Number', 5.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FEMALE-BERGSTRIP-40X1', 'Female Bergstrip 40x1 2.0mm', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MALE-BERGSTRIP-40X1', 'Male Bergstrip 40x1 2.0mm', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('CONFORMAL-COATING', 'Conformal Coating', 'RM', 'ml', 1.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SOLDERING-FLUX-SMALL', 'Soldering flux Small lead', 'RM', 'ml', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('3-PIN-CONNECTORS', '3 Pin Connectors', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('5-PIN-MALE', '5 pin male 2510 connector', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('3-PIN-3', '3 pin 3 yrd power cord', 'RM', 'Number', 65.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('2-PIN-JSTXH', '2 pin JST-XH housing', 'RM', 'Number', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('3-PIN-JSTXH', '3 pin JST-XH housing', 'RM', 'Number', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('13-PIN-JSTXH', '13 pin JST-XH housing', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('15-PIN-JSTXH', '15 pin JST-XH housing', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('2-PIN-JSTXH', '2 pin JST-XH male top entry', 'RM', 'Number', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('2-PIN-JSTXH', '2 pin JST-XH male top entry RED', 'RM', 'Number', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('2-PIN-JSTXH', '2 pin JST-XH male side entry', 'RM', 'Number', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('3-PIN-JSTXH', '3 pin JST-XH male top entry', 'RM', 'Number', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('4-PIN-JSTXH', '4 pin JST-XH housing', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('4-PIN-JSTXH', '4 pin JST-XH male top entry', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('4-PIN-JSTXH', '4 pin JST-XH male side entry', 'RM', 'Number', 3.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('5-PIN-JSTXH', '5 pin JST-XH housing', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('5-PIN-JSTXH', '5 pin JST-XH male top entry', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('6-PIN-JSTXH', '6 pin JST-XH housing', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('6-PIN-JSTXH', '6 pin JST-XH male top entry', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('2510-CRIMPING-PINS', '2510 Crimping pins', 'RM', 'Number', 0.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('13-PIN-JSTXH', '13 pin JST-XH male top entry', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('15-PIN-JSTXH', '15 pin JST-XH male top entry', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('JSTXH-CRIMPING-PINS', 'JST-XH Crimping pins', 'RM', 'Number', 1.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('JSTXH-CRIMPING-PINS', 'JST-XH Crimping pins Gold Finger', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-RED-ONE', '25cm Red one side crimped wire', 'RM', 'Number', 3.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-GREEN-ONE', '25cm Green one side crimped wire', 'RM', 'Number', 3.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-BLACK-ONE', '25cm Black one side crimped wire', 'RM', 'Number', 3.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Black', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Green', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Voilet', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Yellow', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Sky Blue', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Pink', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Orange', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Dark Blue', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Light Brown', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Dark Brown', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped White with Red strip', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped White with black strip', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped White', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Red', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Light Grey', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Cyan', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CM-ONE-SIDED', '10cm one sided JST crimped Dark Parrot Green', 'RM', 'Number', 2.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-BLACK-MICROFIT', '25cm Black Microfit one side crimped wires', 'RM', 'Number', 6.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-GREEN-MICROFIT', '25cm Green Microfit one side crimped wires', 'RM', 'Number', 6.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-VIOLET-MICROFIT', '25cm Violet Microfit one side crimped wires', 'RM', 'Number', 6.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-YELLOW-MICROFIT', '25cm Yellow Microfit one side crimped wires', 'RM', 'Number', 6.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-SKY-BLUE', '25cm Sky  Blue Microfit one side crimped wires', 'RM', 'Number', 6.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-PINK-MICROFIT', '25cm Pink Microfit one side crimped wires', 'RM', 'Number', 6.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-DARK-PINK', '25cm Dark Pink Microfit one side crimped wires', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-LBROWN-MICROFIT', '25cm L.Brown Microfit one side crimped wires', 'RM', 'Number', 6.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-DBROWN-MICROFIT', '25cm D.Brown Microfit one side crimped wires', 'RM', 'Number', 6.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-WHITE-MICROFIT', '25cm White Microfit one side crimped wires', 'RM', 'Number', 6.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-WHITERED-MICROFIT', '25cm White-Red Microfit one side crimped wires (Not Using)', 'RM', 'Number', 6.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-WHITEBLACK-MICROFIT', '25cm White-Black Microfit one side crimped wires', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-RED-MICROFIT', '25cm Red Microfit one side crimped wires', 'RM', 'Number', 6.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-DARK-BLUE', '25cm Dark Blue Microfit one side crimped wires', 'RM', 'Number', 6.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CM-ORANGE-MICROFIT', '25cm Orange Microfit one side crimped wires', 'RM', 'Number', 6.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MICROFIT-BALANCING-CABLES', 'Microfit Balancing Cables', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('18PIN-MICROFIT-HOUSING', '18pin Microfit housing', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('TACTILE-SWITCH-FOR', 'Tactile switch for reset two leg', 'RM', 'Number', 36.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('915MHZ-ANTENNA', '915MHz Antenna', 'RM', 'Number', 165.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IPEX4-TO-SMA', 'Ipex4 to SMA converter extension (1675015) (Antenna pigtail connectror)', 'RM', 'Number', 84.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IPEX4-TO-SMA', 'Ipex4 to SMA converter extension (for R9MM ipex4)', 'RM', 'Number', 45.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('R9M-ANTENNA-EXTENSION', 'R9M Antenna Extension wire RP-SMA to Open', 'RM', 'Number', 45.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('RPSMA-FEMALE-INLINE', 'RP-SMA Female inline connector for RG174', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('RPSMA-MALE-INLINE', 'RP-SMA Male inline connector for RG174', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('RPSMA-FEMALE-INLINE', 'RP-SMA Female inline connector for RG142', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('RPSMA-MALE-INLINE', 'RP-SMA Male inline connector for RG142', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SMA-FEMALE-INLINE', 'SMA Female inline connector for RG174', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SMA-MALE-INLINE', 'SMA Male inline connector for RG174', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SMA-FEMALE-INLINE', 'SMA Female inline connector for RG142', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SMA-MALE-CONNECTOR', 'SMA Male connector inline for RG142', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('RG174-COAXIAL-CABLE', 'RG174 Coaxial cable', 'RM', 'Meter', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('RG142-COAXIAL-CABLE', 'RG142 Coaxial cable', 'RM', 'Meter', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('20-AWG-SILICONE', '20 AWG Silicone Red - Wire', 'RM', 'Meter', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('25CORE-WIRE-1438', '25Core Wire 14/38', 'RM', 'Meter', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('20CORE-WIRE-1438', '20Core Wire 14/38', 'RM', 'Meter', 185.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10CORE-WIRE-1438', '10Core Wire 14/38', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('8CORE-WIRE-1438', '8core Wire 14/38', 'RM', 'Meter', 42.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('1438-16-CORE', '14/38 16 Core Wire', 'RM', 'Meter', 180.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('RED-1438-WIRE', 'Red 14/38 wire', 'RM', 'Meter', 4.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BLACK-1438-WIRE', 'Black 14/38 Wire', 'RM', 'Meter', 4.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('YELLOW-1438-WIRE', 'Yellow 14/38 Wire', 'RM', 'Meter', 4.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('WHITE-1438-WIRE', 'White 14/38 Wire', 'RM', 'Meter', 4.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SKY-BLUE-1438', 'Sky Blue 14/38 Wire', 'RM', 'Meter', 4.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ORANGE-1438-WIRE', 'Orange 14/38 Wire', 'RM', 'Meter', 4.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('GREEN-1438-WIRE', 'Green 14/38 Wire', 'RM', 'Meter', 4.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PURPLE-1438-WIRE', 'Purple 14/38 Wire', 'RM', 'Meter', 4.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BROWN-1438-WIRE', 'Brown 14/38 Wire', 'RM', 'Meter', 4.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('AFT-PLATE-ACRYLICE', 'Aft plate Acrylice for Template', 'RM', 'Number', 25.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('12S-LIPO-CHARGER', '12S Lipo Charger', 'RM', 'Number', 45000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('8S-LIPO-CHARGER', '8S Lipo Charger ISDT Q8', 'RM', 'Number', 7220.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('4S-LIPO-CHARGER', '4S Lipo Charger ISDT PD60', 'RM', 'Number', 1245.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('8KG-HULL', '8kg Hull', 'RM', 'Number', 8500.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('JCB-BODY-CUM', 'JCB Body cum mounting frame', 'RM', 'Number', 2000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SR-STRUCTURE', 'SR Structure', 'RM', 'Number', 1000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SR-PILLOW', 'SR Pillow', 'RM', 'Number', 1000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('COUPLING-HOOD', 'Coupling Hood', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('2MM-FRP-60X70MM', '2mm FRP 60x70mm with 18 mm hole', 'RM', 'Number', 5.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FLOW-SENSOR-CLAMP', 'flow sensor Clamp', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ESC-TEMPERATURE-SENSOR', 'ESC Temperature Sensor Clamp', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BATTERY-CLAMP', 'Battery Clamp', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ELECTRONIC-BOX-TOP', 'Electronic Box Top Lid', 'RM', 'Number', 30.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BATTERY-HOLDING-FOAM', 'Battery holding foam block Side (115×80×35)', 'RM', 'Number', 5.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BATTERY-HOLDING-FOAM', 'Battery holding foam block Upside (80×80×35)', 'RM', 'Number', 5.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BATTERY-CLAMPING-UP', 'Battery Clamping UP EPE on jet plate (150×80×20)', 'RM', 'Number', 5.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BATTERY-CLAMPING-BF', 'Battery Clamping B&F EPE on jet plate (80×80×10)', 'RM', 'Number', 5.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('UNDER-ELECBOX-EPE', 'Under ElecBox EPE (150x230x25)', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ABOVE-ELECBOX-EPE', 'Above ElecBox EPE (150x80x30)', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ZIP-TIES-100X3', 'Zip ties 100x3 MultiCompro', 'RM', 'Number', 1.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ZIP-TIES-250M', 'Zip ties 250m Regular', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FERRITE-CORE', 'Ferrite Core', 'RM', 'Number', 7.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SY2115-PIN-PANEL', 'SY21-15 pin panel mount(Male)', 'RM', 'Number', 350.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SY2115-PIN-CABLE', 'SY21-15 pin Cable Mount(Female)', 'RM', 'Number', 350.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SY2115-PIN-PANEL', 'SY21-15 pin panel mount(Female)', 'RM', 'Number', 350.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SY2115-PIN-CABLE', 'SY21-15 pin Cable Mount(Male)', 'RM', 'Number', 350.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('WY28-METAL-CONNECTOR', 'WY-28 Metal connector CM', 'RM', 'Number', 650.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('WY28-METAL-CONNECTOR', 'WY-28 Metal connector PM', 'RM', 'Number', 500.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('WK15-IP68-CABLE', 'WK-15 IP68 Cable Metal Connector', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('WK15-IP68-CABLE', 'WK-15 IP68 Cable Metal Connector', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('15-PIN-IP68', '15 pin IP68 connectors (Female)', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('15-PIN-IP68', '15 pin IP68 Connectors (Male)', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SA12-9PIN-CM', 'SA12 9pin CM Pushpull Male', 'RM', 'Number', 500.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SA12-9PIN-PM', 'SA12 9pin PM Pushpull female', 'RM', 'Number', 350.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SA12-9PIN-COUNTER', 'SA12 9pin Counter', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LP12-3-PIN', 'LP12 3 pin plug male clip lock CM', 'RM', 'Number', 169.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LP12-3-PIN', 'LP12 3 pin socket female clip lock PM', 'RM', 'Number', 121.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LP12-4-PIN', 'LP12 4 pin plug male clip lock CM', 'RM', 'Number', 141.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LP12-4-PIN', 'LP12 4 pin socket female clip lock PM', 'RM', 'Number', 350.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LP12-8-PIN', 'LP12 8 pin plug male clip lock CM', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LP12-8-PIN', 'LP12 8 pin socket female clip lock PM', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LP24-24-PIN', 'LP24 24 pin plug male clip lock CM (Not Using)', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LP24-24-PIN', 'LP24 24 pin socket female clip lock PM (Not Using)', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LP24-24-PIN', 'LP24 24 pin plug female clip lock CM', 'RM', 'Number', 556.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LP24-24-PIN', 'LP24 24 pin socket male clip lock PM', 'RM', 'Number', 425.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('WATER-TANK-FOR', 'Water tank for JCB', 'RM', 'Number', 200.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BLUEROBOTICS-LEAK-PROBE', 'BlueRobotics Leak probe', 'RM', 'Number', 200.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BLUEROBOTICS-INDICATOR', 'BlueRobotics Indicator', 'RM', 'Number', 1000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IP68-ROTARY-MAIN', 'IP68 Rotary main Switch', 'RM', 'Number', 1000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('RED-2835-SMD', 'Red 2835 SMD LED 1W', 'RM', 'Number', 7.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('GREEN-2835-SMD', 'Green 2835 SMD LED 1W', 'RM', 'Number', 7.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('NO-4-SELF', 'No. 4 Self tap Screw SS304 (M4x6.5 Philips)', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M2X12-ALLEN-HEAD', 'M2x12 Allen Head SS304', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M3X6-CSK-PHILLIPS', 'M3x6 CSK Phillips', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M3X8-CSK-PHILLIPS', 'M3x8 CSK Phillips', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M3X30-CSK-PHILLIPS', 'M3x30 CSK Phillips', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M3X8-BUTTON-HEAD', 'M3x8 Button head', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M3X10-PLAIN-WASHER', 'M3x10 plain washer', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X8-CSK-PHILLIPS', 'M4x8 CSK Phillips', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X8-CSK-PHILLIPS', 'M4x8 CSK Phillips GI', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M2X15-ALLEN-HEAD', 'M2x15 Allen Head SS304', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X10-CSK-PHILLIPS', 'M4x10 CSK Phillips', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X20-CSK-PHILLIPS', 'M4x20 CSK Phillips', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X20-PLAIN-WASHER', 'M4x20 Plain Washer', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X12-ALLEN-HEAD', 'M4x12 Allen Head', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X16-ALLEN-HEAD', 'M4x16 Allen Head', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X10-ALLEN-HEAD', 'M4x10 Allen head', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X30-ALLEN-HEAD', 'M4x30 Allen head', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X40-ALLEN-HEAD', 'M4X40 Allen head', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M5X15-PLAIN-WASHER', 'M5x15 plain washer', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X20-ALLEN-HEAD', 'M4x20 Allen Head', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X12-BUTTON-HEAD', 'M4x12 Button Head', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X12-PAN-COMBI', 'M4x12 Pan Combi', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X12-PLAIN-WASHER', 'M4x12 plain washer', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4-SPRING-WASHER', 'M4 Spring Washer', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4-NYLOCK', 'M4 Nylock', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4-SQUARE-NUT', 'M4 Square Nut', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M3-SQUARE-NUTS', 'M3 Square Nuts', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4X5-GRUB', 'M4x5 Grub', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M5X10-ALLEN-HEAD', 'M5x10 Allen Head (AMCA)', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M5X10-PAN-TORX', 'M5x10 Pan Torx', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M5X10-GRUB-SCREW', 'M5x10 Grub Screw', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M5X50-CSK-PHILIPS', 'M5x50 CSK Philips', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M5X50-ALLEN-CAP', 'M5x50 Allen Cap', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M6X150-ALLEN-HEAD', 'M6x150 Allen Head', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M6-NYLOCK', 'M6 Nylock', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M6X15-PLAIN-WASHER', 'M6x15 plain washer', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PLAIN-WASHER-6X20X1', 'Plain Washer 6x20x1', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M6X10-GRUB-SCREW', 'M6x10 Grub Screw', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M6-DOM-NUT', 'M6 Dom Nut', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BUTTON-HEAD-6X12', 'Button Head 6x12', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M6X30-BUTTON-HEAD', 'M6x30 Button Head', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M6X30-ALLEN-CAP', 'M6x30 Allen Cap', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEX-NUT-3MM', 'Hex Nut 3mm', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEX-NUT-6MM', 'Hex Nut 6mm', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M8X20-PLAIN-WASHER', 'M8x20 plain washer', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M8X25-ALLEN-HEAD', 'M8x25 Allen Head', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M5X12-BUTTON-HD', 'M5X12 Button HD Torx', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('CELLO-TAPE', 'Cello Tape', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('COPPER-STRIPS-3X2', 'Copper Strips 3x2 cells', 'RM', 'Number', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('KAPTON-TAPE', 'Kapton Tape', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('70MM-PAPER-SEPARATOR', '70mm Paper Separator', 'RM', 'Number', 11.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BARLEY-PAPER-FOR', 'Barley paper for 21700 cylindrical cell', 'RM', 'Number', 1.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BATTERY-BARLEY-ROLL', 'Battery Barley roll', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('1S-BMS', '1S BMS', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('2S-BMS', '2S BMS', 'RM', 'Number', 35.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('3S-BMS', '3S BMS', 'RM', 'Number', 50.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('16AWG-LEAD', '16AWG Lead', 'RM', 'Grm', 1.3, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('130X80X60-ENCLOSURE-BOX', '130x80x60 enclosure box', 'RM', 'Number', 260.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PG7-CABLE-GLAND', 'PG-7 Cable Gland', 'RM', 'Number', 15.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PG9-CABLE-GLANDPG', 'PG-9 Cable Gland(PG -11)', 'RM', 'Number', 15.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SOLID-COUPLING-ALUMINIUM', 'Solid coupling (Aluminium)', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ROTEX14-COUPLING', 'Rotex14 Coupling', 'RM', 'Number', 1500.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SPIDERS', 'Spiders', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ELECTRONIC-BOX', 'Electronic Box', 'RM', 'Number', 3000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FRONT-LID', 'Front Lid', 'RM', 'Number', 1100.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BOTTOM-BLOCK-INLET', 'Bottom Block (Inlet Block)', 'RM', 'Number', 1000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IP-REMOTE', 'IP Remote', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IP-REMOTE-UPPER', 'IP Remote Upper Shell', 'RM', 'Number', 1000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IP-REMOTE-LOWER', 'IP Remote Lower Shell', 'RM', 'Number', 1000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('REMOTE-BOX', 'Remote Box', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FLASHING-LIGHT-PORT', 'Flashing Light Port', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FLSHING-LIGHT-STBD', 'Flshing Light STBD', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FLASHING-LIGHT-GLASS', 'Flashing Light glass', 'RM', 'Number', 1000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FLASHING-LIGHT-BOTTOM', 'Flashing Light bottom plate', 'RM', 'Number', 1000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PU-GASKET-REMOTE', 'PU Gasket Remote Lower Shell', 'RM', 'Number', 100.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PU-GASKET-ELECTRONIC', 'PU Gasket Electronic Box', 'RM', 'Number', 100.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PU-GASKET-FRONT', 'PU Gasket Front Lid', 'RM', 'Number', 100.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('GREASE', 'Grease', 'RM', 'Grm', 1.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEATSHRINK-TUBE-6416', 'Heatshrink Tube 6.4:1.6', 'RM', 'Meter', 35.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEATSHRINK-TUBE-93', 'Heatshrink Tube 9:3', 'RM', 'Meter', 64.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEATSHRINK-TUBE-41', 'HeatShrink Tube 4:1', 'RM', 'Meter', 30.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEATSHRINK-TUBE-24', 'HeatShrink Tube 2:4', 'RM', 'Meter', 27.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEATSHRINK-TUBE-31', 'HeatShrink Tube 3:1', 'RM', 'Meter', 30.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEATSHRINK-TUBE-123', 'HeatShrink Tube 12:3', 'RM', 'Meter', 50.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEATSHRINK-TUBE-4812', 'HeatShrink Tube 4.8/1.2', 'RM', 'Meter', 50.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEATSHRINK-TUBE-15MM16MM', 'HeatShrink Tube 1.5mm/1.6mm', 'RM', 'Meter', 8.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEATSHRINK-TUBE-100MM', 'HeatShrink Tube 100mm', 'RM', 'Meter', 265.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEATSHRINK-TUBE-30MM', 'HeatShrink Tube 30mm', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEAT-SHRINK-SLEEVE', 'Heat Shrink Sleeve 16mm Transparent', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('GREASING-PUMP', 'Greasing Pump', 'RM', 'Number', 300.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEATSINK-PASTE', 'Heatsink paste', 'RM', 'Grm', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('TEROSON-MS930', 'Teroson MS930', 'RM', 'ml', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SILICON-RTV-732', 'Silicon RTV 732', 'RM', 'ml', 1.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SILICON-RTV-734', 'Silicon RTV 734 Potting compound', 'RM', 'ml', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MASKING-TAPE-12', 'Masking Tape 1/2 inch', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MASKING-TAPE-34', 'Masking Tape 3/4', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('1-MASKING-TAPE', '1" Masking Tape', 'RM', 'Meter', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('2-MASKING-TAPE', '2" Masking Tape', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('DUCK-TAPE', 'Duck Tape', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('3M-TAPE', '3M Tape', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('RR-TAPE', 'RR Tape', 'RM', 'Meter', 50.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FLEXBOND', 'FlexBond', 'RM', 'ml', 3.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LOCK-TITE-242', 'Lock Tite 242', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LOCK-TITE-270', 'Lock Tite 270', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('STAPLES-PINS', 'Staples pins', 'RM', 'Number', 0.25, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BRASS-NOZZLE-FOR', 'Brass nozzle for water outlet from JCB', 'RM', 'Number', 70.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('JCB-BATTERY-HOLDERS', 'JCB Battery Holders 3D Print', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SS-COOLING-WATER', 'SS Cooling Water Outlet nozzle', 'RM', 'Number', 100.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SS-COOLING-WATER', 'SS Cooling Water Inlet nozzle', 'RM', 'Number', 100.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('GREASING-NOZZLE', 'Greasing nozzle', 'RM', 'Number', 100.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('GREASING-NIPPLE', 'Greasing Nipple', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('NOZZLE-ON-JET', 'Nozzle on Jet', 'RM', 'Number', 100.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('JET-NOZZLES-BLACK', 'Jet Nozzles (Black big)', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IMPELLERS', 'Impellers', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SILICON-HOSE-PIPE', 'Silicon hose pipe clip 7mm', 'RM', 'Number', 13.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('WATER-JET-S52', 'Water Jet S52', 'RM', 'Number', 10000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ESC-MOUNTING-PLATE', 'ESC Mounting Plate', 'RM', 'Number', 200.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('JET-S52-MOUNTING', 'Jet S52 Mounting plate', 'RM', 'Number', 1500.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MOTOR-MOUNT-HEATBLOCK', 'Motor mount heatblock TOP', 'RM', 'Number', 3000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MOTOR-MOUNT-HEATBLOCK', 'Motor mount heatblock BOTTOM', 'RM', 'Number', 3000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('TWO-HALF-MOTOR', 'Two half Motor Mount side plates', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('REVERSE-BUKETING-SIDE', 'Reverse Buketing side plates', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ALUMINIUM-SHEET-2MM', 'Aluminium Sheet 2mm thick 4ftx2ft', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEAT-CONDENSORJET-HEAT', 'Heat condensor/Jet Heat Sink', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LH1-THERMOSYPHENS', 'LH-1 Thermosyphens', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEAT-CONDENSORJET-HEAT', 'Heat condensor/Jet Heat Sink LHS 2 Plate', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEAT-CONDENSORJET-HEAT', 'Heat condensor/Jet Heat Sink RHS 1 Plate', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEAT-CONDENSORJET-HEAT', 'Heat condensor/Jet Heat Sink RHS 2 Plate', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HEAT-CONDENSORJET-HEAT', 'Heat condensor/Jet Heat Sink Top Plate', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MOTOR-BLOCK-SIDE', 'Motor Block Side Plate', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('CONDENSOR-CLAMP', 'Condensor Clamp', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('COPPER-HEAT-PIPE', 'Copper heat pipe (set of 2)', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('COPPER-HEAT-PIPES', 'Copper heat pipes ( New)', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('STBD-AFT-PLATE', 'STBD Aft Plate', 'RM', 'Number', 2000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PORT-AFT-PLATE', 'PORT Aft Plate', 'RM', 'Number', 2000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('3D-PRINTED-SR', '3D printed SR Pillow Side Caps 3D Print', 'RM', 'Number', 25.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('3D-PRINTED-SR', '3D printed SR Pillow Middle Caps 3D Print', 'RM', 'Number', 25.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('3D-PRINTED-BOTTOM', '3D printed bottom block caps', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BUTTON-SPACER-NO', 'Button spacer No. 1/1 3D Print', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BUTTON-SPACER-NO', 'Button Spacer No. 1/2 3D Print', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BUTTON-SPACER-NO', 'Button Spacer No. 2 3D Print', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BUTTON-NO-1', 'Button No. 1 pressure bracket 3D Print', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('REMOTE-BATTERY-HOLDING', 'Remote Battery Holding Bracket 3D Print', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('CRAFT-BATTERY-HOLDING', 'Craft Battery Holding Bracket 3D Print', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('REMOTE-STRAPS', 'Remote Straps', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('REMOTE-STRAP-HOLDER', 'Remote Strap Holder', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('JOYSTICK-SCREWS', 'Joystick Screws', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LCD-SCREEN', 'LCD Screen', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ANTENNA-CLAMP-1', 'Antenna clamp -1 3D Print', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ANTENNA-CLAMP-2', 'Antenna Clamp -2 3D Print', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LCD-HOLDER-BRACKET', 'LCD holder bracket 3D print', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('CHARGER-SPACER-3D', 'Charger Spacer 3D Print', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BUTTON-11-3D', 'Button 1/1 3D print', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BUTTON-12-3D', 'Button 1/2 3D Print', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ROTARY-KNOB-BOX', 'Rotary Knob Box 3D print', 'RM', 'Number', 500.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ROTARY-ENCODER', 'Rotary Encoder', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IFU-3D-MIDDLE', 'IFU 3D Middle', 'RM', 'PCS', 225.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IFU-TOP', 'IFU top', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IFU-BOTTOM', 'IFU Bottom', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MOTOR-4092', 'Motor 4092', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('4092-COOLING-JACKETS', '4092 cooling jackets', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('MOTOR-5692-495', 'Motor 5692 495 KV', 'RM', 'Number', 7000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('5692-MOTOR-COOLING', '5692 motor cooling jacket', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HV130-ESC', 'HV130 ESC', 'RM', 'Number', 8000.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('8-MM-OD', '8 mm OD pneaumatic pipe', 'RM', 'Meter', 70.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('12-TO-8', '12 to 8 right angled reducer with lock clips', 'RM', 'Number', 154.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('12-TO-8', '12 to 8 right angled lock clips', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('12MM-OD-PNEUMATIC', '12mm OD pneumatic pipe', 'RM', 'Meter', 120.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('POLYCARBONATE-GLASS-FOR', 'Polycarbonate Glass for Remote', 'RM', 'Number', 50.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('55-NO-BOX', '55 No. Box for chraging cable & Tool box', 'RM', 'Number', 50.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('22-NO-BOX', '22 No. Box for SR structure screws', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BOTTOM-MESH-120MM', 'Bottom Mesh (120mm x 100mm, 5"x4")', 'RM', 'Number', 25.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('AIR-NOZZLE', 'Air nozzle', 'RM', 'Number', 15.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ACETONE', 'Acetone', 'RM', 'ml', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IPA', 'IPA', 'RM', 'ml', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FOAM-GASKET-405', 'Foam Gasket 40/5', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('POLY-URETHANE-FOAM', 'Poly Urethane Foam', 'RM', 'ml', 1.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SILICON-HOSE-4MM', 'Silicon Hose 4mm x 8mm', 'RM', 'Meter', 125.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SILICON-HOSE-3MM', 'Silicon Hose 3mm x 6mm', 'RM', 'Meter', 95.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('6MMX12MM-RUBBER-BUSH', '6mmx12mm Rubber Bush', 'RM', 'Meter', 95.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('JOYSTICK-WATER-PROOF', 'Joystick Water proof rubber', 'RM', 'Number', 75.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BUTTON-SILICON-COVER', 'Button Silicon Cover No. 1', 'RM', 'Number', 35.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BUTTON-SILICON-COVER', 'Button Silicon Cover No. 2', 'RM', 'Number', 35.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('3MM-SILICON-RUBBER', '3mm Silicon Rubber Gaskets (35mmx10mm)', 'RM', 'Number', 2.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('THREAD-LOCKER-242', 'Thread locker 242', 'RM', 'ml', 10.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('THREAD-LOCKER-270', 'Thread locker 270', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('THREAD-LOCKER-290', 'Thread locker 290', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('THREAD-LOCKER-ACTIVATOR', 'Thread locker Activator', 'RM', 'ml', 8.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('INSTANT-ADHESIVE-407', 'Instant Adhesive 407 for EPE sticking', 'RM', 'ml', 15.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ORING-AFT-PLATE', 'Oring AFT plate', 'RM', 'Number', 30.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('STBD-SR-RUBBER', 'STBD SR Rubber Boot', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PORT-SR-RUBBER', 'PORT SR Rubber Boot', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SAIFSEAS-NECK-STRAP', 'SaifSeas Neck Strap', 'RM', 'Number', 100.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HOOK-STICKER-STBD', 'Hook Sticker STBD', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HOOK-STIKER-PORT', 'Hook Stiker PORT', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HOLD-HERE-STICKER', 'Hold here sticker STBD', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('HOLD-HERE-STICKER', 'Hold here sticker PORT', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('CRAFT-CLEANING-NOTIFY', 'Craft Cleaning Notify Sticker', 'RM', 'Number', 20.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FERROLE', 'Ferrole', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ROPE-8MM', 'Rope 8mm', 'RM', 'Meter', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PACKING-WOODEN-HARDBOX', 'Packing Wooden HardBox', 'RM', 'Number', 3500.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10MM-NUT-DRIVER', '10mm Nut Driver with 15mm Depth', 'RM', 'Number', 55.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('4MM-ALLEN-KEY', '4mm Allen Key', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('5MM-ALLEN-KEY', '5mm Allen Key', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('6MM-ALLEN-KEY', '6mm Allen Key', 'RM', 'Number', 65.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('6MM-T-HANDLE', '6mm T Handle', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('10MM-SPANNER', '10mm Spanner', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('EPE-SHEET-20MM', 'EPE sheet 20mm 48"x72"', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('USER-MANUAL', 'User Manual', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ENVELOPE-FOR-USER', 'Envelope for User Manual', 'RM', 'Number', 15.0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SURGICAL-GLOVES', 'Surgical Gloves', 'RM', 'Number', 3.5, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('X16-EXTENSION-PANEL', 'X16 extension panel', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('POLISH-BOTTLE', 'Polish Bottle', 'RM', 'ml', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SHAVISON-SMPS', 'Shavison SMPS', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('WIFI-ADAPTER', 'Wifi Adapter', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('WIFI-ROUTER', 'Wifi router', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ADAPTER-913V', 'Adapter 9.13V', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ADAPTER-519V', 'Adapter 5.19V', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ROAST-FLASH-PRO', 'Roast Flash Pro bottle', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('LIQUID-POLISH', 'Liquid Polish', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BIG-SYRINGES', 'Big Syringes', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SMALL-SYRINGES', 'Small Syringes', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('WV-40', 'WV 40', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('5-56-POWER', '5 56 power spray', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('REMOTE-DISPLAY-GLASS', 'Remote Display glass', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('EXTRUSION-CLAMPS-40MM', 'Extrusion Clamps 40mm', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('EXTRUSION-CLAMPS30MM', 'Extrusion Clamps30mm', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('EXTRUSION-CLAMPS-20MM', 'Extrusion Clamps 20mm', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SHEENAIC', 'Sheenaic', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('TURPENTRATE-OIL', 'Turpentrate Oil', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SPOT-CHECK-SKC', 'Spot Check SKC - 1 (Cleaner/Remover)', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('TEROSON-GUN', 'Teroson Gun', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M6-THUMBOLTS', 'M6 Thumbolts', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('M4-THUMBOLTS', 'M4 Thumbolts', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('125-MM-HEAT', '125 MM heat Shrinkable Sleeve', 'RM', 'Meter', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('JET-PLATE-ASSY', 'Jet & Plate Assy (Jet, plate)', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('JET-MOTOR-ASSY', 'Jet Motor Assy (Jet, Plate, mount))', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('JET-MOTOR-ASSY', 'Jet Motor Assy (Jet, plate, mount, heatpipes)', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('POWER-SWITCH-ASSY', 'Power Switch Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('CHARGING-PM-ASSY', 'Charging PM Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('CHARGING-CM-ASSY', 'Charging CM Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('STBD-SIGNAL-PM', 'STBD Signal PM Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PORT-SIGNAL-PM', 'PORT Signal PM Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('STBD-SIGNAL-CM', 'STBD Signal CM Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PORT-SIGNAL-CM', 'PORT Signal CM Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('CURRENT-SENSOR-ASSY', 'Current Sensor Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('RPM-SENSOR-ASSY', 'RPM Sensor Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('A21-MOTHERBOARD-ASSY', 'A21 MotherBoard Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BATTERY-BLOCK-ASSY', 'Battery Block Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('STBDESC-ASSY', 'STBD_ESC Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PORTESC-ASSY', 'PORT_ESC Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('STBD-BATTERY-ASSY', 'STBD Battery Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PORT-BATTERY-ASSY', 'PORT Battery Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('CHARGER-BOX-ASSY', 'Charger Box Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('ELECTRONIC-BOX-ASSY', 'Electronic Box Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FLSTBD-ELEC', 'FL_STBD Elec', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FLPORT-ELEC', 'FL_PORT Elec', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FLSTBD-MECH', 'FL_STBD Mech', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FLPORT-MECH', 'FL_PORT Mech', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('STBD-UNIT-ASSY', 'STBD Unit Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PORT-UNIT-ASSY', 'PORT Unit Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('SELF-RIGHTENING-ASSY', 'Self Rightening Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IP-REMOTE-ASSY', 'IP Remote Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('IP-REMOTE-CHARGING', 'IP Remote Charging Cable Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('AMCA-ELEC-ASSY', 'AMCA Elec Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('AMCA-MECH-ASSY', 'AMCA Mech Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('FINAL-CRAFT-ASSY', 'Final Craft Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BOTTOM-BLOCK-ASSY', 'Bottom Block Assy', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('STBD-AFT-PLATE', 'STBD Aft Plate Assy', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PORT-AFT-PLATE', 'PORT Aft Plate Assy', 'RM', 'Number', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('156-TFT-LCD', '15.6" TFT LCD, LED B 2000 Nits', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('156-TFT-LCD', '15.6" TFT LCD, LED backlight 1800 nits, FHD (1920x1080)', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('BOX-HANDLES', 'Box handles', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('DUMMY-LOAD-50', 'Dummy Load 50 ohms', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('EYELID-FOR-CRADLE', 'Eyelid for cradle', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('RUBBER-CUFF-SIZE', 'Rubber Cuff (Size 40mm)(1,57")', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('RUBBER-CUFF-SIZE', 'Rubber  Cuff )Size 32mm (1,26")', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PCB-OF-MURATA', 'PCB of Murata ROHM', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PCB-OF-XLROHM', 'PCB of XLROHM', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
-
-INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('PAINT-REMOVER', 'Paint remover', 'RM', 'PCS', 0, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'QX7-TRANSMITTER-WITH',
+    'QX7 Transmitter with R9M',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'QX7-TRANSMITTER-WITH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RECEIVER-MODULE-R9MMR9MXR9',
+    'Receiver Module R9MM/R9MX/R9',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RECEIVER-MODULE-R9MMR9MXR9'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'R9M-MINI-RECEIVER',
+    'R9M Mini Receiver Module',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'R9M-MINI-RECEIVER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FREE-WHEEL-DIODE',
+    'Free Wheel Diode SMD M7',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FREE-WHEEL-DIODE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'AMS1117-50V',
+    'AMS1117 5.0v',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'AMS1117-50V'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'AMS1117-33V',
+    'AMS1117 3.3v',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'AMS1117-33V'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'NEO6M-GPSL80-GPS',
+    'NEO-6M GPS/L80 GPS',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'NEO6M-GPSL80-GPS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LC86G-GPS',
+    'LC86G GPS',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LC86G-GPS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HERE3GPS',
+    'Here3+GPS',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HERE3GPS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '55MM-FEMALE-BULLET',
+    '5.5mm Female Bullet connector',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '55MM-FEMALE-BULLET'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '4MM-MALE-BULLET',
+    '4mm Male Bullet connector',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '4MM-MALE-BULLET'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '4MM-FEMALE-BULLET',
+    '4mm Female Bullet connector',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '4MM-FEMALE-BULLET'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '2MM-MALE-BULLET',
+    '2mm male bullet connector',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '2MM-MALE-BULLET'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '2MM-FEMALE-BULLET',
+    '2mm Female Bullet connector',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '2MM-FEMALE-BULLET'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '6MM-MALE-BULLET',
+    '6mm male bullet connector',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '6MM-MALE-BULLET'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '6MM-FEMALE-BULLET',
+    '6mm female bullet connector',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '6MM-FEMALE-BULLET'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '8MM-MALE-BULLET',
+    '8mm male bullet connector',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '8MM-MALE-BULLET'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '8MM-FEMALE-BULLET',
+    '8mm female bullet connector',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '8MM-FEMALE-BULLET'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ULTRA-FLEXIBLE-BLACK',
+    'Ultra Flexible Black 8AWG',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ULTRA-FLEXIBLE-BLACK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ULTRA-FLEXIBLE-RED',
+    'Ultra Flexible  Red 8AWG',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ULTRA-FLEXIBLE-RED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ULTRA-FLEXIBLE-BLACK',
+    'Ultra Flexible Black 12AWG',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ULTRA-FLEXIBLE-BLACK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ULTRA-FLEXIBLE-RED',
+    'Ultra Flexible Red 12AWG',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ULTRA-FLEXIBLE-RED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ULTRA-FLEXIBLE-BLACK',
+    'Ultra Flexible Black 18 AWG',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ULTRA-FLEXIBLE-BLACK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ULTRA-FLEXIBLE-RED',
+    'Ultra Flexible Red 18 AWG',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ULTRA-FLEXIBLE-RED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ULTRA-FLEXIBLE-BLACK',
+    'Ultra Flexible Black 20 AWG',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ULTRA-FLEXIBLE-BLACK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ULTRA-FLEXIBLE-RED',
+    'Ultra Flexible Red 20 AWG',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ULTRA-FLEXIBLE-RED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ULTRA-FLEXIBLE-BLUE',
+    'Ultra Flexible Blue 20 AWG',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ULTRA-FLEXIBLE-BLUE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WATER-FLOW-SENSOR',
+    'Water flow sensor YFS401',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'WATER-FLOW-SENSOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WATER-PUMP-550',
+    'Water pump 550 diaphragm',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'WATER-PUMP-550'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '1S-LIPO-INDICATOR',
+    '1S Lipo indicator (Not Using)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '1S-LIPO-INDICATOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '2S-LIPO-INDICATOR',
+    '2S Lipo indicator',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '2S-LIPO-INDICATOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LIPO-INDICATOR-CASINGS',
+    'Lipo Indicator Casings',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LIPO-INDICATOR-CASINGS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BUCK-CONVERTER-XL7015',
+    'Buck converter XL7015 50v',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BUCK-CONVERTER-XL7015'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LM2596-IN-AMCA',
+    'LM2596 in AMCA',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LM2596-IN-AMCA'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'XL4015XL4005-5A-BUCK',
+    'XL4015/XL4005 5A buck converter',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'XL4015XL4005-5A-BUCK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'XT90-FEMALE-HOUSING',
+    'XT90 Female housing',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'XT90-FEMALE-HOUSING'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'XT30',
+    'XT30',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'XT30'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'XT60',
+    'XT60',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'XT60'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '24V-ACDC-MODULE',
+    '24v AC/DC module',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '24V-ACDC-MODULE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MOMENTARY-SWITCH-JCB',
+    'Momentary Switch JCB',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MOMENTARY-SWITCH-JCB'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LATCHING-POWER-SWITCH',
+    'Latching Power switch JCB',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LATCHING-POWER-SWITCH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PWB-FOR-IFU',
+    'PWB for IFU',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PWB-FOR-IFU'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PWB-FOR-JCB',
+    'PWB for JCB',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PWB-FOR-JCB'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PWB-OF-STBD',
+    'PWB of STBD flash light',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PWB-OF-STBD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PWB-OF-PORT',
+    'PWB of PORT flash light',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PWB-OF-PORT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PWB-OF-A4',
+    'PWB of A4 Motherboard',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PWB-OF-A4'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PWB-OF-CURRENT',
+    'PWB of Current Sensor',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PWB-OF-CURRENT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PWB-OF-BUTTON',
+    'PWB of Button -2',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PWB-OF-BUTTON'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PWB-FOR-PC',
+    'PWB for PC (in charger)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PWB-FOR-PC'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PWB-FOR-BATHEMETRY',
+    'PWB for Bathemetry Sensor',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PWB-FOR-BATHEMETRY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'GENERAL-PCB-6X6',
+    'General PCB 6x6',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'GENERAL-PCB-6X6'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'GENERAL-PCB-6X4',
+    'General PCB 6X4',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'GENERAL-PCB-6X4'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PCB-OF-ROHM',
+    'PCB of ROHM Buck  on Murata Foot Print',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PCB-OF-ROHM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PCB-OF-ROHM',
+    'PCB of ROHM buck on XL4007 Foot Print',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PCB-OF-ROHM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PCB-OF-MP9486',
+    'PCB of MP9486 on Murata FootPrint',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PCB-OF-MP9486'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'AMCA-ONBOARD-CHARGING',
+    'AMCA Onboard Charging Circuit',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'AMCA-ONBOARD-CHARGING'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SBUS-GENERATOR-CIRCUIT',
+    'SBus Generator Circuit (Tailored Solution)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SBUS-GENERATOR-CIRCUIT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'A5-BOARD-WITH',
+    'A5 Board with own bucks',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'A5-BOARD-WITH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WCS1700-CURRENT-SENSOR',
+    'WCS1700 current Sensor',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'WCS1700-CURRENT-SENSOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '6X3-BATTERY-BLOCKS',
+    '6X3 BATTERY blocks',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '6X3-BATTERY-BLOCKS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '21700-BATTERRIES',
+    '21700 Batterries',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '21700-BATTERRIES'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '18650-CELLS-LIION',
+    '18650 cells Li-Ion for JCB',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '18650-CELLS-LIION'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '18650-CELL-HOLDER',
+    '18650 Cell Holder',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '18650-CELL-HOLDER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'USB-DATA-CHARGING',
+    'USB Data & Charging Cable 1.5m length Black',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'USB-DATA-CHARGING'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'DC-JACK-PANEL',
+    'DC Jack Panel Mount',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'DC-JACK-PANEL'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEAT-SINK-PASTE',
+    'Heat Sink Paste',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEAT-SINK-PASTE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LEAD-PASTE',
+    'Lead paste',
+    'RAW_MATERIAL',
+    'Grm',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LEAD-PASTE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LEAD-WIRE-22AWG',
+    'Lead wire 22AWG',
+    'RAW_MATERIAL',
+    'grm',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LEAD-WIRE-22AWG'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEAT-SINK-PAD',
+    'Heat Sink Pad',
+    'RAW_MATERIAL',
+    'Packet',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEAT-SINK-PAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LM358DT-SMD',
+    'LM358DT SMD',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LM358DT-SMD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '01UF-0805',
+    '0.1uF 0805',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '01UF-0805'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '001UF-0805',
+    '0.01uF 0805',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '001UF-0805'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LED-0805-SMD',
+    'LED 0805 SMD',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LED-0805-SMD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'TS5A3157DBVR-SSR-ENCODER',
+    'TS5A3157DBVR SSR Encoder Signal Cut-Off',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'TS5A3157DBVR-SSR-ENCODER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'TACTILE-SWITCH-FOR',
+    'Tactile Switch for IFU four leg',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'TACTILE-SWITCH-FOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LM2596HVSADJ-BUCK-ONLY',
+    'LM2596HVS-ADJ Buck only IC',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LM2596HVSADJ-BUCK-ONLY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MP9486AGNZ-100V-BUCK',
+    'MP9486AGN-Z 100v Buck converter IC',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MP9486AGNZ-100V-BUCK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '12V-FIXED-BUCK',
+    '12v Fixed Buck 18-75 In MultiCom Pro',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '12V-FIXED-BUCK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '5V-FIXED-BUCK',
+    '5v Fixed Buck 18-75 In MultiCom Pro',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '5V-FIXED-BUCK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '1N4148-SMD',
+    '1N4148 SMD',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '1N4148-SMD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '18PF-0805-CAPACITOR',
+    '18pF 0805 capacitor',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '18PF-0805-CAPACITOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10UF-0805-CAPACITOR',
+    '10uF 0805 capacitor',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10UF-0805-CAPACITOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10UF-10V-TANTALUM',
+    '10uF 10v Tantalum Capacitor Case A',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10UF-10V-TANTALUM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '1K-0805-RESISTOR',
+    '1k 0805 Resistor',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '1K-0805-RESISTOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10K-0805-RESISTOR',
+    '10k 0805 resistor',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10K-0805-RESISTOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '510K-RESISTOR',
+    '510K Resistor',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '510K-RESISTOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '560K-RESISTOR',
+    '560K Resistor',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '560K-RESISTOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '330E-0805-RESISTOR',
+    '330E 0805 Resistor',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '330E-0805-RESISTOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MURATA-12V-45A',
+    'Murata 12v 4.5A buck',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MURATA-12V-45A'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MURATA-5V-10A',
+    'Murata 5v 10A buck',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MURATA-5V-10A'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '1-MEG-3296',
+    '1 Meg 3296',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '1-MEG-3296'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '1K-3296-RESISTOR',
+    '1K 3296 Resistor',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '1K-3296-RESISTOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '2K-3296-RESISTOR',
+    '2K 3296 Resistor',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '2K-3296-RESISTOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '5-W-1',
+    '5 W 1 Ω Resistor',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '5-W-1'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '5-W-5',
+    '5 W 5 Ω Resistor',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '5-W-5'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FUSE-500MA',
+    'Fuse 500mA',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FUSE-500MA'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MCP3208',
+    'MCP3208',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MCP3208'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '23A-24V-POWER',
+    '23A 24v Power relay',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '23A-24V-POWER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LM61-TEMPERATURE-SENSOR',
+    'LM61 Temperature Sensor',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LM61-TEMPERATURE-SENSOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '47K-0805',
+    '47k 0805',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '47K-0805'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '470K-0805-PANASONICBOURNSMURATA',
+    '470k 0805 PANASONIC/BOURNS/MURATA',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '470K-0805-PANASONICBOURNSMURATA'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '20K-0805-PANASONICBOURNSMURATA',
+    '20k 0805 PANASONIC/BOURNS/MURATA',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '20K-0805-PANASONICBOURNSMURATA'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '1UF-0805-PANASONIC',
+    '1uF 0805 PANASONIC',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '1UF-0805-PANASONIC'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '16MHZ-CRYSTAL-OSCILLATOR',
+    '16MHz Crystal Oscillator',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '16MHZ-CRYSTAL-OSCILLATOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ULN2004-SMD',
+    'ULN2004 SMD',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ULN2004-SMD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SSR-AQW282SX',
+    'SSR AQW282SX',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SSR-AQW282SX'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ATMEGA328P-CONTROLLER',
+    'Atmega328P Controller',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ATMEGA328P-CONTROLLER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'POWER-RELAY-120A',
+    'Power Relay 120A 12v Y7',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'POWER-RELAY-120A'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'POWER-RELAY-90A',
+    'Power Relay 90A 12v Y6',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'POWER-RELAY-90A'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SPST-RELAY-5A12V',
+    'SPST relay 5A-12v ANTI_S & KILL',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SPST-RELAY-5A12V'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BALANCING-1A-DPDT',
+    'Balancing 1A DPDT 24v Relay',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BALANCING-1A-DPDT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BALANCING-RELAY-5A2A',
+    'Balancing relay 5A/2A 24v SPST',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BALANCING-RELAY-5A2A'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '5V-2A-USB',
+    '5v 2A USB Adapter',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '5V-2A-USB'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '5V-3A-POWER',
+    '5v 3A Power adapter DC Plug Orange',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '5V-3A-POWER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '5V-3A-POWER',
+    '5v 3A Power adapter DC Plug Ordinary',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '5V-3A-POWER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '9V-2A-POWER',
+    '9v 2A Power adapter DC Plug Orange',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '9V-2A-POWER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '32GB-SD-CARD',
+    '32Gb SD Card',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '32GB-SD-CARD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '16PIN-IC-BASE',
+    '16pin IC base',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '16PIN-IC-BASE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BLUETOOTH-MODULE',
+    'BlueTooth Module',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BLUETOOTH-MODULE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '24AWG-SOLDERING-WIRE',
+    '24AWG Soldering Wire',
+    'RAW_MATERIAL',
+    'Grm',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '24AWG-SOLDERING-WIRE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '12E-2W-RESISTOR',
+    '12E 2W Resistor THT',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '12E-2W-RESISTOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IMAX-B3-CHARGER',
+    'iMAx B3 Charger',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IMAX-B3-CHARGER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '9V-PIEZO-ELECTRIC',
+    '9v Piezo Electric Buzzer',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '9V-PIEZO-ELECTRIC'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FEMALE-BERGSTRIP-40X1',
+    'Female Bergstrip 40x1 2.54mm',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FEMALE-BERGSTRIP-40X1'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MALE-BERGSTRIP-40X1',
+    'Male Bergstrip 40x1 2.54mm',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MALE-BERGSTRIP-40X1'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FEMALE-BERGSTRIP-40X1',
+    'Female Bergstrip 40x1 2.0mm',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FEMALE-BERGSTRIP-40X1'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MALE-BERGSTRIP-40X1',
+    'Male Bergstrip 40x1 2.0mm',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MALE-BERGSTRIP-40X1'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CONFORMAL-COATING',
+    'Conformal Coating',
+    'RAW_MATERIAL',
+    'ml',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CONFORMAL-COATING'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SOLDERING-FLUX-SMALL',
+    'Soldering flux Small lead',
+    'RAW_MATERIAL',
+    'ml',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SOLDERING-FLUX-SMALL'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '3-PIN-CONNECTORS',
+    '3 Pin Connectors',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '3-PIN-CONNECTORS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '5-PIN-MALE',
+    '5 pin male 2510 connector',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '5-PIN-MALE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '3-PIN-3',
+    '3 pin 3 yrd power cord',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '3-PIN-3'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '2-PIN-JSTXH',
+    '2 pin JST-XH housing',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '2-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '3-PIN-JSTXH',
+    '3 pin JST-XH housing',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '3-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '13-PIN-JSTXH',
+    '13 pin JST-XH housing',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '13-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '15-PIN-JSTXH',
+    '15 pin JST-XH housing',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '15-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '2-PIN-JSTXH',
+    '2 pin JST-XH male top entry',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '2-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '2-PIN-JSTXH',
+    '2 pin JST-XH male top entry RED',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '2-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '2-PIN-JSTXH',
+    '2 pin JST-XH male side entry',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '2-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '3-PIN-JSTXH',
+    '3 pin JST-XH male top entry',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '3-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '4-PIN-JSTXH',
+    '4 pin JST-XH housing',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '4-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '4-PIN-JSTXH',
+    '4 pin JST-XH male top entry',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '4-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '4-PIN-JSTXH',
+    '4 pin JST-XH male side entry',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '4-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '5-PIN-JSTXH',
+    '5 pin JST-XH housing',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '5-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '5-PIN-JSTXH',
+    '5 pin JST-XH male top entry',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '5-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '6-PIN-JSTXH',
+    '6 pin JST-XH housing',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '6-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '6-PIN-JSTXH',
+    '6 pin JST-XH male top entry',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '6-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '2510-CRIMPING-PINS',
+    '2510 Crimping pins',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '2510-CRIMPING-PINS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '13-PIN-JSTXH',
+    '13 pin JST-XH male top entry',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '13-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '15-PIN-JSTXH',
+    '15 pin JST-XH male top entry',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '15-PIN-JSTXH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JSTXH-CRIMPING-PINS',
+    'JST-XH Crimping pins',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'JSTXH-CRIMPING-PINS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JSTXH-CRIMPING-PINS',
+    'JST-XH Crimping pins Gold Finger',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'JSTXH-CRIMPING-PINS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-RED-ONE',
+    '25cm Red one side crimped wire',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-RED-ONE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-GREEN-ONE',
+    '25cm Green one side crimped wire',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-GREEN-ONE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-BLACK-ONE',
+    '25cm Black one side crimped wire',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-BLACK-ONE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Black',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Green',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Voilet',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Yellow',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Sky Blue',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Pink',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Orange',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Dark Blue',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Light Brown',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Dark Brown',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped White with Red strip',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped White with black strip',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped White',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Red',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Light Grey',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Cyan',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CM-ONE-SIDED',
+    '10cm one sided JST crimped Dark Parrot Green',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CM-ONE-SIDED'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-BLACK-MICROFIT',
+    '25cm Black Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-BLACK-MICROFIT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-GREEN-MICROFIT',
+    '25cm Green Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-GREEN-MICROFIT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-VIOLET-MICROFIT',
+    '25cm Violet Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-VIOLET-MICROFIT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-YELLOW-MICROFIT',
+    '25cm Yellow Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-YELLOW-MICROFIT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-SKY-BLUE',
+    '25cm Sky  Blue Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-SKY-BLUE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-PINK-MICROFIT',
+    '25cm Pink Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-PINK-MICROFIT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-DARK-PINK',
+    '25cm Dark Pink Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-DARK-PINK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-LBROWN-MICROFIT',
+    '25cm L.Brown Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-LBROWN-MICROFIT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-DBROWN-MICROFIT',
+    '25cm D.Brown Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-DBROWN-MICROFIT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-WHITE-MICROFIT',
+    '25cm White Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-WHITE-MICROFIT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-WHITERED-MICROFIT',
+    '25cm White-Red Microfit one side crimped wires (Not Using)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-WHITERED-MICROFIT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-WHITEBLACK-MICROFIT',
+    '25cm White-Black Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-WHITEBLACK-MICROFIT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-RED-MICROFIT',
+    '25cm Red Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-RED-MICROFIT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-DARK-BLUE',
+    '25cm Dark Blue Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-DARK-BLUE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CM-ORANGE-MICROFIT',
+    '25cm Orange Microfit one side crimped wires',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CM-ORANGE-MICROFIT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MICROFIT-BALANCING-CABLES',
+    'Microfit Balancing Cables',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MICROFIT-BALANCING-CABLES'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '18PIN-MICROFIT-HOUSING',
+    '18pin Microfit housing',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '18PIN-MICROFIT-HOUSING'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'TACTILE-SWITCH-FOR',
+    'Tactile switch for reset two leg',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'TACTILE-SWITCH-FOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '915MHZ-ANTENNA',
+    '915MHz Antenna',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '915MHZ-ANTENNA'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IPEX4-TO-SMA',
+    'Ipex4 to SMA converter extension (1675015) (Antenna pigtail connectror)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IPEX4-TO-SMA'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IPEX4-TO-SMA',
+    'Ipex4 to SMA converter extension (for R9MM ipex4)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IPEX4-TO-SMA'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'R9M-ANTENNA-EXTENSION',
+    'R9M Antenna Extension wire RP-SMA to Open',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'R9M-ANTENNA-EXTENSION'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RPSMA-FEMALE-INLINE',
+    'RP-SMA Female inline connector for RG174',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RPSMA-FEMALE-INLINE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RPSMA-MALE-INLINE',
+    'RP-SMA Male inline connector for RG174',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RPSMA-MALE-INLINE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RPSMA-FEMALE-INLINE',
+    'RP-SMA Female inline connector for RG142',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RPSMA-FEMALE-INLINE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RPSMA-MALE-INLINE',
+    'RP-SMA Male inline connector for RG142',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RPSMA-MALE-INLINE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SMA-FEMALE-INLINE',
+    'SMA Female inline connector for RG174',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SMA-FEMALE-INLINE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SMA-MALE-INLINE',
+    'SMA Male inline connector for RG174',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SMA-MALE-INLINE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SMA-FEMALE-INLINE',
+    'SMA Female inline connector for RG142',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SMA-FEMALE-INLINE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SMA-MALE-CONNECTOR',
+    'SMA Male connector inline for RG142',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SMA-MALE-CONNECTOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RG174-COAXIAL-CABLE',
+    'RG174 Coaxial cable',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RG174-COAXIAL-CABLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RG142-COAXIAL-CABLE',
+    'RG142 Coaxial cable',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RG142-COAXIAL-CABLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '20-AWG-SILICONE',
+    '20 AWG Silicone Red - Wire',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '20-AWG-SILICONE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '25CORE-WIRE-1438',
+    '25Core Wire 14/38',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '25CORE-WIRE-1438'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '20CORE-WIRE-1438',
+    '20Core Wire 14/38',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '20CORE-WIRE-1438'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10CORE-WIRE-1438',
+    '10Core Wire 14/38',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10CORE-WIRE-1438'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '8CORE-WIRE-1438',
+    '8core Wire 14/38',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '8CORE-WIRE-1438'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '1438-16-CORE',
+    '14/38 16 Core Wire',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '1438-16-CORE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RED-1438-WIRE',
+    'Red 14/38 wire',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RED-1438-WIRE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BLACK-1438-WIRE',
+    'Black 14/38 Wire',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BLACK-1438-WIRE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'YELLOW-1438-WIRE',
+    'Yellow 14/38 Wire',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'YELLOW-1438-WIRE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WHITE-1438-WIRE',
+    'White 14/38 Wire',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'WHITE-1438-WIRE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SKY-BLUE-1438',
+    'Sky Blue 14/38 Wire',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SKY-BLUE-1438'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ORANGE-1438-WIRE',
+    'Orange 14/38 Wire',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ORANGE-1438-WIRE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'GREEN-1438-WIRE',
+    'Green 14/38 Wire',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'GREEN-1438-WIRE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PURPLE-1438-WIRE',
+    'Purple 14/38 Wire',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PURPLE-1438-WIRE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BROWN-1438-WIRE',
+    'Brown 14/38 Wire',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BROWN-1438-WIRE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'AFT-PLATE-ACRYLICE',
+    'Aft plate Acrylice for Template',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'AFT-PLATE-ACRYLICE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '12S-LIPO-CHARGER',
+    '12S Lipo Charger',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '12S-LIPO-CHARGER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '8S-LIPO-CHARGER',
+    '8S Lipo Charger ISDT Q8',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '8S-LIPO-CHARGER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '4S-LIPO-CHARGER',
+    '4S Lipo Charger ISDT PD60',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '4S-LIPO-CHARGER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '8KG-HULL',
+    '8kg Hull',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '8KG-HULL'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JCB-BODY-CUM',
+    'JCB Body cum mounting frame',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'JCB-BODY-CUM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SR-STRUCTURE',
+    'SR Structure',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SR-STRUCTURE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SR-PILLOW',
+    'SR Pillow',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SR-PILLOW'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'COUPLING-HOOD',
+    'Coupling Hood',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'COUPLING-HOOD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '2MM-FRP-60X70MM',
+    '2mm FRP 60x70mm with 18 mm hole',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '2MM-FRP-60X70MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLOW-SENSOR-CLAMP',
+    'flow sensor Clamp',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLOW-SENSOR-CLAMP'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ESC-TEMPERATURE-SENSOR',
+    'ESC Temperature Sensor Clamp',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ESC-TEMPERATURE-SENSOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BATTERY-CLAMP',
+    'Battery Clamp',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BATTERY-CLAMP'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ELECTRONIC-BOX-TOP',
+    'Electronic Box Top Lid',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ELECTRONIC-BOX-TOP'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BATTERY-HOLDING-FOAM',
+    'Battery holding foam block Side (115×80×35)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BATTERY-HOLDING-FOAM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BATTERY-HOLDING-FOAM',
+    'Battery holding foam block Upside (80×80×35)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BATTERY-HOLDING-FOAM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BATTERY-CLAMPING-UP',
+    'Battery Clamping UP EPE on jet plate (150×80×20)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BATTERY-CLAMPING-UP'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BATTERY-CLAMPING-BF',
+    'Battery Clamping B&F EPE on jet plate (80×80×10)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BATTERY-CLAMPING-BF'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'UNDER-ELECBOX-EPE',
+    'Under ElecBox EPE (150x230x25)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'UNDER-ELECBOX-EPE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ABOVE-ELECBOX-EPE',
+    'Above ElecBox EPE (150x80x30)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ABOVE-ELECBOX-EPE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ZIP-TIES-100X3',
+    'Zip ties 100x3 MultiCompro',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ZIP-TIES-100X3'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ZIP-TIES-250M',
+    'Zip ties 250m Regular',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ZIP-TIES-250M'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FERRITE-CORE',
+    'Ferrite Core',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FERRITE-CORE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SY2115-PIN-PANEL',
+    'SY21-15 pin panel mount(Male)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SY2115-PIN-PANEL'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SY2115-PIN-CABLE',
+    'SY21-15 pin Cable Mount(Female)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SY2115-PIN-CABLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SY2115-PIN-PANEL',
+    'SY21-15 pin panel mount(Female)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SY2115-PIN-PANEL'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SY2115-PIN-CABLE',
+    'SY21-15 pin Cable Mount(Male)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SY2115-PIN-CABLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WY28-METAL-CONNECTOR',
+    'WY-28 Metal connector CM',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'WY28-METAL-CONNECTOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WY28-METAL-CONNECTOR',
+    'WY-28 Metal connector PM',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'WY28-METAL-CONNECTOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WK15-IP68-CABLE',
+    'WK-15 IP68 Cable Metal Connector',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'WK15-IP68-CABLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WK15-IP68-CABLE',
+    'WK-15 IP68 Cable Metal Connector',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'WK15-IP68-CABLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '15-PIN-IP68',
+    '15 pin IP68 connectors (Female)',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '15-PIN-IP68'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '15-PIN-IP68',
+    '15 pin IP68 Connectors (Male)',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '15-PIN-IP68'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SA12-9PIN-CM',
+    'SA12 9pin CM Pushpull Male',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SA12-9PIN-CM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SA12-9PIN-PM',
+    'SA12 9pin PM Pushpull female',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SA12-9PIN-PM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SA12-9PIN-COUNTER',
+    'SA12 9pin Counter',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SA12-9PIN-COUNTER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LP12-3-PIN',
+    'LP12 3 pin plug male clip lock CM',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LP12-3-PIN'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LP12-3-PIN',
+    'LP12 3 pin socket female clip lock PM',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LP12-3-PIN'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LP12-4-PIN',
+    'LP12 4 pin plug male clip lock CM',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LP12-4-PIN'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LP12-4-PIN',
+    'LP12 4 pin socket female clip lock PM',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LP12-4-PIN'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LP12-8-PIN',
+    'LP12 8 pin plug male clip lock CM',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LP12-8-PIN'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LP12-8-PIN',
+    'LP12 8 pin socket female clip lock PM',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LP12-8-PIN'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LP24-24-PIN',
+    'LP24 24 pin plug male clip lock CM (Not Using)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LP24-24-PIN'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LP24-24-PIN',
+    'LP24 24 pin socket female clip lock PM (Not Using)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LP24-24-PIN'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LP24-24-PIN',
+    'LP24 24 pin plug female clip lock CM',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LP24-24-PIN'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LP24-24-PIN',
+    'LP24 24 pin socket male clip lock PM',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LP24-24-PIN'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WATER-TANK-FOR',
+    'Water tank for JCB',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'WATER-TANK-FOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BLUEROBOTICS-LEAK-PROBE',
+    'BlueRobotics Leak probe',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BLUEROBOTICS-LEAK-PROBE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BLUEROBOTICS-INDICATOR',
+    'BlueRobotics Indicator',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BLUEROBOTICS-INDICATOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IP68-ROTARY-MAIN',
+    'IP68 Rotary main Switch',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IP68-ROTARY-MAIN'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RED-2835-SMD',
+    'Red 2835 SMD LED 1W',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RED-2835-SMD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'GREEN-2835-SMD',
+    'Green 2835 SMD LED 1W',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'GREEN-2835-SMD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'NO-4-SELF',
+    'No. 4 Self tap Screw SS304 (M4x6.5 Philips)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'NO-4-SELF'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M2X12-ALLEN-HEAD',
+    'M2x12 Allen Head SS304',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M2X12-ALLEN-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M3X6-CSK-PHILLIPS',
+    'M3x6 CSK Phillips',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M3X6-CSK-PHILLIPS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M3X8-CSK-PHILLIPS',
+    'M3x8 CSK Phillips',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M3X8-CSK-PHILLIPS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M3X30-CSK-PHILLIPS',
+    'M3x30 CSK Phillips',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M3X30-CSK-PHILLIPS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M3X8-BUTTON-HEAD',
+    'M3x8 Button head',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M3X8-BUTTON-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M3X10-PLAIN-WASHER',
+    'M3x10 plain washer',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M3X10-PLAIN-WASHER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X8-CSK-PHILLIPS',
+    'M4x8 CSK Phillips',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X8-CSK-PHILLIPS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X8-CSK-PHILLIPS',
+    'M4x8 CSK Phillips GI',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X8-CSK-PHILLIPS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M2X15-ALLEN-HEAD',
+    'M2x15 Allen Head SS304',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M2X15-ALLEN-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X10-CSK-PHILLIPS',
+    'M4x10 CSK Phillips',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X10-CSK-PHILLIPS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X20-CSK-PHILLIPS',
+    'M4x20 CSK Phillips',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X20-CSK-PHILLIPS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X20-PLAIN-WASHER',
+    'M4x20 Plain Washer',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X20-PLAIN-WASHER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X12-ALLEN-HEAD',
+    'M4x12 Allen Head',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X12-ALLEN-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X16-ALLEN-HEAD',
+    'M4x16 Allen Head',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X16-ALLEN-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X10-ALLEN-HEAD',
+    'M4x10 Allen head',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X10-ALLEN-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X30-ALLEN-HEAD',
+    'M4x30 Allen head',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X30-ALLEN-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X40-ALLEN-HEAD',
+    'M4X40 Allen head',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X40-ALLEN-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M5X15-PLAIN-WASHER',
+    'M5x15 plain washer',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M5X15-PLAIN-WASHER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X20-ALLEN-HEAD',
+    'M4x20 Allen Head',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X20-ALLEN-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X12-BUTTON-HEAD',
+    'M4x12 Button Head',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X12-BUTTON-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X12-PAN-COMBI',
+    'M4x12 Pan Combi',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X12-PAN-COMBI'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X12-PLAIN-WASHER',
+    'M4x12 plain washer',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X12-PLAIN-WASHER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4-SPRING-WASHER',
+    'M4 Spring Washer',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4-SPRING-WASHER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4-NYLOCK',
+    'M4 Nylock',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4-NYLOCK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4-SQUARE-NUT',
+    'M4 Square Nut',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4-SQUARE-NUT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M3-SQUARE-NUTS',
+    'M3 Square Nuts',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M3-SQUARE-NUTS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4X5-GRUB',
+    'M4x5 Grub',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4X5-GRUB'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M5X10-ALLEN-HEAD',
+    'M5x10 Allen Head (AMCA)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M5X10-ALLEN-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M5X10-PAN-TORX',
+    'M5x10 Pan Torx',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M5X10-PAN-TORX'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M5X10-GRUB-SCREW',
+    'M5x10 Grub Screw',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M5X10-GRUB-SCREW'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M5X50-CSK-PHILIPS',
+    'M5x50 CSK Philips',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M5X50-CSK-PHILIPS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M5X50-ALLEN-CAP',
+    'M5x50 Allen Cap',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M5X50-ALLEN-CAP'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M6X150-ALLEN-HEAD',
+    'M6x150 Allen Head',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M6X150-ALLEN-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M6-NYLOCK',
+    'M6 Nylock',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M6-NYLOCK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M6X15-PLAIN-WASHER',
+    'M6x15 plain washer',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M6X15-PLAIN-WASHER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PLAIN-WASHER-6X20X1',
+    'Plain Washer 6x20x1',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PLAIN-WASHER-6X20X1'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M6X10-GRUB-SCREW',
+    'M6x10 Grub Screw',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M6X10-GRUB-SCREW'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M6-DOM-NUT',
+    'M6 Dom Nut',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M6-DOM-NUT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BUTTON-HEAD-6X12',
+    'Button Head 6x12',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BUTTON-HEAD-6X12'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M6X30-BUTTON-HEAD',
+    'M6x30 Button Head',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M6X30-BUTTON-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M6X30-ALLEN-CAP',
+    'M6x30 Allen Cap',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M6X30-ALLEN-CAP'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEX-NUT-3MM',
+    'Hex Nut 3mm',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEX-NUT-3MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEX-NUT-6MM',
+    'Hex Nut 6mm',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEX-NUT-6MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M8X20-PLAIN-WASHER',
+    'M8x20 plain washer',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M8X20-PLAIN-WASHER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M8X25-ALLEN-HEAD',
+    'M8x25 Allen Head',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M8X25-ALLEN-HEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M5X12-BUTTON-HD',
+    'M5X12 Button HD Torx',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M5X12-BUTTON-HD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CELLO-TAPE',
+    'Cello Tape',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CELLO-TAPE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'COPPER-STRIPS-3X2',
+    'Copper Strips 3x2 cells',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'COPPER-STRIPS-3X2'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'KAPTON-TAPE',
+    'Kapton Tape',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'KAPTON-TAPE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '70MM-PAPER-SEPARATOR',
+    '70mm Paper Separator',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '70MM-PAPER-SEPARATOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BARLEY-PAPER-FOR',
+    'Barley paper for 21700 cylindrical cell',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BARLEY-PAPER-FOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BATTERY-BARLEY-ROLL',
+    'Battery Barley roll',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BATTERY-BARLEY-ROLL'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '1S-BMS',
+    '1S BMS',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '1S-BMS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '2S-BMS',
+    '2S BMS',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '2S-BMS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '3S-BMS',
+    '3S BMS',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '3S-BMS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '16AWG-LEAD',
+    '16AWG Lead',
+    'RAW_MATERIAL',
+    'Grm',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '16AWG-LEAD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '130X80X60-ENCLOSURE-BOX',
+    '130x80x60 enclosure box',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '130X80X60-ENCLOSURE-BOX'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PG7-CABLE-GLAND',
+    'PG-7 Cable Gland',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PG7-CABLE-GLAND'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PG9-CABLE-GLANDPG',
+    'PG-9 Cable Gland(PG -11)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PG9-CABLE-GLANDPG'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SOLID-COUPLING-ALUMINIUM',
+    'Solid coupling (Aluminium)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SOLID-COUPLING-ALUMINIUM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ROTEX14-COUPLING',
+    'Rotex14 Coupling',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ROTEX14-COUPLING'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SPIDERS',
+    'Spiders',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SPIDERS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ELECTRONIC-BOX',
+    'Electronic Box',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ELECTRONIC-BOX'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FRONT-LID',
+    'Front Lid',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FRONT-LID'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BOTTOM-BLOCK-INLET',
+    'Bottom Block (Inlet Block)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BOTTOM-BLOCK-INLET'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IP-REMOTE',
+    'IP Remote',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IP-REMOTE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IP-REMOTE-UPPER',
+    'IP Remote Upper Shell',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IP-REMOTE-UPPER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IP-REMOTE-LOWER',
+    'IP Remote Lower Shell',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IP-REMOTE-LOWER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'REMOTE-BOX',
+    'Remote Box',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'REMOTE-BOX'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLASHING-LIGHT-PORT',
+    'Flashing Light Port',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLASHING-LIGHT-PORT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLSHING-LIGHT-STBD',
+    'Flshing Light STBD',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLSHING-LIGHT-STBD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLASHING-LIGHT-GLASS',
+    'Flashing Light glass',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLASHING-LIGHT-GLASS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLASHING-LIGHT-BOTTOM',
+    'Flashing Light bottom plate',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLASHING-LIGHT-BOTTOM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PU-GASKET-REMOTE',
+    'PU Gasket Remote Lower Shell',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PU-GASKET-REMOTE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PU-GASKET-ELECTRONIC',
+    'PU Gasket Electronic Box',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PU-GASKET-ELECTRONIC'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PU-GASKET-FRONT',
+    'PU Gasket Front Lid',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PU-GASKET-FRONT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'GREASE',
+    'Grease',
+    'RAW_MATERIAL',
+    'Grm',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'GREASE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEATSHRINK-TUBE-6416',
+    'Heatshrink Tube 6.4:1.6',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEATSHRINK-TUBE-6416'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEATSHRINK-TUBE-93',
+    'Heatshrink Tube 9:3',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEATSHRINK-TUBE-93'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEATSHRINK-TUBE-41',
+    'HeatShrink Tube 4:1',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEATSHRINK-TUBE-41'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEATSHRINK-TUBE-24',
+    'HeatShrink Tube 2:4',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEATSHRINK-TUBE-24'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEATSHRINK-TUBE-31',
+    'HeatShrink Tube 3:1',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEATSHRINK-TUBE-31'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEATSHRINK-TUBE-123',
+    'HeatShrink Tube 12:3',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEATSHRINK-TUBE-123'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEATSHRINK-TUBE-4812',
+    'HeatShrink Tube 4.8/1.2',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEATSHRINK-TUBE-4812'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEATSHRINK-TUBE-15MM16MM',
+    'HeatShrink Tube 1.5mm/1.6mm',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEATSHRINK-TUBE-15MM16MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEATSHRINK-TUBE-100MM',
+    'HeatShrink Tube 100mm',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEATSHRINK-TUBE-100MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEATSHRINK-TUBE-30MM',
+    'HeatShrink Tube 30mm',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEATSHRINK-TUBE-30MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEAT-SHRINK-SLEEVE',
+    'Heat Shrink Sleeve 16mm Transparent',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEAT-SHRINK-SLEEVE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'GREASING-PUMP',
+    'Greasing Pump',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'GREASING-PUMP'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEATSINK-PASTE',
+    'Heatsink paste',
+    'RAW_MATERIAL',
+    'Grm',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEATSINK-PASTE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'TEROSON-MS930',
+    'Teroson MS930',
+    'RAW_MATERIAL',
+    'ml',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'TEROSON-MS930'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SILICON-RTV-732',
+    'Silicon RTV 732',
+    'RAW_MATERIAL',
+    'ml',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SILICON-RTV-732'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SILICON-RTV-734',
+    'Silicon RTV 734 Potting compound',
+    'RAW_MATERIAL',
+    'ml',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SILICON-RTV-734'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MASKING-TAPE-12',
+    'Masking Tape 1/2 inch',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MASKING-TAPE-12'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MASKING-TAPE-34',
+    'Masking Tape 3/4',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MASKING-TAPE-34'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '1-MASKING-TAPE',
+    '1" Masking Tape',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '1-MASKING-TAPE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '2-MASKING-TAPE',
+    '2" Masking Tape',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '2-MASKING-TAPE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'DUCK-TAPE',
+    'Duck Tape',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'DUCK-TAPE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '3M-TAPE',
+    '3M Tape',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '3M-TAPE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RR-TAPE',
+    'RR Tape',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RR-TAPE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLEXBOND',
+    'FlexBond',
+    'RAW_MATERIAL',
+    'ml',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLEXBOND'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LOCK-TITE-242',
+    'Lock Tite 242',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LOCK-TITE-242'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LOCK-TITE-270',
+    'Lock Tite 270',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LOCK-TITE-270'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STAPLES-PINS',
+    'Staples pins',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STAPLES-PINS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BRASS-NOZZLE-FOR',
+    'Brass nozzle for water outlet from JCB',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BRASS-NOZZLE-FOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JCB-BATTERY-HOLDERS',
+    'JCB Battery Holders 3D Print',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'JCB-BATTERY-HOLDERS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SS-COOLING-WATER',
+    'SS Cooling Water Outlet nozzle',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SS-COOLING-WATER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SS-COOLING-WATER',
+    'SS Cooling Water Inlet nozzle',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SS-COOLING-WATER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'GREASING-NOZZLE',
+    'Greasing nozzle',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'GREASING-NOZZLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'GREASING-NIPPLE',
+    'Greasing Nipple',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'GREASING-NIPPLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'NOZZLE-ON-JET',
+    'Nozzle on Jet',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'NOZZLE-ON-JET'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JET-NOZZLES-BLACK',
+    'Jet Nozzles (Black big)',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'JET-NOZZLES-BLACK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IMPELLERS',
+    'Impellers',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IMPELLERS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SILICON-HOSE-PIPE',
+    'Silicon hose pipe clip 7mm',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SILICON-HOSE-PIPE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WATER-JET-S52',
+    'Water Jet S52',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'WATER-JET-S52'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ESC-MOUNTING-PLATE',
+    'ESC Mounting Plate',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ESC-MOUNTING-PLATE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JET-S52-MOUNTING',
+    'Jet S52 Mounting plate',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'JET-S52-MOUNTING'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MOTOR-MOUNT-HEATBLOCK',
+    'Motor mount heatblock TOP',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MOTOR-MOUNT-HEATBLOCK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MOTOR-MOUNT-HEATBLOCK',
+    'Motor mount heatblock BOTTOM',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MOTOR-MOUNT-HEATBLOCK'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'TWO-HALF-MOTOR',
+    'Two half Motor Mount side plates',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'TWO-HALF-MOTOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'REVERSE-BUKETING-SIDE',
+    'Reverse Buketing side plates',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'REVERSE-BUKETING-SIDE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ALUMINIUM-SHEET-2MM',
+    'Aluminium Sheet 2mm thick 4ftx2ft',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ALUMINIUM-SHEET-2MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEAT-CONDENSORJET-HEAT',
+    'Heat condensor/Jet Heat Sink',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEAT-CONDENSORJET-HEAT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LH1-THERMOSYPHENS',
+    'LH-1 Thermosyphens',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LH1-THERMOSYPHENS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEAT-CONDENSORJET-HEAT',
+    'Heat condensor/Jet Heat Sink LHS 2 Plate',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEAT-CONDENSORJET-HEAT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEAT-CONDENSORJET-HEAT',
+    'Heat condensor/Jet Heat Sink RHS 1 Plate',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEAT-CONDENSORJET-HEAT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEAT-CONDENSORJET-HEAT',
+    'Heat condensor/Jet Heat Sink RHS 2 Plate',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEAT-CONDENSORJET-HEAT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HEAT-CONDENSORJET-HEAT',
+    'Heat condensor/Jet Heat Sink Top Plate',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HEAT-CONDENSORJET-HEAT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MOTOR-BLOCK-SIDE',
+    'Motor Block Side Plate',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MOTOR-BLOCK-SIDE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CONDENSOR-CLAMP',
+    'Condensor Clamp',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CONDENSOR-CLAMP'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'COPPER-HEAT-PIPE',
+    'Copper heat pipe (set of 2)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'COPPER-HEAT-PIPE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'COPPER-HEAT-PIPES',
+    'Copper heat pipes ( New)',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'COPPER-HEAT-PIPES'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBD-AFT-PLATE',
+    'STBD Aft Plate',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBD-AFT-PLATE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORT-AFT-PLATE',
+    'PORT Aft Plate',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORT-AFT-PLATE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '3D-PRINTED-SR',
+    '3D printed SR Pillow Side Caps 3D Print',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '3D-PRINTED-SR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '3D-PRINTED-SR',
+    '3D printed SR Pillow Middle Caps 3D Print',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '3D-PRINTED-SR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '3D-PRINTED-BOTTOM',
+    '3D printed bottom block caps',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '3D-PRINTED-BOTTOM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BUTTON-SPACER-NO',
+    'Button spacer No. 1/1 3D Print',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BUTTON-SPACER-NO'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BUTTON-SPACER-NO',
+    'Button Spacer No. 1/2 3D Print',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BUTTON-SPACER-NO'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BUTTON-SPACER-NO',
+    'Button Spacer No. 2 3D Print',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BUTTON-SPACER-NO'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BUTTON-NO-1',
+    'Button No. 1 pressure bracket 3D Print',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BUTTON-NO-1'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'REMOTE-BATTERY-HOLDING',
+    'Remote Battery Holding Bracket 3D Print',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'REMOTE-BATTERY-HOLDING'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CRAFT-BATTERY-HOLDING',
+    'Craft Battery Holding Bracket 3D Print',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CRAFT-BATTERY-HOLDING'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'REMOTE-STRAPS',
+    'Remote Straps',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'REMOTE-STRAPS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'REMOTE-STRAP-HOLDER',
+    'Remote Strap Holder',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'REMOTE-STRAP-HOLDER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JOYSTICK-SCREWS',
+    'Joystick Screws',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'JOYSTICK-SCREWS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LCD-SCREEN',
+    'LCD Screen',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LCD-SCREEN'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ANTENNA-CLAMP-1',
+    'Antenna clamp -1 3D Print',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ANTENNA-CLAMP-1'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ANTENNA-CLAMP-2',
+    'Antenna Clamp -2 3D Print',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ANTENNA-CLAMP-2'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LCD-HOLDER-BRACKET',
+    'LCD holder bracket 3D print',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LCD-HOLDER-BRACKET'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CHARGER-SPACER-3D',
+    'Charger Spacer 3D Print',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CHARGER-SPACER-3D'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BUTTON-11-3D',
+    'Button 1/1 3D print',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BUTTON-11-3D'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BUTTON-12-3D',
+    'Button 1/2 3D Print',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BUTTON-12-3D'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ROTARY-KNOB-BOX',
+    'Rotary Knob Box 3D print',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ROTARY-KNOB-BOX'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ROTARY-ENCODER',
+    'Rotary Encoder',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ROTARY-ENCODER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IFU-3D-MIDDLE',
+    'IFU 3D Middle',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IFU-3D-MIDDLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IFU-TOP',
+    'IFU top',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IFU-TOP'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IFU-BOTTOM',
+    'IFU Bottom',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IFU-BOTTOM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MOTOR-4092',
+    'Motor 4092',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MOTOR-4092'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '4092-COOLING-JACKETS',
+    '4092 cooling jackets',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '4092-COOLING-JACKETS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'MOTOR-5692-495',
+    'Motor 5692 495 KV',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'MOTOR-5692-495'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '5692-MOTOR-COOLING',
+    '5692 motor cooling jacket',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '5692-MOTOR-COOLING'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HV130-ESC',
+    'HV130 ESC',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HV130-ESC'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '8-MM-OD',
+    '8 mm OD pneaumatic pipe',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '8-MM-OD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '12-TO-8',
+    '12 to 8 right angled reducer with lock clips',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '12-TO-8'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '12-TO-8',
+    '12 to 8 right angled lock clips',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '12-TO-8'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '12MM-OD-PNEUMATIC',
+    '12mm OD pneumatic pipe',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '12MM-OD-PNEUMATIC'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'POLYCARBONATE-GLASS-FOR',
+    'Polycarbonate Glass for Remote',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'POLYCARBONATE-GLASS-FOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '55-NO-BOX',
+    '55 No. Box for chraging cable & Tool box',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '55-NO-BOX'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '22-NO-BOX',
+    '22 No. Box for SR structure screws',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '22-NO-BOX'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BOTTOM-MESH-120MM',
+    'Bottom Mesh (120mm x 100mm, 5"x4")',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BOTTOM-MESH-120MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'AIR-NOZZLE',
+    'Air nozzle',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'AIR-NOZZLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ACETONE',
+    'Acetone',
+    'RAW_MATERIAL',
+    'ml',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ACETONE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IPA',
+    'IPA',
+    'RAW_MATERIAL',
+    'ml',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IPA'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FOAM-GASKET-405',
+    'Foam Gasket 40/5',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FOAM-GASKET-405'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'POLY-URETHANE-FOAM',
+    'Poly Urethane Foam',
+    'RAW_MATERIAL',
+    'ml',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'POLY-URETHANE-FOAM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SILICON-HOSE-4MM',
+    'Silicon Hose 4mm x 8mm',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SILICON-HOSE-4MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SILICON-HOSE-3MM',
+    'Silicon Hose 3mm x 6mm',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SILICON-HOSE-3MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '6MMX12MM-RUBBER-BUSH',
+    '6mmx12mm Rubber Bush',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '6MMX12MM-RUBBER-BUSH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JOYSTICK-WATER-PROOF',
+    'Joystick Water proof rubber',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'JOYSTICK-WATER-PROOF'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BUTTON-SILICON-COVER',
+    'Button Silicon Cover No. 1',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BUTTON-SILICON-COVER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BUTTON-SILICON-COVER',
+    'Button Silicon Cover No. 2',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BUTTON-SILICON-COVER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '3MM-SILICON-RUBBER',
+    '3mm Silicon Rubber Gaskets (35mmx10mm)',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '3MM-SILICON-RUBBER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'THREAD-LOCKER-242',
+    'Thread locker 242',
+    'RAW_MATERIAL',
+    'ml',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'THREAD-LOCKER-242'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'THREAD-LOCKER-270',
+    'Thread locker 270',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'THREAD-LOCKER-270'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'THREAD-LOCKER-290',
+    'Thread locker 290',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'THREAD-LOCKER-290'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'THREAD-LOCKER-ACTIVATOR',
+    'Thread locker Activator',
+    'RAW_MATERIAL',
+    'ml',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'THREAD-LOCKER-ACTIVATOR'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'INSTANT-ADHESIVE-407',
+    'Instant Adhesive 407 for EPE sticking',
+    'RAW_MATERIAL',
+    'ml',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'INSTANT-ADHESIVE-407'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ORING-AFT-PLATE',
+    'Oring AFT plate',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ORING-AFT-PLATE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBD-SR-RUBBER',
+    'STBD SR Rubber Boot',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBD-SR-RUBBER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORT-SR-RUBBER',
+    'PORT SR Rubber Boot',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORT-SR-RUBBER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SAIFSEAS-NECK-STRAP',
+    'SaifSeas Neck Strap',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SAIFSEAS-NECK-STRAP'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HOOK-STICKER-STBD',
+    'Hook Sticker STBD',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HOOK-STICKER-STBD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HOOK-STIKER-PORT',
+    'Hook Stiker PORT',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HOOK-STIKER-PORT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HOLD-HERE-STICKER',
+    'Hold here sticker STBD',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HOLD-HERE-STICKER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'HOLD-HERE-STICKER',
+    'Hold here sticker PORT',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'HOLD-HERE-STICKER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CRAFT-CLEANING-NOTIFY',
+    'Craft Cleaning Notify Sticker',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CRAFT-CLEANING-NOTIFY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FERROLE',
+    'Ferrole',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FERROLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ROPE-8MM',
+    'Rope 8mm',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ROPE-8MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PACKING-WOODEN-HARDBOX',
+    'Packing Wooden HardBox',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PACKING-WOODEN-HARDBOX'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10MM-NUT-DRIVER',
+    '10mm Nut Driver with 15mm Depth',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10MM-NUT-DRIVER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '4MM-ALLEN-KEY',
+    '4mm Allen Key',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '4MM-ALLEN-KEY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '5MM-ALLEN-KEY',
+    '5mm Allen Key',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '5MM-ALLEN-KEY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '6MM-ALLEN-KEY',
+    '6mm Allen Key',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '6MM-ALLEN-KEY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '6MM-T-HANDLE',
+    '6mm T Handle',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '6MM-T-HANDLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '10MM-SPANNER',
+    '10mm Spanner',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '10MM-SPANNER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'EPE-SHEET-20MM',
+    'EPE sheet 20mm 48"x72"',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'EPE-SHEET-20MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'USER-MANUAL',
+    'User Manual',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'USER-MANUAL'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ENVELOPE-FOR-USER',
+    'Envelope for User Manual',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ENVELOPE-FOR-USER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SURGICAL-GLOVES',
+    'Surgical Gloves',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SURGICAL-GLOVES'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'X16-EXTENSION-PANEL',
+    'X16 extension panel',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'X16-EXTENSION-PANEL'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'POLISH-BOTTLE',
+    'Polish Bottle',
+    'RAW_MATERIAL',
+    'ml',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'POLISH-BOTTLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SHAVISON-SMPS',
+    'Shavison SMPS',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SHAVISON-SMPS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WIFI-ADAPTER',
+    'Wifi Adapter',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'WIFI-ADAPTER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WIFI-ROUTER',
+    'Wifi router',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'WIFI-ROUTER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ADAPTER-913V',
+    'Adapter 9.13V',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ADAPTER-913V'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ADAPTER-519V',
+    'Adapter 5.19V',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ADAPTER-519V'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ROAST-FLASH-PRO',
+    'Roast Flash Pro bottle',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ROAST-FLASH-PRO'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'LIQUID-POLISH',
+    'Liquid Polish',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'LIQUID-POLISH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BIG-SYRINGES',
+    'Big Syringes',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BIG-SYRINGES'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SMALL-SYRINGES',
+    'Small Syringes',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SMALL-SYRINGES'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'WV-40',
+    'WV 40',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'WV-40'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '5-56-POWER',
+    '5 56 power spray',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '5-56-POWER'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'REMOTE-DISPLAY-GLASS',
+    'Remote Display glass',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'REMOTE-DISPLAY-GLASS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'EXTRUSION-CLAMPS-40MM',
+    'Extrusion Clamps 40mm',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'EXTRUSION-CLAMPS-40MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'EXTRUSION-CLAMPS30MM',
+    'Extrusion Clamps30mm',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'EXTRUSION-CLAMPS30MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'EXTRUSION-CLAMPS-20MM',
+    'Extrusion Clamps 20mm',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'EXTRUSION-CLAMPS-20MM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SHEENAIC',
+    'Sheenaic',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SHEENAIC'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'TURPENTRATE-OIL',
+    'Turpentrate Oil',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'TURPENTRATE-OIL'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SPOT-CHECK-SKC',
+    'Spot Check SKC - 1 (Cleaner/Remover)',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SPOT-CHECK-SKC'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'TEROSON-GUN',
+    'Teroson Gun',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'TEROSON-GUN'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M6-THUMBOLTS',
+    'M6 Thumbolts',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M6-THUMBOLTS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'M4-THUMBOLTS',
+    'M4 Thumbolts',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'M4-THUMBOLTS'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '125-MM-HEAT',
+    '125 MM heat Shrinkable Sleeve',
+    'RAW_MATERIAL',
+    'Meter',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '125-MM-HEAT'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JET-PLATE-ASSY',
+    'Jet & Plate Assy (Jet, plate)',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'JET-PLATE-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JET-MOTOR-ASSY',
+    'Jet Motor Assy (Jet, Plate, mount))',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'JET-MOTOR-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JET-MOTOR-ASSY',
+    'Jet Motor Assy (Jet, plate, mount, heatpipes)',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'JET-MOTOR-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'POWER-SWITCH-ASSY',
+    'Power Switch Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'POWER-SWITCH-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CHARGING-PM-ASSY',
+    'Charging PM Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CHARGING-PM-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CHARGING-CM-ASSY',
+    'Charging CM Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CHARGING-CM-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBD-SIGNAL-PM',
+    'STBD Signal PM Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBD-SIGNAL-PM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORT-SIGNAL-PM',
+    'PORT Signal PM Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORT-SIGNAL-PM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBD-SIGNAL-CM',
+    'STBD Signal CM Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBD-SIGNAL-CM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORT-SIGNAL-CM',
+    'PORT Signal CM Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORT-SIGNAL-CM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CURRENT-SENSOR-ASSY',
+    'Current Sensor Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CURRENT-SENSOR-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RPM-SENSOR-ASSY',
+    'RPM Sensor Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RPM-SENSOR-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'A21-MOTHERBOARD-ASSY',
+    'A21 MotherBoard Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'A21-MOTHERBOARD-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BATTERY-BLOCK-ASSY',
+    'Battery Block Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BATTERY-BLOCK-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBDESC-ASSY',
+    'STBD_ESC Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBDESC-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORTESC-ASSY',
+    'PORT_ESC Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORTESC-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBD-BATTERY-ASSY',
+    'STBD Battery Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBD-BATTERY-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORT-BATTERY-ASSY',
+    'PORT Battery Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORT-BATTERY-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CHARGER-BOX-ASSY',
+    'Charger Box Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CHARGER-BOX-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ELECTRONIC-BOX-ASSY',
+    'Electronic Box Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ELECTRONIC-BOX-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLSTBD-ELEC',
+    'FL_STBD Elec',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLSTBD-ELEC'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLPORT-ELEC',
+    'FL_PORT Elec',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLPORT-ELEC'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLSTBD-MECH',
+    'FL_STBD Mech',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLSTBD-MECH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLPORT-MECH',
+    'FL_PORT Mech',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLPORT-MECH'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBD-UNIT-ASSY',
+    'STBD Unit Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBD-UNIT-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORT-UNIT-ASSY',
+    'PORT Unit Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORT-UNIT-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SELF-RIGHTENING-ASSY',
+    'Self Rightening Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SELF-RIGHTENING-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IP-REMOTE-ASSY',
+    'IP Remote Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IP-REMOTE-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IP-REMOTE-CHARGING',
+    'IP Remote Charging Cable Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IP-REMOTE-CHARGING'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'AMCA-ELEC-ASSY',
+    'AMCA Elec Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'AMCA-ELEC-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'AMCA-MECH-ASSY',
+    'AMCA Mech Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'AMCA-MECH-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FINAL-CRAFT-ASSY',
+    'Final Craft Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FINAL-CRAFT-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BOTTOM-BLOCK-ASSY',
+    'Bottom Block Assy',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BOTTOM-BLOCK-ASSY'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBD-AFT-PLATE',
+    'STBD Aft Plate Assy',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBD-AFT-PLATE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORT-AFT-PLATE',
+    'PORT Aft Plate Assy',
+    'RAW_MATERIAL',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORT-AFT-PLATE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '156-TFT-LCD',
+    '15.6" TFT LCD, LED B 2000 Nits',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '156-TFT-LCD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '156-TFT-LCD',
+    '15.6" TFT LCD, LED backlight 1800 nits, FHD (1920x1080)',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '156-TFT-LCD'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BOX-HANDLES',
+    'Box handles',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BOX-HANDLES'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'DUMMY-LOAD-50',
+    'Dummy Load 50 ohms',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'DUMMY-LOAD-50'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'EYELID-FOR-CRADLE',
+    'Eyelid for cradle',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'EYELID-FOR-CRADLE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RUBBER-CUFF-SIZE',
+    'Rubber Cuff (Size 40mm)(1,57")',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RUBBER-CUFF-SIZE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RUBBER-CUFF-SIZE',
+    'Rubber  Cuff )Size 32mm (1,26")',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RUBBER-CUFF-SIZE'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PCB-OF-MURATA',
+    'PCB of Murata ROHM',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PCB-OF-MURATA'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PCB-OF-XLROHM',
+    'PCB of XLROHM',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PCB-OF-XLROHM'
+);
+
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PAINT-REMOVER',
+    'Paint remover',
+    'RAW_MATERIAL',
+    'PCS',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PAINT-REMOVER'
+);
 
 
 
@@ -2437,145 +8397,495 @@ ON CONFLICT (item_code) DO NOTHING;
 -- INSERT SUB-ASSEMBLIES (Category: SA)
 -- ============================================================================
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('JET-MOTOR-ASSY', 'Jet Motor Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'JET-MOTOR-ASSY',
+    'Jet Motor Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'JET-MOTOR-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('POWER-SWITCH-ASSY', 'Power Switch Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'POWER-SWITCH-ASSY',
+    'Power Switch Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'POWER-SWITCH-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('CHARGING-PM-ASSY', 'Charging PM Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CHARGING-PM-ASSY',
+    'Charging PM Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CHARGING-PM-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('CHARGING-CM-ASSY', 'Charging CM Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CHARGING-CM-ASSY',
+    'Charging CM Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CHARGING-CM-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('STBD-SIGNAL-PM', 'STBD Signal PM Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBD-SIGNAL-PM',
+    'STBD Signal PM Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBD-SIGNAL-PM'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('PORT-SIGNAL-PM', 'PORT Signal PM Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORT-SIGNAL-PM',
+    'PORT Signal PM Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORT-SIGNAL-PM'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('STBD-SIGNAL-CM', 'STBD Signal CM Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBD-SIGNAL-CM',
+    'STBD Signal CM Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBD-SIGNAL-CM'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('PORT-SIGNAL-CM', 'PORT Signal CM Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORT-SIGNAL-CM',
+    'PORT Signal CM Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORT-SIGNAL-CM'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('CURRENT-SENSOR-ASSY', 'Current Sensor Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CURRENT-SENSOR-ASSY',
+    'Current Sensor Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CURRENT-SENSOR-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('RPM-SENSOR-ASSY', 'RPM Sensor Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'RPM-SENSOR-ASSY',
+    'RPM Sensor Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'RPM-SENSOR-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('A21-MOTHERBOARD-ASSY', 'A21 MotherBoard Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'A21-MOTHERBOARD-ASSY',
+    'A21 MotherBoard Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'A21-MOTHERBOARD-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('BATTERY-BLOCK-ASSY', 'Battery Block Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BATTERY-BLOCK-ASSY',
+    'Battery Block Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BATTERY-BLOCK-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('STBDESC-ASSY', 'STBD_ESC Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBDESC-ASSY',
+    'STBD_ESC Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBDESC-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('PORTESC-ASSY', 'PORT_ESC Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORTESC-ASSY',
+    'PORT_ESC Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORTESC-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('STBD-BATTERY-ASSY', 'STBD Battery Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBD-BATTERY-ASSY',
+    'STBD Battery Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBD-BATTERY-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('PORT-BATTERY-ASSY', 'PORT Battery Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORT-BATTERY-ASSY',
+    'PORT Battery Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORT-BATTERY-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('CHARGER-BOX-ASSY', 'Charger Box Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'CHARGER-BOX-ASSY',
+    'Charger Box Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'CHARGER-BOX-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('ELECTRONIC-BOX-ASSY', 'Electronic Box Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'ELECTRONIC-BOX-ASSY',
+    'Electronic Box Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'ELECTRONIC-BOX-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('FLSTBD-ELEC', 'FL_STBD Elec', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLSTBD-ELEC',
+    'FL_STBD Elec',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLSTBD-ELEC'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('FLPORT-ELEC', 'FL_PORT Elec', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLPORT-ELEC',
+    'FL_PORT Elec',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLPORT-ELEC'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('FLSTBD-MECH', 'FL_STBD Mech', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLSTBD-MECH',
+    'FL_STBD Mech',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLSTBD-MECH'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('FLPORT-MECH', 'FL_PORT Mech', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FLPORT-MECH',
+    'FL_PORT Mech',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FLPORT-MECH'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('STBD-UNIT-ASSY', 'STBD Unit Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBD-UNIT-ASSY',
+    'STBD Unit Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBD-UNIT-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('PORT-UNIT-ASSY', 'PORT Unit Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORT-UNIT-ASSY',
+    'PORT Unit Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORT-UNIT-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('SELF-RIGHTENING-ASSY', 'Self Rightening Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'SELF-RIGHTENING-ASSY',
+    'Self Rightening Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'SELF-RIGHTENING-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('IP-REMOTE-ASSY', 'IP Remote Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IP-REMOTE-ASSY',
+    'IP Remote Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IP-REMOTE-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('IP-REMOTE-CHARGING', 'IP Remote Charging Cable Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'IP-REMOTE-CHARGING',
+    'IP Remote Charging Cable Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'IP-REMOTE-CHARGING'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('AMCA-ELEC-ASSY', 'AMCA Elec Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'AMCA-ELEC-ASSY',
+    'AMCA Elec Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'AMCA-ELEC-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('AMCA-MECH-ASSY', 'AMCA Mech Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'AMCA-MECH-ASSY',
+    'AMCA Mech Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'AMCA-MECH-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('FINAL-CRAFT-ASSY', 'Final Craft Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FINAL-CRAFT-ASSY',
+    'Final Craft Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FINAL-CRAFT-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('BOTTOM-BLOCK-ASSY', 'Bottom Block Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'BOTTOM-BLOCK-ASSY',
+    'Bottom Block Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'BOTTOM-BLOCK-ASSY'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('STBD-AFT-PLATE', 'STBD Aft Plate Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'STBD-AFT-PLATE',
+    'STBD Aft Plate Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'STBD-AFT-PLATE'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('PORT-AFT-PLATE', 'PORT Aft Plate Assy', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'PORT-AFT-PLATE',
+    'PORT Aft Plate Assy',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'PORT-AFT-PLATE'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('R9MX-ADAPTER', 'R9MX Adapter', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'R9MX-ADAPTER',
+    'R9MX Adapter',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'R9MX-ADAPTER'
+);
 
-INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('FINAL-PACKING', 'Final Packing', 'SA', 'Number', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    'FINAL-PACKING',
+    'Final Packing',
+    'SUB_ASSEMBLY',
+    'Number',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = 'FINAL-PACKING'
+);
 
 
 
@@ -2596,13 +8906,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'QX7-TRANSMITTER-WITH'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'QX7-TRANSMITTER-WITH'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- QX7 Transmitter with R9M → Vyom (Priority 2)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2616,13 +8925,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'QX7-TRANSMITTER-WITH'
-  AND v.vendor_code = 'VYOM'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'QX7-TRANSMITTER-WITH'
+  AND v.code = 'VYOM'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Receiver Module R9MM/R9MX/R9 → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2636,13 +8944,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'RECEIVER-MODULE-R9MMR9MXR9'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'RECEIVER-MODULE-R9MMR9MXR9'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Receiver Module R9MM/R9MX/R9 → Vyom (Priority 2)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2656,13 +8963,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'RECEIVER-MODULE-R9MMR9MXR9'
-  AND v.vendor_code = 'VYOM'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'RECEIVER-MODULE-R9MMR9MXR9'
+  AND v.code = 'VYOM'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Free Wheel Diode SMD M7 → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2676,13 +8982,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'FREE-WHEEL-DIODE'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'FREE-WHEEL-DIODE'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- AMS1117 5.0v → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2696,13 +9001,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'AMS1117-50V'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'AMS1117-50V'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- AMS1117 3.3v → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2716,13 +9020,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'AMS1117-33V'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'AMS1117-33V'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- NEO-6M GPS/L80 GPS → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2736,13 +9039,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'NEO6M-GPSL80-GPS'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'NEO6M-GPSL80-GPS'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 5.5mm Female Bullet connector → Hobbywing (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2756,13 +9058,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '55MM-FEMALE-BULLET'
-  AND v.vendor_code = 'HOBBYWING'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '55MM-FEMALE-BULLET'
+  AND v.code = 'HOBBYWING'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 4mm Male Bullet connector → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2776,13 +9077,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '4MM-MALE-BULLET'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '4MM-MALE-BULLET'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 4mm Female Bullet connector → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2796,13 +9096,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '4MM-FEMALE-BULLET'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '4MM-FEMALE-BULLET'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 2mm male bullet connector → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2816,13 +9115,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '2MM-MALE-BULLET'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '2MM-MALE-BULLET'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 2mm Female Bullet connector → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2836,13 +9134,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '2MM-FEMALE-BULLET'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '2MM-FEMALE-BULLET'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 6mm male bullet connector → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2856,13 +9153,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '6MM-MALE-BULLET'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '6MM-MALE-BULLET'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 6mm female bullet connector → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2876,13 +9172,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '6MM-FEMALE-BULLET'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '6MM-FEMALE-BULLET'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 8mm male bullet connector → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2896,13 +9191,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '8MM-MALE-BULLET'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '8MM-MALE-BULLET'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 8mm female bullet connector → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2916,13 +9210,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '8MM-FEMALE-BULLET'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '8MM-FEMALE-BULLET'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Ultra Flexible Black 8AWG → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2936,13 +9229,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ULTRA-FLEXIBLE-BLACK'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ULTRA-FLEXIBLE-BLACK'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Ultra Flexible  Red 8AWG → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2956,13 +9248,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ULTRA-FLEXIBLE-RED'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ULTRA-FLEXIBLE-RED'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Ultra Flexible Black 12AWG → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2976,13 +9267,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ULTRA-FLEXIBLE-BLACK'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ULTRA-FLEXIBLE-BLACK'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Ultra Flexible Red 12AWG → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -2996,13 +9286,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ULTRA-FLEXIBLE-RED'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ULTRA-FLEXIBLE-RED'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Ultra Flexible Black 18 AWG → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3016,13 +9305,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ULTRA-FLEXIBLE-BLACK'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ULTRA-FLEXIBLE-BLACK'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Ultra Flexible Red 18 AWG → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3036,13 +9324,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ULTRA-FLEXIBLE-RED'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ULTRA-FLEXIBLE-RED'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Ultra Flexible Black 20 AWG → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3056,13 +9343,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ULTRA-FLEXIBLE-BLACK'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ULTRA-FLEXIBLE-BLACK'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Ultra Flexible Red 20 AWG → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3076,13 +9362,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ULTRA-FLEXIBLE-RED'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ULTRA-FLEXIBLE-RED'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Ultra Flexible Blue 20 AWG → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3096,13 +9381,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ULTRA-FLEXIBLE-BLUE'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ULTRA-FLEXIBLE-BLUE'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Water flow sensor YFS401 → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3116,13 +9400,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'WATER-FLOW-SENSOR'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'WATER-FLOW-SENSOR'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Water pump 550 diaphragm → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3136,13 +9419,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'WATER-PUMP-550'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'WATER-PUMP-550'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 1S Lipo indicator (Not Using) → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3156,13 +9438,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '1S-LIPO-INDICATOR'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '1S-LIPO-INDICATOR'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 2S Lipo indicator → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3176,13 +9457,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '2S-LIPO-INDICATOR'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '2S-LIPO-INDICATOR'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Lipo Indicator Casings → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3196,13 +9476,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LIPO-INDICATOR-CASINGS'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LIPO-INDICATOR-CASINGS'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Buck converter XL7015 50v → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3216,13 +9495,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BUCK-CONVERTER-XL7015'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BUCK-CONVERTER-XL7015'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LM2596 in AMCA → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3236,13 +9514,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LM2596-IN-AMCA'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LM2596-IN-AMCA'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- XL4015/XL4005 5A buck converter → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3256,13 +9533,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'XL4015XL4005-5A-BUCK'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'XL4015XL4005-5A-BUCK'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- XT90 Female housing → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3276,13 +9552,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'XT90-FEMALE-HOUSING'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'XT90-FEMALE-HOUSING'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 24v AC/DC module → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3296,13 +9571,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '24V-ACDC-MODULE'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '24V-ACDC-MODULE'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Momentary Switch JCB → RR Innovations (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3316,13 +9590,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'MOMENTARY-SWITCH-JCB'
-  AND v.vendor_code = 'RRINNOVATIONS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'MOMENTARY-SWITCH-JCB'
+  AND v.code = 'RRINNOVATIONS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Latching Power switch JCB → RR Innovations (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3336,13 +9609,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LATCHING-POWER-SWITCH'
-  AND v.vendor_code = 'RRINNOVATIONS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LATCHING-POWER-SWITCH'
+  AND v.code = 'RRINNOVATIONS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PWB for IFU → JLC (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3356,13 +9628,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PWB-FOR-IFU'
-  AND v.vendor_code = 'JLC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PWB-FOR-IFU'
+  AND v.code = 'JLC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PWB for JCB → JLC (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3376,13 +9647,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PWB-FOR-JCB'
-  AND v.vendor_code = 'JLC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PWB-FOR-JCB'
+  AND v.code = 'JLC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PWB of STBD flash light → JLC (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3396,13 +9666,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PWB-OF-STBD'
-  AND v.vendor_code = 'JLC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PWB-OF-STBD'
+  AND v.code = 'JLC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PWB of PORT flash light → JLC (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3416,13 +9685,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PWB-OF-PORT'
-  AND v.vendor_code = 'JLC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PWB-OF-PORT'
+  AND v.code = 'JLC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PWB of A4 Motherboard → JLC (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3436,13 +9704,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PWB-OF-A4'
-  AND v.vendor_code = 'JLC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PWB-OF-A4'
+  AND v.code = 'JLC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PWB of Current Sensor → JLC (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3456,13 +9723,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PWB-OF-CURRENT'
-  AND v.vendor_code = 'JLC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PWB-OF-CURRENT'
+  AND v.code = 'JLC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PWB of Button -2 → JLC (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3476,13 +9742,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PWB-OF-BUTTON'
-  AND v.vendor_code = 'JLC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PWB-OF-BUTTON'
+  AND v.code = 'JLC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PWB for PC (in charger) → JLC (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3496,13 +9761,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PWB-FOR-PC'
-  AND v.vendor_code = 'JLC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PWB-FOR-PC'
+  AND v.code = 'JLC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PWB for Bathemetry Sensor → JLC (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3516,13 +9780,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PWB-FOR-BATHEMETRY'
-  AND v.vendor_code = 'JLC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PWB-FOR-BATHEMETRY'
+  AND v.code = 'JLC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- WCS1700 current Sensor → NSK Electronics (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3536,13 +9799,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'WCS1700-CURRENT-SENSOR'
-  AND v.vendor_code = 'NSKELECTRONICS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'WCS1700-CURRENT-SENSOR'
+  AND v.code = 'NSKELECTRONICS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 6X3 BATTERY blocks → Ampower India (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3556,13 +9818,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '6X3-BATTERY-BLOCKS'
-  AND v.vendor_code = 'AMPOWERINDIA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '6X3-BATTERY-BLOCKS'
+  AND v.code = 'AMPOWERINDIA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 18650 cells Li-Ion for JCB → Ampower India (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3576,13 +9837,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '18650-CELLS-LIION'
-  AND v.vendor_code = 'AMPOWERINDIA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '18650-CELLS-LIION'
+  AND v.code = 'AMPOWERINDIA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 18650 Cell Holder → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3596,13 +9856,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '18650-CELL-HOLDER'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '18650-CELL-HOLDER'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- USB Data & Charging Cable 1.5m length Black → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3616,13 +9875,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'USB-DATA-CHARGING'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'USB-DATA-CHARGING'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- DC Jack Panel Mount → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3636,13 +9894,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'DC-JACK-PANEL'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'DC-JACK-PANEL'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Lead paste → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3656,13 +9913,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LEAD-PASTE'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LEAD-PASTE'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Lead wire 22AWG → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3676,13 +9932,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LEAD-WIRE-22AWG'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LEAD-WIRE-22AWG'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Heat Sink Pad → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3696,13 +9951,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HEAT-SINK-PAD'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HEAT-SINK-PAD'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LM358DT SMD → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3716,13 +9970,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LM358DT-SMD'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LM358DT-SMD'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 0.1uF 0805 → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3736,13 +9989,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '01UF-0805'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '01UF-0805'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 0.01uF 0805 → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3756,13 +10008,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '001UF-0805'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '001UF-0805'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LED 0805 SMD → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3776,13 +10027,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LED-0805-SMD'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LED-0805-SMD'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- TS5A3157DBVR SSR Encoder Signal Cut-Off → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3796,13 +10046,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'TS5A3157DBVR-SSR-ENCODER'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'TS5A3157DBVR-SSR-ENCODER'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Tactile Switch for IFU four leg → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3816,13 +10065,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'TACTILE-SWITCH-FOR'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'TACTILE-SWITCH-FOR'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LM2596HVS-ADJ Buck only IC → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3836,13 +10084,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LM2596HVSADJ-BUCK-ONLY'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LM2596HVSADJ-BUCK-ONLY'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- MP9486AGN-Z 100v Buck converter IC → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3856,13 +10103,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'MP9486AGNZ-100V-BUCK'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'MP9486AGNZ-100V-BUCK'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 12v Fixed Buck 18-75 In MultiCom Pro → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3876,13 +10122,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '12V-FIXED-BUCK'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '12V-FIXED-BUCK'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 5v Fixed Buck 18-75 In MultiCom Pro → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3896,13 +10141,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '5V-FIXED-BUCK'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '5V-FIXED-BUCK'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 1N4148 SMD → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3916,13 +10160,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '1N4148-SMD'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '1N4148-SMD'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 18pF 0805 capacitor → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3936,13 +10179,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '18PF-0805-CAPACITOR'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '18PF-0805-CAPACITOR'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10uF 0805 capacitor → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3956,13 +10198,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10UF-0805-CAPACITOR'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10UF-0805-CAPACITOR'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10uF 10v Tantalum Capacitor Case A → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3976,13 +10217,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10UF-10V-TANTALUM'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10UF-10V-TANTALUM'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 1k 0805 Resistor → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -3996,13 +10236,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '1K-0805-RESISTOR'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '1K-0805-RESISTOR'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10k 0805 resistor → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4016,13 +10255,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10K-0805-RESISTOR'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10K-0805-RESISTOR'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 330E 0805 Resistor → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4036,13 +10274,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '330E-0805-RESISTOR'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '330E-0805-RESISTOR'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Murata 12v 4.5A buck → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4056,13 +10293,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'MURATA-12V-45A'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'MURATA-12V-45A'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Murata 5v 10A buck → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4076,13 +10312,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'MURATA-5V-10A'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'MURATA-5V-10A'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Fuse 500mA → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4096,13 +10331,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'FUSE-500MA'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'FUSE-500MA'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- MCP3208 → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4116,13 +10350,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'MCP3208'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'MCP3208'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 23A 24v Power relay → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4136,13 +10369,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '23A-24V-POWER'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '23A-24V-POWER'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LM61 Temperature Sensor → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4156,13 +10388,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LM61-TEMPERATURE-SENSOR'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LM61-TEMPERATURE-SENSOR'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 47k 0805 → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4176,13 +10407,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '47K-0805'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '47K-0805'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 470k 0805 PANASONIC/BOURNS/MURATA → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4196,13 +10426,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '470K-0805-PANASONICBOURNSMURATA'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '470K-0805-PANASONICBOURNSMURATA'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 20k 0805 PANASONIC/BOURNS/MURATA → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4216,13 +10445,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '20K-0805-PANASONICBOURNSMURATA'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '20K-0805-PANASONICBOURNSMURATA'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 1uF 0805 PANASONIC → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4236,13 +10464,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '1UF-0805-PANASONIC'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '1UF-0805-PANASONIC'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 16MHz Crystal Oscillator → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4256,13 +10483,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '16MHZ-CRYSTAL-OSCILLATOR'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '16MHZ-CRYSTAL-OSCILLATOR'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- ULN2004 SMD → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4276,13 +10502,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ULN2004-SMD'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ULN2004-SMD'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SSR AQW282SX → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4296,13 +10521,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SSR-AQW282SX'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SSR-AQW282SX'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Atmega328P Controller → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4316,13 +10540,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ATMEGA328P-CONTROLLER'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ATMEGA328P-CONTROLLER'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Power Relay 120A 12v Y7 → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4336,13 +10559,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'POWER-RELAY-120A'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'POWER-RELAY-120A'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Power Relay 90A 12v Y6 → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4356,13 +10578,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'POWER-RELAY-90A'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'POWER-RELAY-90A'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SPST relay 5A-12v ANTI_S & KILL → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4376,13 +10597,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SPST-RELAY-5A12V'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SPST-RELAY-5A12V'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Balancing 1A DPDT 24v Relay → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4396,13 +10616,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BALANCING-1A-DPDT'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BALANCING-1A-DPDT'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Balancing relay 5A/2A 24v SPST → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4416,13 +10635,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BALANCING-RELAY-5A2A'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BALANCING-RELAY-5A2A'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 5v 2A USB Adapter → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4436,13 +10654,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '5V-2A-USB'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '5V-2A-USB'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 5v 3A Power adapter DC Plug Orange → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4456,13 +10673,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '5V-3A-POWER'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '5V-3A-POWER'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 5v 3A Power adapter DC Plug Ordinary → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4476,13 +10692,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '5V-3A-POWER'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '5V-3A-POWER'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 9v 2A Power adapter DC Plug Orange → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4496,13 +10711,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '9V-2A-POWER'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '9V-2A-POWER'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 32Gb SD Card → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4516,13 +10730,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '32GB-SD-CARD'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '32GB-SD-CARD'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 16pin IC base → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4536,13 +10749,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '16PIN-IC-BASE'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '16PIN-IC-BASE'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- BlueTooth Module → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4556,13 +10768,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BLUETOOTH-MODULE'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BLUETOOTH-MODULE'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 24AWG Soldering Wire → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4576,13 +10787,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '24AWG-SOLDERING-WIRE'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '24AWG-SOLDERING-WIRE'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 12E 2W Resistor THT → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4596,13 +10806,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '12E-2W-RESISTOR'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '12E-2W-RESISTOR'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- iMAx B3 Charger → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4616,13 +10825,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'IMAX-B3-CHARGER'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'IMAX-B3-CHARGER'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 9v Piezo Electric Buzzer → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4636,13 +10844,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '9V-PIEZO-ELECTRIC'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '9V-PIEZO-ELECTRIC'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Female Bergstrip 40x1 2.54mm → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4656,13 +10863,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'FEMALE-BERGSTRIP-40X1'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'FEMALE-BERGSTRIP-40X1'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Male Bergstrip 40x1 2.54mm → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4676,13 +10882,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'MALE-BERGSTRIP-40X1'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'MALE-BERGSTRIP-40X1'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Female Bergstrip 40x1 2.0mm → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4696,13 +10901,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'FEMALE-BERGSTRIP-40X1'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'FEMALE-BERGSTRIP-40X1'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Male Bergstrip 40x1 2.0mm → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4716,13 +10920,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'MALE-BERGSTRIP-40X1'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'MALE-BERGSTRIP-40X1'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Conformal Coating → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4736,13 +10939,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'CONFORMAL-COATING'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'CONFORMAL-COATING'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Soldering flux Small lead → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4756,13 +10958,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SOLDERING-FLUX-SMALL'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SOLDERING-FLUX-SMALL'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 3 pin 3 yrd power cord → Roland (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4776,13 +10977,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '3-PIN-3'
-  AND v.vendor_code = 'ROLAND'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '3-PIN-3'
+  AND v.code = 'ROLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 2 pin JST-XH housing → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4796,13 +10996,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '2-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '2-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 3 pin JST-XH housing → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4816,13 +11015,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '3-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '3-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 13 pin JST-XH housing → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4836,13 +11034,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '13-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '13-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 15 pin JST-XH housing → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4856,13 +11053,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '15-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '15-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 2 pin JST-XH male top entry → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4876,13 +11072,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '2-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '2-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 2 pin JST-XH male top entry RED → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4896,13 +11091,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '2-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '2-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 2 pin JST-XH male side entry → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4916,13 +11110,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '2-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '2-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 3 pin JST-XH male top entry → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4936,13 +11129,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '3-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '3-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 4 pin JST-XH housing → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4956,13 +11148,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '4-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '4-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 4 pin JST-XH male top entry → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4976,13 +11167,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '4-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '4-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 4 pin JST-XH male side entry → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -4996,13 +11186,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '4-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '4-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 5 pin JST-XH housing → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5016,13 +11205,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '5-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '5-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 5 pin JST-XH male top entry → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5036,13 +11224,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '5-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '5-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 6 pin JST-XH housing → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5056,13 +11243,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '6-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '6-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 6 pin JST-XH male top entry → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5076,13 +11262,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '6-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '6-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 2510 Crimping pins → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5096,13 +11281,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '2510-CRIMPING-PINS'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '2510-CRIMPING-PINS'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 13 pin JST-XH male top entry → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5116,13 +11300,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '13-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '13-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 15 pin JST-XH male top entry → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5136,13 +11319,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '15-PIN-JSTXH'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '15-PIN-JSTXH'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- JST-XH Crimping pins → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5156,13 +11338,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'JSTXH-CRIMPING-PINS'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'JSTXH-CRIMPING-PINS'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- JST-XH Crimping pins Gold Finger → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5176,13 +11357,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'JSTXH-CRIMPING-PINS'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'JSTXH-CRIMPING-PINS'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm Red one side crimped wire → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5196,13 +11376,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-RED-ONE'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-RED-ONE'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm Green one side crimped wire → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5216,13 +11395,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-GREEN-ONE'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-GREEN-ONE'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm Black one side crimped wire → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5236,13 +11414,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-BLACK-ONE'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-BLACK-ONE'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Black → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5256,13 +11433,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Green → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5276,13 +11452,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Voilet → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5296,13 +11471,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Yellow → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5316,13 +11490,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Sky Blue → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5336,13 +11509,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Pink → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5356,13 +11528,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Orange → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5376,13 +11547,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Dark Blue → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5396,13 +11566,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Light Brown → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5416,13 +11585,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Dark Brown → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5436,13 +11604,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped White with Red strip → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5456,13 +11623,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped White with black strip → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5476,13 +11642,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped White → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5496,13 +11661,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Red → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5516,13 +11680,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Light Grey → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5536,13 +11699,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Cyan → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5556,13 +11718,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10cm one sided JST crimped Dark Parrot Green → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5576,13 +11737,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CM-ONE-SIDED'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CM-ONE-SIDED'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm Black Microfit one side crimped wires → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5596,13 +11756,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-BLACK-MICROFIT'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-BLACK-MICROFIT'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm Green Microfit one side crimped wires → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5616,13 +11775,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-GREEN-MICROFIT'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-GREEN-MICROFIT'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm Violet Microfit one side crimped wires → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5636,13 +11794,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-VIOLET-MICROFIT'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-VIOLET-MICROFIT'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm Yellow Microfit one side crimped wires → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5656,13 +11813,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-YELLOW-MICROFIT'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-YELLOW-MICROFIT'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm Sky  Blue Microfit one side crimped wires → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5676,13 +11832,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-SKY-BLUE'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-SKY-BLUE'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm Pink Microfit one side crimped wires → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5696,13 +11851,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-PINK-MICROFIT'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-PINK-MICROFIT'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm L.Brown Microfit one side crimped wires → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5716,13 +11870,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-LBROWN-MICROFIT'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-LBROWN-MICROFIT'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm D.Brown Microfit one side crimped wires → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5736,13 +11889,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-DBROWN-MICROFIT'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-DBROWN-MICROFIT'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm White Microfit one side crimped wires → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5756,13 +11908,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-WHITE-MICROFIT'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-WHITE-MICROFIT'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm White-Red Microfit one side crimped wires (Not Using) → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5776,13 +11927,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-WHITERED-MICROFIT'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-WHITERED-MICROFIT'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm Red Microfit one side crimped wires → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5796,13 +11946,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-RED-MICROFIT'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-RED-MICROFIT'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm Dark Blue Microfit one side crimped wires → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5816,13 +11965,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-DARK-BLUE'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-DARK-BLUE'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25cm Orange Microfit one side crimped wires → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5836,13 +11984,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CM-ORANGE-MICROFIT'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CM-ORANGE-MICROFIT'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 18pin Microfit housing → Canner Connectors (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5856,13 +12003,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '18PIN-MICROFIT-HOUSING'
-  AND v.vendor_code = 'CANNERCONNECTORS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '18PIN-MICROFIT-HOUSING'
+  AND v.code = 'CANNERCONNECTORS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Tactile switch for reset two leg → Donor RC (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5876,13 +12022,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'TACTILE-SWITCH-FOR'
-  AND v.vendor_code = 'DONORRC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'TACTILE-SWITCH-FOR'
+  AND v.code = 'DONORRC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 915MHz Antenna → Synergy (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5896,13 +12041,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '915MHZ-ANTENNA'
-  AND v.vendor_code = 'SYNERGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '915MHZ-ANTENNA'
+  AND v.code = 'SYNERGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Ipex4 to SMA converter extension (1675015) (Antenna pigtail connectror) → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5916,13 +12060,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'IPEX4-TO-SMA'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'IPEX4-TO-SMA'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Ipex4 to SMA converter extension (for R9MM ipex4) → Synergy (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5936,13 +12079,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'IPEX4-TO-SMA'
-  AND v.vendor_code = 'SYNERGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'IPEX4-TO-SMA'
+  AND v.code = 'SYNERGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- R9M Antenna Extension wire RP-SMA to Open → Synergy (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5956,13 +12098,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'R9M-ANTENNA-EXTENSION'
-  AND v.vendor_code = 'SYNERGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'R9M-ANTENNA-EXTENSION'
+  AND v.code = 'SYNERGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- RP-SMA Female inline connector for RG174 → Synergy (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5976,13 +12117,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'RPSMA-FEMALE-INLINE'
-  AND v.vendor_code = 'SYNERGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'RPSMA-FEMALE-INLINE'
+  AND v.code = 'SYNERGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- RP-SMA Male inline connector for RG174 → Synergy (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -5996,13 +12136,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'RPSMA-MALE-INLINE'
-  AND v.vendor_code = 'SYNERGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'RPSMA-MALE-INLINE'
+  AND v.code = 'SYNERGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- RP-SMA Female inline connector for RG142 → Synergy (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6016,13 +12155,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'RPSMA-FEMALE-INLINE'
-  AND v.vendor_code = 'SYNERGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'RPSMA-FEMALE-INLINE'
+  AND v.code = 'SYNERGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- RP-SMA Male inline connector for RG142 → Synergy (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6036,13 +12174,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'RPSMA-MALE-INLINE'
-  AND v.vendor_code = 'SYNERGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'RPSMA-MALE-INLINE'
+  AND v.code = 'SYNERGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SMA Female inline connector for RG174 → Synergy (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6056,13 +12193,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SMA-FEMALE-INLINE'
-  AND v.vendor_code = 'SYNERGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SMA-FEMALE-INLINE'
+  AND v.code = 'SYNERGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SMA Male inline connector for RG174 → Synergy (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6076,13 +12212,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SMA-MALE-INLINE'
-  AND v.vendor_code = 'SYNERGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SMA-MALE-INLINE'
+  AND v.code = 'SYNERGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SMA Female inline connector for RG142 → Synergy (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6096,13 +12231,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SMA-FEMALE-INLINE'
-  AND v.vendor_code = 'SYNERGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SMA-FEMALE-INLINE'
+  AND v.code = 'SYNERGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SMA Male connector inline for RG142 → Synergy (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6116,13 +12250,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SMA-MALE-CONNECTOR'
-  AND v.vendor_code = 'SYNERGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SMA-MALE-CONNECTOR'
+  AND v.code = 'SYNERGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- RG174 Coaxial cable → Synergy (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6136,13 +12269,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'RG174-COAXIAL-CABLE'
-  AND v.vendor_code = 'SYNERGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'RG174-COAXIAL-CABLE'
+  AND v.code = 'SYNERGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- RG142 Coaxial cable → Synergy (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6156,13 +12288,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'RG142-COAXIAL-CABLE'
-  AND v.vendor_code = 'SYNERGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'RG142-COAXIAL-CABLE'
+  AND v.code = 'SYNERGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 20 AWG Silicone Red - Wire → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6176,13 +12307,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '20-AWG-SILICONE'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '20-AWG-SILICONE'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 25Core Wire 14/38 → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6196,13 +12326,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '25CORE-WIRE-1438'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '25CORE-WIRE-1438'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 20Core Wire 14/38 → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6216,13 +12345,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '20CORE-WIRE-1438'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '20CORE-WIRE-1438'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 10Core Wire 14/38 → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6236,13 +12364,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '10CORE-WIRE-1438'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '10CORE-WIRE-1438'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 8core Wire 14/38 → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6256,13 +12383,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '8CORE-WIRE-1438'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '8CORE-WIRE-1438'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 14/38 16 Core Wire → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6276,13 +12402,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '1438-16-CORE'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '1438-16-CORE'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Red 14/38 wire → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6296,13 +12421,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'RED-1438-WIRE'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'RED-1438-WIRE'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Black 14/38 Wire → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6316,13 +12440,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BLACK-1438-WIRE'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BLACK-1438-WIRE'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Yellow 14/38 Wire → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6336,13 +12459,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'YELLOW-1438-WIRE'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'YELLOW-1438-WIRE'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- White 14/38 Wire → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6356,13 +12478,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'WHITE-1438-WIRE'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'WHITE-1438-WIRE'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Sky Blue 14/38 Wire → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6376,13 +12497,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SKY-BLUE-1438'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SKY-BLUE-1438'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Orange 14/38 Wire → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6396,13 +12516,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ORANGE-1438-WIRE'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ORANGE-1438-WIRE'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Green 14/38 Wire → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6416,13 +12535,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'GREEN-1438-WIRE'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'GREEN-1438-WIRE'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Purple 14/38 Wire → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6436,13 +12554,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PURPLE-1438-WIRE'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PURPLE-1438-WIRE'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Brown 14/38 Wire → Cable Fort (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6456,13 +12573,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BROWN-1438-WIRE'
-  AND v.vendor_code = 'CABLEFORT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BROWN-1438-WIRE'
+  AND v.code = 'CABLEFORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Aft plate Acrylice for Template → Ali Irani - Kolkata (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6476,13 +12592,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'AFT-PLATE-ACRYLICE'
-  AND v.vendor_code = 'ALIIRANIKOLKATA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'AFT-PLATE-ACRYLICE'
+  AND v.code = 'ALIIRANIKOLKATA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 12S Lipo Charger → Shenzen ISD Technology (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6496,13 +12611,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '12S-LIPO-CHARGER'
-  AND v.vendor_code = 'SHENZENISDTECHNOLOGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '12S-LIPO-CHARGER'
+  AND v.code = 'SHENZENISDTECHNOLOGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 8S Lipo Charger ISDT Q8 → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6516,13 +12630,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '8S-LIPO-CHARGER'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '8S-LIPO-CHARGER'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 4S Lipo Charger ISDT PD60 → Robu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6536,13 +12649,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '4S-LIPO-CHARGER'
-  AND v.vendor_code = 'ROBU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '4S-LIPO-CHARGER'
+  AND v.code = 'ROBU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 8kg Hull → Vinod Rai (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6556,13 +12668,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '8KG-HULL'
-  AND v.vendor_code = 'VINODRAI'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '8KG-HULL'
+  AND v.code = 'VINODRAI'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- JCB Body cum mounting frame → Vinod Rai (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6576,13 +12687,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'JCB-BODY-CUM'
-  AND v.vendor_code = 'VINODRAI'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'JCB-BODY-CUM'
+  AND v.code = 'VINODRAI'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SR Structure → Vinod Rai (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6596,13 +12706,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SR-STRUCTURE'
-  AND v.vendor_code = 'VINODRAI'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SR-STRUCTURE'
+  AND v.code = 'VINODRAI'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SR Pillow → Vinod Rai (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6616,13 +12725,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SR-PILLOW'
-  AND v.vendor_code = 'VINODRAI'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SR-PILLOW'
+  AND v.code = 'VINODRAI'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Coupling Hood → Agarwal Aluminium (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6636,13 +12744,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'COUPLING-HOOD'
-  AND v.vendor_code = 'AGARWALALUMINIUM'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'COUPLING-HOOD'
+  AND v.code = 'AGARWALALUMINIUM'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 2mm FRP 60x70mm with 18 mm hole → Dolphin Rubber (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6656,13 +12763,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '2MM-FRP-60X70MM'
-  AND v.vendor_code = 'DOLPHINRUBBER'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '2MM-FRP-60X70MM'
+  AND v.code = 'DOLPHINRUBBER'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- flow sensor Clamp → Agarwal Aluminium (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6676,13 +12782,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'FLOW-SENSOR-CLAMP'
-  AND v.vendor_code = 'AGARWALALUMINIUM'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'FLOW-SENSOR-CLAMP'
+  AND v.code = 'AGARWALALUMINIUM'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- ESC Temperature Sensor Clamp → Agarwal Aluminium (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6696,13 +12801,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ESC-TEMPERATURE-SENSOR'
-  AND v.vendor_code = 'AGARWALALUMINIUM'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ESC-TEMPERATURE-SENSOR'
+  AND v.code = 'AGARWALALUMINIUM'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Battery Clamp → Agarwal Aluminium (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6716,13 +12820,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BATTERY-CLAMP'
-  AND v.vendor_code = 'AGARWALALUMINIUM'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BATTERY-CLAMP'
+  AND v.code = 'AGARWALALUMINIUM'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Electronic Box Top Lid → Janki Die (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6736,13 +12839,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ELECTRONIC-BOX-TOP'
-  AND v.vendor_code = 'JANKIDIE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ELECTRONIC-BOX-TOP'
+  AND v.code = 'JANKIDIE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Battery holding foam block Side (115×80×35) → In-house (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6756,13 +12858,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BATTERY-HOLDING-FOAM'
-  AND v.vendor_code = 'INHOUSE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BATTERY-HOLDING-FOAM'
+  AND v.code = 'INHOUSE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Battery holding foam block Upside (80×80×35) → In-house (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6776,13 +12877,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BATTERY-HOLDING-FOAM'
-  AND v.vendor_code = 'INHOUSE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BATTERY-HOLDING-FOAM'
+  AND v.code = 'INHOUSE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Battery Clamping UP EPE on jet plate (150×80×20) → In-house (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6796,13 +12896,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BATTERY-CLAMPING-UP'
-  AND v.vendor_code = 'INHOUSE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BATTERY-CLAMPING-UP'
+  AND v.code = 'INHOUSE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Battery Clamping B&F EPE on jet plate (80×80×10) → In-house (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6816,13 +12915,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BATTERY-CLAMPING-BF'
-  AND v.vendor_code = 'INHOUSE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BATTERY-CLAMPING-BF'
+  AND v.code = 'INHOUSE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Under ElecBox EPE (150x230x25) → In-house (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6836,13 +12934,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'UNDER-ELECBOX-EPE'
-  AND v.vendor_code = 'INHOUSE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'UNDER-ELECBOX-EPE'
+  AND v.code = 'INHOUSE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Above ElecBox EPE (150x80x30) → In-house (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6856,13 +12953,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ABOVE-ELECBOX-EPE'
-  AND v.vendor_code = 'INHOUSE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ABOVE-ELECBOX-EPE'
+  AND v.code = 'INHOUSE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Zip ties 100x3 MultiCompro → Seutes (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6876,13 +12972,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ZIP-TIES-100X3'
-  AND v.vendor_code = 'SEUTES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ZIP-TIES-100X3'
+  AND v.code = 'SEUTES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Zip ties 250m Regular → Local Market (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6896,13 +12991,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ZIP-TIES-250M'
-  AND v.vendor_code = 'LOCALMARKET'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ZIP-TIES-250M'
+  AND v.code = 'LOCALMARKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Ferrite Core → Marhash Toroid Rings (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6916,13 +13010,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'FERRITE-CORE'
-  AND v.vendor_code = 'MARHASHTOROIDRINGS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'FERRITE-CORE'
+  AND v.code = 'MARHASHTOROIDRINGS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SY21-15 pin panel mount(Male) → Weipu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6936,13 +13029,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SY2115-PIN-PANEL'
-  AND v.vendor_code = 'WEIPU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SY2115-PIN-PANEL'
+  AND v.code = 'WEIPU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SY21-15 pin Cable Mount(Female) → Weipu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6956,13 +13048,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SY2115-PIN-CABLE'
-  AND v.vendor_code = 'WEIPU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SY2115-PIN-CABLE'
+  AND v.code = 'WEIPU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SY21-15 pin panel mount(Female) → Weipu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6976,13 +13067,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SY2115-PIN-PANEL'
-  AND v.vendor_code = 'WEIPU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SY2115-PIN-PANEL'
+  AND v.code = 'WEIPU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SY21-15 pin Cable Mount(Male) → Weipu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -6996,13 +13086,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SY2115-PIN-CABLE'
-  AND v.vendor_code = 'WEIPU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SY2115-PIN-CABLE'
+  AND v.code = 'WEIPU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- WY-28 Metal connector CM → Weipu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7016,13 +13105,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'WY28-METAL-CONNECTOR'
-  AND v.vendor_code = 'WEIPU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'WY28-METAL-CONNECTOR'
+  AND v.code = 'WEIPU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- WY-28 Metal connector PM → Weipu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7036,13 +13124,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'WY28-METAL-CONNECTOR'
-  AND v.vendor_code = 'WEIPU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'WY28-METAL-CONNECTOR'
+  AND v.code = 'WEIPU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SA12 9pin CM Pushpull Male → Weipu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7056,13 +13143,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SA12-9PIN-CM'
-  AND v.vendor_code = 'WEIPU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SA12-9PIN-CM'
+  AND v.code = 'WEIPU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SA12 9pin PM Pushpull female → Weipu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7076,13 +13162,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SA12-9PIN-PM'
-  AND v.vendor_code = 'WEIPU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SA12-9PIN-PM'
+  AND v.code = 'WEIPU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SA12 9pin Counter → Weipu (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7096,13 +13181,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SA12-9PIN-COUNTER'
-  AND v.vendor_code = 'WEIPU'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SA12-9PIN-COUNTER'
+  AND v.code = 'WEIPU'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LP12 3 pin plug male clip lock CM → Evelta (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7116,13 +13200,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LP12-3-PIN'
-  AND v.vendor_code = 'EVELTA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LP12-3-PIN'
+  AND v.code = 'EVELTA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LP12 3 pin socket female clip lock PM → Evelta (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7136,13 +13219,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LP12-3-PIN'
-  AND v.vendor_code = 'EVELTA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LP12-3-PIN'
+  AND v.code = 'EVELTA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LP12 4 pin plug male clip lock CM → Evelta (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7156,13 +13238,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LP12-4-PIN'
-  AND v.vendor_code = 'EVELTA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LP12-4-PIN'
+  AND v.code = 'EVELTA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LP12 4 pin socket female clip lock PM → Evelta (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7176,13 +13257,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LP12-4-PIN'
-  AND v.vendor_code = 'EVELTA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LP12-4-PIN'
+  AND v.code = 'EVELTA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LP12 8 pin plug male clip lock CM → Evelta (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7196,13 +13276,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LP12-8-PIN'
-  AND v.vendor_code = 'EVELTA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LP12-8-PIN'
+  AND v.code = 'EVELTA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LP12 8 pin socket female clip lock PM → Evelta (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7216,13 +13295,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LP12-8-PIN'
-  AND v.vendor_code = 'EVELTA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LP12-8-PIN'
+  AND v.code = 'EVELTA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LP24 24 pin plug male clip lock CM (Not Using) → Evelta (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7236,13 +13314,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LP24-24-PIN'
-  AND v.vendor_code = 'EVELTA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LP24-24-PIN'
+  AND v.code = 'EVELTA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LP24 24 pin socket female clip lock PM (Not Using) → Evelta (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7256,13 +13333,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LP24-24-PIN'
-  AND v.vendor_code = 'EVELTA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LP24-24-PIN'
+  AND v.code = 'EVELTA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LP24 24 pin plug female clip lock CM → Evelta (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7276,13 +13352,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LP24-24-PIN'
-  AND v.vendor_code = 'EVELTA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LP24-24-PIN'
+  AND v.code = 'EVELTA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- LP24 24 pin socket male clip lock PM → Evelta (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7296,13 +13371,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'LP24-24-PIN'
-  AND v.vendor_code = 'EVELTA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'LP24-24-PIN'
+  AND v.code = 'EVELTA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Water tank for JCB → Tanveer International (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7316,13 +13390,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'WATER-TANK-FOR'
-  AND v.vendor_code = 'TANVEERINTERNATIONAL'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'WATER-TANK-FOR'
+  AND v.code = 'TANVEERINTERNATIONAL'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- BlueRobotics Leak probe → BlueRobotics (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7336,13 +13409,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BLUEROBOTICS-LEAK-PROBE'
-  AND v.vendor_code = 'BLUEROBOTICS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BLUEROBOTICS-LEAK-PROBE'
+  AND v.code = 'BLUEROBOTICS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- BlueRobotics Indicator → BlueRobotics (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7356,13 +13428,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BLUEROBOTICS-INDICATOR'
-  AND v.vendor_code = 'BLUEROBOTICS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BLUEROBOTICS-INDICATOR'
+  AND v.code = 'BLUEROBOTICS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- IP68 Rotary main Switch → BlueRobotics (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7376,13 +13447,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'IP68-ROTARY-MAIN'
-  AND v.vendor_code = 'BLUEROBOTICS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'IP68-ROTARY-MAIN'
+  AND v.code = 'BLUEROBOTICS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Red 2835 SMD LED 1W → Premier Electronics (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7396,13 +13466,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'RED-2835-SMD'
-  AND v.vendor_code = 'PREMIERELECTRONICS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'RED-2835-SMD'
+  AND v.code = 'PREMIERELECTRONICS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Green 2835 SMD LED 1W → Premier Electronics (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7416,13 +13485,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'GREEN-2835-SMD'
-  AND v.vendor_code = 'PREMIERELECTRONICS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'GREEN-2835-SMD'
+  AND v.code = 'PREMIERELECTRONICS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- No. 4 Self tap Screw SS304 (M4x6.5 Philips) → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7436,13 +13504,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'NO-4-SELF'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'NO-4-SELF'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M2x12 Allen Head SS304 → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7456,13 +13523,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M2X12-ALLEN-HEAD'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M2X12-ALLEN-HEAD'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M3x6 CSK Phillips → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7476,13 +13542,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M3X6-CSK-PHILLIPS'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M3X6-CSK-PHILLIPS'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M3x8 CSK Phillips → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7496,13 +13561,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M3X8-CSK-PHILLIPS'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M3X8-CSK-PHILLIPS'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M3x30 CSK Phillips → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7516,13 +13580,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M3X30-CSK-PHILLIPS'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M3X30-CSK-PHILLIPS'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M3x8 Button head → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7536,13 +13599,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M3X8-BUTTON-HEAD'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M3X8-BUTTON-HEAD'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M3x10 plain washer → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7556,13 +13618,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M3X10-PLAIN-WASHER'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M3X10-PLAIN-WASHER'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M4x8 CSK Phillips → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7576,13 +13637,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M4X8-CSK-PHILLIPS'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M4X8-CSK-PHILLIPS'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M4x8 CSK Phillips GI → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7596,13 +13656,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M4X8-CSK-PHILLIPS'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M4X8-CSK-PHILLIPS'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M2x15 Allen Head SS304 → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7616,13 +13675,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M2X15-ALLEN-HEAD'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M2X15-ALLEN-HEAD'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M4x10 CSK Phillips → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7636,13 +13694,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M4X10-CSK-PHILLIPS'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M4X10-CSK-PHILLIPS'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M4x20 CSK Phillips → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7656,13 +13713,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M4X20-CSK-PHILLIPS'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M4X20-CSK-PHILLIPS'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M4x12 Allen Head → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7676,13 +13732,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M4X12-ALLEN-HEAD'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M4X12-ALLEN-HEAD'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M4x16 Allen Head → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7696,13 +13751,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M4X16-ALLEN-HEAD'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M4X16-ALLEN-HEAD'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M5x15 plain washer → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7716,13 +13770,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M5X15-PLAIN-WASHER'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M5X15-PLAIN-WASHER'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M4x20 Allen Head → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7736,13 +13789,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M4X20-ALLEN-HEAD'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M4X20-ALLEN-HEAD'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M4x12 Button Head → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7756,13 +13808,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M4X12-BUTTON-HEAD'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M4X12-BUTTON-HEAD'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M4x12 Pan Combi → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7776,13 +13827,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M4X12-PAN-COMBI'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M4X12-PAN-COMBI'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M4x12 plain washer → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7796,13 +13846,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M4X12-PLAIN-WASHER'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M4X12-PLAIN-WASHER'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M4 Spring Washer → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7816,13 +13865,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M4-SPRING-WASHER'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M4-SPRING-WASHER'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M4 Nylock → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7836,13 +13884,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M4-NYLOCK'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M4-NYLOCK'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M4 Square Nut → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7856,13 +13903,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M4-SQUARE-NUT'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M4-SQUARE-NUT'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M5x10 Allen Head (AMCA) → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7876,13 +13922,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M5X10-ALLEN-HEAD'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M5X10-ALLEN-HEAD'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M5x10 Pan Torx → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7896,13 +13941,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M5X10-PAN-TORX'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M5X10-PAN-TORX'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M5x10 Grub Screw → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7916,13 +13960,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M5X10-GRUB-SCREW'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M5X10-GRUB-SCREW'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M6x150 Allen Head → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7936,13 +13979,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M6X150-ALLEN-HEAD'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M6X150-ALLEN-HEAD'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M6 Nylock → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7956,13 +13998,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M6-NYLOCK'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M6-NYLOCK'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M6x15 plain washer → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7976,13 +14017,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M6X15-PLAIN-WASHER'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M6X15-PLAIN-WASHER'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M6x10 Grub Screw → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -7996,13 +14036,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M6X10-GRUB-SCREW'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M6X10-GRUB-SCREW'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Button Head 6x12 → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8016,13 +14055,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BUTTON-HEAD-6X12'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BUTTON-HEAD-6X12'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M8x20 plain washer → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8036,13 +14074,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M8X20-PLAIN-WASHER'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M8X20-PLAIN-WASHER'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- M8x25 Allen Head → Dynamic Industrial Supplier (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8056,13 +14093,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'M8X25-ALLEN-HEAD'
-  AND v.vendor_code = 'DYNAMICINDUSTRIALSUP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'M8X25-ALLEN-HEAD'
+  AND v.code = 'DYNAMICINDUSTRIALSUP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Cello Tape → Local Market (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8076,13 +14112,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'CELLO-TAPE'
-  AND v.vendor_code = 'LOCALMARKET'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'CELLO-TAPE'
+  AND v.code = 'LOCALMARKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Copper Strips 3x2 cells → Naveen (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8096,13 +14131,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'COPPER-STRIPS-3X2'
-  AND v.vendor_code = 'NAVEEN'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'COPPER-STRIPS-3X2'
+  AND v.code = 'NAVEEN'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 70mm Paper Separator → ARB Accessories (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8116,13 +14150,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '70MM-PAPER-SEPARATOR'
-  AND v.vendor_code = 'ARBACCESSORIES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '70MM-PAPER-SEPARATOR'
+  AND v.code = 'ARBACCESSORIES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Barley paper for 21700 cylindrical cell → ARB Accessories (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8136,13 +14169,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BARLEY-PAPER-FOR'
-  AND v.vendor_code = 'ARBACCESSORIES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BARLEY-PAPER-FOR'
+  AND v.code = 'ARBACCESSORIES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 2S BMS → ARB Accessories (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8156,13 +14188,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '2S-BMS'
-  AND v.vendor_code = 'ARBACCESSORIES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '2S-BMS'
+  AND v.code = 'ARBACCESSORIES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 3S BMS → ARB Accessories (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8176,13 +14207,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '3S-BMS'
-  AND v.vendor_code = 'ARBACCESSORIES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '3S-BMS'
+  AND v.code = 'ARBACCESSORIES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 16AWG Lead → ARB Accessories (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8196,13 +14226,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '16AWG-LEAD'
-  AND v.vendor_code = 'ARBACCESSORIES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '16AWG-LEAD'
+  AND v.code = 'ARBACCESSORIES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 130x80x60 enclosure box → NDP (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8216,13 +14245,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '130X80X60-ENCLOSURE-BOX'
-  AND v.vendor_code = 'NDP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '130X80X60-ENCLOSURE-BOX'
+  AND v.code = 'NDP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PG-7 Cable Gland → NDP (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8236,13 +14264,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PG7-CABLE-GLAND'
-  AND v.vendor_code = 'NDP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PG7-CABLE-GLAND'
+  AND v.code = 'NDP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PG-9 Cable Gland(PG -11) → NDP (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8256,13 +14283,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PG9-CABLE-GLANDPG'
-  AND v.vendor_code = 'NDP'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PG9-CABLE-GLANDPG'
+  AND v.code = 'NDP'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Solid coupling (Aluminium) → Bagnan (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8276,13 +14302,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SOLID-COUPLING-ALUMINIUM'
-  AND v.vendor_code = 'BAGNAN'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SOLID-COUPLING-ALUMINIUM'
+  AND v.code = 'BAGNAN'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Rotex14 Coupling → Himalaya Traders (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8296,13 +14321,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ROTEX14-COUPLING'
-  AND v.vendor_code = 'HIMALAYATRADERS'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ROTEX14-COUPLING'
+  AND v.code = 'HIMALAYATRADERS'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Electronic Box → Janki Die (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8316,13 +14340,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ELECTRONIC-BOX'
-  AND v.vendor_code = 'JANKIDIE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ELECTRONIC-BOX'
+  AND v.code = 'JANKIDIE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Front Lid → Janki Die (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8336,13 +14359,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'FRONT-LID'
-  AND v.vendor_code = 'JANKIDIE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'FRONT-LID'
+  AND v.code = 'JANKIDIE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Bottom Block (Inlet Block) → Janki Die (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8356,13 +14378,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BOTTOM-BLOCK-INLET'
-  AND v.vendor_code = 'JANKIDIE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BOTTOM-BLOCK-INLET'
+  AND v.code = 'JANKIDIE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- IP Remote Upper Shell → Webel (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8376,13 +14397,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'IP-REMOTE-UPPER'
-  AND v.vendor_code = 'WEBEL'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'IP-REMOTE-UPPER'
+  AND v.code = 'WEBEL'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- IP Remote Lower Shell → Webel (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8396,13 +14416,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'IP-REMOTE-LOWER'
-  AND v.vendor_code = 'WEBEL'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'IP-REMOTE-LOWER'
+  AND v.code = 'WEBEL'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Flashing Light glass → Janki Die (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8416,13 +14435,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'FLASHING-LIGHT-GLASS'
-  AND v.vendor_code = 'JANKIDIE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'FLASHING-LIGHT-GLASS'
+  AND v.code = 'JANKIDIE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Flashing Light bottom plate → Janki Die (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8436,13 +14454,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'FLASHING-LIGHT-BOTTOM'
-  AND v.vendor_code = 'JANKIDIE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'FLASHING-LIGHT-BOTTOM'
+  AND v.code = 'JANKIDIE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PU Gasket Remote Lower Shell → PrathameshTechnology & Industries (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8456,13 +14473,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PU-GASKET-REMOTE'
-  AND v.vendor_code = 'PRATHAMESHTECHNOLOGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PU-GASKET-REMOTE'
+  AND v.code = 'PRATHAMESHTECHNOLOGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PU Gasket Electronic Box → PrathameshTechnology & Industries (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8476,13 +14492,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PU-GASKET-ELECTRONIC'
-  AND v.vendor_code = 'PRATHAMESHTECHNOLOGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PU-GASKET-ELECTRONIC'
+  AND v.code = 'PRATHAMESHTECHNOLOGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PU Gasket Front Lid → PrathameshTechnology & Industries (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8496,13 +14511,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PU-GASKET-FRONT'
-  AND v.vendor_code = 'PRATHAMESHTECHNOLOGY'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PU-GASKET-FRONT'
+  AND v.code = 'PRATHAMESHTECHNOLOGY'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Heatshrink Tube 6.4:1.6 → Suzhou Volsun Electronics Technology (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8516,13 +14530,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HEATSHRINK-TUBE-6416'
-  AND v.vendor_code = 'SUZHOUVOLSUNELECTRON'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HEATSHRINK-TUBE-6416'
+  AND v.code = 'SUZHOUVOLSUNELECTRON'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Heatshrink Tube 9:3 → Suzhou Volsun Electronics Technology (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8536,13 +14549,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HEATSHRINK-TUBE-93'
-  AND v.vendor_code = 'SUZHOUVOLSUNELECTRON'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HEATSHRINK-TUBE-93'
+  AND v.code = 'SUZHOUVOLSUNELECTRON'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- HeatShrink Tube 4:1 → Suzhou Volsun Electronics Technology (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8556,13 +14568,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HEATSHRINK-TUBE-41'
-  AND v.vendor_code = 'SUZHOUVOLSUNELECTRON'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HEATSHRINK-TUBE-41'
+  AND v.code = 'SUZHOUVOLSUNELECTRON'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- HeatShrink Tube 3:1 → Suzhou Volsun Electronics Technology (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8576,13 +14587,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HEATSHRINK-TUBE-31'
-  AND v.vendor_code = 'SUZHOUVOLSUNELECTRON'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HEATSHRINK-TUBE-31'
+  AND v.code = 'SUZHOUVOLSUNELECTRON'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- HeatShrink Tube 12:3 → Suzhou Volsun Electronics Technology (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8596,13 +14606,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HEATSHRINK-TUBE-123'
-  AND v.vendor_code = 'SUZHOUVOLSUNELECTRON'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HEATSHRINK-TUBE-123'
+  AND v.code = 'SUZHOUVOLSUNELECTRON'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- HeatShrink Tube 4.8/1.2 → Suzhou Volsun Electronics Technology (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8616,13 +14625,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HEATSHRINK-TUBE-4812'
-  AND v.vendor_code = 'SUZHOUVOLSUNELECTRON'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HEATSHRINK-TUBE-4812'
+  AND v.code = 'SUZHOUVOLSUNELECTRON'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- HeatShrink Tube 1.5mm/1.6mm → Suzhou Volsun Electronics Technology (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8636,13 +14644,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HEATSHRINK-TUBE-15MM16MM'
-  AND v.vendor_code = 'SUZHOUVOLSUNELECTRON'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HEATSHRINK-TUBE-15MM16MM'
+  AND v.code = 'SUZHOUVOLSUNELECTRON'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- HeatShrink Tube 100mm → Suzhou Volsun Electronics Technology (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8656,13 +14663,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HEATSHRINK-TUBE-100MM'
-  AND v.vendor_code = 'SUZHOUVOLSUNELECTRON'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HEATSHRINK-TUBE-100MM'
+  AND v.code = 'SUZHOUVOLSUNELECTRON'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Heatsink paste → Hi Tech (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8676,13 +14682,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HEATSINK-PASTE'
-  AND v.vendor_code = 'HITECH'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HEATSINK-PASTE'
+  AND v.code = 'HITECH'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Teroson MS930 → Innovine Tech Marketing PVt. Ltd. (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8696,13 +14701,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'TEROSON-MS930'
-  AND v.vendor_code = 'INNOVINETECHMARKETIN'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'TEROSON-MS930'
+  AND v.code = 'INNOVINETECHMARKETIN'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Silicon RTV 732 → Hi Tech (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8716,13 +14720,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SILICON-RTV-732'
-  AND v.vendor_code = 'HITECH'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SILICON-RTV-732'
+  AND v.code = 'HITECH'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Silicon RTV 734 Potting compound → Hi Tech (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8736,13 +14739,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SILICON-RTV-734'
-  AND v.vendor_code = 'HITECH'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SILICON-RTV-734'
+  AND v.code = 'HITECH'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 1" Masking Tape → Hi Tech (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8756,13 +14758,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '1-MASKING-TAPE'
-  AND v.vendor_code = 'HITECH'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '1-MASKING-TAPE'
+  AND v.code = 'HITECH'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- RR Tape → Hi Tech (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8776,13 +14777,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'RR-TAPE'
-  AND v.vendor_code = 'HITECH'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'RR-TAPE'
+  AND v.code = 'HITECH'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- FlexBond → Hi Tech (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8796,13 +14796,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'FLEXBOND'
-  AND v.vendor_code = 'HITECH'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'FLEXBOND'
+  AND v.code = 'HITECH'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Staples pins → Hi Tech (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8816,13 +14815,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'STAPLES-PINS'
-  AND v.vendor_code = 'HITECH'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'STAPLES-PINS'
+  AND v.code = 'HITECH'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Brass nozzle for water outlet from JCB → AliHussain Bharmal (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8836,13 +14834,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BRASS-NOZZLE-FOR'
-  AND v.vendor_code = 'ALIHUSSAINBHARMAL'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BRASS-NOZZLE-FOR'
+  AND v.code = 'ALIHUSSAINBHARMAL'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SS Cooling Water Outlet nozzle → AliHussain Bharmal (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8856,13 +14853,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SS-COOLING-WATER'
-  AND v.vendor_code = 'ALIHUSSAINBHARMAL'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SS-COOLING-WATER'
+  AND v.code = 'ALIHUSSAINBHARMAL'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SS Cooling Water Inlet nozzle → AliHussain Bharmal (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8876,13 +14872,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SS-COOLING-WATER'
-  AND v.vendor_code = 'ALIHUSSAINBHARMAL'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SS-COOLING-WATER'
+  AND v.code = 'ALIHUSSAINBHARMAL'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Greasing nozzle → AliHussain Bharmal (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8896,13 +14891,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'GREASING-NOZZLE'
-  AND v.vendor_code = 'ALIHUSSAINBHARMAL'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'GREASING-NOZZLE'
+  AND v.code = 'ALIHUSSAINBHARMAL'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Nozzle on Jet → AliHussain Bharmal (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8916,13 +14910,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'NOZZLE-ON-JET'
-  AND v.vendor_code = 'ALIHUSSAINBHARMAL'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'NOZZLE-ON-JET'
+  AND v.code = 'ALIHUSSAINBHARMAL'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Silicon hose pipe clip 7mm → Local Market Kolkata (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8936,13 +14929,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SILICON-HOSE-PIPE'
-  AND v.vendor_code = 'LOCALMARKETKOLKATA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SILICON-HOSE-PIPE'
+  AND v.code = 'LOCALMARKETKOLKATA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Water Jet S52 → Bagnan (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8956,13 +14948,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'WATER-JET-S52'
-  AND v.vendor_code = 'BAGNAN'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'WATER-JET-S52'
+  AND v.code = 'BAGNAN'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- ESC Mounting Plate → Balaji - PB Manufacturing (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8976,13 +14967,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ESC-MOUNTING-PLATE'
-  AND v.vendor_code = 'BALAJIPBMANUFACTURIN'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ESC-MOUNTING-PLATE'
+  AND v.code = 'BALAJIPBMANUFACTURIN'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Jet S52 Mounting plate → Bagnan (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -8996,13 +14986,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'JET-S52-MOUNTING'
-  AND v.vendor_code = 'BAGNAN'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'JET-S52-MOUNTING'
+  AND v.code = 'BAGNAN'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Motor mount heatblock TOP → Bagnan (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9016,13 +15005,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'MOTOR-MOUNT-HEATBLOCK'
-  AND v.vendor_code = 'BAGNAN'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'MOTOR-MOUNT-HEATBLOCK'
+  AND v.code = 'BAGNAN'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Motor mount heatblock BOTTOM → Bagnan (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9036,13 +15024,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'MOTOR-MOUNT-HEATBLOCK'
-  AND v.vendor_code = 'BAGNAN'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'MOTOR-MOUNT-HEATBLOCK'
+  AND v.code = 'BAGNAN'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Aluminium Sheet 2mm thick 4ftx2ft → Local Market (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9056,13 +15043,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ALUMINIUM-SHEET-2MM'
-  AND v.vendor_code = 'LOCALMARKET'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ALUMINIUM-SHEET-2MM'
+  AND v.code = 'LOCALMARKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Heat condensor/Jet Heat Sink → Bagnan (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9076,13 +15062,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HEAT-CONDENSORJET-HEAT'
-  AND v.vendor_code = 'BAGNAN'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HEAT-CONDENSORJET-HEAT'
+  AND v.code = 'BAGNAN'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Copper heat pipe (set of 2) → Svtherm Technologies (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9096,13 +15081,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'COPPER-HEAT-PIPE'
-  AND v.vendor_code = 'SVTHERMTECHNOLOGIES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'COPPER-HEAT-PIPE'
+  AND v.code = 'SVTHERMTECHNOLOGIES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- STBD Aft Plate → Balaji - PB Manufacturing (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9116,13 +15100,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'STBD-AFT-PLATE'
-  AND v.vendor_code = 'BALAJIPBMANUFACTURIN'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'STBD-AFT-PLATE'
+  AND v.code = 'BALAJIPBMANUFACTURIN'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PORT Aft Plate → Balaji - PB Manufacturing (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9136,13 +15119,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PORT-AFT-PLATE'
-  AND v.vendor_code = 'BALAJIPBMANUFACTURIN'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PORT-AFT-PLATE'
+  AND v.code = 'BALAJIPBMANUFACTURIN'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 3D printed SR Pillow Side Caps 3D Print → Robu 3D print (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9156,13 +15138,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '3D-PRINTED-SR'
-  AND v.vendor_code = 'ROBU3DPRINT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '3D-PRINTED-SR'
+  AND v.code = 'ROBU3DPRINT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 3D printed SR Pillow Middle Caps 3D Print → Robu 3D print (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9176,13 +15157,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '3D-PRINTED-SR'
-  AND v.vendor_code = 'ROBU3DPRINT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '3D-PRINTED-SR'
+  AND v.code = 'ROBU3DPRINT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 3D printed bottom block caps → Robu 3D print (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9196,13 +15176,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '3D-PRINTED-BOTTOM'
-  AND v.vendor_code = 'ROBU3DPRINT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '3D-PRINTED-BOTTOM'
+  AND v.code = 'ROBU3DPRINT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Button spacer No. 1/1 3D Print → In-house (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9216,13 +15195,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BUTTON-SPACER-NO'
-  AND v.vendor_code = 'INHOUSE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BUTTON-SPACER-NO'
+  AND v.code = 'INHOUSE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Button Spacer No. 1/2 3D Print → In-house (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9236,13 +15214,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BUTTON-SPACER-NO'
-  AND v.vendor_code = 'INHOUSE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BUTTON-SPACER-NO'
+  AND v.code = 'INHOUSE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Button Spacer No. 2 3D Print → In-house (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9256,13 +15233,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BUTTON-SPACER-NO'
-  AND v.vendor_code = 'INHOUSE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BUTTON-SPACER-NO'
+  AND v.code = 'INHOUSE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Button No. 1 pressure bracket 3D Print → In-house (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9276,13 +15252,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BUTTON-NO-1'
-  AND v.vendor_code = 'INHOUSE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BUTTON-NO-1'
+  AND v.code = 'INHOUSE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Remote Battery Holding Bracket 3D Print → In-house (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9296,13 +15271,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'REMOTE-BATTERY-HOLDING'
-  AND v.vendor_code = 'INHOUSE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'REMOTE-BATTERY-HOLDING'
+  AND v.code = 'INHOUSE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Antenna clamp -1 3D Print → In-house (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9316,13 +15290,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ANTENNA-CLAMP-1'
-  AND v.vendor_code = 'INHOUSE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ANTENNA-CLAMP-1'
+  AND v.code = 'INHOUSE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Antenna Clamp -2 3D Print → In-house (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9336,13 +15309,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ANTENNA-CLAMP-2'
-  AND v.vendor_code = 'INHOUSE'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ANTENNA-CLAMP-2'
+  AND v.code = 'INHOUSE'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Rotary Knob Box 3D print → Robu 3D print (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9356,13 +15328,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ROTARY-KNOB-BOX'
-  AND v.vendor_code = 'ROBU3DPRINT'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ROTARY-KNOB-BOX'
+  AND v.code = 'ROBU3DPRINT'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- IFU 3D Middle → Webel (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9376,13 +15347,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'IFU-3D-MIDDLE'
-  AND v.vendor_code = 'WEBEL'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'IFU-3D-MIDDLE'
+  AND v.code = 'WEBEL'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Motor 5692 495 KV → Leopard (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9396,13 +15366,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'MOTOR-5692-495'
-  AND v.vendor_code = 'LEOPARD'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'MOTOR-5692-495'
+  AND v.code = 'LEOPARD'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- HV130 ESC → Hobbywing (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9416,13 +15385,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HV130-ESC'
-  AND v.vendor_code = 'HOBBYWING'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HV130-ESC'
+  AND v.code = 'HOBBYWING'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 8 mm OD pneaumatic pipe → Popular Pnuematic (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9436,13 +15404,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '8-MM-OD'
-  AND v.vendor_code = 'POPULARPNUEMATIC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '8-MM-OD'
+  AND v.code = 'POPULARPNUEMATIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 8 mm OD pneaumatic pipe → Hydro Pnuematic (Priority 2)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9456,13 +15423,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '8-MM-OD'
-  AND v.vendor_code = 'HYDROPNUEMATIC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '8-MM-OD'
+  AND v.code = 'HYDROPNUEMATIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 12 to 8 right angled reducer with lock clips → Popular Pnuematic (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9476,13 +15442,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '12-TO-8'
-  AND v.vendor_code = 'POPULARPNUEMATIC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '12-TO-8'
+  AND v.code = 'POPULARPNUEMATIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 12 to 8 right angled reducer with lock clips → Hydro Pnuematic (Priority 2)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9496,13 +15461,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '12-TO-8'
-  AND v.vendor_code = 'HYDROPNUEMATIC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '12-TO-8'
+  AND v.code = 'HYDROPNUEMATIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 12mm OD pneumatic pipe → Popular Pnuematic (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9516,13 +15480,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '12MM-OD-PNEUMATIC'
-  AND v.vendor_code = 'POPULARPNUEMATIC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '12MM-OD-PNEUMATIC'
+  AND v.code = 'POPULARPNUEMATIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 12mm OD pneumatic pipe → Hydro Pnuematic (Priority 2)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9536,13 +15499,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '12MM-OD-PNEUMATIC'
-  AND v.vendor_code = 'HYDROPNUEMATIC'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '12MM-OD-PNEUMATIC'
+  AND v.code = 'HYDROPNUEMATIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Polycarbonate Glass for Remote → Local Market (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9556,13 +15518,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'POLYCARBONATE-GLASS-FOR'
-  AND v.vendor_code = 'LOCALMARKET'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'POLYCARBONATE-GLASS-FOR'
+  AND v.code = 'LOCALMARKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 55 No. Box for chraging cable & Tool box → Local Market (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9576,13 +15537,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '55-NO-BOX'
-  AND v.vendor_code = 'LOCALMARKET'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '55-NO-BOX'
+  AND v.code = 'LOCALMARKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 22 No. Box for SR structure screws → Local Market (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9596,13 +15556,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '22-NO-BOX'
-  AND v.vendor_code = 'LOCALMARKET'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '22-NO-BOX'
+  AND v.code = 'LOCALMARKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Bottom Mesh (120mm x 100mm, 5"x4") → Jain Wire Netting (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9616,13 +15575,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BOTTOM-MESH-120MM'
-  AND v.vendor_code = 'JAINWIRENETTING'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BOTTOM-MESH-120MM'
+  AND v.code = 'JAINWIRENETTING'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Air nozzle → Local Market (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9636,13 +15594,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'AIR-NOZZLE'
-  AND v.vendor_code = 'LOCALMARKET'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'AIR-NOZZLE'
+  AND v.code = 'LOCALMARKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Acetone → Local Market (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9656,13 +15613,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ACETONE'
-  AND v.vendor_code = 'LOCALMARKET'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ACETONE'
+  AND v.code = 'LOCALMARKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- IPA → Local Market (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9676,13 +15632,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'IPA'
-  AND v.vendor_code = 'LOCALMARKET'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'IPA'
+  AND v.code = 'LOCALMARKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Poly Urethane Foam → Local Market (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9696,13 +15651,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'POLY-URETHANE-FOAM'
-  AND v.vendor_code = 'LOCALMARKET'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'POLY-URETHANE-FOAM'
+  AND v.code = 'LOCALMARKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Silicon Hose 4mm x 8mm → Dolphin Rubber (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9716,13 +15670,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SILICON-HOSE-4MM'
-  AND v.vendor_code = 'DOLPHINRUBBER'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SILICON-HOSE-4MM'
+  AND v.code = 'DOLPHINRUBBER'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Silicon Hose 3mm x 6mm → Dolphin Rubber (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9736,13 +15689,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SILICON-HOSE-3MM'
-  AND v.vendor_code = 'DOLPHINRUBBER'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SILICON-HOSE-3MM'
+  AND v.code = 'DOLPHINRUBBER'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 6mmx12mm Rubber Bush → Dolphin Rubber (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9756,13 +15708,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '6MMX12MM-RUBBER-BUSH'
-  AND v.vendor_code = 'DOLPHINRUBBER'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '6MMX12MM-RUBBER-BUSH'
+  AND v.code = 'DOLPHINRUBBER'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Joystick Water proof rubber → Dolphin Rubber (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9776,13 +15727,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'JOYSTICK-WATER-PROOF'
-  AND v.vendor_code = 'DOLPHINRUBBER'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'JOYSTICK-WATER-PROOF'
+  AND v.code = 'DOLPHINRUBBER'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Button Silicon Cover No. 1 → Dolphin Rubber (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9796,13 +15746,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BUTTON-SILICON-COVER'
-  AND v.vendor_code = 'DOLPHINRUBBER'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BUTTON-SILICON-COVER'
+  AND v.code = 'DOLPHINRUBBER'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Button Silicon Cover No. 2 → Dolphin Rubber (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9816,13 +15765,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'BUTTON-SILICON-COVER'
-  AND v.vendor_code = 'DOLPHINRUBBER'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'BUTTON-SILICON-COVER'
+  AND v.code = 'DOLPHINRUBBER'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- 3mm Silicon Rubber Gaskets (35mmx10mm) → Dolphin Rubber (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9836,13 +15784,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '3MM-SILICON-RUBBER'
-  AND v.vendor_code = 'DOLPHINRUBBER'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '3MM-SILICON-RUBBER'
+  AND v.code = 'DOLPHINRUBBER'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Thread locker 242 → Elegant Enterprises (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9856,13 +15803,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'THREAD-LOCKER-242'
-  AND v.vendor_code = 'ELEGANTENTERPRISES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'THREAD-LOCKER-242'
+  AND v.code = 'ELEGANTENTERPRISES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Thread locker Activator → Elegant Enterprises (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9876,13 +15822,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'THREAD-LOCKER-ACTIVATOR'
-  AND v.vendor_code = 'ELEGANTENTERPRISES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'THREAD-LOCKER-ACTIVATOR'
+  AND v.code = 'ELEGANTENTERPRISES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Instant Adhesive 407 for EPE sticking → Elegant Enterprises (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9896,13 +15841,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'INSTANT-ADHESIVE-407'
-  AND v.vendor_code = 'ELEGANTENTERPRISES'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'INSTANT-ADHESIVE-407'
+  AND v.code = 'ELEGANTENTERPRISES'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Oring AFT plate → Ali Irani - Kolkata (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9916,13 +15860,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ORING-AFT-PLATE'
-  AND v.vendor_code = 'ALIIRANIKOLKATA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ORING-AFT-PLATE'
+  AND v.code = 'ALIIRANIKOLKATA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- STBD SR Rubber Boot → Webel (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9936,13 +15879,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'STBD-SR-RUBBER'
-  AND v.vendor_code = 'WEBEL'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'STBD-SR-RUBBER'
+  AND v.code = 'WEBEL'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- PORT SR Rubber Boot → Webel (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9956,13 +15898,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'PORT-SR-RUBBER'
-  AND v.vendor_code = 'WEBEL'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'PORT-SR-RUBBER'
+  AND v.code = 'WEBEL'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- SaifSeas Neck Strap → Local Market (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9976,13 +15917,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SAIFSEAS-NECK-STRAP'
-  AND v.vendor_code = 'LOCALMARKET'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SAIFSEAS-NECK-STRAP'
+  AND v.code = 'LOCALMARKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Hook Sticker STBD → Attitude Master Vizag (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -9996,13 +15936,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HOOK-STICKER-STBD'
-  AND v.vendor_code = 'ATTITUDEMASTERVIZAG'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HOOK-STICKER-STBD'
+  AND v.code = 'ATTITUDEMASTERVIZAG'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Hook Stiker PORT → Attitude Master Vizag (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -10016,13 +15955,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HOOK-STIKER-PORT'
-  AND v.vendor_code = 'ATTITUDEMASTERVIZAG'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HOOK-STIKER-PORT'
+  AND v.code = 'ATTITUDEMASTERVIZAG'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Hold here sticker STBD → Attitude Master Vizag (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -10036,13 +15974,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HOLD-HERE-STICKER'
-  AND v.vendor_code = 'ATTITUDEMASTERVIZAG'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HOLD-HERE-STICKER'
+  AND v.code = 'ATTITUDEMASTERVIZAG'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Hold here sticker PORT → Attitude Master Vizag (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -10056,13 +15993,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'HOLD-HERE-STICKER'
-  AND v.vendor_code = 'ATTITUDEMASTERVIZAG'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'HOLD-HERE-STICKER'
+  AND v.code = 'ATTITUDEMASTERVIZAG'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Craft Cleaning Notify Sticker → Attitude Master Vizag (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -10076,13 +16012,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'CRAFT-CLEANING-NOTIFY'
-  AND v.vendor_code = 'ATTITUDEMASTERVIZAG'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'CRAFT-CLEANING-NOTIFY'
+  AND v.code = 'ATTITUDEMASTERVIZAG'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Ferrole → Commercial Engineering (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -10096,13 +16031,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'FERROLE'
-  AND v.vendor_code = 'COMMERCIALENGINEERIN'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'FERROLE'
+  AND v.code = 'COMMERCIALENGINEERIN'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Rope 8mm → Local Market Kolkata (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -10116,13 +16050,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ROPE-8MM'
-  AND v.vendor_code = 'LOCALMARKETKOLKATA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ROPE-8MM'
+  AND v.code = 'LOCALMARKETKOLKATA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- User Manual → Local Market Kolkata (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -10136,13 +16069,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'USER-MANUAL'
-  AND v.vendor_code = 'LOCALMARKETKOLKATA'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'USER-MANUAL'
+  AND v.code = 'LOCALMARKETKOLKATA'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Envelope for User Manual → Local Market (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -10156,13 +16088,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'ENVELOPE-FOR-USER'
-  AND v.vendor_code = 'LOCALMARKET'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'ENVELOPE-FOR-USER'
+  AND v.code = 'LOCALMARKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- Surgical Gloves → Local Market (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -10176,13 +16107,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'SURGICAL-GLOVES'
-  AND v.vendor_code = 'LOCALMARKET'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'SURGICAL-GLOVES'
+  AND v.code = 'LOCALMARKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 -- X16 extension panel → Webel (Priority 1)
 INSERT INTO item_vendors (item_id, vendor_id, priority, unit_price, is_active, created_at, updated_at)
@@ -10196,13 +16126,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = 'X16-EXTENSION-PANEL'
-  AND v.vendor_code = 'WEBEL'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = 'X16-EXTENSION-PANEL'
+  AND v.code = 'WEBEL'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 
 
 
@@ -10214,9 +16143,9 @@ ON CONFLICT (item_id, vendor_id) DO UPDATE SET
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-JET-MOTOR-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'Jet Motor Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'Jet Motor Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-JET-MOTOR-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10229,9 +16158,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Coupling Hood'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Coupling Hood'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10244,9 +16175,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Battery Clamp'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Battery Clamp'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10259,9 +16192,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'M4x25 Hex Head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x25 Hex Head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10274,9 +16209,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'M4 Square Nut'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4 Square Nut'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10289,9 +16226,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'M4 Nyloc'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4 Nyloc'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10304,9 +16243,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'M4 Spring washer'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4 Spring washer'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10319,9 +16260,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'M4x12 plain washer'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x12 plain washer'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10334,9 +16277,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'M4x16 CSK Phillips'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x16 CSK Phillips'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10349,9 +16294,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'M4x10 CSK Phillips'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x10 CSK Phillips'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10364,9 +16311,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'M4x20 CSK Phillips'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x20 CSK Phillips'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10379,9 +16328,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Grub M6x10 SS (Coupling tightening)'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Grub M6x10 SS (Coupling tightening)'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10394,9 +16345,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Rotex14 Coupling'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Rotex14 Coupling'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10409,9 +16362,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10424,9 +16379,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Nozzle on Jet'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Nozzle on Jet'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10439,9 +16396,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Silicon hose pipe clip 7mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Silicon hose pipe clip 7mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10454,9 +16413,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Water Jet pump Jet S52'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Water Jet pump Jet S52'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10469,9 +16430,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'ESC Mounting Plate'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'ESC Mounting Plate'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10484,9 +16447,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Jet S52 Mounting plate'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Jet S52 Mounting plate'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10499,9 +16464,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Motor Mount 5692'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Motor Mount 5692'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10514,9 +16481,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Motor 5692 495 KV'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Motor 5692 495 KV'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10529,9 +16498,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Motor Cooling Jacket 56mm x 50mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Motor Cooling Jacket 56mm x 50mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10544,9 +16515,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Silicon Hose 4mm x 8mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Silicon Hose 4mm x 8mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10559,9 +16532,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Silicon Hose 3mm x 6mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Silicon Hose 3mm x 6mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10574,9 +16549,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Thread locker 242/270/290'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Thread locker 242/270/290'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10589,17 +16566,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-JET-MOTOR-ASSY'
-  AND i.item_name = 'Thread locker Activator'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Thread locker Activator'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for STBD_ESC Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-STBDESC-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'STBD_ESC Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'STBD_ESC Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-STBDESC-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10612,9 +16591,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBDESC-ASSY'
-  AND i.item_name = '5.5mm Female Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '5.5mm Female Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10627,9 +16608,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBDESC-ASSY'
-  AND i.item_name = '4mm Male Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '4mm Male Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10642,9 +16625,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBDESC-ASSY'
-  AND i.item_name = '4mm Female Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '4mm Female Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10657,9 +16642,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBDESC-ASSY'
-  AND i.item_name = 'Black 12AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Black 12AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10672,9 +16659,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBDESC-ASSY'
-  AND i.item_name = 'Red 12AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 12AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10687,9 +16676,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBDESC-ASSY'
-  AND i.item_name = 'Ferrite Core'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Ferrite Core'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10702,9 +16693,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBDESC-ASSY'
-  AND i.item_name = '16AWG Lead'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '16AWG Lead'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10717,9 +16710,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBDESC-ASSY'
-  AND i.item_name = 'Heatshrink Tube 9:3'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Heatshrink Tube 9:3'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10732,9 +16727,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBDESC-ASSY'
-  AND i.item_name = 'HeatShrink Tube 4.8/1.2'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 4.8/1.2'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10747,17 +16744,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBDESC-ASSY'
-  AND i.item_name = 'HV130 ESC'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HV130 ESC'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for PORT_ESC Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-PORTESC-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'PORT_ESC Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'PORT_ESC Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-PORTESC-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10770,9 +16769,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORTESC-ASSY'
-  AND i.item_name = '5.5mm Female Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '5.5mm Female Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10785,9 +16786,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORTESC-ASSY'
-  AND i.item_name = '4mm Male Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '4mm Male Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10800,9 +16803,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORTESC-ASSY'
-  AND i.item_name = '4mm Female Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '4mm Female Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10815,9 +16820,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORTESC-ASSY'
-  AND i.item_name = 'Red 12AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 12AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10830,9 +16837,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORTESC-ASSY'
-  AND i.item_name = 'Ferrite Core'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Ferrite Core'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10845,9 +16854,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORTESC-ASSY'
-  AND i.item_name = '16AWG Lead'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '16AWG Lead'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10860,9 +16871,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORTESC-ASSY'
-  AND i.item_name = 'Heatshrink Tube 9:3'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Heatshrink Tube 9:3'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10875,9 +16888,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORTESC-ASSY'
-  AND i.item_name = 'HeatShrink Tube 4.8/1.2'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 4.8/1.2'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10890,17 +16905,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORTESC-ASSY'
-  AND i.item_name = 'HV130 ESC'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HV130 ESC'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for STBD Signal PM Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-STBD-SIGNAL-PM', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'STBD Signal PM Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'STBD Signal PM Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-STBD-SIGNAL-PM')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10913,9 +16930,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '15 pin JST-XH housing'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '15 pin JST-XH housing'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10928,9 +16947,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Black'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Black'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10943,9 +16964,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Green'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Green'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10958,9 +16981,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Voilet'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Voilet'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10973,9 +16998,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Yellow'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Yellow'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -10988,9 +17015,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Sky Blue'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Sky Blue'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11003,9 +17032,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Pink'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Pink'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11018,9 +17049,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Orange'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Orange'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11033,9 +17066,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Dark Blue'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Dark Blue'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11048,9 +17083,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Light Brown'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Light Brown'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11063,9 +17100,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Dark Brown'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Dark Brown'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11078,9 +17117,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped White with Red strip'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped White with Red strip'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11093,9 +17134,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped White with black strip'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped White with black strip'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11108,9 +17151,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped White'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped White'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11123,9 +17168,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Red'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Red'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11138,9 +17185,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = 'SY21-15 pin panel mount'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SY21-15 pin panel mount'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11153,9 +17202,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = 'HeatShrink Tube 1.5mm/1.6mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 1.5mm/1.6mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11168,9 +17219,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11183,9 +17236,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = 'Silicon RTV 734 Potting compound'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Silicon RTV 734 Potting compound'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11198,17 +17253,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-PM'
-  AND i.item_name = 'Lead wire 22AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Lead wire 22AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for PORT Signal PM Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-PORT-SIGNAL-PM', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'PORT Signal PM Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'PORT Signal PM Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-PORT-SIGNAL-PM')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11221,9 +17278,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '15 pin JST-XH housing'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '15 pin JST-XH housing'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11236,9 +17295,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Black'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Black'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11251,9 +17312,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Green'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Green'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11266,9 +17329,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Voilet'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Voilet'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11281,9 +17346,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Yellow'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Yellow'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11296,9 +17363,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Sky Blue'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Sky Blue'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11311,9 +17380,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Pink'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Pink'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11326,9 +17397,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Orange'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Orange'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11341,9 +17414,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Dark Blue'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Dark Blue'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11356,9 +17431,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Light Brown'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Light Brown'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11371,9 +17448,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Dark Brown'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Dark Brown'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11386,9 +17465,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped White with Red strip'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped White with Red strip'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11401,9 +17482,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped White with black strip'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped White with black strip'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11416,9 +17499,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped White'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped White'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11431,9 +17516,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = '10cm one sided JST crimped Dark Parrot Green'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Dark Parrot Green'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11446,9 +17533,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = 'SY21-15 pin panel mount'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SY21-15 pin panel mount'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11461,9 +17550,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = 'HeatShrink Tube 1.5mm/1.6mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 1.5mm/1.6mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11476,9 +17567,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11491,9 +17584,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = 'Silicon RTV 734 Potting compound'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Silicon RTV 734 Potting compound'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11506,17 +17601,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-PM'
-  AND i.item_name = 'Lead wire 22AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Lead wire 22AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for STBD Signal CM Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-STBD-SIGNAL-CM', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'STBD Signal CM Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'STBD Signal CM Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-STBD-SIGNAL-CM')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11529,9 +17626,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = '2mm male bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm male bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11544,9 +17643,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = '2mm Female Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm Female Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11559,9 +17660,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = 'Lead wire 22AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Lead wire 22AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11574,9 +17677,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = 'Soldering flux'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Soldering flux'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11589,9 +17694,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = 'LM61 Temperature Sensor'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'LM61 Temperature Sensor'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11604,9 +17711,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = '20Core Wire 14/38'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '20Core Wire 14/38'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11619,9 +17728,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = 'Red 14/38 wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 14/38 wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11634,9 +17745,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = 'SY21-15 pin Cable Mount'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SY21-15 pin Cable Mount'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11649,9 +17762,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = 'BlueRobotics Leak'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'BlueRobotics Leak'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11664,9 +17779,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = 'HeatShrink Tube 4:1'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 4:1'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11679,9 +17796,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = 'HeatShrink Tube 12:3'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 12:3'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11694,9 +17813,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = 'HeatShrink Tube 1.5mm/1.6mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 1.5mm/1.6mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11709,9 +17830,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = '1uF 0805 PANASONIC'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '1uF 0805 PANASONIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11724,9 +17847,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = 'HeatShrink Tube 3:1'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 3:1'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11739,17 +17864,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-SIGNAL-CM'
-  AND i.item_name = 'Silicon RTV 734 Potting compound'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Silicon RTV 734 Potting compound'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for PORT Signal CM Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-PORT-SIGNAL-CM', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'PORT Signal CM Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'PORT Signal CM Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-PORT-SIGNAL-CM')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11762,9 +17889,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = '2mm male bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm male bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11777,9 +17906,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = '2mm Female Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm Female Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11792,9 +17923,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = 'Lead wire 22AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Lead wire 22AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11807,9 +17940,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = 'Soldering flux'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Soldering flux'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11822,9 +17957,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = 'LM61 Temperature Sensor'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'LM61 Temperature Sensor'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11837,9 +17974,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = '20Core Wire 14/38'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '20Core Wire 14/38'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11852,9 +17991,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = 'Black 14/38 Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Black 14/38 Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11867,9 +18008,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = 'SY21-15 pin Cable Mount'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SY21-15 pin Cable Mount'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11882,9 +18025,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = 'BlueRobotics Leak'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'BlueRobotics Leak'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11897,9 +18042,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = 'HeatShrink Tube 4:1'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 4:1'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11912,9 +18059,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = 'HeatShrink Tube 12:3'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 12:3'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11927,9 +18076,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = 'HeatShrink Tube 1.5mm/1.6mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 1.5mm/1.6mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11942,9 +18093,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = '1uF 0805 PANASONIC'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '1uF 0805 PANASONIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11957,9 +18110,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = 'HeatShrink Tube 3:1'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 3:1'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11972,17 +18127,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-SIGNAL-CM'
-  AND i.item_name = 'Silicon RTV 734 Potting compound'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Silicon RTV 734 Potting compound'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for Charging PM Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-CHARGING-PM-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'Charging PM Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'Charging PM Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-CHARGING-PM-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -11995,9 +18152,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '2mm male bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm male bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12010,9 +18169,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = 'Black 18 AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Black 18 AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12025,9 +18186,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = 'Black 20 AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Black 20 AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12040,9 +18203,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = 'Red 20 AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 20 AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12055,9 +18220,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '13 pin JST-XH housing'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '13 pin JST-XH housing'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12070,9 +18237,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '10cm one sided JST crimped Green'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Green'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12085,9 +18254,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '10cm one sided JST crimped Voilet'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Voilet'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12100,9 +18271,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '10cm one sided JST crimped Yellow'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Yellow'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12115,9 +18288,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '10cm one sided JST crimped Sky Blue'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Sky Blue'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12130,9 +18305,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '10cm one sided JST crimped Pink'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Pink'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12145,9 +18322,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '10cm one sided JST crimped Orange'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Orange'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12160,9 +18339,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '10cm one sided JST crimped Dark Blue'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Dark Blue'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12175,9 +18356,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '10cm one sided JST crimped Light Brown'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Light Brown'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12190,9 +18373,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '10cm one sided JST crimped Dark Brown'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Dark Brown'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12205,9 +18390,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '10cm one sided JST crimped White with Red strip'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped White with Red strip'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12220,9 +18407,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '10cm one sided JST crimped White with black strip'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped White with black strip'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12235,9 +18424,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '10cm one sided JST crimped White'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped White'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12250,9 +18441,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = '10cm one sided JST crimped Light Grey'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Light Grey'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12265,9 +18458,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = 'WY-28 Metal connector PM'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'WY-28 Metal connector PM'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12280,9 +18475,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = 'Heatshrink Tube 6.4:1.6'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Heatshrink Tube 6.4:1.6'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12295,9 +18492,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = 'HeatShrink Tube 4:1'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 4:1'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12310,9 +18509,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = 'HeatShrink Tube 1.5mm/1.6mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 1.5mm/1.6mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12325,9 +18526,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12340,17 +18543,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-PM-ASSY'
-  AND i.item_name = 'Silicon RTV 734 Potting compound'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Silicon RTV 734 Potting compound'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for Charger Box Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-CHARGER-BOX-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'Charger Box Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'Charger Box Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-CHARGER-BOX-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12363,9 +18568,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '24v AC/DC module'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '24v AC/DC module'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12378,9 +18585,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = 'Lead wire 22AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Lead wire 22AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12393,9 +18602,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = 'Soldering flux'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Soldering flux'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12408,9 +18619,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '3 pin 3 yrd power cord'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '3 pin 3 yrd power cord'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12423,9 +18636,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '25cm Black Microfit one side crimped wires'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm Black Microfit one side crimped wires'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12438,9 +18653,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '25cm Green Microfit one side crimped wires'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm Green Microfit one side crimped wires'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12453,9 +18670,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '25cm Violet Microfit one side crimped wires'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm Violet Microfit one side crimped wires'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12468,9 +18687,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '25cm Yellow Microfit one side crimped wires'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm Yellow Microfit one side crimped wires'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12483,9 +18704,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '25cm Blue Microfit one side crimped wires'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm Blue Microfit one side crimped wires'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12498,9 +18721,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '25cm Pink Microfit one side crimped wires'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm Pink Microfit one side crimped wires'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12513,9 +18738,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '25cm L.Brown Microfit one side crimped wires'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm L.Brown Microfit one side crimped wires'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12528,9 +18755,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '25cm D.Brown Microfit one side crimped wires'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm D.Brown Microfit one side crimped wires'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12543,9 +18772,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '25cm White Microfit one side crimped wires'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm White Microfit one side crimped wires'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12558,9 +18789,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '25cm White-Red Microfit one side crimped wires'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm White-Red Microfit one side crimped wires'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12573,9 +18806,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '25cm Red Microfit one side crimped wires'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm Red Microfit one side crimped wires'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12588,9 +18823,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '25cm Dark Blue Microfit one side crimped wires'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm Dark Blue Microfit one side crimped wires'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12603,9 +18840,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '25cm Orange Microfit one side crimped wires'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm Orange Microfit one side crimped wires'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12618,9 +18857,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '18pin Microfit housing'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '18pin Microfit housing'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12633,9 +18874,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '12S Lipo Charger'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '12S Lipo Charger'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12648,9 +18891,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = '130x80x60 enclosure box'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '130x80x60 enclosure box'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12663,9 +18908,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = 'PG-7 Cable Gland'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PG-7 Cable Gland'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12678,9 +18925,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = 'PG-11 Cable Gland'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PG-11 Cable Gland'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12693,9 +18942,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12708,9 +18959,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = 'Red 18 AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 18 AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12723,17 +18976,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGER-BOX-ASSY'
-  AND i.item_name = 'Black 18 AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Black 18 AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for Charging CM Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-CHARGING-CM-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'Charging CM Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'Charging CM Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-CHARGING-CM-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12746,9 +19001,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-CM-ASSY'
-  AND i.item_name = 'Lead wire 22AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Lead wire 22AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12761,9 +19018,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-CM-ASSY'
-  AND i.item_name = 'Soldering flux'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Soldering flux'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12776,9 +19035,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-CM-ASSY'
-  AND i.item_name = '20Core Wire 14/38'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '20Core Wire 14/38'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12791,17 +19052,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CHARGING-CM-ASSY'
-  AND i.item_name = 'WY-28 Metal connector CM'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'WY-28 Metal connector CM'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for RPM Sensor Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-RPM-SENSOR-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'RPM Sensor Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'RPM Sensor Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-RPM-SENSOR-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12814,9 +19077,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-RPM-SENSOR-ASSY'
-  AND i.item_name = 'PWB of RPM Sensor'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PWB of RPM Sensor'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12829,9 +19094,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-RPM-SENSOR-ASSY'
-  AND i.item_name = 'LM358D SMD'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'LM358D SMD'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12844,9 +19111,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-RPM-SENSOR-ASSY'
-  AND i.item_name = '47k 0805'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '47k 0805'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12859,9 +19128,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-RPM-SENSOR-ASSY'
-  AND i.item_name = '470k 0805 Com grade'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '470k 0805 Com grade'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12874,9 +19145,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-RPM-SENSOR-ASSY'
-  AND i.item_name = '0.1uF 0805'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '0.1uF 0805'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12889,9 +19162,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-RPM-SENSOR-ASSY'
-  AND i.item_name = '0.01uF 0805'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '0.01uF 0805'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12904,9 +19179,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-RPM-SENSOR-ASSY'
-  AND i.item_name = 'LED 0805 SMD'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'LED 0805 SMD'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12919,9 +19196,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-RPM-SENSOR-ASSY'
-  AND i.item_name = '1N4148 SMD'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '1N4148 SMD'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12934,17 +19213,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-RPM-SENSOR-ASSY'
-  AND i.item_name = '2 pin JST-XH male side entry'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2 pin JST-XH male side entry'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for Current Sensor Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-CURRENT-SENSOR-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'Current Sensor Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'Current Sensor Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-CURRENT-SENSOR-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12957,9 +19238,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CURRENT-SENSOR-ASSY'
-  AND i.item_name = 'PWB of Current Sensor'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PWB of Current Sensor'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12972,9 +19255,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CURRENT-SENSOR-ASSY'
-  AND i.item_name = 'WCS1700 current Sensor'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'WCS1700 current Sensor'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -12987,9 +19272,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CURRENT-SENSOR-ASSY'
-  AND i.item_name = '0.1uF 0805'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '0.1uF 0805'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13002,17 +19289,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-CURRENT-SENSOR-ASSY'
-  AND i.item_name = '4 pin JST-XH male side entry'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '4 pin JST-XH male side entry'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for A21 MotherBoard Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-A21-MOTHERBOARD-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'A21 MotherBoard Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'A21 MotherBoard Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-A21-MOTHERBOARD-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13025,9 +19314,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Receiver Module R9MM/R9MX/R9'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Receiver Module R9MM/R9MX/R9'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13040,9 +19331,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Free Wheel Diode SMD M7'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Free Wheel Diode SMD M7'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13055,9 +19348,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'LM1117 5.0v'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'LM1117 5.0v'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13070,9 +19365,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'LM1117 3.3v'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'LM1117 3.3v'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13085,9 +19382,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'NEO-6M GPS'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'NEO-6M GPS'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13100,9 +19399,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '4mm Male Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '4mm Male Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13115,9 +19416,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '4mm Female Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '4mm Female Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13130,9 +19433,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '2mm male bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm male bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13145,9 +19450,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '2mm Female Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm Female Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13160,9 +19467,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '6mm male bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '6mm male bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13175,9 +19484,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '6mm female bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '6mm female bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13190,9 +19501,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Red 8AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 8AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13205,9 +19518,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Red 12AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 12AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13220,9 +19535,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Red 18 AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 18 AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13235,9 +19552,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Buck converter XL7015 50v'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Buck converter XL7015 50v'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13250,9 +19569,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'LM2596HW for PC'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'LM2596HW for PC'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13265,9 +19586,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'PWB of Motherboard'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PWB of Motherboard'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13280,9 +19603,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Lead paste'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Lead paste'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13295,9 +19620,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Lead wire 22AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Lead wire 22AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13310,9 +19637,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'LED 0805 SMD'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'LED 0805 SMD'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13325,9 +19654,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '18pF 0805 capacitor'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '18pF 0805 capacitor'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13340,9 +19671,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '10uF 10v Tantalum Capacitor Case A'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10uF 10v Tantalum Capacitor Case A'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13355,9 +19688,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'SPST relay 5A-12v ANTI_S & KILL'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SPST relay 5A-12v ANTI_S & KILL'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13370,9 +19705,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Balancing 1A DPDT 24v Relay'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Balancing 1A DPDT 24v Relay'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13385,9 +19722,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Balancing relay 5A/2A 24v SPST'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Balancing relay 5A/2A 24v SPST'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13400,9 +19739,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'BlueTooth Module'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'BlueTooth Module'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13415,9 +19756,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '24AWG Soldering Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '24AWG Soldering Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13430,9 +19773,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '12E 2W Resistor THT'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '12E 2W Resistor THT'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13445,9 +19790,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '1k 0805 Resistor'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '1k 0805 Resistor'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13460,9 +19807,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '51k 0805 resistor'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '51k 0805 resistor'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13475,9 +19824,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '10k 0805 resistor'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10k 0805 resistor'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13490,9 +19841,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '330E 0805 Resistor'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '330E 0805 Resistor'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13505,9 +19858,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Female Bergstrip 40x1 2.54mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Female Bergstrip 40x1 2.54mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13520,9 +19875,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Male Bergstrip 40x1 2.54mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Male Bergstrip 40x1 2.54mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13535,9 +19892,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Conformal Coating'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Conformal Coating'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13550,9 +19909,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Soldering flux'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Soldering flux'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13565,9 +19926,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '2 pin JST-XH male top entry'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2 pin JST-XH male top entry'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13580,9 +19943,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '2 pin JST-XH male top entry RED'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2 pin JST-XH male top entry RED'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13595,9 +19960,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '13 pin JST-XH male top entry'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '13 pin JST-XH male top entry'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13610,9 +19977,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '15 pin JST-XH male top entry'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '15 pin JST-XH male top entry'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13625,9 +19994,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'JST-XH Crimping pins'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'JST-XH Crimping pins'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13640,9 +20011,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Fuse 500mA'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Fuse 500mA'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13655,9 +20028,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'MCP3208'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'MCP3208'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13670,9 +20045,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '23A 24v Power relay'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '23A 24v Power relay'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13685,9 +20062,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '470k 0805 PANASONIC'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '470k 0805 PANASONIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13700,9 +20079,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '20k 0805 resistor PANASONIC'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '20k 0805 resistor PANASONIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13715,9 +20096,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '1uF 0805 PANASONIC'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '1uF 0805 PANASONIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13730,9 +20113,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = '16MHz Crystal Oscillator'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '16MHz Crystal Oscillator'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13745,9 +20130,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'ULN2004 SMD'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'ULN2004 SMD'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13760,9 +20147,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'SSR AQW282SX'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SSR AQW282SX'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13775,9 +20164,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Atmega328P-AU'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Atmega328P-AU'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13790,9 +20181,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Power Relay 120A 12v'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Power Relay 120A 12v'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13805,9 +20198,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Heatshrink Tube 6.4:1.6'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Heatshrink Tube 6.4:1.6'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13820,9 +20215,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Heatshrink Tube 9:3'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Heatshrink Tube 9:3'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13835,9 +20232,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Current Sensor Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Current Sensor Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13850,9 +20249,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'RPM Sensor Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'RPM Sensor Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13865,17 +20266,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-A21-MOTHERBOARD-ASSY'
-  AND i.item_name = 'Tactile switch'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Tactile switch'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for Electronic Box Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-ELECTRONIC-BOX-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'Electronic Box Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'Electronic Box Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-ELECTRONIC-BOX-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13888,9 +20291,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'Ipex4 to SMA converter extension'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Ipex4 to SMA converter extension'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13903,9 +20308,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'Electronic Box Top Lid'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Electronic Box Top Lid'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13918,9 +20325,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'BlueRobotics Leak'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'BlueRobotics Leak'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13933,9 +20342,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'BlueRobotics Indicator'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'BlueRobotics Indicator'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13948,9 +20359,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'M4x6 PCB mount screw Magnetic'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x6 PCB mount screw Magnetic'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13963,9 +20376,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'PG-7 Cable Gland'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PG-7 Cable Gland'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13978,9 +20393,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'Electronic Box'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Electronic Box'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -13993,9 +20410,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'IM Front Lid'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'IM Front Lid'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14008,9 +20427,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14023,9 +20444,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'Silicon RTV 732'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Silicon RTV 732'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14038,9 +20461,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'Power Switch Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Power Switch Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14053,9 +20478,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'M4x20 CSK Phillips'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x20 CSK Phillips'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14068,9 +20495,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'STBD Signal PM Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'STBD Signal PM Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14083,9 +20512,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'PORT Signal PM Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PORT Signal PM Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14098,9 +20529,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'Current Sensor Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Current Sensor Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14113,17 +20546,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-ELECTRONIC-BOX-ASSY'
-  AND i.item_name = 'A21 MotherBoard Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'A21 MotherBoard Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for FL_STBD Elec
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-FLSTBD-ELEC', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'FL_STBD Elec' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'FL_STBD Elec' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-FLSTBD-ELEC')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14136,9 +20571,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLSTBD-ELEC'
-  AND i.item_name = '2mm male bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm male bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14151,9 +20588,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLSTBD-ELEC'
-  AND i.item_name = 'PWB of STBD flash light'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PWB of STBD flash light'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14166,9 +20605,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLSTBD-ELEC'
-  AND i.item_name = 'Red 14/38 wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 14/38 wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14181,9 +20622,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLSTBD-ELEC'
-  AND i.item_name = 'Black 14/38 Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Black 14/38 Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14196,17 +20639,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLSTBD-ELEC'
-  AND i.item_name = 'Green 2835 SMD LED 1W'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Green 2835 SMD LED 1W'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for FL_PORT Elec
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-FLPORT-ELEC', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'FL_PORT Elec' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'FL_PORT Elec' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-FLPORT-ELEC')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14219,9 +20664,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLPORT-ELEC'
-  AND i.item_name = '2mm male bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm male bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14234,9 +20681,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLPORT-ELEC'
-  AND i.item_name = '2mm Female Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm Female Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14249,9 +20698,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLPORT-ELEC'
-  AND i.item_name = 'PWB of PORT flash light'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PWB of PORT flash light'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14264,9 +20715,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLPORT-ELEC'
-  AND i.item_name = 'Red 14/38 wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 14/38 wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14279,9 +20732,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLPORT-ELEC'
-  AND i.item_name = 'Black 14/38 Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Black 14/38 Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14294,17 +20749,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLPORT-ELEC'
-  AND i.item_name = 'Red 2835 SMD LED 1W'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 2835 SMD LED 1W'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for FL_STBD Mech
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-FLSTBD-MECH', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'FL_STBD Mech' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'FL_STBD Mech' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-FLSTBD-MECH')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14317,9 +20774,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLSTBD-MECH'
-  AND i.item_name = 'M3x8 Button Head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M3x8 Button Head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14332,9 +20791,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLSTBD-MECH'
-  AND i.item_name = 'Flashing Light glass'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Flashing Light glass'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14347,9 +20808,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLSTBD-MECH'
-  AND i.item_name = 'Flashing Light bottom plate'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Flashing Light bottom plate'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14362,9 +20825,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLSTBD-MECH'
-  AND i.item_name = 'Heatsink paste'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Heatsink paste'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14377,9 +20842,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLSTBD-MECH'
-  AND i.item_name = 'M3x6 Allen Head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M3x6 Allen Head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14392,9 +20859,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLSTBD-MECH'
-  AND i.item_name = 'M4x12 Allen Head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x12 Allen Head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14407,17 +20876,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLSTBD-MECH'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for FL_PORT Mech
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-FLPORT-MECH', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'FL_PORT Mech' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'FL_PORT Mech' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-FLPORT-MECH')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14430,9 +20901,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLPORT-MECH'
-  AND i.item_name = 'M3x8 Button Head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M3x8 Button Head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14445,9 +20918,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLPORT-MECH'
-  AND i.item_name = 'Flashing Light glass'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Flashing Light glass'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14460,9 +20935,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLPORT-MECH'
-  AND i.item_name = 'Flashing Light bottom plate'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Flashing Light bottom plate'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14475,9 +20952,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLPORT-MECH'
-  AND i.item_name = 'Heatsink paste'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Heatsink paste'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14490,9 +20969,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLPORT-MECH'
-  AND i.item_name = 'M3x6 Allen Head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M3x6 Allen Head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14505,9 +20986,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLPORT-MECH'
-  AND i.item_name = 'M4x12 Allen Head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x12 Allen Head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14520,17 +21003,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FLPORT-MECH'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for Battery Block Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-BATTERY-BLOCK-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'Battery Block Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'Battery Block Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-BATTERY-BLOCK-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14543,9 +21028,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-BATTERY-BLOCK-ASSY'
-  AND i.item_name = 'Li-In 21700 Cells Molicel P42A/ Samsung-40T'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Li-In 21700 Cells Molicel P42A/ Samsung-40T'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14558,9 +21045,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-BATTERY-BLOCK-ASSY'
-  AND i.item_name = 'Soldering flux'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Soldering flux'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14573,9 +21062,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-BATTERY-BLOCK-ASSY'
-  AND i.item_name = 'Copper Strips 3x2 cells'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Copper Strips 3x2 cells'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14588,9 +21079,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-BATTERY-BLOCK-ASSY'
-  AND i.item_name = '70mm Paper Separator'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '70mm Paper Separator'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14603,9 +21096,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-BATTERY-BLOCK-ASSY'
-  AND i.item_name = 'Barley paper for 21700 cylindrical cell'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Barley paper for 21700 cylindrical cell'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14618,17 +21113,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-BATTERY-BLOCK-ASSY'
-  AND i.item_name = '1" Masking Tape'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '1" Masking Tape'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for STBD Battery Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-STBD-BATTERY-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'STBD Battery Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'STBD Battery Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-STBD-BATTERY-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14641,9 +21138,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = '6mm female bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '6mm female bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14656,9 +21155,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = '8mm male bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '8mm male bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14671,9 +21172,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = 'Black 8AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Black 8AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14686,9 +21189,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = 'Red 8AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 8AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14701,9 +21206,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = 'Soldering flux'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Soldering flux'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14716,9 +21223,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = '2mm FRP 60x70mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm FRP 60x70mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14731,9 +21240,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = '2mm FRP 60x70mm with 18 mm hole'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm FRP 60x70mm with 18 mm hole'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14746,9 +21257,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = '70mm Paper Separator'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '70mm Paper Separator'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14761,9 +21274,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = '16AWG Lead'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '16AWG Lead'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14776,9 +21291,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = 'HeatShrink Tube 12:3'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 12:3'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14791,9 +21308,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = 'STBD Signal CM Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'STBD Signal CM Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14806,9 +21325,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = 'Battery Block Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Battery Block Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14821,9 +21342,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = 'HeatShrink Tube 100mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 100mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14836,17 +21359,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-BATTERY-ASSY'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for PORT Battery Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-PORT-BATTERY-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'PORT Battery Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'PORT Battery Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-PORT-BATTERY-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14859,9 +21384,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = '4mm Female Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '4mm Female Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14874,9 +21401,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = '2mm Female Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm Female Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14889,9 +21418,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = '8mm female bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '8mm female bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14904,9 +21435,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = 'Red 8AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 8AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14919,9 +21452,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = 'Black 12AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Black 12AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14934,9 +21469,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = 'Black 18 AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Black 18 AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14949,9 +21486,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = 'Soldering flux'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Soldering flux'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14964,9 +21503,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = '2mm FRP 60x70mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm FRP 60x70mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14979,9 +21520,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = '2mm FRP 60x70mm with 18 mm hole'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm FRP 60x70mm with 18 mm hole'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -14994,9 +21537,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = '70mm Paper Separator'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '70mm Paper Separator'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15009,9 +21554,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = '16AWG Lead'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '16AWG Lead'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15024,9 +21571,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = 'HeatShrink Tube 12:3'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 12:3'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15039,9 +21588,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = 'PORT Signal CM Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PORT Signal CM Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15054,9 +21605,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = 'Battery Block Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Battery Block Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15069,9 +21622,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = 'HeatShrink Tube 100mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 100mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15084,17 +21639,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-BATTERY-ASSY'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for STBD Unit Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-STBD-UNIT-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'STBD Unit Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'STBD Unit Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-STBD-UNIT-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15107,9 +21664,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-UNIT-ASSY'
-  AND i.item_name = 'ESC Mounting Clamp'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'ESC Mounting Clamp'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15122,9 +21681,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-UNIT-ASSY'
-  AND i.item_name = 'M4 Nyloc'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4 Nyloc'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15137,9 +21698,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-UNIT-ASSY'
-  AND i.item_name = 'M4 Spring washer'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4 Spring washer'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15152,9 +21715,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-UNIT-ASSY'
-  AND i.item_name = 'M4x12 plain washer'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x12 plain washer'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15167,9 +21732,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-UNIT-ASSY'
-  AND i.item_name = '3mm Silicon Rubber Gaskets (35mmx10mm)'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '3mm Silicon Rubber Gaskets (35mmx10mm)'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15182,9 +21749,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-UNIT-ASSY'
-  AND i.item_name = 'Jet Motor Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Jet Motor Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15197,9 +21766,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-UNIT-ASSY'
-  AND i.item_name = 'STBD_ESC Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'STBD_ESC Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15212,9 +21783,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-UNIT-ASSY'
-  AND i.item_name = 'STBD Battery Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'STBD Battery Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15227,9 +21800,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-UNIT-ASSY'
-  AND i.item_name = 'M4x20 CSK Phillips'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x20 CSK Phillips'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15242,17 +21817,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-UNIT-ASSY'
-  AND i.item_name = 'M4x16 Allen Head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x16 Allen Head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for PORT Unit Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-PORT-UNIT-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'PORT Unit Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'PORT Unit Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-PORT-UNIT-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15265,9 +21842,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-UNIT-ASSY'
-  AND i.item_name = 'ESC Mounting Clamp'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'ESC Mounting Clamp'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15280,9 +21859,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-UNIT-ASSY'
-  AND i.item_name = 'M4 Nyloc'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4 Nyloc'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15295,9 +21876,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-UNIT-ASSY'
-  AND i.item_name = 'M4 Spring washer'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4 Spring washer'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15310,9 +21893,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-UNIT-ASSY'
-  AND i.item_name = 'M4x12 plain washer'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x12 plain washer'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15325,9 +21910,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-UNIT-ASSY'
-  AND i.item_name = '3mm Silicon Rubber Gaskets (35mmx10mm)'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '3mm Silicon Rubber Gaskets (35mmx10mm)'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15340,9 +21927,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-UNIT-ASSY'
-  AND i.item_name = 'Jet Motor Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Jet Motor Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15355,9 +21944,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-UNIT-ASSY'
-  AND i.item_name = 'PORT_ESC Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PORT_ESC Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15370,9 +21961,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-UNIT-ASSY'
-  AND i.item_name = 'PORT Battery Assy'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PORT Battery Assy'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15385,17 +21978,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-UNIT-ASSY'
-  AND i.item_name = 'M4x20 CSK Phillips'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x20 CSK Phillips'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for Self Rightening Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-SELF-RIGHTENING-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'Self Rightening Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'Self Rightening Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-SELF-RIGHTENING-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15408,9 +22003,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'SR Structure'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SR Structure'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15423,9 +22020,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'SR Pillow'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SR Pillow'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15438,9 +22037,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'M6x50 Button head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M6x50 Button head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15453,9 +22054,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'M6 Spring washer (SR structure clamping)'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M6 Spring washer (SR structure clamping)'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15468,9 +22071,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'M6x20 Plain washer (SR structure clamping)'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M6x20 Plain washer (SR structure clamping)'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15483,9 +22088,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'M6 Dome NUT SS (SR structure Clamping)'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M6 Dome NUT SS (SR structure Clamping)'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15498,9 +22105,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15513,9 +22122,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = '3D printed SR Pillow Side Caps'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '3D printed SR Pillow Side Caps'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15528,9 +22139,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = '3D printed SR Pillow Middle Caps'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '3D printed SR Pillow Middle Caps'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15543,9 +22156,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = '6mmx12mm Rubber Bush'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '6mmx12mm Rubber Bush'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15558,9 +22173,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'Thread locker 242/270/290'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Thread locker 242/270/290'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15573,9 +22190,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'Instant Adhesive 407 for EPE sticking'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Instant Adhesive 407 for EPE sticking'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15588,9 +22207,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'STBD SR Rubber Boot'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'STBD SR Rubber Boot'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15603,9 +22224,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'PORT SR Rubber Boot'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PORT SR Rubber Boot'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15618,9 +22241,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'M6x150 Allen head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M6x150 Allen head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15633,9 +22258,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'M6 Nyloc Nut'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M6 Nyloc Nut'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15648,9 +22275,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'M6x12 Plain washer'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M6x12 Plain washer'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15663,17 +22292,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-SELF-RIGHTENING-ASSY'
-  AND i.item_name = 'RR Tape'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'RR Tape'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for IP Remote Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-IP-REMOTE-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'IP Remote Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'IP Remote Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-IP-REMOTE-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15686,9 +22317,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'QX7 Transmitter with R9M'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'QX7 Transmitter with R9M'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15701,9 +22334,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'PWB of Button -2'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PWB of Button -2'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15716,9 +22351,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Li-In 21700 Cells Molicel P42A/ Samsung-40T'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Li-In 21700 Cells Molicel P42A/ Samsung-40T'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15731,9 +22368,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = '3 pin JST-XH housing'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '3 pin JST-XH housing'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15746,9 +22385,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = '25cm Red one side crimped wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm Red one side crimped wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15761,9 +22402,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = '25cm Green one side crimped wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm Green one side crimped wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15776,9 +22419,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = '25cm Black one side crimped wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '25cm Black one side crimped wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15791,9 +22436,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Tactile switch'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Tactile switch'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15806,9 +22453,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'R9M Antenna Extension wire RP-SMA to Open'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'R9M Antenna Extension wire RP-SMA to Open'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15821,9 +22470,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Black 14/38 Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Black 14/38 Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15836,9 +22487,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'White 14/38 Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'White 14/38 Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15851,9 +22504,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Sky Blue 14/38 Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Sky Blue 14/38 Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15866,9 +22521,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Red 14/38 wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 14/38 wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15881,9 +22538,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Yellow 14/38 Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Yellow 14/38 Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15896,9 +22555,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Orange 14/38 Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Orange 14/38 Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15911,9 +22572,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Green 14/38 Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Green 14/38 Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15926,9 +22589,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Purple 14/38 Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Purple 14/38 Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15941,9 +22606,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Brown 14/38 Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Brown 14/38 Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15956,9 +22623,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'SA12 9pin PM Pushpull'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SA12 9pin PM Pushpull'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15971,9 +22640,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'IP Remote Lower Shell'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'IP Remote Lower Shell'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -15986,9 +22657,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'IP Remote Upper Shell'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'IP Remote Upper Shell'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16001,9 +22674,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'PU Gasket Remote Lower Shell'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PU Gasket Remote Lower Shell'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16016,9 +22691,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16031,9 +22708,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Button Spacer No. 1'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Button Spacer No. 1'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16046,9 +22725,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Button Spacer No. 2'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Button Spacer No. 2'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16061,9 +22742,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Button No. 1 pressure bracket'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Button No. 1 pressure bracket'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16076,9 +22759,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Remote Battery Holding Bracket'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Remote Battery Holding Bracket'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16091,9 +22776,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Antenna clamp -1'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Antenna clamp -1'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16106,9 +22793,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Antenna Clamp -2'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Antenna Clamp -2'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16121,9 +22810,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Cable Holder'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Cable Holder'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16136,9 +22827,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Remote Handle'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Remote Handle'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16151,9 +22844,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Polycarbonate Glass for Remote'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Polycarbonate Glass for Remote'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16166,9 +22861,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Joystick Water proof rubber'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Joystick Water proof rubber'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16181,9 +22878,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Button Silicon Cover No. 1'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Button Silicon Cover No. 1'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16196,9 +22895,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Button Silicon Cover No. 2'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Button Silicon Cover No. 2'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16211,9 +22912,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Neck Strap Hook'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Neck Strap Hook'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16226,9 +22929,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'Neck Strap'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Neck Strap'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16241,9 +22946,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = 'M2x12 Allen Head SS304'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M2x12 Allen Head SS304'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16256,17 +22963,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-ASSY'
-  AND i.item_name = '32Gb SD Card'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '32Gb SD Card'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for IP Remote Charging Cable Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-IP-REMOTE-CHARGING', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'IP Remote Charging Cable Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'IP Remote Charging Cable Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-IP-REMOTE-CHARGING')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16279,9 +22988,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-CHARGING'
-  AND i.item_name = 'USB Data & Charging Cable 1m length'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'USB Data & Charging Cable 1m length'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16294,9 +23005,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-CHARGING'
-  AND i.item_name = '5v 2A USB Adapter'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '5v 2A USB Adapter'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16309,9 +23022,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-CHARGING'
-  AND i.item_name = 'SA12 9pin CM Pushpull'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SA12 9pin CM Pushpull'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16324,17 +23039,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-IP-REMOTE-CHARGING'
-  AND i.item_name = 'Rotary Knob Box 3D print'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Rotary Knob Box 3D print'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for AMCA Elec Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-AMCA-ELEC-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'AMCA Elec Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'AMCA Elec Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-AMCA-ELEC-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16347,9 +23064,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '1N4007 THT diode'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '1N4007 THT diode'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16362,9 +23081,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Water flow sensor'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Water flow sensor'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16377,9 +23098,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Water pump'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Water pump'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16392,9 +23115,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '3S Lipo indicator'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '3S Lipo indicator'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16407,9 +23132,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Lipo Indicator Casings'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Lipo Indicator Casings'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16422,9 +23149,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'LM2596HW for PC'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'LM2596HW for PC'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16437,9 +23166,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Momentary Switch JCB'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Momentary Switch JCB'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16452,9 +23183,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Latching Power switch JCB'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Latching Power switch JCB'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16467,9 +23200,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'PWB for JCB'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PWB for JCB'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16482,9 +23217,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '3S, >2Ah Li-Ion cell for JCB'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '3S, >2Ah Li-Ion cell for JCB'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16497,9 +23234,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'DC JAck Panel Mount'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'DC JAck Panel Mount'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16512,9 +23251,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Lead wire 22AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Lead wire 22AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16527,9 +23268,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '16pin IC base'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '16pin IC base'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16542,9 +23285,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'ULN2003A THT'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'ULN2003A THT'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16557,9 +23302,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'iMAx B3 Charger'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'iMAx B3 Charger'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16572,9 +23319,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '8core Wire 14/38'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '8core Wire 14/38'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16587,9 +23336,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'LP12 4 pin plug male clip lock CM'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'LP12 4 pin plug male clip lock CM'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16602,9 +23353,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'LP12 4 pin socket female clip lock PM'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'LP12 4 pin socket female clip lock PM'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16617,9 +23370,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '9v Piezo Electric Buzzer'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '9v Piezo Electric Buzzer'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16632,9 +23387,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Female Bergstrip 40x1 2.54mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Female Bergstrip 40x1 2.54mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16647,9 +23404,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Male Bergstrip 40x1 2.54mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Male Bergstrip 40x1 2.54mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16662,9 +23421,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Conformal Coating'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Conformal Coating'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16677,9 +23438,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Soldering flux'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Soldering flux'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16692,9 +23455,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '2 pin JST-XH housing'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2 pin JST-XH housing'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16707,9 +23472,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '2 pin JST-XH male top entry'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2 pin JST-XH male top entry'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16722,9 +23489,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '3 pin JST-XH male top entry'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '3 pin JST-XH male top entry'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16737,9 +23506,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '10cm one sided JST crimped Black'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Black'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16752,9 +23523,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '10cm one sided JST crimped Red'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped Red'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16767,9 +23540,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Atmega328P-AU'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Atmega328P-AU'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16782,9 +23557,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Red 14/38 wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Red 14/38 wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16797,9 +23574,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Black 14/38 Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Black 14/38 Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16812,9 +23591,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Yellow 14/38 Wire'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Yellow 14/38 Wire'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16827,9 +23608,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '3S BMS'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '3S BMS'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16842,9 +23625,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '130x80x60 enclosure box'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '130x80x60 enclosure box'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16857,9 +23642,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '2mm male bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm male bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16872,9 +23659,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = '2mm Female Bullet connector'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2mm Female Bullet connector'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16887,9 +23676,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'HeatShrink Tube 3:1'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HeatShrink Tube 3:1'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16902,17 +23693,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-ELEC-ASSY'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for AMCA Mech Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-AMCA-MECH-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'AMCA Mech Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'AMCA Mech Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-AMCA-MECH-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16925,9 +23718,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = 'JCB Body cum mounting frame'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'JCB Body cum mounting frame'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16940,9 +23735,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = 'flow sensor Clamp'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'flow sensor Clamp'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16955,9 +23752,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = 'Water tank with clamp'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Water tank with clamp'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16970,9 +23769,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = 'M5x10 Allen / M5x12'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M5x10 Allen / M5x12'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -16985,9 +23786,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = 'M4x12 Allen Head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x12 Allen Head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17000,9 +23803,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = 'M4x16 Allen Head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x16 Allen Head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17015,9 +23820,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = 'M4 Nyloc'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4 Nyloc'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17030,9 +23837,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = 'M4 Spring washer'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4 Spring washer'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17045,9 +23854,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = 'M4x12 plain washer'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x12 plain washer'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17060,9 +23871,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = 'Brass nozzle for water outlet from JCB'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Brass nozzle for water outlet from JCB'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17075,9 +23888,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = '8 mm OD pneaumatic pipe'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '8 mm OD pneaumatic pipe'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17090,9 +23905,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = '12 to 8 reducer with lock clips'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '12 to 8 reducer with lock clips'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17105,9 +23922,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = '12mm OD pneumatic pipe'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '12mm OD pneumatic pipe'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17120,17 +23939,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-AMCA-MECH-ASSY'
-  AND i.item_name = 'Silicon Hose 3mm x 6mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Silicon Hose 3mm x 6mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for Final Craft Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-FINAL-CRAFT-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'Final Craft Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'Final Craft Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-FINAL-CRAFT-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17143,9 +23964,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = 'M4x20 Allen Head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x20 Allen Head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17158,9 +23981,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = 'M5x10 Torx'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M5x10 Torx'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17173,9 +23998,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = 'Teroson MS930'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Teroson MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17188,9 +24015,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = 'Rope 8mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Rope 8mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17203,9 +24032,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = 'Ferrole'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Ferrole'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17218,9 +24049,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = 'Hook Sticker STBD'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Hook Sticker STBD'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17233,9 +24066,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = 'Hook Stiker PORT'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Hook Stiker PORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17248,9 +24083,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = 'Hold here sticker STBD'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Hold here sticker STBD'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17263,9 +24100,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = 'Hold here sticker PORT'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Hold here sticker PORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17278,9 +24117,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = 'M4x12 plain washer'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x12 plain washer'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17293,9 +24134,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = '915MHz Antenna'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '915MHz Antenna'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17308,9 +24151,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = 'M4x20 plain washer'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x20 plain washer'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17323,9 +24168,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = 'M4x12 Button head'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x12 Button head'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17338,17 +24185,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-CRAFT-ASSY'
-  AND i.item_name = '8kg Hull'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '8kg Hull'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for Bottom Block Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-BOTTOM-BLOCK-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'Bottom Block Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'Bottom Block Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-BOTTOM-BLOCK-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17361,9 +24210,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-BOTTOM-BLOCK-ASSY'
-  AND i.item_name = 'IM Bottom Block'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'IM Bottom Block'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17376,9 +24227,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-BOTTOM-BLOCK-ASSY'
-  AND i.item_name = 'Bottom Mesh (120mm x 100mm, 5"x4")'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Bottom Mesh (120mm x 100mm, 5"x4")'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17391,9 +24244,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-BOTTOM-BLOCK-ASSY'
-  AND i.item_name = 'M4x12 Pan Combi Screws'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M4x12 Pan Combi Screws'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17406,9 +24261,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-BOTTOM-BLOCK-ASSY'
-  AND i.item_name = 'M3x8 CSK Phillips'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M3x8 CSK Phillips'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17421,17 +24278,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-BOTTOM-BLOCK-ASSY'
-  AND i.item_name = 'M3x8 plain wahser'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M3x8 plain wahser'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for STBD Aft Plate Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-STBD-AFT-PLATE', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'STBD Aft Plate Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'STBD Aft Plate Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-STBD-AFT-PLATE')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17444,9 +24303,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-AFT-PLATE'
-  AND i.item_name = 'STBD Aft Plate'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'STBD Aft Plate'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17459,9 +24320,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-AFT-PLATE'
-  AND i.item_name = 'SS Cooling Water Inlet nozzle'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SS Cooling Water Inlet nozzle'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17474,9 +24337,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-AFT-PLATE'
-  AND i.item_name = 'SS Cooling Water Outlet nozzle'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SS Cooling Water Outlet nozzle'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17489,9 +24354,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-AFT-PLATE'
-  AND i.item_name = 'Greasing nozzle'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Greasing nozzle'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17504,17 +24371,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-STBD-AFT-PLATE'
-  AND i.item_name = 'M8 Slim Locknut'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M8 Slim Locknut'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for PORT Aft Plate Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-PORT-AFT-PLATE', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'PORT Aft Plate Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'PORT Aft Plate Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-PORT-AFT-PLATE')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17527,9 +24396,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-AFT-PLATE'
-  AND i.item_name = 'PORT Aft Plate'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PORT Aft Plate'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17542,9 +24413,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-AFT-PLATE'
-  AND i.item_name = 'SS Cooling Water Inlet nozzle'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SS Cooling Water Inlet nozzle'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17557,9 +24430,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-AFT-PLATE'
-  AND i.item_name = 'SS Cooling Water Outlet nozzle'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'SS Cooling Water Outlet nozzle'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17572,9 +24447,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-AFT-PLATE'
-  AND i.item_name = 'Greasing nozzle'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Greasing nozzle'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17587,9 +24464,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-AFT-PLATE'
-  AND i.item_name = 'Air nozzle'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Air nozzle'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17602,17 +24481,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-PORT-AFT-PLATE'
-  AND i.item_name = 'M8 Slim Locknut'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'M8 Slim Locknut'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for R9MX Adapter
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-R9MX-ADAPTER', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'R9MX Adapter' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'R9MX Adapter' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-R9MX-ADAPTER')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17625,9 +24506,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-R9MX-ADAPTER'
-  AND i.item_name = 'PWB of R9MX adapter'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'PWB of R9MX adapter'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17640,9 +24523,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-R9MX-ADAPTER'
-  AND i.item_name = 'Female Bergstrip 40x1 2.0mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Female Bergstrip 40x1 2.0mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17655,9 +24540,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-R9MX-ADAPTER'
-  AND i.item_name = 'Male Bergstrip 40x1 2.0mm'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Male Bergstrip 40x1 2.0mm'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17670,9 +24557,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-R9MX-ADAPTER'
-  AND i.item_name = 'Lead wire 22AWG'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Lead wire 22AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17685,9 +24574,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-R9MX-ADAPTER'
-  AND i.item_name = 'LM1117 5.0v'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'LM1117 5.0v'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17700,17 +24591,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-R9MX-ADAPTER'
-  AND i.item_name = '10uF 10v Tantalum Capacitor Case A'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10uF 10v Tantalum Capacitor Case A'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for Final Packing
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-FINAL-PACKING', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'Final Packing' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'Final Packing' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-FINAL-PACKING')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17723,9 +24616,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-PACKING'
-  AND i.item_name = '66 No. Box for chraging cable & Tool box'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '66 No. Box for chraging cable & Tool box'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17738,9 +24633,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-PACKING'
-  AND i.item_name = '22 No. Box for SR structure screws'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '22 No. Box for SR structure screws'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17753,9 +24650,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-PACKING'
-  AND i.item_name = '10mm Nut Driver with 15mm Depth'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10mm Nut Driver with 15mm Depth'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17768,9 +24667,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-PACKING'
-  AND i.item_name = '4mm T-Handle'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '4mm T-Handle'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17783,9 +24684,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-PACKING'
-  AND i.item_name = 'Greasing Pump'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Greasing Pump'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17798,9 +24701,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-PACKING'
-  AND i.item_name = 'Grease'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Grease'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17813,9 +24718,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-PACKING'
-  AND i.item_name = 'EPE sheet 20mm 48"x72"'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'EPE sheet 20mm 48"x72"'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17828,9 +24735,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-PACKING'
-  AND i.item_name = 'HardBox FRP/HDPE/CARTON/EPE'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'HardBox FRP/HDPE/CARTON/EPE'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17843,9 +24752,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-PACKING'
-  AND i.item_name = 'User Manual'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'User Manual'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17858,9 +24769,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-PACKING'
-  AND i.item_name = 'Envelope for User Manual'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Envelope for User Manual'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17873,9 +24786,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-PACKING'
-  AND i.item_name = '2.5mm T handle'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2.5mm T handle'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17888,17 +24803,19 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-FINAL-PACKING'
-  AND i.item_name = 'Oring AFT plate'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'Oring AFT plate'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 -- BOM for Power Switch Assy
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT 'BOM-POWER-SWITCH-ASSY', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = 'Power Switch Assy' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = 'Power Switch Assy' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = 'BOM-POWER-SWITCH-ASSY')
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17911,9 +24828,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-POWER-SWITCH-ASSY'
-  AND i.item_name = 'IP68 Rotary main Switch'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = 'IP68 Rotary main Switch'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17926,9 +24845,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-POWER-SWITCH-ASSY'
-  AND i.item_name = '10cm one sided JST crimped White'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '10cm one sided JST crimped White'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 INSERT INTO bom_items (bom_id, item_id, quantity, uom, created_at, updated_at)
 SELECT 
@@ -17941,9 +24862,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = 'BOM-POWER-SWITCH-ASSY'
-  AND i.item_name = '2 pin JST-XH housing'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '2 pin JST-XH housing'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 
 
 
@@ -17970,7 +24893,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'QX7-TRANSMITTER-WITH'
+WHERE code = 'QX7-TRANSMITTER-WITH'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Receiver Module R9MM/R9MX/R9
@@ -17992,7 +24921,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'RECEIVER-MODULE-R9MMR9MXR9'
+WHERE code = 'RECEIVER-MODULE-R9MMR9MXR9'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Free Wheel Diode SMD M7
@@ -18014,7 +24949,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'FREE-WHEEL-DIODE'
+WHERE code = 'FREE-WHEEL-DIODE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for AMS1117 5.0v
@@ -18036,7 +24977,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'AMS1117-50V'
+WHERE code = 'AMS1117-50V'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for AMS1117 3.3v
@@ -18058,7 +25005,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'AMS1117-33V'
+WHERE code = 'AMS1117-33V'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for NEO-6M GPS/L80 GPS
@@ -18080,7 +25033,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'NEO6M-GPSL80-GPS'
+WHERE code = 'NEO6M-GPSL80-GPS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for LC86G GPS
@@ -18102,7 +25061,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LC86G-GPS'
+WHERE code = 'LC86G-GPS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 5.5mm Female Bullet connector
@@ -18124,7 +25089,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '55MM-FEMALE-BULLET'
+WHERE code = '55MM-FEMALE-BULLET'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 4mm Male Bullet connector
@@ -18146,7 +25117,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '4MM-MALE-BULLET'
+WHERE code = '4MM-MALE-BULLET'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 4mm Female Bullet connector
@@ -18168,7 +25145,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '4MM-FEMALE-BULLET'
+WHERE code = '4MM-FEMALE-BULLET'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 2mm male bullet connector
@@ -18190,7 +25173,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '2MM-MALE-BULLET'
+WHERE code = '2MM-MALE-BULLET'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 2mm Female Bullet connector
@@ -18212,7 +25201,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '2MM-FEMALE-BULLET'
+WHERE code = '2MM-FEMALE-BULLET'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 6mm male bullet connector
@@ -18234,7 +25229,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '6MM-MALE-BULLET'
+WHERE code = '6MM-MALE-BULLET'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 6mm female bullet connector
@@ -18256,7 +25257,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '6MM-FEMALE-BULLET'
+WHERE code = '6MM-FEMALE-BULLET'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 8mm male bullet connector
@@ -18278,7 +25285,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '8MM-MALE-BULLET'
+WHERE code = '8MM-MALE-BULLET'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 8mm female bullet connector
@@ -18300,7 +25313,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '8MM-FEMALE-BULLET'
+WHERE code = '8MM-FEMALE-BULLET'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Ultra Flexible Black 8AWG
@@ -18322,7 +25341,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ULTRA-FLEXIBLE-BLACK'
+WHERE code = 'ULTRA-FLEXIBLE-BLACK'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Ultra Flexible  Red 8AWG
@@ -18344,7 +25369,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ULTRA-FLEXIBLE-RED'
+WHERE code = 'ULTRA-FLEXIBLE-RED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Ultra Flexible Black 12AWG
@@ -18366,7 +25397,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ULTRA-FLEXIBLE-BLACK'
+WHERE code = 'ULTRA-FLEXIBLE-BLACK'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Ultra Flexible Red 12AWG
@@ -18388,7 +25425,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ULTRA-FLEXIBLE-RED'
+WHERE code = 'ULTRA-FLEXIBLE-RED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Ultra Flexible Black 18 AWG
@@ -18410,7 +25453,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ULTRA-FLEXIBLE-BLACK'
+WHERE code = 'ULTRA-FLEXIBLE-BLACK'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Ultra Flexible Red 18 AWG
@@ -18432,7 +25481,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ULTRA-FLEXIBLE-RED'
+WHERE code = 'ULTRA-FLEXIBLE-RED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Ultra Flexible Black 20 AWG
@@ -18454,7 +25509,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ULTRA-FLEXIBLE-BLACK'
+WHERE code = 'ULTRA-FLEXIBLE-BLACK'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Ultra Flexible Blue 20 AWG
@@ -18476,7 +25537,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ULTRA-FLEXIBLE-BLUE'
+WHERE code = 'ULTRA-FLEXIBLE-BLUE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Water flow sensor YFS401
@@ -18498,7 +25565,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'WATER-FLOW-SENSOR'
+WHERE code = 'WATER-FLOW-SENSOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Water pump 550 diaphragm
@@ -18520,7 +25593,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'WATER-PUMP-550'
+WHERE code = 'WATER-PUMP-550'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 1S Lipo indicator (Not Using)
@@ -18542,7 +25621,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '1S-LIPO-INDICATOR'
+WHERE code = '1S-LIPO-INDICATOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 2S Lipo indicator
@@ -18564,7 +25649,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '2S-LIPO-INDICATOR'
+WHERE code = '2S-LIPO-INDICATOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Lipo Indicator Casings
@@ -18586,7 +25677,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LIPO-INDICATOR-CASINGS'
+WHERE code = 'LIPO-INDICATOR-CASINGS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Buck converter XL7015 50v
@@ -18608,7 +25705,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BUCK-CONVERTER-XL7015'
+WHERE code = 'BUCK-CONVERTER-XL7015'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for LM2596 in AMCA
@@ -18630,7 +25733,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LM2596-IN-AMCA'
+WHERE code = 'LM2596-IN-AMCA'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for XL4015/XL4005 5A buck converter
@@ -18652,7 +25761,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'XL4015XL4005-5A-BUCK'
+WHERE code = 'XL4015XL4005-5A-BUCK'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for XT90 Female housing
@@ -18674,7 +25789,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'XT90-FEMALE-HOUSING'
+WHERE code = 'XT90-FEMALE-HOUSING'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 24v AC/DC module
@@ -18696,7 +25817,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '24V-ACDC-MODULE'
+WHERE code = '24V-ACDC-MODULE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Momentary Switch JCB
@@ -18718,7 +25845,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'MOMENTARY-SWITCH-JCB'
+WHERE code = 'MOMENTARY-SWITCH-JCB'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Latching Power switch JCB
@@ -18740,7 +25873,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LATCHING-POWER-SWITCH'
+WHERE code = 'LATCHING-POWER-SWITCH'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PWB for IFU
@@ -18762,7 +25901,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PWB-FOR-IFU'
+WHERE code = 'PWB-FOR-IFU'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PWB for JCB
@@ -18784,7 +25929,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PWB-FOR-JCB'
+WHERE code = 'PWB-FOR-JCB'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PWB of STBD flash light
@@ -18806,7 +25957,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PWB-OF-STBD'
+WHERE code = 'PWB-OF-STBD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PWB of PORT flash light
@@ -18828,7 +25985,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PWB-OF-PORT'
+WHERE code = 'PWB-OF-PORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PWB of A4 Motherboard
@@ -18850,7 +26013,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PWB-OF-A4'
+WHERE code = 'PWB-OF-A4'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PWB of Current Sensor
@@ -18872,7 +26041,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PWB-OF-CURRENT'
+WHERE code = 'PWB-OF-CURRENT'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PWB of Button -2
@@ -18894,7 +26069,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PWB-OF-BUTTON'
+WHERE code = 'PWB-OF-BUTTON'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PWB for PC (in charger)
@@ -18916,7 +26097,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PWB-FOR-PC'
+WHERE code = 'PWB-FOR-PC'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PWB for Bathemetry Sensor
@@ -18938,7 +26125,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PWB-FOR-BATHEMETRY'
+WHERE code = 'PWB-FOR-BATHEMETRY'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for AMCA Onboard Charging Circuit
@@ -18960,7 +26153,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'AMCA-ONBOARD-CHARGING'
+WHERE code = 'AMCA-ONBOARD-CHARGING'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for SBus Generator Circuit (Tailored Solution)
@@ -18982,7 +26181,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SBUS-GENERATOR-CIRCUIT'
+WHERE code = 'SBUS-GENERATOR-CIRCUIT'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for A5 Board with own bucks
@@ -19004,7 +26209,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'A5-BOARD-WITH'
+WHERE code = 'A5-BOARD-WITH'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for WCS1700 current Sensor
@@ -19026,7 +26237,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'WCS1700-CURRENT-SENSOR'
+WHERE code = 'WCS1700-CURRENT-SENSOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 6X3 BATTERY blocks
@@ -19048,7 +26265,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '6X3-BATTERY-BLOCKS'
+WHERE code = '6X3-BATTERY-BLOCKS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 18650 cells Li-Ion for JCB
@@ -19070,7 +26293,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '18650-CELLS-LIION'
+WHERE code = '18650-CELLS-LIION'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 18650 Cell Holder
@@ -19092,7 +26321,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '18650-CELL-HOLDER'
+WHERE code = '18650-CELL-HOLDER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for USB Data & Charging Cable 1.5m length Black
@@ -19114,7 +26349,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'USB-DATA-CHARGING'
+WHERE code = 'USB-DATA-CHARGING'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for DC Jack Panel Mount
@@ -19136,7 +26377,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'DC-JACK-PANEL'
+WHERE code = 'DC-JACK-PANEL'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Lead paste
@@ -19158,7 +26405,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LEAD-PASTE'
+WHERE code = 'LEAD-PASTE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Lead wire 22AWG
@@ -19180,7 +26433,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LEAD-WIRE-22AWG'
+WHERE code = 'LEAD-WIRE-22AWG'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Heat Sink Pad
@@ -19202,7 +26461,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'HEAT-SINK-PAD'
+WHERE code = 'HEAT-SINK-PAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for LM358DT SMD
@@ -19224,7 +26489,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LM358DT-SMD'
+WHERE code = 'LM358DT-SMD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 0.1uF 0805
@@ -19246,7 +26517,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '01UF-0805'
+WHERE code = '01UF-0805'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 0.01uF 0805
@@ -19268,7 +26545,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '001UF-0805'
+WHERE code = '001UF-0805'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for LED 0805 SMD
@@ -19290,7 +26573,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LED-0805-SMD'
+WHERE code = 'LED-0805-SMD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for TS5A3157DBVR SSR Encoder Signal Cut-Off
@@ -19312,7 +26601,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'TS5A3157DBVR-SSR-ENCODER'
+WHERE code = 'TS5A3157DBVR-SSR-ENCODER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Tactile Switch for IFU four leg
@@ -19334,7 +26629,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'TACTILE-SWITCH-FOR'
+WHERE code = 'TACTILE-SWITCH-FOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for LM2596HVS-ADJ Buck only IC
@@ -19356,7 +26657,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LM2596HVSADJ-BUCK-ONLY'
+WHERE code = 'LM2596HVSADJ-BUCK-ONLY'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for MP9486AGN-Z 100v Buck converter IC
@@ -19378,7 +26685,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'MP9486AGNZ-100V-BUCK'
+WHERE code = 'MP9486AGNZ-100V-BUCK'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 12v Fixed Buck 18-75 In MultiCom Pro
@@ -19400,7 +26713,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '12V-FIXED-BUCK'
+WHERE code = '12V-FIXED-BUCK'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 5v Fixed Buck 18-75 In MultiCom Pro
@@ -19422,7 +26741,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '5V-FIXED-BUCK'
+WHERE code = '5V-FIXED-BUCK'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 1N4148 SMD
@@ -19444,7 +26769,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '1N4148-SMD'
+WHERE code = '1N4148-SMD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 18pF 0805 capacitor
@@ -19466,7 +26797,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '18PF-0805-CAPACITOR'
+WHERE code = '18PF-0805-CAPACITOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10uF 10v Tantalum Capacitor Case A
@@ -19488,7 +26825,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10UF-10V-TANTALUM'
+WHERE code = '10UF-10V-TANTALUM'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 1k 0805 Resistor
@@ -19510,7 +26853,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '1K-0805-RESISTOR'
+WHERE code = '1K-0805-RESISTOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10k 0805 resistor
@@ -19532,7 +26881,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10K-0805-RESISTOR'
+WHERE code = '10K-0805-RESISTOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 330E 0805 Resistor
@@ -19554,7 +26909,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '330E-0805-RESISTOR'
+WHERE code = '330E-0805-RESISTOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Murata 12v 4.5A buck
@@ -19576,7 +26937,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'MURATA-12V-45A'
+WHERE code = 'MURATA-12V-45A'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Murata 5v 10A buck
@@ -19598,7 +26965,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'MURATA-5V-10A'
+WHERE code = 'MURATA-5V-10A'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 1K 3296 Resistor
@@ -19620,7 +26993,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '1K-3296-RESISTOR'
+WHERE code = '1K-3296-RESISTOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 2K 3296 Resistor
@@ -19642,7 +27021,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '2K-3296-RESISTOR'
+WHERE code = '2K-3296-RESISTOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 5 W 1 Ω Resistor
@@ -19664,7 +27049,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '5-W-1'
+WHERE code = '5-W-1'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 5 W 5 Ω Resistor
@@ -19686,7 +27077,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '5-W-5'
+WHERE code = '5-W-5'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Fuse 500mA
@@ -19708,7 +27105,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'FUSE-500MA'
+WHERE code = 'FUSE-500MA'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for MCP3208
@@ -19730,7 +27133,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'MCP3208'
+WHERE code = 'MCP3208'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 23A 24v Power relay
@@ -19752,7 +27161,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '23A-24V-POWER'
+WHERE code = '23A-24V-POWER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for LM61 Temperature Sensor
@@ -19774,7 +27189,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LM61-TEMPERATURE-SENSOR'
+WHERE code = 'LM61-TEMPERATURE-SENSOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 47k 0805
@@ -19796,7 +27217,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '47K-0805'
+WHERE code = '47K-0805'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 470k 0805 PANASONIC/BOURNS/MURATA
@@ -19818,7 +27245,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '470K-0805-PANASONICBOURNSMURATA'
+WHERE code = '470K-0805-PANASONICBOURNSMURATA'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 20k 0805 PANASONIC/BOURNS/MURATA
@@ -19840,7 +27273,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '20K-0805-PANASONICBOURNSMURATA'
+WHERE code = '20K-0805-PANASONICBOURNSMURATA'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 1uF 0805 PANASONIC
@@ -19862,7 +27301,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '1UF-0805-PANASONIC'
+WHERE code = '1UF-0805-PANASONIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 16MHz Crystal Oscillator
@@ -19884,7 +27329,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '16MHZ-CRYSTAL-OSCILLATOR'
+WHERE code = '16MHZ-CRYSTAL-OSCILLATOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for ULN2004 SMD
@@ -19906,7 +27357,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ULN2004-SMD'
+WHERE code = 'ULN2004-SMD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for SSR AQW282SX
@@ -19928,7 +27385,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SSR-AQW282SX'
+WHERE code = 'SSR-AQW282SX'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Atmega328P Controller
@@ -19950,7 +27413,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ATMEGA328P-CONTROLLER'
+WHERE code = 'ATMEGA328P-CONTROLLER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Power Relay 120A 12v Y7
@@ -19972,7 +27441,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'POWER-RELAY-120A'
+WHERE code = 'POWER-RELAY-120A'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Power Relay 90A 12v Y6
@@ -19994,7 +27469,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'POWER-RELAY-90A'
+WHERE code = 'POWER-RELAY-90A'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for SPST relay 5A-12v ANTI_S & KILL
@@ -20016,7 +27497,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SPST-RELAY-5A12V'
+WHERE code = 'SPST-RELAY-5A12V'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Balancing 1A DPDT 24v Relay
@@ -20038,7 +27525,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BALANCING-1A-DPDT'
+WHERE code = 'BALANCING-1A-DPDT'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Balancing relay 5A/2A 24v SPST
@@ -20060,7 +27553,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BALANCING-RELAY-5A2A'
+WHERE code = 'BALANCING-RELAY-5A2A'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 32Gb SD Card
@@ -20082,7 +27581,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '32GB-SD-CARD'
+WHERE code = '32GB-SD-CARD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 16pin IC base
@@ -20104,7 +27609,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '16PIN-IC-BASE'
+WHERE code = '16PIN-IC-BASE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for BlueTooth Module
@@ -20126,7 +27637,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BLUETOOTH-MODULE'
+WHERE code = 'BLUETOOTH-MODULE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 24AWG Soldering Wire
@@ -20148,7 +27665,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '24AWG-SOLDERING-WIRE'
+WHERE code = '24AWG-SOLDERING-WIRE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 12E 2W Resistor THT
@@ -20170,7 +27693,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '12E-2W-RESISTOR'
+WHERE code = '12E-2W-RESISTOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for iMAx B3 Charger
@@ -20192,7 +27721,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'IMAX-B3-CHARGER'
+WHERE code = 'IMAX-B3-CHARGER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 9v Piezo Electric Buzzer
@@ -20214,7 +27749,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '9V-PIEZO-ELECTRIC'
+WHERE code = '9V-PIEZO-ELECTRIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Female Bergstrip 40x1 2.54mm
@@ -20236,7 +27777,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'FEMALE-BERGSTRIP-40X1'
+WHERE code = 'FEMALE-BERGSTRIP-40X1'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Male Bergstrip 40x1 2.54mm
@@ -20258,7 +27805,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'MALE-BERGSTRIP-40X1'
+WHERE code = 'MALE-BERGSTRIP-40X1'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Female Bergstrip 40x1 2.0mm
@@ -20280,7 +27833,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'FEMALE-BERGSTRIP-40X1'
+WHERE code = 'FEMALE-BERGSTRIP-40X1'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Male Bergstrip 40x1 2.0mm
@@ -20302,7 +27861,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'MALE-BERGSTRIP-40X1'
+WHERE code = 'MALE-BERGSTRIP-40X1'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Conformal Coating
@@ -20324,7 +27889,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'CONFORMAL-COATING'
+WHERE code = 'CONFORMAL-COATING'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Soldering flux Small lead
@@ -20346,7 +27917,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SOLDERING-FLUX-SMALL'
+WHERE code = 'SOLDERING-FLUX-SMALL'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 3 pin 3 yrd power cord
@@ -20368,7 +27945,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '3-PIN-3'
+WHERE code = '3-PIN-3'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 2 pin JST-XH housing
@@ -20390,7 +27973,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '2-PIN-JSTXH'
+WHERE code = '2-PIN-JSTXH'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 3 pin JST-XH housing
@@ -20412,7 +28001,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '3-PIN-JSTXH'
+WHERE code = '3-PIN-JSTXH'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 13 pin JST-XH housing
@@ -20434,7 +28029,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '13-PIN-JSTXH'
+WHERE code = '13-PIN-JSTXH'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 15 pin JST-XH housing
@@ -20456,7 +28057,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '15-PIN-JSTXH'
+WHERE code = '15-PIN-JSTXH'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 2 pin JST-XH male top entry
@@ -20478,7 +28085,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '2-PIN-JSTXH'
+WHERE code = '2-PIN-JSTXH'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 2 pin JST-XH male side entry
@@ -20500,7 +28113,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '2-PIN-JSTXH'
+WHERE code = '2-PIN-JSTXH'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 3 pin JST-XH male top entry
@@ -20522,7 +28141,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '3-PIN-JSTXH'
+WHERE code = '3-PIN-JSTXH'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 2510 Crimping pins
@@ -20544,7 +28169,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '2510-CRIMPING-PINS'
+WHERE code = '2510-CRIMPING-PINS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 13 pin JST-XH male top entry
@@ -20566,7 +28197,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '13-PIN-JSTXH'
+WHERE code = '13-PIN-JSTXH'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 15 pin JST-XH male top entry
@@ -20588,7 +28225,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '15-PIN-JSTXH'
+WHERE code = '15-PIN-JSTXH'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for JST-XH Crimping pins
@@ -20610,7 +28253,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'JSTXH-CRIMPING-PINS'
+WHERE code = 'JSTXH-CRIMPING-PINS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 25cm Red one side crimped wire
@@ -20632,7 +28281,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '25CM-RED-ONE'
+WHERE code = '25CM-RED-ONE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 25cm Green one side crimped wire
@@ -20654,7 +28309,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '25CM-GREEN-ONE'
+WHERE code = '25CM-GREEN-ONE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 25cm Black one side crimped wire
@@ -20676,7 +28337,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '25CM-BLACK-ONE'
+WHERE code = '25CM-BLACK-ONE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped Black
@@ -20698,7 +28365,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped Green
@@ -20720,7 +28393,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped Voilet
@@ -20742,7 +28421,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped Yellow
@@ -20764,7 +28449,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped Sky Blue
@@ -20786,7 +28477,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped Pink
@@ -20808,7 +28505,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped Orange
@@ -20830,7 +28533,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped Dark Blue
@@ -20852,7 +28561,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped Light Brown
@@ -20874,7 +28589,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped Dark Brown
@@ -20896,7 +28617,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped White with Red strip
@@ -20918,7 +28645,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped White with black strip
@@ -20940,7 +28673,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped White
@@ -20962,7 +28701,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped Red
@@ -20984,7 +28729,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped Light Grey
@@ -21006,7 +28757,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 10cm one sided JST crimped Dark Parrot Green
@@ -21028,7 +28785,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '10CM-ONE-SIDED'
+WHERE code = '10CM-ONE-SIDED'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Tactile switch for reset two leg
@@ -21050,7 +28813,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'TACTILE-SWITCH-FOR'
+WHERE code = 'TACTILE-SWITCH-FOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 915MHz Antenna
@@ -21072,7 +28841,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '915MHZ-ANTENNA'
+WHERE code = '915MHZ-ANTENNA'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Ipex4 to SMA converter extension (1675015) (Antenna pigtail connectror)
@@ -21094,7 +28869,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'IPEX4-TO-SMA'
+WHERE code = 'IPEX4-TO-SMA'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Ipex4 to SMA converter extension (for R9MM ipex4)
@@ -21116,7 +28897,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'IPEX4-TO-SMA'
+WHERE code = 'IPEX4-TO-SMA'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for R9M Antenna Extension wire RP-SMA to Open
@@ -21138,7 +28925,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'R9M-ANTENNA-EXTENSION'
+WHERE code = 'R9M-ANTENNA-EXTENSION'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 20 AWG Silicone Red - Wire
@@ -21160,7 +28953,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '20-AWG-SILICONE'
+WHERE code = '20-AWG-SILICONE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 25Core Wire 14/38
@@ -21182,7 +28981,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '25CORE-WIRE-1438'
+WHERE code = '25CORE-WIRE-1438'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 20Core Wire 14/38
@@ -21204,7 +29009,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '20CORE-WIRE-1438'
+WHERE code = '20CORE-WIRE-1438'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 8core Wire 14/38
@@ -21226,7 +29037,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '8CORE-WIRE-1438'
+WHERE code = '8CORE-WIRE-1438'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 14/38 16 Core Wire
@@ -21248,7 +29065,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '1438-16-CORE'
+WHERE code = '1438-16-CORE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Red 14/38 wire
@@ -21270,7 +29093,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'RED-1438-WIRE'
+WHERE code = 'RED-1438-WIRE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Black 14/38 Wire
@@ -21292,7 +29121,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BLACK-1438-WIRE'
+WHERE code = 'BLACK-1438-WIRE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Yellow 14/38 Wire
@@ -21314,7 +29149,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'YELLOW-1438-WIRE'
+WHERE code = 'YELLOW-1438-WIRE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for White 14/38 Wire
@@ -21336,7 +29177,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'WHITE-1438-WIRE'
+WHERE code = 'WHITE-1438-WIRE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Sky Blue 14/38 Wire
@@ -21358,7 +29205,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SKY-BLUE-1438'
+WHERE code = 'SKY-BLUE-1438'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Orange 14/38 Wire
@@ -21380,7 +29233,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ORANGE-1438-WIRE'
+WHERE code = 'ORANGE-1438-WIRE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Green 14/38 Wire
@@ -21402,7 +29261,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'GREEN-1438-WIRE'
+WHERE code = 'GREEN-1438-WIRE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Purple 14/38 Wire
@@ -21424,7 +29289,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PURPLE-1438-WIRE'
+WHERE code = 'PURPLE-1438-WIRE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Brown 14/38 Wire
@@ -21446,7 +29317,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BROWN-1438-WIRE'
+WHERE code = 'BROWN-1438-WIRE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Aft plate Acrylice for Template
@@ -21468,7 +29345,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'AFT-PLATE-ACRYLICE'
+WHERE code = 'AFT-PLATE-ACRYLICE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 12S Lipo Charger
@@ -21490,7 +29373,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '12S-LIPO-CHARGER'
+WHERE code = '12S-LIPO-CHARGER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 8S Lipo Charger ISDT Q8
@@ -21512,7 +29401,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '8S-LIPO-CHARGER'
+WHERE code = '8S-LIPO-CHARGER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 8kg Hull
@@ -21534,7 +29429,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '8KG-HULL'
+WHERE code = '8KG-HULL'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for JCB Body cum mounting frame
@@ -21556,7 +29457,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'JCB-BODY-CUM'
+WHERE code = 'JCB-BODY-CUM'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for SR Structure
@@ -21578,7 +29485,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SR-STRUCTURE'
+WHERE code = 'SR-STRUCTURE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for SR Pillow
@@ -21600,7 +29513,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SR-PILLOW'
+WHERE code = 'SR-PILLOW'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 2mm FRP 60x70mm with 18 mm hole
@@ -21622,7 +29541,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '2MM-FRP-60X70MM'
+WHERE code = '2MM-FRP-60X70MM'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Battery Clamp
@@ -21644,7 +29569,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BATTERY-CLAMP'
+WHERE code = 'BATTERY-CLAMP'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Electronic Box Top Lid
@@ -21666,7 +29597,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ELECTRONIC-BOX-TOP'
+WHERE code = 'ELECTRONIC-BOX-TOP'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Zip ties 100x3 MultiCompro
@@ -21688,7 +29625,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ZIP-TIES-100X3'
+WHERE code = 'ZIP-TIES-100X3'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Ferrite Core
@@ -21710,7 +29653,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'FERRITE-CORE'
+WHERE code = 'FERRITE-CORE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for SY21-15 pin panel mount(Male)
@@ -21732,7 +29681,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SY2115-PIN-PANEL'
+WHERE code = 'SY2115-PIN-PANEL'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for SY21-15 pin Cable Mount(Female)
@@ -21754,7 +29709,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SY2115-PIN-CABLE'
+WHERE code = 'SY2115-PIN-CABLE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for SY21-15 pin panel mount(Female)
@@ -21776,7 +29737,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SY2115-PIN-PANEL'
+WHERE code = 'SY2115-PIN-PANEL'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for SY21-15 pin Cable Mount(Male)
@@ -21798,7 +29765,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SY2115-PIN-CABLE'
+WHERE code = 'SY2115-PIN-CABLE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for WY-28 Metal connector CM
@@ -21820,7 +29793,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'WY28-METAL-CONNECTOR'
+WHERE code = 'WY28-METAL-CONNECTOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for WY-28 Metal connector PM
@@ -21842,7 +29821,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'WY28-METAL-CONNECTOR'
+WHERE code = 'WY28-METAL-CONNECTOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for WK-15 IP68 Cable Metal Connector
@@ -21864,7 +29849,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'WK15-IP68-CABLE'
+WHERE code = 'WK15-IP68-CABLE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for WK-15 IP68 Cable Metal Connector
@@ -21886,7 +29877,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'WK15-IP68-CABLE'
+WHERE code = 'WK15-IP68-CABLE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 15 pin IP68 connectors (Female)
@@ -21908,7 +29905,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '15-PIN-IP68'
+WHERE code = '15-PIN-IP68'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 15 pin IP68 Connectors (Male)
@@ -21930,7 +29933,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '15-PIN-IP68'
+WHERE code = '15-PIN-IP68'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for SA12 9pin CM Pushpull Male
@@ -21952,7 +29961,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SA12-9PIN-CM'
+WHERE code = 'SA12-9PIN-CM'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for SA12 9pin PM Pushpull female
@@ -21974,7 +29989,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SA12-9PIN-PM'
+WHERE code = 'SA12-9PIN-PM'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for SA12 9pin Counter
@@ -21996,7 +30017,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SA12-9PIN-COUNTER'
+WHERE code = 'SA12-9PIN-COUNTER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for LP12 3 pin plug male clip lock CM
@@ -22018,7 +30045,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LP12-3-PIN'
+WHERE code = 'LP12-3-PIN'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for LP12 3 pin socket female clip lock PM
@@ -22040,7 +30073,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LP12-3-PIN'
+WHERE code = 'LP12-3-PIN'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for LP12 4 pin plug male clip lock CM
@@ -22062,7 +30101,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LP12-4-PIN'
+WHERE code = 'LP12-4-PIN'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for LP24 24 pin plug female clip lock CM
@@ -22084,7 +30129,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LP24-24-PIN'
+WHERE code = 'LP24-24-PIN'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for LP24 24 pin socket male clip lock PM
@@ -22106,7 +30157,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LP24-24-PIN'
+WHERE code = 'LP24-24-PIN'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Water tank for JCB
@@ -22128,7 +30185,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'WATER-TANK-FOR'
+WHERE code = 'WATER-TANK-FOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for BlueRobotics Leak probe
@@ -22150,7 +30213,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BLUEROBOTICS-LEAK-PROBE'
+WHERE code = 'BLUEROBOTICS-LEAK-PROBE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for BlueRobotics Indicator
@@ -22172,7 +30241,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BLUEROBOTICS-INDICATOR'
+WHERE code = 'BLUEROBOTICS-INDICATOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for IP68 Rotary main Switch
@@ -22194,7 +30269,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'IP68-ROTARY-MAIN'
+WHERE code = 'IP68-ROTARY-MAIN'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Red 2835 SMD LED 1W
@@ -22216,7 +30297,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'RED-2835-SMD'
+WHERE code = 'RED-2835-SMD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Green 2835 SMD LED 1W
@@ -22238,7 +30325,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'GREEN-2835-SMD'
+WHERE code = 'GREEN-2835-SMD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for No. 4 Self tap Screw SS304 (M4x6.5 Philips)
@@ -22260,7 +30353,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'NO-4-SELF'
+WHERE code = 'NO-4-SELF'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M2x12 Allen Head SS304
@@ -22282,7 +30381,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M2X12-ALLEN-HEAD'
+WHERE code = 'M2X12-ALLEN-HEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M3x6 CSK Phillips
@@ -22304,7 +30409,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M3X6-CSK-PHILLIPS'
+WHERE code = 'M3X6-CSK-PHILLIPS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M3x8 CSK Phillips
@@ -22326,7 +30437,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M3X8-CSK-PHILLIPS'
+WHERE code = 'M3X8-CSK-PHILLIPS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M3x30 CSK Phillips
@@ -22348,7 +30465,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M3X30-CSK-PHILLIPS'
+WHERE code = 'M3X30-CSK-PHILLIPS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M3x8 Button head
@@ -22370,7 +30493,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M3X8-BUTTON-HEAD'
+WHERE code = 'M3X8-BUTTON-HEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M3x10 plain washer
@@ -22392,7 +30521,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M3X10-PLAIN-WASHER'
+WHERE code = 'M3X10-PLAIN-WASHER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4x8 CSK Phillips
@@ -22414,7 +30549,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X8-CSK-PHILLIPS'
+WHERE code = 'M4X8-CSK-PHILLIPS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4x8 CSK Phillips GI
@@ -22436,7 +30577,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X8-CSK-PHILLIPS'
+WHERE code = 'M4X8-CSK-PHILLIPS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M2x15 Allen Head SS304
@@ -22458,7 +30605,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M2X15-ALLEN-HEAD'
+WHERE code = 'M2X15-ALLEN-HEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4x10 CSK Phillips
@@ -22480,7 +30633,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X10-CSK-PHILLIPS'
+WHERE code = 'M4X10-CSK-PHILLIPS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4x20 CSK Phillips
@@ -22502,7 +30661,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X20-CSK-PHILLIPS'
+WHERE code = 'M4X20-CSK-PHILLIPS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4x12 Allen Head
@@ -22524,7 +30689,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X12-ALLEN-HEAD'
+WHERE code = 'M4X12-ALLEN-HEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4x16 Allen Head
@@ -22546,7 +30717,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X16-ALLEN-HEAD'
+WHERE code = 'M4X16-ALLEN-HEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4x10 Allen head
@@ -22568,7 +30745,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X10-ALLEN-HEAD'
+WHERE code = 'M4X10-ALLEN-HEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4x30 Allen head
@@ -22590,7 +30773,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X30-ALLEN-HEAD'
+WHERE code = 'M4X30-ALLEN-HEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4X40 Allen head
@@ -22612,7 +30801,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X40-ALLEN-HEAD'
+WHERE code = 'M4X40-ALLEN-HEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4x20 Allen Head
@@ -22634,7 +30829,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X20-ALLEN-HEAD'
+WHERE code = 'M4X20-ALLEN-HEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4x12 Button Head
@@ -22656,7 +30857,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X12-BUTTON-HEAD'
+WHERE code = 'M4X12-BUTTON-HEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4x12 Pan Combi
@@ -22678,7 +30885,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X12-PAN-COMBI'
+WHERE code = 'M4X12-PAN-COMBI'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4x12 plain washer
@@ -22700,7 +30913,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X12-PLAIN-WASHER'
+WHERE code = 'M4X12-PLAIN-WASHER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4 Spring Washer
@@ -22722,7 +30941,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4-SPRING-WASHER'
+WHERE code = 'M4-SPRING-WASHER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4 Nylock
@@ -22744,7 +30969,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4-NYLOCK'
+WHERE code = 'M4-NYLOCK'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4 Square Nut
@@ -22766,7 +30997,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4-SQUARE-NUT'
+WHERE code = 'M4-SQUARE-NUT'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M4x5 Grub
@@ -22788,7 +31025,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M4X5-GRUB'
+WHERE code = 'M4X5-GRUB'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M5x10 Allen Head (AMCA)
@@ -22810,7 +31053,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M5X10-ALLEN-HEAD'
+WHERE code = 'M5X10-ALLEN-HEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M5x10 Pan Torx
@@ -22832,7 +31081,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M5X10-PAN-TORX'
+WHERE code = 'M5X10-PAN-TORX'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M5x10 Grub Screw
@@ -22854,7 +31109,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M5X10-GRUB-SCREW'
+WHERE code = 'M5X10-GRUB-SCREW'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M6x150 Allen Head
@@ -22876,7 +31137,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M6X150-ALLEN-HEAD'
+WHERE code = 'M6X150-ALLEN-HEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M6 Nylock
@@ -22898,7 +31165,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M6-NYLOCK'
+WHERE code = 'M6-NYLOCK'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M6x15 plain washer
@@ -22920,7 +31193,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M6X15-PLAIN-WASHER'
+WHERE code = 'M6X15-PLAIN-WASHER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M6x10 Grub Screw
@@ -22942,7 +31221,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M6X10-GRUB-SCREW'
+WHERE code = 'M6X10-GRUB-SCREW'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Button Head 6x12
@@ -22964,7 +31249,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BUTTON-HEAD-6X12'
+WHERE code = 'BUTTON-HEAD-6X12'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M8x20 plain washer
@@ -22986,7 +31277,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M8X20-PLAIN-WASHER'
+WHERE code = 'M8X20-PLAIN-WASHER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M8x25 Allen Head
@@ -23008,7 +31305,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M8X25-ALLEN-HEAD'
+WHERE code = 'M8X25-ALLEN-HEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for M5X12 Button HD Torx
@@ -23030,7 +31333,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'M5X12-BUTTON-HD'
+WHERE code = 'M5X12-BUTTON-HD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Copper Strips 3x2 cells
@@ -23052,7 +31361,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'COPPER-STRIPS-3X2'
+WHERE code = 'COPPER-STRIPS-3X2'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Kapton Tape
@@ -23074,7 +31389,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'KAPTON-TAPE'
+WHERE code = 'KAPTON-TAPE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Barley paper for 21700 cylindrical cell
@@ -23096,7 +31417,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BARLEY-PAPER-FOR'
+WHERE code = 'BARLEY-PAPER-FOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 16AWG Lead
@@ -23118,7 +31445,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '16AWG-LEAD'
+WHERE code = '16AWG-LEAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 130x80x60 enclosure box
@@ -23140,7 +31473,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '130X80X60-ENCLOSURE-BOX'
+WHERE code = '130X80X60-ENCLOSURE-BOX'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PG-7 Cable Gland
@@ -23162,7 +31501,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PG7-CABLE-GLAND'
+WHERE code = 'PG7-CABLE-GLAND'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PG-9 Cable Gland(PG -11)
@@ -23184,7 +31529,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PG9-CABLE-GLANDPG'
+WHERE code = 'PG9-CABLE-GLANDPG'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Rotex14 Coupling
@@ -23206,7 +31557,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ROTEX14-COUPLING'
+WHERE code = 'ROTEX14-COUPLING'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Electronic Box
@@ -23228,7 +31585,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ELECTRONIC-BOX'
+WHERE code = 'ELECTRONIC-BOX'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Front Lid
@@ -23250,7 +31613,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'FRONT-LID'
+WHERE code = 'FRONT-LID'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Bottom Block (Inlet Block)
@@ -23272,7 +31641,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BOTTOM-BLOCK-INLET'
+WHERE code = 'BOTTOM-BLOCK-INLET'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for IP Remote Upper Shell
@@ -23294,7 +31669,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'IP-REMOTE-UPPER'
+WHERE code = 'IP-REMOTE-UPPER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for IP Remote Lower Shell
@@ -23316,7 +31697,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'IP-REMOTE-LOWER'
+WHERE code = 'IP-REMOTE-LOWER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Flashing Light glass
@@ -23338,7 +31725,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'FLASHING-LIGHT-GLASS'
+WHERE code = 'FLASHING-LIGHT-GLASS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Flashing Light bottom plate
@@ -23360,7 +31753,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'FLASHING-LIGHT-BOTTOM'
+WHERE code = 'FLASHING-LIGHT-BOTTOM'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Grease
@@ -23382,7 +31781,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'GREASE'
+WHERE code = 'GREASE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for HeatShrink Tube 30mm
@@ -23404,7 +31809,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'HEATSHRINK-TUBE-30MM'
+WHERE code = 'HEATSHRINK-TUBE-30MM'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Heat Shrink Sleeve 16mm Transparent
@@ -23426,7 +31837,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'HEAT-SHRINK-SLEEVE'
+WHERE code = 'HEAT-SHRINK-SLEEVE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Greasing Pump
@@ -23448,7 +31865,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'GREASING-PUMP'
+WHERE code = 'GREASING-PUMP'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Heatsink paste
@@ -23470,7 +31893,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'HEATSINK-PASTE'
+WHERE code = 'HEATSINK-PASTE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Teroson MS930
@@ -23492,7 +31921,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'TEROSON-MS930'
+WHERE code = 'TEROSON-MS930'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Silicon RTV 732
@@ -23514,7 +31949,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'SILICON-RTV-732'
+WHERE code = 'SILICON-RTV-732'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for FlexBond
@@ -23536,7 +31977,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'FLEXBOND'
+WHERE code = 'FLEXBOND'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Brass nozzle for water outlet from JCB
@@ -23558,7 +32005,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BRASS-NOZZLE-FOR'
+WHERE code = 'BRASS-NOZZLE-FOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Greasing nozzle
@@ -23580,7 +32033,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'GREASING-NOZZLE'
+WHERE code = 'GREASING-NOZZLE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Nozzle on Jet
@@ -23602,7 +32061,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'NOZZLE-ON-JET'
+WHERE code = 'NOZZLE-ON-JET'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Water Jet S52
@@ -23624,7 +32089,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'WATER-JET-S52'
+WHERE code = 'WATER-JET-S52'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for ESC Mounting Plate
@@ -23646,7 +32117,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ESC-MOUNTING-PLATE'
+WHERE code = 'ESC-MOUNTING-PLATE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Jet S52 Mounting plate
@@ -23668,7 +32145,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'JET-S52-MOUNTING'
+WHERE code = 'JET-S52-MOUNTING'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Motor mount heatblock TOP
@@ -23690,7 +32173,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'MOTOR-MOUNT-HEATBLOCK'
+WHERE code = 'MOTOR-MOUNT-HEATBLOCK'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Motor mount heatblock BOTTOM
@@ -23712,7 +32201,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'MOTOR-MOUNT-HEATBLOCK'
+WHERE code = 'MOTOR-MOUNT-HEATBLOCK'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Two half Motor Mount side plates
@@ -23734,7 +32229,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'TWO-HALF-MOTOR'
+WHERE code = 'TWO-HALF-MOTOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Reverse Buketing side plates
@@ -23756,7 +32257,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'REVERSE-BUKETING-SIDE'
+WHERE code = 'REVERSE-BUKETING-SIDE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Aluminium Sheet 2mm thick 4ftx2ft
@@ -23778,7 +32285,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ALUMINIUM-SHEET-2MM'
+WHERE code = 'ALUMINIUM-SHEET-2MM'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Heat condensor/Jet Heat Sink
@@ -23800,7 +32313,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'HEAT-CONDENSORJET-HEAT'
+WHERE code = 'HEAT-CONDENSORJET-HEAT'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for LH-1 Thermosyphens
@@ -23822,7 +32341,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LH1-THERMOSYPHENS'
+WHERE code = 'LH1-THERMOSYPHENS'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Heat condensor/Jet Heat Sink RHS 1 Plate
@@ -23844,7 +32369,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'HEAT-CONDENSORJET-HEAT'
+WHERE code = 'HEAT-CONDENSORJET-HEAT'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Heat condensor/Jet Heat Sink Top Plate
@@ -23866,7 +32397,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'HEAT-CONDENSORJET-HEAT'
+WHERE code = 'HEAT-CONDENSORJET-HEAT'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Motor Block Side Plate
@@ -23888,7 +32425,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'MOTOR-BLOCK-SIDE'
+WHERE code = 'MOTOR-BLOCK-SIDE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Condensor Clamp
@@ -23910,7 +32453,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'CONDENSOR-CLAMP'
+WHERE code = 'CONDENSOR-CLAMP'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Copper heat pipe (set of 2)
@@ -23932,7 +32481,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'COPPER-HEAT-PIPE'
+WHERE code = 'COPPER-HEAT-PIPE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Copper heat pipes ( New)
@@ -23954,7 +32509,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'COPPER-HEAT-PIPES'
+WHERE code = 'COPPER-HEAT-PIPES'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for STBD Aft Plate
@@ -23976,7 +32537,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'STBD-AFT-PLATE'
+WHERE code = 'STBD-AFT-PLATE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PORT Aft Plate
@@ -23998,7 +32565,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PORT-AFT-PLATE'
+WHERE code = 'PORT-AFT-PLATE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Button Spacer No. 1/2 3D Print
@@ -24020,7 +32593,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BUTTON-SPACER-NO'
+WHERE code = 'BUTTON-SPACER-NO'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Button No. 1 pressure bracket 3D Print
@@ -24042,7 +32621,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BUTTON-NO-1'
+WHERE code = 'BUTTON-NO-1'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Remote Battery Holding Bracket 3D Print
@@ -24064,7 +32649,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'REMOTE-BATTERY-HOLDING'
+WHERE code = 'REMOTE-BATTERY-HOLDING'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Antenna clamp -1 3D Print
@@ -24086,7 +32677,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ANTENNA-CLAMP-1'
+WHERE code = 'ANTENNA-CLAMP-1'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Antenna Clamp -2 3D Print
@@ -24108,7 +32705,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ANTENNA-CLAMP-2'
+WHERE code = 'ANTENNA-CLAMP-2'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for LCD holder bracket 3D print
@@ -24130,7 +32733,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'LCD-HOLDER-BRACKET'
+WHERE code = 'LCD-HOLDER-BRACKET'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Button 1/1 3D print
@@ -24152,7 +32761,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BUTTON-11-3D'
+WHERE code = 'BUTTON-11-3D'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Rotary Knob Box 3D print
@@ -24174,7 +32789,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ROTARY-KNOB-BOX'
+WHERE code = 'ROTARY-KNOB-BOX'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for IFU 3D Middle
@@ -24196,7 +32817,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'IFU-3D-MIDDLE'
+WHERE code = 'IFU-3D-MIDDLE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for IFU top
@@ -24218,7 +32845,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'IFU-TOP'
+WHERE code = 'IFU-TOP'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for IFU Bottom
@@ -24240,7 +32873,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'IFU-BOTTOM'
+WHERE code = 'IFU-BOTTOM'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Motor 5692 495 KV
@@ -24262,7 +32901,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'MOTOR-5692-495'
+WHERE code = 'MOTOR-5692-495'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for HV130 ESC
@@ -24284,7 +32929,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'HV130-ESC'
+WHERE code = 'HV130-ESC'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 8 mm OD pneaumatic pipe
@@ -24306,7 +32957,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '8-MM-OD'
+WHERE code = '8-MM-OD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 12 to 8 right angled reducer with lock clips
@@ -24328,7 +32985,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '12-TO-8'
+WHERE code = '12-TO-8'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 12 to 8 right angled lock clips
@@ -24350,7 +33013,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '12-TO-8'
+WHERE code = '12-TO-8'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 12mm OD pneumatic pipe
@@ -24372,7 +33041,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '12MM-OD-PNEUMATIC'
+WHERE code = '12MM-OD-PNEUMATIC'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Polycarbonate Glass for Remote
@@ -24394,7 +33069,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'POLYCARBONATE-GLASS-FOR'
+WHERE code = 'POLYCARBONATE-GLASS-FOR'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Bottom Mesh (120mm x 100mm, 5"x4")
@@ -24416,7 +33097,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BOTTOM-MESH-120MM'
+WHERE code = 'BOTTOM-MESH-120MM'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Air nozzle
@@ -24438,7 +33125,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'AIR-NOZZLE'
+WHERE code = 'AIR-NOZZLE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for IPA
@@ -24460,7 +33153,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'IPA'
+WHERE code = 'IPA'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Poly Urethane Foam
@@ -24482,7 +33181,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'POLY-URETHANE-FOAM'
+WHERE code = 'POLY-URETHANE-FOAM'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Joystick Water proof rubber
@@ -24504,7 +33209,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'JOYSTICK-WATER-PROOF'
+WHERE code = 'JOYSTICK-WATER-PROOF'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Button Silicon Cover No. 1
@@ -24526,7 +33237,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BUTTON-SILICON-COVER'
+WHERE code = 'BUTTON-SILICON-COVER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Button Silicon Cover No. 2
@@ -24548,7 +33265,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BUTTON-SILICON-COVER'
+WHERE code = 'BUTTON-SILICON-COVER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Thread locker 242
@@ -24570,7 +33293,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'THREAD-LOCKER-242'
+WHERE code = 'THREAD-LOCKER-242'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Oring AFT plate
@@ -24592,7 +33321,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ORING-AFT-PLATE'
+WHERE code = 'ORING-AFT-PLATE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Hook Sticker STBD
@@ -24614,7 +33349,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'HOOK-STICKER-STBD'
+WHERE code = 'HOOK-STICKER-STBD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Hook Stiker PORT
@@ -24636,7 +33377,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'HOOK-STIKER-PORT'
+WHERE code = 'HOOK-STIKER-PORT'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Hold here sticker STBD
@@ -24658,7 +33405,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'HOLD-HERE-STICKER'
+WHERE code = 'HOLD-HERE-STICKER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Hold here sticker PORT
@@ -24680,7 +33433,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'HOLD-HERE-STICKER'
+WHERE code = 'HOLD-HERE-STICKER'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Ferrole
@@ -24702,7 +33461,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'FERROLE'
+WHERE code = 'FERROLE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Rope 8mm
@@ -24724,7 +33489,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'ROPE-8MM'
+WHERE code = 'ROPE-8MM'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Packing Wooden HardBox
@@ -24746,7 +33517,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PACKING-WOODEN-HARDBOX'
+WHERE code = 'PACKING-WOODEN-HARDBOX'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 6mm Allen Key
@@ -24768,7 +33545,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '6MM-ALLEN-KEY'
+WHERE code = '6MM-ALLEN-KEY'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 6mm T Handle
@@ -24790,7 +33573,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '6MM-T-HANDLE'
+WHERE code = '6MM-T-HANDLE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for X16 extension panel
@@ -24812,7 +33601,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'X16-EXTENSION-PANEL'
+WHERE code = 'X16-EXTENSION-PANEL'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for STBD Aft Plate Assy
@@ -24834,7 +33629,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'STBD-AFT-PLATE'
+WHERE code = 'STBD-AFT-PLATE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PORT Aft Plate Assy
@@ -24856,7 +33657,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PORT-AFT-PLATE'
+WHERE code = 'PORT-AFT-PLATE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 15.6" TFT LCD, LED B 2000 Nits
@@ -24878,7 +33685,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '156-TFT-LCD'
+WHERE code = '156-TFT-LCD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for 15.6" TFT LCD, LED backlight 1800 nits, FHD (1920x1080)
@@ -24900,7 +33713,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '156-TFT-LCD'
+WHERE code = '156-TFT-LCD'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Box handles
@@ -24922,7 +33741,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'BOX-HANDLES'
+WHERE code = 'BOX-HANDLES'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Dummy Load 50 ohms
@@ -24944,7 +33769,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'DUMMY-LOAD-50'
+WHERE code = 'DUMMY-LOAD-50'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Eyelid for cradle
@@ -24966,7 +33797,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'EYELID-FOR-CRADLE'
+WHERE code = 'EYELID-FOR-CRADLE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Rubber Cuff (Size 40mm)(1,57")
@@ -24988,7 +33825,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'RUBBER-CUFF-SIZE'
+WHERE code = 'RUBBER-CUFF-SIZE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for Rubber  Cuff )Size 32mm (1,26")
@@ -25010,7 +33853,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'RUBBER-CUFF-SIZE'
+WHERE code = 'RUBBER-CUFF-SIZE'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 -- Stock for PCB of Murata ROHM
@@ -25032,7 +33881,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = 'PCB-OF-MURATA'
+WHERE code = 'PCB-OF-MURATA'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 
 
@@ -25044,9 +33899,9 @@ COMMIT;
 
 SELECT 'Vendors' as entity, COUNT(*) as count FROM vendors
 UNION ALL
-SELECT 'Items (RM)', COUNT(*) FROM items WHERE category = 'RM'
+SELECT 'Items (RM)', COUNT(*) FROM items WHERE type = 'RAW_MATERIAL'
 UNION ALL
-SELECT 'Items (SA)', COUNT(*) FROM items WHERE category = 'SA'
+SELECT 'Items (SA)', COUNT(*) FROM items WHERE type = 'SUB_ASSEMBLY'
 UNION ALL
 SELECT 'Item-Vendor Links', COUNT(*) FROM item_vendors
 UNION ALL
@@ -25058,14 +33913,14 @@ SELECT 'Stock Entries', COUNT(*) FROM stock_entries;
 
 -- Show items with multiple vendors
 SELECT 
-    i.item_code,
-    i.item_name,
+    i.code,
+    i.name,
     COUNT(iv.vendor_id) as vendor_count,
-    STRING_AGG(v.vendor_name || ' (P' || iv.priority || ')', ', ' ORDER BY iv.priority) as vendors
+    STRING_AGG(v.name || ' (P' || iv.priority || ')', ', ' ORDER BY iv.priority) as vendors
 FROM items i
 INNER JOIN item_vendors iv ON i.id = iv.item_id
 INNER JOIN vendors v ON iv.vendor_id = v.id
-GROUP BY i.id, i.item_code, i.item_name
+GROUP BY i.id, i.code, i.name
 HAVING COUNT(iv.vendor_id) > 1
-ORDER BY vendor_count DESC, i.item_name
+ORDER BY vendor_count DESC, i.name
 LIMIT 20;

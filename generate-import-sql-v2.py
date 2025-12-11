@@ -33,9 +33,9 @@ def split_vendors(vendor_string):
     vendors = re.split(r'[/,]', str(vendor_string))
     return [v.strip() for v in vendors if v.strip()]
 
-def generate_vendor_code(vendor_name):
+def generate_code(name):
     """Generate vendor code from name"""
-    return re.sub(r'[^a-zA-Z0-9]', '', vendor_name.upper().replace(' ', '_'))[:20]
+    return re.sub(r'[^a-zA-Z0-9]', '', name.upper().replace(' ', '_'))[:20]
 
 def generate_item_code(name, index):
     """Generate item code from name"""
@@ -76,12 +76,21 @@ vendor_map = {}  # Map vendor name to code
 for vendor in all_vendors:
     clean_vendor = clean_string(vendor)
     if clean_vendor:
-        vendor_code = generate_vendor_code(vendor)
+        vendor_code = generate_code(vendor)
         vendor_map[vendor] = vendor_code
         
-        vendors_sql.append(f"""INSERT INTO vendors (vendor_code, vendor_name, is_active, created_at, updated_at)
-VALUES ('{vendor_code}', '{clean_vendor}', true, NOW(), NOW())
-ON CONFLICT (vendor_code) DO NOTHING;
+        vendors_sql.append(f"""INSERT INTO vendors (tenant_id, code, name, legal_name, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '{vendor_code}',
+    '{clean_vendor}',
+    '{clean_vendor}',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendors WHERE code = '{vendor_code}'
+);
 """)
 
 # =============================================================================
@@ -121,9 +130,19 @@ for idx, row in rm_df.iterrows():
     item_map[item_name] = item_code
     
     # Item INSERT
-    rm_items_sql.append(f"""INSERT INTO items (item_code, item_name, category, uom, unit_price, is_active, created_at, updated_at)
-VALUES ('{item_code}', '{item_name}', 'RM', '{uom}', {cost}, true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+    rm_items_sql.append(f"""INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '{item_code}',
+    '{item_name}',
+    'RAW_MATERIAL',
+    '{uom}',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '{item_code}'
+);
 """)
     
     # Item-Vendor Relationships
@@ -144,13 +163,12 @@ SELECT
     NOW()
 FROM items i
 CROSS JOIN vendors v
-WHERE i.item_code = '{item_code}'
-  AND v.vendor_code = '{vendor_code}'
-LIMIT 1
-ON CONFLICT (item_id, vendor_id) DO UPDATE SET
-    priority = EXCLUDED.priority,
-    unit_price = EXCLUDED.unit_price,
-    updated_at = NOW();
+WHERE i.code = '{item_code}'
+  AND v.code = '{vendor_code}'
+  AND NOT EXISTS (
+      SELECT 1 FROM item_vendors WHERE item_id = i.id AND vendor_id = v.id
+  )
+LIMIT 1;
 """)
     
     # Stock entry INSERT (if stock > 0)
@@ -174,7 +192,13 @@ SELECT
     'Imported from Stock List 2024-2025.xlsx',
     NOW()
 FROM items 
-WHERE item_code = '{item_code}'
+WHERE code = '{item_code}'
+  AND NOT EXISTS (
+      SELECT 1 FROM stock_entries 
+      WHERE item_id = items.id 
+        AND reference_type = 'OPENING_STOCK'
+        AND reference_number = 'INITIAL-IMPORT'
+  )
 LIMIT 1;
 """)
 
@@ -198,9 +222,19 @@ for idx, row in sfg_df.iterrows():
     
     item_map[item_name] = item_code
     
-    sfg_items_sql.append(f"""INSERT INTO items (item_code, item_name, category, uom, is_active, created_at, updated_at)
-VALUES ('{item_code}', '{item_name}', 'SA', '{uom}', true, NOW(), NOW())
-ON CONFLICT (item_code) DO NOTHING;
+    sfg_items_sql.append(f"""INSERT INTO items (tenant_id, code, name, type, uom, is_active, created_at, updated_at)
+SELECT 
+    (SELECT id FROM tenants LIMIT 1),
+    '{item_code}',
+    '{item_name}',
+    'SUB_ASSEMBLY',
+    '{uom}',
+    true,
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM items WHERE code = '{item_code}'
+);
 """)
 
 # =============================================================================
@@ -230,9 +264,9 @@ for idx, row in bom_df.iterrows():
 INSERT INTO bom_headers (bom_number, item_id, version, status, is_multi_level, created_at, updated_at)
 SELECT '{bom_number}', id, '1.0', 'ACTIVE', false, NOW(), NOW()
 FROM items 
-WHERE item_name = '{assembly_name}' AND category IN ('SA', 'FG')
-LIMIT 1
-ON CONFLICT (bom_number) DO NOTHING;
+WHERE name = '{assembly_name}' AND type IN ('SUB_ASSEMBLY', 'FINISHED_GOOD')
+  AND NOT EXISTS (SELECT 1 FROM bom_headers WHERE bom_number = '{bom_number}')
+LIMIT 1;
 """)
     
     rm_name = clean_string(row['RAW MATERIAL NAME'])
@@ -251,9 +285,11 @@ SELECT
 FROM bom_headers bh
 CROSS JOIN items i
 WHERE bh.bom_number = '{bom_number}'
-  AND i.item_name = '{rm_name}'
-LIMIT 1
-ON CONFLICT DO NOTHING;
+  AND i.name = '{rm_name}'
+  AND NOT EXISTS (
+      SELECT 1 FROM bom_items WHERE bom_id = bh.id AND item_id = i.id
+  )
+LIMIT 1;
 """)
 
 # =============================================================================
@@ -306,9 +342,9 @@ with open(output_file, 'w', encoding='utf-8') as f:
     f.write("-- ============================================================================\n\n")
     f.write("SELECT 'Vendors' as entity, COUNT(*) as count FROM vendors\n")
     f.write("UNION ALL\n")
-    f.write("SELECT 'Items (RM)', COUNT(*) FROM items WHERE category = 'RM'\n")
+    f.write("SELECT 'Items (RM)', COUNT(*) FROM items WHERE type = 'RAW_MATERIAL'\n")
     f.write("UNION ALL\n")
-    f.write("SELECT 'Items (SA)', COUNT(*) FROM items WHERE category = 'SA'\n")
+    f.write("SELECT 'Items (SA)', COUNT(*) FROM items WHERE type = 'SUB_ASSEMBLY'\n")
     f.write("UNION ALL\n")
     f.write("SELECT 'Item-Vendor Links', COUNT(*) FROM item_vendors\n")
     f.write("UNION ALL\n")
@@ -320,16 +356,16 @@ with open(output_file, 'w', encoding='utf-8') as f:
     
     f.write("-- Show items with multiple vendors\n")
     f.write("SELECT \n")
-    f.write("    i.item_code,\n")
-    f.write("    i.item_name,\n")
+    f.write("    i.code,\n")
+    f.write("    i.name,\n")
     f.write("    COUNT(iv.vendor_id) as vendor_count,\n")
-    f.write("    STRING_AGG(v.vendor_name || ' (P' || iv.priority || ')', ', ' ORDER BY iv.priority) as vendors\n")
+    f.write("    STRING_AGG(v.name || ' (P' || iv.priority || ')', ', ' ORDER BY iv.priority) as vendors\n")
     f.write("FROM items i\n")
     f.write("INNER JOIN item_vendors iv ON i.id = iv.item_id\n")
     f.write("INNER JOIN vendors v ON iv.vendor_id = v.id\n")
-    f.write("GROUP BY i.id, i.item_code, i.item_name\n")
+    f.write("GROUP BY i.id, i.code, i.name\n")
     f.write("HAVING COUNT(iv.vendor_id) > 1\n")
-    f.write("ORDER BY vendor_count DESC, i.item_name\n")
+    f.write("ORDER BY vendor_count DESC, i.name\n")
     f.write("LIMIT 20;\n")
 
 print(f"\n✅ SQL file generated: {output_file}")
