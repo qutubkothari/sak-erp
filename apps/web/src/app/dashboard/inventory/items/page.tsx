@@ -20,6 +20,10 @@ interface Item {
   is_active: boolean;
   created_at: string;
   total_stock?: number;
+  uid_tracking?: boolean;
+  uid_strategy?: string;
+  batch_uom?: string;
+  batch_quantity?: number;
 }
 
 interface Vendor {
@@ -74,6 +78,10 @@ export default function ItemsPage() {
     reorder_quantity: '',
     lead_time_days: '',
     is_active: true,
+    uid_tracking: true,
+    uid_strategy: 'SERIALIZED',
+    batch_uom: '',
+    batch_quantity: '',
   });
 
   const addCategory = async () => {
@@ -189,6 +197,7 @@ export default function ItemsPage() {
         reorder_level: formData.reorder_level ? parseInt(formData.reorder_level) : null,
         reorder_quantity: formData.reorder_quantity ? parseInt(formData.reorder_quantity) : null,
         lead_time_days: formData.lead_time_days ? parseInt(formData.lead_time_days) : null,
+        batch_quantity: formData.batch_quantity ? parseFloat(formData.batch_quantity) : null,
       };
 
       if (editingItem) {
@@ -223,6 +232,10 @@ export default function ItemsPage() {
       reorder_quantity: item.reorder_quantity?.toString() || '',
       lead_time_days: item.lead_time_days?.toString() || '',
       is_active: item.is_active,
+      uid_tracking: item.uid_tracking !== false,
+      uid_strategy: item.uid_strategy || 'SERIALIZED',
+      batch_uom: item.batch_uom || '',
+      batch_quantity: item.batch_quantity?.toString() || '',
     });
     setShowForm(true);
     fetchItemVendors(item.id);
@@ -670,6 +683,114 @@ export default function ItemsPage() {
                   <label htmlFor="is_active" className="ml-2 block text-sm text-gray-700">
                     Active
                   </label>
+                </div>
+
+                {/* UID Tracking Strategy Section */}
+                <div className="border-t pt-4 mt-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">UID Tracking</h3>
+                  
+                  <div className="flex items-start space-x-2 mb-4">
+                    <input
+                      type="checkbox"
+                      id="uid_tracking"
+                      checked={formData.uid_tracking}
+                      onChange={(e) => setFormData({ ...formData, uid_tracking: e.target.checked })}
+                      className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 rounded mt-1"
+                    />
+                    <div>
+                      <label htmlFor="uid_tracking" className="block text-sm font-medium text-gray-700">
+                        Track with UIDs
+                      </label>
+                      <p className="text-xs text-gray-500">Enable unique identifier tracking for this item</p>
+                    </div>
+                  </div>
+
+                  {formData.uid_tracking && (
+                    <div className="bg-gray-50 p-4 rounded-lg space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">How to track?</label>
+                        <div className="space-y-2">
+                          <div className="flex items-start">
+                            <input
+                              type="radio"
+                              id="uid_serialized"
+                              name="uid_strategy"
+                              value="SERIALIZED"
+                              checked={formData.uid_strategy === 'SERIALIZED'}
+                              onChange={(e) => setFormData({ ...formData, uid_strategy: e.target.value, batch_uom: '', batch_quantity: '' })}
+                              className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 mt-1"
+                            />
+                            <div className="ml-2">
+                              <label htmlFor="uid_serialized" className="text-sm font-medium text-gray-700">
+                                Track Each Piece Individually
+                              </label>
+                              <p className="text-xs text-gray-500">For: Parts, Components, Assemblies, Finished Goods</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start">
+                            <input
+                              type="radio"
+                              id="uid_batched"
+                              name="uid_strategy"
+                              value="BATCHED"
+                              checked={formData.uid_strategy === 'BATCHED'}
+                              onChange={(e) => setFormData({ ...formData, uid_strategy: e.target.value })}
+                              className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 mt-1"
+                            />
+                            <div className="ml-2">
+                              <label htmlFor="uid_batched" className="text-sm font-medium text-gray-700">
+                                Track by Container/Box
+                              </label>
+                              <p className="text-xs text-gray-500">For: Screws, Washers, Nuts, Bolts, Consumables</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {formData.uid_strategy === 'BATCHED' && (
+                        <div className="border-t pt-4 space-y-3">
+                          <p className="text-sm font-medium text-gray-700">Container Details:</p>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Container Type *</label>
+                              <select
+                                required
+                                value={formData.batch_uom}
+                                onChange={(e) => setFormData({ ...formData, batch_uom: e.target.value })}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                              >
+                                <option value="">Select Type</option>
+                                <option value="Box">Box</option>
+                                <option value="Carton">Carton</option>
+                                <option value="Pallet">Pallet</option>
+                                <option value="Bag">Bag</option>
+                                <option value="Roll">Roll</option>
+                                <option value="Drum">Drum</option>
+                                <option value="Bottle">Bottle</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Pieces per Container *</label>
+                              <input
+                                type="number"
+                                required
+                                step="1"
+                                min="1"
+                                value={formData.batch_quantity}
+                                onChange={(e) => setFormData({ ...formData, batch_quantity: e.target.value })}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                                placeholder="e.g. 1000"
+                              />
+                            </div>
+                          </div>
+                          <div className="bg-blue-50 p-2 rounded text-xs text-blue-800">
+                            💡 Example: If you receive 5000 screws in boxes of 1000, system will generate 5 UIDs (one per box)
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Vendor Management Section */}

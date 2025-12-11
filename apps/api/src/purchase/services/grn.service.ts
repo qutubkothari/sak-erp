@@ -331,15 +331,30 @@ export class GrnService {
         return [];
       }
 
-      // Get item details first
+      // Get item details including UID strategy
       const { data: item } = await this.supabase
         .from('items')
-        .select('id, code, name, category')
+        .select('id, code, name, category, uid_tracking, uid_strategy, batch_quantity, batch_uom')
         .eq('code', grnItem.item_code)
         .single();
 
       console.log('Item found:', item ? item.code : 'NOT FOUND');
       if (!item) return; // Skip if item not found
+
+      // Check UID tracking settings
+      if (item.uid_tracking === false || item.uid_strategy === 'NONE') {
+        console.log(`Skipping UID generation - item ${item.code} has uid_tracking=false or uid_strategy=NONE`);
+        return [];
+      }
+
+      // Calculate number of UIDs to generate based on strategy
+      let uidsToGenerate = acceptedQty;
+      if (item.uid_strategy === 'BATCHED' && item.batch_quantity) {
+        uidsToGenerate = Math.ceil(acceptedQty / item.batch_quantity);
+        console.log(`BATCHED strategy: ${acceptedQty} pcs / ${item.batch_quantity} per ${item.batch_uom || 'container'} = ${uidsToGenerate} UIDs`);
+      } else {
+        console.log(`SERIALIZED strategy: Generating ${uidsToGenerate} UIDs (one per piece)`);
+      }
 
       // Check if UIDs already exist for THIS SPECIFIC ITEM in this GRN to prevent duplicates
       const { data: existingUIDs, count } = await this.supabase
@@ -360,10 +375,10 @@ export class GrnService {
       else if (item.category?.includes('FINISHED')) entityType = 'FG';
       else if (item.category?.includes('ASSEMBLY')) entityType = 'SA';
 
-      console.log(`Starting loop to generate ${acceptedQty} UIDs, entityType: ${entityType}`);
+      console.log(`Starting loop to generate ${uidsToGenerate} UIDs, entityType: ${entityType}`);
       
-      // Generate UIDs for accepted quantity
-      for (let i = 0; i < acceptedQty; i++) {
+      // Generate UIDs based on strategy
+      for (let i = 0; i < uidsToGenerate; i++) {
         console.log(`Loop iteration ${i + 1}/${acceptedQty}`);
         
         // Generate UID using the UID service
