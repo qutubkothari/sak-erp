@@ -87,4 +87,13 @@ export class ItemsController {
   async removeVendor(@Request() req: any, @Param('id') id: string, @Param('vendorId') vendorId: string) {
     return this.itemsService.removeVendor(id, vendorId);
   }
+
+  @Get(':id/vendors/:vendorId/price-history')
+  async getPriceHistory(
+    @Request() req: any,
+    @Param('id') itemId: string,
+    @Param('vendorId') vendorId: string
+  ) {
+    return this.itemsService.getPurchasePriceHistory(itemId, vendorId);
+  }
 }

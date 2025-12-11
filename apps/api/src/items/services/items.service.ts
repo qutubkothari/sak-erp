@@ -535,4 +535,17 @@ export class ItemsService {
 
     return { message: 'Vendor removed successfully' };
   }
+
+  async getPurchasePriceHistory(itemId: string, vendorId: string) {
+    const { data, error } = await this.supabase.rpc('get_purchase_price_history', {
+      p_item_id: itemId,
+      p_vendor_id: vendorId,
+    });
+
+    if (error) {
+      throw new Error(`Failed to get purchase price history: ${error.message}`);
+    }
+
+    return data || [];
+  }
 }

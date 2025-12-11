@@ -45,6 +45,8 @@ function PurchaseOrdersContent() {
   const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [currentPrId, setCurrentPrId] = useState<string | null>(null);
+  const [priceHistory, setPriceHistory] = useState<Record<string, Array<{ po_number: string; po_date: string; unit_price: number; quantity: number; po_status: string }>>>({});
+  const [hoveredItem, setHoveredItem] = useState<number | null>(null);
 
   const orderSelection = useSelection(orders);
 
@@ -102,6 +104,26 @@ function PurchaseOrdersContent() {
       setItems(data || []);
     } catch (error) {
       console.error('Error fetching items:', error);
+    }
+  };
+
+  const fetchPriceHistory = async (itemId: string, vendorId: string) => {
+    const key = `${itemId}-${vendorId}`;
+    if (priceHistory[key]) return; // Already fetched
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(
+        `http://13.205.17.214:4000/api/v1/items/${itemId}/vendors/${vendorId}/price-history`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPriceHistory(prev => ({ ...prev, [key]: data || [] }));
+      }
+    } catch (error) {
+      console.error('Error fetching price history:', error);
     }
   };
 
@@ -940,14 +962,83 @@ function PurchaseOrdersContent() {
                               required
                             />
                           </div>
-                          <div>
-                            <input
-                              type="number"
-                              value={item.unitPrice}
-                              onChange={(e) => handleUpdateItem(index, 'unitPrice', parseFloat(e.target.value))}
-                              placeholder="Unit Price"
-                              className="w-full border border-gray-300 rounded px-3 py-2"
-                            />
+                          <div className="relative">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                value={item.unitPrice}
+                                onChange={(e) => handleUpdateItem(index, 'unitPrice', parseFloat(e.target.value))}
+                                placeholder="Unit Price"
+                                className="w-full border border-gray-300 rounded px-3 py-2"
+                              />
+                              {item.itemId && item.vendorId && (
+                                <div
+                                  className="relative"
+                                  onMouseEnter={() => {
+                                    setHoveredItem(index);
+                                    fetchPriceHistory(item.itemId, item.vendorId);
+                                  }}
+                                  onMouseLeave={() => setHoveredItem(null)}
+                                >
+                                  <button
+                                    type="button"
+                                    className="p-1 text-blue-500 hover:text-blue-700 cursor-help"
+                                  >
+                                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                    </svg>
+                                  </button>
+                                  
+                                  {hoveredItem === index && (
+                                    <div className="absolute z-50 left-full ml-2 top-0 w-80 bg-white border border-gray-300 rounded-lg shadow-xl p-4">
+                                      <div className="text-sm font-semibold text-gray-700 mb-2">Last 3 Purchase Prices</div>
+                                      {(() => {
+                                        const key = `${item.itemId}-${item.vendorId}`;
+                                        const history = priceHistory[key];
+                                        
+                                        if (!history) {
+                                          return <div className="text-xs text-gray-500">Loading...</div>;
+                                        }
+                                        
+                                        if (history.length === 0) {
+                                          return <div className="text-xs text-gray-500">No purchase history available</div>;
+                                        }
+                                        
+                                        return (
+                                          <div className="space-y-2">
+                                            {history.map((record, idx) => (
+                                              <div key={idx} className="border-b border-gray-200 pb-2 last:border-0">
+                                                <div className="flex justify-between items-start">
+                                                  <div>
+                                                    <div className="text-xs font-medium text-gray-900">
+                                                      PO: {record.po_number}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">
+                                                      {new Date(record.po_date).toLocaleDateString()}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">
+                                                      Qty: {record.quantity}
+                                                    </div>
+                                                  </div>
+                                                  <div className="text-right">
+                                                    <div className="text-sm font-semibold text-blue-600">
+                                                      ₹{record.unit_price?.toFixed(2) || '0.00'}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 capitalize">
+                                                      {record.po_status.replace('_', ' ')}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        );
+                                      })()}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </div>
                           <div>
                             <input
