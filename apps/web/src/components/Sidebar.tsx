@@ -20,6 +20,7 @@ const navigation = [
       { name: 'Purchase Requisitions', href: '/dashboard/purchase/requisitions' },
       { name: 'Purchase Orders', href: '/dashboard/purchase/orders' },
       { name: 'GRN', href: '/dashboard/purchase/grn' },
+      { name: 'Debit Notes', href: '/dashboard/purchase/debit-notes' },
     ],
   },
   {
@@ -46,6 +47,14 @@ const navigation = [
     name: 'Quality',
     icon: '✓',
     href: '/dashboard/quality',
+  },
+  {
+    name: 'Accounts',
+    href: '/dashboard/accounts/payables',
+    icon: '💳',
+    children: [
+      { name: 'Accounts Payable', href: '/dashboard/accounts/payables' },
+    ],
   },
   {
     name: 'Sales',
