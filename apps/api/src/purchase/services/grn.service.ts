@@ -271,8 +271,13 @@ export class GrnService {
       dbStatus = 'CANCELLED';  // Rejection means cancelled
     }
 
-    // If approved, auto-generate UIDs first, then update status
+    // If approved, check if QC is completed before generating UIDs
     if (status === 'APPROVED') {
+      // Check if QC is completed
+      if (!grn.qc_completed) {
+        throw new BadRequestException('Cannot approve GRN: QC inspection must be completed first. Please complete QC via the QC Accept action.');
+      }
+
       console.log('=== UID GENERATION START ===');
       console.log('GRN object:', JSON.stringify(grn, null, 2));
       console.log('Has grn_items:', !!grn.grn_items);
@@ -478,11 +483,17 @@ export class GrnService {
 
   async qcAccept(tenantId: string, grnId: string, userId: string, body: any) {
     // body contains: items array with { itemId, acceptedQty, rejectedQty, qcNotes, rejectionReason }
+    console.log('=== QC ACCEPT START ===');
+    console.log('GRN ID:', grnId);
+    console.log('User ID:', userId);
+    console.log('Body items:', JSON.stringify(body.items, null, 2));
+    
     try {
       const now = new Date().toISOString();
       
       // Update each GRN item with QC results
       for (const item of body.items) {
+        console.log('Processing item:', item.itemId, 'acceptedQty:', item.acceptedQty, 'rejectedQty:', item.rejectedQty);
         const qcStatus = 
           item.rejectedQty > 0 && item.acceptedQty > 0 ? 'PARTIAL' :
           item.rejectedQty > 0 ? 'REJECTED' :
@@ -499,23 +510,27 @@ export class GrnService {
             qc_notes: item.qcNotes || null,
             rejection_reason: item.rejectionReason || null,
           })
-          .eq('id', item.itemId)
-          .eq('tenant_id', tenantId);
+          .eq('id', item.itemId);
 
+        console.log('GRN item update result:', error ? `ERROR: ${error.message}` : 'SUCCESS');
         if (error) throw new Error(`Failed to update item ${item.itemId}: ${error.message}`);
 
         // Update stock entries: only accepted quantity goes to available stock
         // Rejected quantity may require debit note creation (future enhancement)
         if (item.acceptedQty > 0) {
+          console.log('Looking for GRN item to update stock...');
           // Find the stock entry for this GRN item and update available quantity
-          const { data: grnItem } = await this.supabase
+          const { data: grnItem, error: grnItemError } = await this.supabase
             .from('grn_items')
             .select('item_id, grn_id')
             .eq('id', item.itemId)
             .single();
 
+          console.log('GRN item lookup:', grnItem ? `Found item_id: ${grnItem.item_id}` : `ERROR: ${grnItemError?.message}`);
+
           if (grnItem) {
-            const { data: stockEntry } = await this.supabase
+            console.log('Looking for stock entry with item_id:', grnItem.item_id, 'grn_id:', grnItem.grn_id);
+            const { data: stockEntry, error: stockError } = await this.supabase
               .from('stock_entries')
               .select('*')
               .eq('tenant_id', tenantId)
@@ -523,26 +538,57 @@ export class GrnService {
               .contains('metadata', { grn_id: grnItem.grn_id })
               .maybeSingle();
 
+            console.log('Stock entry lookup:', stockEntry ? `Found ID: ${stockEntry.id}` : `Not found or ERROR: ${stockError?.message}`);
+
             if (stockEntry) {
+              console.log('Updating stock entry available_quantity to:', item.acceptedQty);
               // Update available quantity based on accepted qty
-              await this.supabase
+              const { error: stockUpdateError } = await this.supabase
                 .from('stock_entries')
                 .update({
                   available_quantity: item.acceptedQty,
                   updated_at: now,
                 })
                 .eq('id', stockEntry.id);
+              
+              console.log('Stock update result:', stockUpdateError ? `ERROR: ${stockUpdateError.message}` : 'SUCCESS');
             }
+          }
+        }
+
+        // Handle rejections - update rejection amount and status
+        if (item.rejectedQty > 0) {
+          console.log('Item has rejections, calculating debit amount...');
+          
+          // Get item price from GRN item
+          const { data: grnItemData } = await this.supabase
+            .from('grn_items')
+            .select('unit_price')
+            .eq('id', item.itemId)
+            .single();
+
+          if (grnItemData?.unit_price) {
+            const rejectionAmount = item.rejectedQty * grnItemData.unit_price;
+            console.log(`Rejection amount: ${item.rejectedQty} x ${grnItemData.unit_price} = ${rejectionAmount}`);
+            
+            // Update grn_item with rejection details
+            await this.supabase
+              .from('grn_items')
+              .update({
+                return_status: 'PENDING_RETURN',
+                rejection_amount: rejectionAmount,
+              })
+              .eq('id', item.itemId);
           }
         }
       }
 
+      console.log('Checking if all items have QC completed...');
       // Update GRN status if all items have QC completed
       const { data: allItems } = await this.supabase
         .from('grn_items')
         .select('qc_status')
-        .eq('grn_id', grnId)
-        .eq('tenant_id', tenantId);
+        .eq('grn_id', grnId);
 
       const allCompleted = allItems?.every(item => 
         item.qc_status === 'ACCEPTED' || 
@@ -551,16 +597,153 @@ export class GrnService {
       );
 
       if (allCompleted) {
-        await this.supabase
+        console.log('All items QC completed, updating GRN qc_completed flag...');
+        const { error: grnUpdateError } = await this.supabase
           .from('grns')
           .update({ qc_completed: true, updated_at: now })
           .eq('id', grnId)
           .eq('tenant_id', tenantId);
+        
+        console.log('GRN qc_completed update result:', grnUpdateError ? `ERROR: ${grnUpdateError.message}` : 'SUCCESS');
+        if (grnUpdateError) {
+          console.error('Failed to update GRN qc_completed:', grnUpdateError);
+        }
+
+        // Auto-create debit note for any rejected items
+        await this.createDebitNoteForRejections(tenantId, grnId, userId);
       }
 
+      console.log('=== QC ACCEPT COMPLETE ===');
       return { message: 'QC acceptance recorded successfully', qcCompleted: allCompleted };
     } catch (error) {
+      console.error('QC ACCEPT ERROR:', error);
       throw new BadRequestException(`QC acceptance failed: ${error.message}`);
+    }
+  }
+
+  // Auto-create debit note for rejected materials
+  private async createDebitNoteForRejections(tenantId: string, grnId: string, userId: string) {
+    try {
+      console.log('Checking for rejected items to create debit note...');
+      
+      // Get GRN details and rejected items
+      const { data: grn } = await this.supabase
+        .from('grns')
+        .select(`
+          id,
+          vendor_id,
+          grn_items (
+            id,
+            item_id,
+            rejected_qty,
+            unit_price,
+            rejection_reason,
+            rejection_amount
+          )
+        `)
+        .eq('id', grnId)
+        .eq('tenant_id', tenantId)
+        .single();
+
+      if (!grn) return;
+
+      const rejectedItems = grn.grn_items.filter((item: any) => 
+        item.rejected_qty > 0 && item.rejection_amount > 0
+      );
+
+      if (rejectedItems.length === 0) {
+        console.log('No rejected items found, skipping debit note creation');
+        return;
+      }
+
+      console.log(`Found ${rejectedItems.length} rejected items, creating debit note...`);
+
+      // Calculate total debit amount
+      const totalAmount = rejectedItems.reduce((sum: number, item: any) => 
+        sum + parseFloat(item.rejection_amount), 0
+      );
+
+      // Generate debit note number
+      const { data: dnNumber } = await this.supabase
+        .rpc('generate_debit_note_number', { p_tenant_id: tenantId });
+
+      // Create debit note
+      const { data: debitNote, error: dnError } = await this.supabase
+        .from('debit_notes')
+        .insert({
+          tenant_id: tenantId,
+          debit_note_number: dnNumber || `DN-${Date.now()}`,
+          grn_id: grnId,
+          vendor_id: grn.vendor_id,
+          total_amount: totalAmount,
+          reason: 'QC Rejection - Materials failed quality inspection',
+          status: 'DRAFT',
+          created_by: userId,
+        })
+        .select()
+        .single();
+
+      if (dnError) {
+        console.error('Failed to create debit note:', dnError);
+        return;
+      }
+
+      console.log('Debit note created:', debitNote.debit_note_number);
+
+      // Create debit note items
+      const dnItems = rejectedItems.map((item: any) => ({
+        debit_note_id: debitNote.id,
+        grn_item_id: item.id,
+        item_id: item.item_id,
+        rejected_qty: item.rejected_qty,
+        unit_price: item.unit_price,
+        amount: item.rejection_amount,
+        rejection_reason: item.rejection_reason || 'Quality inspection failed',
+        return_status: 'PENDING',
+      }));
+
+      const { error: itemsError } = await this.supabase
+        .from('debit_note_items')
+        .insert(dnItems);
+
+      if (itemsError) {
+        console.error('Failed to create debit note items:', itemsError);
+        return;
+      }
+
+      // Link debit note to grn_items
+      for (const item of rejectedItems) {
+        await this.supabase
+          .from('grn_items')
+          .update({ debit_note_id: debitNote.id })
+          .eq('id', item.id);
+      }
+
+      // Update GRN amounts
+      const { data: grnAmounts } = await this.supabase
+        .from('grn_items')
+        .select('unit_price, received_qty')
+        .eq('grn_id', grnId);
+
+      const grossAmount = grnAmounts?.reduce((sum: number, item: any) => 
+        sum + (parseFloat(item.unit_price) * parseFloat(item.received_qty)), 0
+      ) || 0;
+
+      await this.supabase
+        .from('grns')
+        .update({
+          gross_amount: grossAmount,
+          debit_note_amount: totalAmount,
+          net_payable_amount: grossAmount - totalAmount,
+        })
+        .eq('id', grnId)
+        .eq('tenant_id', tenantId);
+
+      console.log(`Debit note ${debitNote.debit_note_number} created for ₹${totalAmount}`);
+      
+    } catch (error) {
+      console.error('Error in createDebitNoteForRejections:', error);
+      // Don't throw - this is a background operation
     }
   }
 

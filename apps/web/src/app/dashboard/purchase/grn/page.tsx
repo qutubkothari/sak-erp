@@ -11,6 +11,10 @@ interface GRN {
   invoice_date: string;
   status: string;
   remarks?: string;
+  qc_completed?: boolean;
+  gross_amount?: number;
+  debit_note_amount?: number;
+  net_payable_amount?: number;
   vendor: {
     name: string;
     code: string;
@@ -23,6 +27,7 @@ interface GRN {
     name: string;
   };
   grn_items: Array<{
+    id?: string;
     item_code?: string;
     item_name?: string;
     item?: { name: string; code: string; hsn_code?: string };
@@ -35,6 +40,12 @@ interface GRN {
     uid?: string;
     batch_number?: string;
     supplier_hsn_code?: string;
+    unit_price?: number;
+    rejection_amount?: number;
+    rejection_reason?: string;
+    qc_notes?: string;
+    return_status?: string;
+    debit_note_id?: string;
   }>;
 }
 
@@ -120,6 +131,7 @@ export default function GRNPage() {
   const [selectedGRN, setSelectedGRN] = useState<GRN | null>(null);
   const [qcFormData, setQcFormData] = useState<Array<{
     itemId: string;
+    itemCode: string;
     itemName: string;
     receivedQty: number;
     acceptedQty: number;
@@ -1104,6 +1116,33 @@ export default function GRNPage() {
                 </div>
               </div>
 
+              {/* Financial Summary - Only show if financial data exists */}
+              {(selectedGRN.gross_amount || selectedGRN.debit_note_amount || selectedGRN.net_payable_amount) && (
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                  <h3 className="text-lg font-bold text-blue-900 mb-3">💰 Financial Summary</h3>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-white rounded-lg p-3 border border-blue-200">
+                      <div className="text-xs text-gray-600 mb-1">Gross Amount</div>
+                      <div className="text-xl font-bold text-gray-900">
+                        ₹{(selectedGRN.gross_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border border-red-200">
+                      <div className="text-xs text-gray-600 mb-1">Debit Notes</div>
+                      <div className="text-xl font-bold text-red-600">
+                        -₹{(selectedGRN.debit_note_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border border-green-200">
+                      <div className="text-xs text-gray-600 mb-1">Net Payable</div>
+                      <div className="text-xl font-bold text-green-600">
+                        ₹{(selectedGRN.net_payable_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Items Table */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Items</h3>
@@ -1194,6 +1233,63 @@ export default function GRNPage() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Rejections Section - Only show if there are rejections */}
+              {selectedGRN.grn_items?.some((item: any) => (item.rejected_qty || 0) > 0) && (
+                <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
+                  <h3 className="text-lg font-bold text-red-900 mb-3">❌ Rejected Items</h3>
+                  <div className="space-y-3">
+                    {selectedGRN.grn_items
+                      .filter((item: any) => (item.rejected_qty || 0) > 0)
+                      .map((item: any, idx: number) => (
+                        <div key={idx} className="bg-white border border-red-200 rounded-lg p-3">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <div className="font-semibold text-gray-900">
+                                {item.item_name || item.item?.name} ({item.item_code || item.item?.code})
+                              </div>
+                              <div className="text-sm text-gray-600 mt-1">
+                                Rejected Qty: <span className="font-bold text-red-600">{item.rejected_qty}</span>
+                                {item.unit_price && (
+                                  <span className="ml-3">
+                                    Amount: <span className="font-bold text-red-600">
+                                      ₹{(item.rejection_amount || (item.rejected_qty * item.unit_price)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {item.return_status && item.return_status !== 'NONE' && (
+                              <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                item.return_status === 'PENDING_RETURN' ? 'bg-yellow-100 text-yellow-800' :
+                                item.return_status === 'RETURNED' ? 'bg-green-100 text-green-800' :
+                                item.return_status === 'DESTROYED' ? 'bg-gray-100 text-gray-800' :
+                                'bg-blue-100 text-blue-800'
+                              }`}>
+                                {item.return_status.replace('_', ' ')}
+                              </span>
+                            )}
+                          </div>
+                          {item.rejection_reason && (
+                            <div className="text-sm text-gray-700 bg-red-50 border-l-4 border-red-400 p-2 rounded">
+                              <span className="font-medium">Reason:</span> {item.rejection_reason}
+                            </div>
+                          )}
+                          {item.qc_notes && (
+                            <div className="text-sm text-gray-600 mt-1">
+                              <span className="font-medium">QC Notes:</span> {item.qc_notes}
+                            </div>
+                          )}
+                          {item.debit_note_id && (
+                            <div className="text-sm text-blue-600 mt-2 font-medium">
+                              📄 Debit Note Created
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Footer with Action Buttons */}
@@ -1208,6 +1304,32 @@ export default function GRNPage() {
                   </button>
                 ) : (
                   <>
+                    <button
+                      onClick={() => {
+                        // Initialize QC form data with GRN items
+                        const qcData = selectedGRN.grn_items.map((item: any) => ({
+                          itemId: item.id,
+                          itemCode: item.item_code || item.item?.code,
+                          itemName: item.item_name || item.item?.name,
+                          receivedQty: item.received_qty || item.received_quantity || 0,
+                          acceptedQty: item.received_qty || item.received_quantity || 0,
+                          rejectedQty: 0,
+                          qcNotes: '',
+                          rejectionReason: ''
+                        }));
+                        setQcFormData(qcData);
+                        setShowQCModal(true);
+                      }}
+                      disabled={selectedGRN.status !== 'DRAFT' || selectedGRN.qc_completed}
+                      className={`px-6 py-2 text-white rounded-lg ${
+                        selectedGRN.status === 'DRAFT' && !selectedGRN.qc_completed
+                          ? 'bg-blue-600 hover:bg-blue-700 cursor-pointer' 
+                          : 'bg-gray-400 cursor-not-allowed'
+                      }`}
+                      title={selectedGRN.qc_completed ? 'QC already completed' : 'Perform QC inspection'}
+                    >
+                      🔍 QC Accept
+                    </button>
                     <button
                       onClick={async () => {
                         console.log('Approve button clicked!');
@@ -1475,6 +1597,178 @@ export default function GRNPage() {
                 }`}
               >
                 OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QC Accept Modal */}
+      {showQCModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-blue-50">
+              <h2 className="text-2xl font-bold text-gray-900">🔍 QC Inspection</h2>
+              <button
+                onClick={() => setShowQCModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+              <div className="space-y-4">
+                {qcFormData.map((item, index) => (
+                  <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <div className="font-semibold text-gray-900">{item.itemName}</div>
+                        <div className="text-sm text-gray-600">Code: {item.itemCode}</div>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        Received: <span className="font-semibold">{item.receivedQty}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Accepted Quantity *
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max={item.receivedQty}
+                          value={item.acceptedQty}
+                          onChange={(e) => {
+                            const accepted = parseFloat(e.target.value) || 0;
+                            const rejected = item.receivedQty - accepted;
+                            const newData = [...qcFormData];
+                            newData[index] = {
+                              ...item,
+                              acceptedQty: accepted,
+                              rejectedQty: Math.max(0, rejected)
+                            };
+                            setQcFormData(newData);
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Rejected Quantity
+                        </label>
+                        <input
+                          type="number"
+                          value={item.rejectedQty}
+                          readOnly
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                        />
+                      </div>
+                    </div>
+
+                    {item.rejectedQty > 0 && (
+                      <div className="mt-3">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Rejection Reason *
+                        </label>
+                        <input
+                          type="text"
+                          value={item.rejectionReason}
+                          onChange={(e) => {
+                            const newData = [...qcFormData];
+                            newData[index] = { ...item, rejectionReason: e.target.value };
+                            setQcFormData(newData);
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="Enter reason for rejection"
+                        />
+                      </div>
+                    )}
+
+                    <div className="mt-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        QC Notes
+                      </label>
+                      <textarea
+                        value={item.qcNotes}
+                        onChange={(e) => {
+                          const newData = [...qcFormData];
+                          newData[index] = { ...item, qcNotes: e.target.value };
+                          setQcFormData(newData);
+                        }}
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Optional inspection notes"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={() => setShowQCModal(false)}
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    // Validate
+                    const hasRejectedWithoutReason = qcFormData.some(
+                      item => item.rejectedQty > 0 && !item.rejectionReason?.trim()
+                    );
+                    
+                    if (hasRejectedWithoutReason) {
+                      setAlertMessage({ 
+                        type: 'error', 
+                        message: 'Please provide rejection reason for all rejected items' 
+                      });
+                      return;
+                    }
+
+                    if (!selectedGRN) return;
+
+                    const token = localStorage.getItem('accessToken');
+                    const response = await fetch(
+                      `http://13.205.17.214:4000/api/v1/purchase/grn/${selectedGRN.id}/qc-accept`,
+                      {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({ items: qcFormData }),
+                      }
+                    );
+
+                    if (response.ok) {
+                      setAlertMessage({ type: 'success', message: 'QC inspection completed successfully!' });
+                      setShowQCModal(false);
+                      fetchGRNs();
+                      setShowViewModal(false);
+                    } else {
+                      const errorData = await response.json();
+                      setAlertMessage({ 
+                        type: 'error', 
+                        message: `QC inspection failed: ${errorData.message || 'Unknown error'}` 
+                      });
+                    }
+                  } catch (error) {
+                    console.error('QC accept error:', error);
+                    setAlertMessage({ type: 'error', message: 'Failed to complete QC inspection' });
+                  }
+                }}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                ✓ Complete QC Inspection
               </button>
             </div>
           </div>
