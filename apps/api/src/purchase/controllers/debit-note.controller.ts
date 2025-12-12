@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Param, Body, Query, UseGuards, Req } from '
 import { DebitNoteService } from '../services/debit-note.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@Controller('api/v1/purchase/debit-notes')
+@Controller('purchase/debit-notes')
 @UseGuards(JwtAuthGuard)
 export class DebitNoteController {
   constructor(private readonly debitNoteService: DebitNoteService) {}
