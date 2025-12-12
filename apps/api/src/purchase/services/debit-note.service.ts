@@ -54,7 +54,12 @@ export class DebitNoteService {
       .eq('id', id)
       .single();
 
-    if (error) throw new NotFoundException('Debit note not found');
+    if (error) {
+      console.error('Error fetching debit note:', error);
+      throw new NotFoundException('Debit note not found');
+    }
+    
+    console.log('Debit note data:', JSON.stringify(data, null, 2));
     return data;
   }
 
