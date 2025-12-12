@@ -138,7 +138,7 @@ SELECT
   g.gross_amount,
   g.debit_note_amount,
   g.net_payable_amount,
-  g.payment_status
+  g.paid_amount
 FROM grns g
 LEFT JOIN vendors v ON g.vendor_id = v.id
 WHERE g.status = 'COMPLETED'
