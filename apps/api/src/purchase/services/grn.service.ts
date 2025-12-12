@@ -560,16 +560,16 @@ export class GrnService {
         if (item.rejectedQty > 0) {
           console.log('Item has rejections, calculating debit amount...');
           
-          // Get item price from GRN item
+          // Get item price from GRN item (column is 'rate' not 'unit_price')
           const { data: grnItemData } = await this.supabase
             .from('grn_items')
-            .select('unit_price')
+            .select('rate')
             .eq('id', item.itemId)
             .single();
 
-          if (grnItemData?.unit_price) {
-            const rejectionAmount = item.rejectedQty * grnItemData.unit_price;
-            console.log(`Rejection amount: ${item.rejectedQty} x ${grnItemData.unit_price} = ${rejectionAmount}`);
+          if (grnItemData?.rate) {
+            const rejectionAmount = item.rejectedQty * grnItemData.rate;
+            console.log(`Rejection amount: ${item.rejectedQty} x ${grnItemData.rate} = ${rejectionAmount}`);
             
             // Update grn_item with rejection details
             await this.supabase
@@ -636,7 +636,7 @@ export class GrnService {
             id,
             item_id,
             rejected_qty,
-            unit_price,
+            rate,
             rejection_reason,
             rejection_amount
           )
@@ -696,7 +696,7 @@ export class GrnService {
         grn_item_id: item.id,
         item_id: item.item_id,
         rejected_qty: item.rejected_qty,
-        unit_price: item.unit_price,
+        unit_price: item.rate,
         amount: item.rejection_amount,
         rejection_reason: item.rejection_reason || 'Quality inspection failed',
         return_status: 'PENDING',
