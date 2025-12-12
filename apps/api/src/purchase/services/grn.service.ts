@@ -625,9 +625,10 @@ export class GrnService {
   private async createDebitNoteForRejections(tenantId: string, grnId: string, userId: string) {
     try {
       console.log('Checking for rejected items to create debit note...');
+      console.log('GRN ID:', grnId, 'Tenant ID:', tenantId);
       
       // Get GRN details and rejected items
-      const { data: grn } = await this.supabase
+      const { data: grn, error: grnError } = await this.supabase
         .from('grns')
         .select(`
           id,
@@ -647,12 +648,20 @@ export class GrnService {
         .eq('tenant_id', tenantId)
         .single();
 
+      console.log('GRN query result:', grn ? 'Found GRN' : 'No GRN found');
+      if (grnError) console.log('GRN query error:', grnError);
+      if (grn) {
+        console.log('GRN items count:', grn.grn_items?.length || 0);
+        console.log('GRN items:', JSON.stringify(grn.grn_items, null, 2));
+      }
+
       if (!grn) return;
 
       const rejectedItems = grn.grn_items.filter((item: any) => 
         item.rejected_qty > 0 && item.rejection_amount > 0
       );
 
+      console.log('Rejected items after filter:', rejectedItems.length);
       if (rejectedItems.length === 0) {
         console.log('No rejected items found, skipping debit note creation');
         return;
