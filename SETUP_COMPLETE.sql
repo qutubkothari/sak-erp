@@ -3,6 +3,21 @@
 -- Run this once to finalize everything
 -- ========================================
 
+-- Step 0: Create Financial Columns
+-- ========================================
+DO $$
+BEGIN
+  RAISE NOTICE 'Step 0: Creating financial columns if they do not exist...';
+  
+  -- Add financial tracking columns to grns table
+  ALTER TABLE grns
+  ADD COLUMN IF NOT EXISTS gross_amount NUMERIC(15,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS debit_note_amount NUMERIC(15,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS net_payable_amount NUMERIC(15,2) DEFAULT 0;
+  
+  RAISE NOTICE '  ✓ Financial columns created';
+END $$;
+
 -- Step 1: Populate GRN Financial Amounts
 -- ========================================
 DO $$
@@ -137,8 +152,7 @@ SELECT
   v.name as vendor_name,
   g.gross_amount,
   g.debit_note_amount,
-  g.net_payable_amount,
-  g.paid_amount
+  g.net_payable_amount
 FROM grns g
 LEFT JOIN vendors v ON g.vendor_id = v.id
 WHERE g.status = 'COMPLETED'
@@ -167,8 +181,7 @@ SELECT
   COUNT(g.id) as grn_count,
   COALESCE(SUM(g.gross_amount), 0) as total_gross,
   COALESCE(SUM(g.debit_note_amount), 0) as total_debit,
-  COALESCE(SUM(g.net_payable_amount), 0) as total_payable,
-  COALESCE(SUM(g.paid_amount), 0) as total_paid
+  COALESCE(SUM(g.net_payable_amount), 0) as total_payable
 FROM vendors v
 LEFT JOIN grns g ON v.id = g.vendor_id AND g.status = 'COMPLETED'
 WHERE g.id IS NOT NULL
