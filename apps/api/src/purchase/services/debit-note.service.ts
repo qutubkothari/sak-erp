@@ -20,9 +20,7 @@ export class DebitNoteService {
       .select(`
         *,
         grn:grns(id, grn_number),
-        vendor:vendors(id, name, code),
-        creator:users!created_by(id, name),
-        approver:users!approved_by(id, name)
+        vendor:vendors(id, name, code)
       `)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false });
@@ -47,8 +45,6 @@ export class DebitNoteService {
         *,
         grn:grns(id, grn_number, grn_date),
         vendor:vendors(id, name, code, contact_person, email),
-        creator:users!created_by(id, name, email),
-        approver:users!approved_by(id, name, email),
         debit_note_items(
           *,
           item:items(id, code, name, unit)
