@@ -135,7 +135,7 @@ export class EmailService {
                 </tr>
               </thead>
               <tbody>
-                ${rfqData.items.map(item => `
+                ${rfqData.items.map((item: any) => `
                   <tr>
                     <td>${item.item_name}</td>
                     <td>${item.description || '-'}</td>
@@ -212,7 +212,7 @@ export class EmailService {
                 </tr>
               </thead>
               <tbody>
-                ${poData.items.map((item, idx) => `
+                ${poData.items.map((item: any, idx: number) => `
                   <tr>
                     <td>${idx + 1}</td>
                     <td>${item.item_name}</td>
@@ -350,7 +350,7 @@ export class EmailService {
                 </tr>
               </thead>
               <tbody>
-                ${soData.items.map((item, idx) => `
+                ${soData.items.map((item: any, idx: number) => `
                   <tr>
                     <td>${idx + 1}</td>
                     <td>${item.item_name}</td>
@@ -426,7 +426,7 @@ export class EmailService {
                 </tr>
               </thead>
               <tbody>
-                ${dispatchData.items.map((item, idx) => `
+                ${dispatchData.items.map((item: any, idx: number) => `
                   <tr>
                     <td>${idx + 1}</td>
                     <td>${item.item_name}</td>
@@ -493,7 +493,7 @@ export class EmailService {
                 </tr>
               </thead>
               <tbody>
-                ${certificateData.items.map((item, idx) => `
+                ${certificateData.items.map((item: any, idx: number) => `
                   <tr>
                     <td>${idx + 1}</td>
                     <td>${item.product_name}</td>
@@ -517,5 +517,18 @@ export class EmailService {
         </body>
       </html>
     `;
+  }
+
+  // Generic email sending method
+  async sendEmail(options: { to: string; subject: string; html: string; attachments?: any[] }) {
+    const mailOptions = {
+      from: `"${this.configService.get('COMPANY_NAME', 'SAK Solutions')}" <${this.configService.get('SMTP_USER')}>`,
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+      attachments: options.attachments || [],
+    };
+
+    return this.sendMail(mailOptions);
   }
 }
