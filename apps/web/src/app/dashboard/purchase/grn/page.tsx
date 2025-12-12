@@ -741,11 +741,25 @@ export default function GRNPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <button 
                         type="button"
-                        onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                        onClick={async (e: React.MouseEvent<HTMLButtonElement>) => {
                           e.preventDefault();
                           e.stopPropagation();
                           console.log('View clicked for GRN:', grn);
-                          setSelectedGRN(grn);
+                          
+                          // Fetch full GRN details with items
+                          try {
+                            const token = localStorage.getItem('accessToken');
+                            const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/grn/${grn.id}`, {
+                              headers: { Authorization: `Bearer ${token}` },
+                            });
+                            const detailedGRN = await response.json();
+                            console.log('Detailed GRN data:', detailedGRN);
+                            setSelectedGRN(detailedGRN);
+                          } catch (error) {
+                            console.error('Error fetching GRN details:', error);
+                            setSelectedGRN(grn); // Fallback to list data
+                          }
+                          
                           setShowViewModal(true);
                           setEditMode(false);
                         }}
