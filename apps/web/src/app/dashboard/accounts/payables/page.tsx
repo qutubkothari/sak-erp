@@ -32,6 +32,8 @@ export default function AccountsPayablePage() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedGRN, setSelectedGRN] = useState<GRNPayable | null>(null);
+  const [sortField, setSortField] = useState<keyof VendorPayable>('vendor_name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
     payment_method: 'NEFT',
@@ -125,6 +127,41 @@ export default function AccountsPayablePage() {
     }
   };
 
+  const handleSort = (field: keyof VendorPayable) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedVendorPayables = [...vendorPayables].sort((a, b) => {
+    const aValue = a[sortField];
+    const bValue = b[sortField];
+    
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      return sortDirection === 'asc' 
+        ? aValue.localeCompare(bValue)
+        : bValue.localeCompare(aValue);
+    }
+    
+    if (typeof aValue === 'number' && typeof bValue === 'number') {
+      return sortDirection === 'asc' 
+        ? aValue - bValue
+        : bValue - aValue;
+    }
+    
+    return 0;
+  });
+
+  const SortIcon = ({ field }: { field: keyof VendorPayable }) => {
+    if (sortField !== field) {
+      return <span className="text-gray-400">⇅</span>;
+    }
+    return sortDirection === 'asc' ? <span>↑</span> : <span>↓</span>;
+  };
+
   const totalPayables = vendorPayables.reduce((sum, v) => sum + v.total_payable, 0);
 
   return (
@@ -170,16 +207,51 @@ export default function AccountsPayablePage() {
             <table className="w-full">
               <thead className="bg-green-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-green-900 uppercase">Vendor</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-green-900 uppercase">Gross Amount</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-green-900 uppercase">Debit Notes</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-green-900 uppercase">Net Payable</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-green-900 uppercase">GRNs</th>
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-green-900 uppercase cursor-pointer hover:bg-green-100"
+                    onClick={() => handleSort('vendor_name')}
+                  >
+                    <div className="flex items-center gap-2">
+                      Vendor <SortIcon field="vendor_name" />
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-3 text-right text-xs font-medium text-green-900 uppercase cursor-pointer hover:bg-green-100"
+                    onClick={() => handleSort('total_gross')}
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      Gross Amount <SortIcon field="total_gross" />
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-3 text-right text-xs font-medium text-green-900 uppercase cursor-pointer hover:bg-green-100"
+                    onClick={() => handleSort('total_debit')}
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      Debit Notes <SortIcon field="total_debit" />
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-3 text-right text-xs font-medium text-green-900 uppercase cursor-pointer hover:bg-green-100"
+                    onClick={() => handleSort('total_payable')}
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      Net Payable <SortIcon field="total_payable" />
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-3 text-center text-xs font-medium text-green-900 uppercase cursor-pointer hover:bg-green-100"
+                    onClick={() => handleSort('grn_count')}
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      GRNs <SortIcon field="grn_count" />
+                    </div>
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-green-900 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {vendorPayables.map((vendor) => (
+                {sortedVendorPayables.map((vendor) => (
                   <tr key={vendor.vendor_id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="font-semibold text-gray-900">{vendor.vendor_name}</div>
