@@ -635,10 +635,12 @@ export class GrnService {
           grn_items (
             id,
             item_id,
+            po_item_id,
             rejected_qty,
             rate,
             rejection_reason,
-            rejection_amount
+            rejection_amount,
+            po_item:po_items!po_item_id(item_id)
           )
         `)
         .eq('id', grnId)
@@ -694,7 +696,7 @@ export class GrnService {
       const dnItems = rejectedItems.map((item: any) => ({
         debit_note_id: debitNote.id,
         grn_item_id: item.id,
-        item_id: item.item_id,
+        item_id: item.item_id || item.po_item?.item_id,
         rejected_qty: item.rejected_qty,
         unit_price: item.rate,
         amount: item.rejection_amount,
