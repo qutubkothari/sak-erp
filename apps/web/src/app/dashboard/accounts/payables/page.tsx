@@ -290,7 +290,7 @@ export default function AccountsPayablePage() {
                       <tr key={grn.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900">{grn.grn_number}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">
-                          {new Date(grn.grn_date).toLocaleDateString()}
+                          {grn.receipt_date ? new Date(grn.receipt_date).toLocaleDateString() : 'N/A'}
                         </td>
                         <td className="px-4 py-3 text-sm text-right text-gray-900">
                           ₹{(grn.gross_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
