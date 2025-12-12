@@ -25,7 +25,7 @@ export class DashboardService {
       .from('purchase_orders')
       .select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
-      .in('status', ['DRAFT', 'PENDING_APPROVAL', 'APPROVED']);
+      .in('status', ['DRAFT', 'PENDING', 'APPROVED']);
 
     // Get in production count
     const { count: inProduction } = await this.supabase
