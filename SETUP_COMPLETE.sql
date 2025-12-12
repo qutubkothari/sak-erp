@@ -128,9 +128,6 @@ END $$;
 
 -- Final Verification Queries
 -- ========================================
-RAISE NOTICE '';
-RAISE NOTICE 'Running verification queries...';
-RAISE NOTICE '';
 
 -- Show recent GRNs with financial data
 SELECT 
