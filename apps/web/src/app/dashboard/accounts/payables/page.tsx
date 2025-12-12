@@ -17,6 +17,7 @@ interface GRNPayable {
   id: string;
   grn_number: string;
   grn_date: string;
+  receipt_date: string;
   gross_amount: number;
   debit_note_amount: number;
   net_payable_amount: number;
