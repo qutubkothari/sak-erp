@@ -14,6 +14,12 @@ export class PurchaseOrdersService {
   }
 
   async create(tenantId: string, userId: string, data: any) {
+    console.log('=== PO CREATE - Payment data received:', {
+      paymentStatus: data.paymentStatus,
+      paymentNotes: data.paymentNotes,
+      paymentTerms: data.paymentTerms
+    });
+    
     // Check if PO already exists for this PR + vendor combination to prevent duplicates
     if (data.prId && data.vendorId) {
       const { data: existingPOs, error: checkError } = await this.supabase
@@ -57,6 +63,8 @@ export class PurchaseOrdersService {
         po_date: data.poDate || new Date().toISOString().split('T')[0],
         delivery_date: data.deliveryDate,
         payment_terms: data.paymentTerms || 'NET_30',
+        payment_status: data.paymentStatus || 'UNPAID',
+        payment_notes: data.paymentNotes,
         delivery_address: data.deliveryAddress,
         terms_and_conditions: data.termsAndConditions,
         status: data.status || 'DRAFT',
@@ -158,6 +166,12 @@ export class PurchaseOrdersService {
   }
 
   async update(tenantId: string, id: string, data: any) {
+    console.log('=== PO UPDATE - Payment data received:', {
+      paymentStatus: data.paymentStatus,
+      paymentNotes: data.paymentNotes,
+      paymentTerms: data.paymentTerms
+    });
+    
     const { error } = await this.supabase
       .from('purchase_orders')
       .update({
@@ -165,6 +179,8 @@ export class PurchaseOrdersService {
         po_date: data.poDate || data.orderDate,
         delivery_date: data.deliveryDate || data.expectedDelivery,
         payment_terms: data.paymentTerms,
+        payment_status: data.paymentStatus,
+        payment_notes: data.paymentNotes,
         delivery_address: data.deliveryAddress,
         remarks: data.remarks || data.notes,
         total_amount: data.totalAmount,
@@ -172,6 +188,12 @@ export class PurchaseOrdersService {
       })
       .eq('tenant_id', tenantId)
       .eq('id', id);
+    
+    console.log('=== PO UPDATE - After update:', {
+      id,
+      paymentStatus: data.paymentStatus,
+      error: error
+    });
 
     if (error) throw new BadRequestException(error.message);
 
@@ -323,7 +345,7 @@ export class PurchaseOrdersService {
       delivery_date: po.delivery_date,
       payment_terms: po.payment_terms,
       vendor_name: po.vendor.name,
-      items: po.purchase_order_items.map(item => ({
+      items: po.purchase_order_items.map((item: any) => ({
         item_name: item.item_name,
         quantity: item.ordered_qty,
         unit_price: item.rate,
