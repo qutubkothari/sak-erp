@@ -47,7 +47,7 @@ export class DebitNoteService {
         vendor:vendors(id, name, code, contact_person, email),
         debit_note_items(
           *,
-          item:items(id, code, name, unit)
+          item:items(id, code, name, uom)
         )
       `)
       .eq('tenant_id', tenantId)
