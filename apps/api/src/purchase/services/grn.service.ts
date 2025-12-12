@@ -698,7 +698,7 @@ export class GrnService {
           .update({
             rejection_amount: item.rejection_amount ?? computedAmount,
             rate: item.rate ?? rate,
-            return_status: item.return_status || 'PENDING_RETURN',
+            return_status: 'PENDING_RETURN',
           })
           .eq('id', item.id);
 
