@@ -412,6 +412,15 @@ export class DebitNoteService {
       paymentStatus = 'PARTIAL';
     }
 
+    console.log('=== PAYMENT CALCULATION DEBUG ===');
+    console.log('GRN ID:', grnId);
+    console.log('Current Paid:', currentPaid);
+    console.log('Payment Amount:', paymentData.amount);
+    console.log('New Paid Amount:', newPaidAmount);
+    console.log('Net Payable:', netPayable);
+    console.log('Calculated Status:', paymentStatus);
+    console.log('Status Logic: newPaidAmount >= netPayable?', newPaidAmount >= netPayable);
+
     // Update GRN
     const { error: updateError } = await this.supabase
       .from('grns')
@@ -428,10 +437,23 @@ export class DebitNoteService {
       .eq('tenant_id', tenantId);
 
     if (updateError) {
+      console.error('UPDATE ERROR:', updateError);
       throw new Error(`Failed to record payment: ${updateError.message}`);
     }
 
-    console.log(`Payment of ${paymentData.amount} recorded for GRN ${grnId}`);
+    console.log(`✓ Payment of ${paymentData.amount} recorded for GRN ${grnId}`);
+    console.log(`✓ Status updated to: ${paymentStatus}`);
+
+    // Verify the update by fetching the record again
+    const { data: verifyGrn } = await this.supabase
+      .from('grns')
+      .select('paid_amount, payment_status')
+      .eq('id', grnId)
+      .single();
+    
+    console.log('=== VERIFICATION ===');
+    console.log('Database paid_amount:', verifyGrn?.paid_amount);
+    console.log('Database payment_status:', verifyGrn?.payment_status);
 
     return {
       message: 'Payment recorded successfully',
