@@ -43,7 +43,7 @@ export class DebitNoteService {
       .from('debit_notes')
       .select(`
         *,
-        grn:grns(id, grn_number, grn_date),
+        grn:grns(id, grn_number, receipt_date),
         vendor:vendors(id, name, code, contact_person, email),
         debit_note_items(
           *,
