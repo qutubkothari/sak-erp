@@ -78,12 +78,14 @@ class ApiClient {
         headers,
       });
 
-      const data = await response.json();
+      // Some endpoints return 204/empty body; guard JSON parsing
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : null;
 
       if (!response.ok) {
         return {
           success: false,
-          error: data.message || `HTTP ${response.status}: ${response.statusText}`,
+          error: (data as any)?.message || `HTTP ${response.status}: ${response.statusText}`,
         };
       }
 

@@ -41,8 +41,18 @@ WHERE received_qty IS NULL;
 CREATE INDEX IF NOT EXISTS idx_grn_items_qc_status 
 ON grn_items(qc_status);
 
+-- Add QC completed flag to GRNs table
+ALTER TABLE grns
+ADD COLUMN IF NOT EXISTS qc_completed BOOLEAN DEFAULT FALSE;
+
+-- Update existing completed GRNs to have qc_completed = true
+UPDATE grns 
+SET qc_completed = TRUE
+WHERE status = 'APPROVED' OR status = 'COMPLETED';
+
 -- Add comments
 COMMENT ON COLUMN grn_items.received_qty IS 'Physical quantity received from vendor';
 COMMENT ON COLUMN grn_items.accepted_qty IS 'Quantity passed QC inspection';
 COMMENT ON COLUMN grn_items.rejected_qty IS 'Quantity failed QC inspection';
 COMMENT ON COLUMN grn_items.qc_status IS 'QC inspection status: PENDING/ACCEPTED/REJECTED/PARTIAL';
+COMMENT ON COLUMN grns.qc_completed IS 'Whether QC inspection has been completed for all items';

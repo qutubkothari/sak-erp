@@ -640,8 +640,7 @@ export class GrnService {
             rejected_qty,
             rate,
             rejection_reason,
-            rejection_amount,
-            po_item:po_items!po_item_id(item_id)
+            rejection_amount
           )
         `)
         .eq('id', grnId)
@@ -657,9 +656,58 @@ export class GrnService {
 
       if (!grn) return;
 
-      const rejectedItems = grn.grn_items.filter((item: any) => 
-        item.rejected_qty > 0 && item.rejection_amount > 0
-      );
+      const poItemCache = new Map<string, any>();
+      const rejectedItems: any[] = [];
+      for (const item of grn.grn_items || []) {
+        if (!(item.rejected_qty > 0)) {
+          continue;
+        }
+
+        // Fall back to PO rate if GRN rate is missing; compute rejection amount if absent
+        let fallbackRate = 0;
+        if (!item.rate && item.po_item_id) {
+          if (!poItemCache.has(item.po_item_id)) {
+            const { data: poItem } = await this.supabase
+              .from('po_items')
+              .select('id, item_id, rate, unit_price')
+              .eq('id', item.po_item_id)
+              .maybeSingle();
+            poItemCache.set(item.po_item_id, poItem || null);
+          }
+          const poItem = poItemCache.get(item.po_item_id);
+          fallbackRate = parseFloat(poItem?.rate ?? poItem?.unit_price ?? '0') || 0;
+        }
+
+        const rate = parseFloat(item.rate ?? fallbackRate) || 0;
+        const computedAmount = item.rejection_amount ?? (rate * item.rejected_qty);
+
+        if (!computedAmount || computedAmount <= 0) {
+          console.log('Skipping rejected item due to zero/invalid amount', {
+            grn_item_id: item.id,
+            rejected_qty: item.rejected_qty,
+            rate,
+            fallbackRate,
+            rejection_amount: item.rejection_amount,
+          });
+          continue;
+        }
+
+        // Persist the computed rejection amount so future runs have a value
+        await this.supabase
+          .from('grn_items')
+          .update({
+            rejection_amount: item.rejection_amount ?? computedAmount,
+            rate: item.rate ?? rate,
+            return_status: item.return_status || 'PENDING_RETURN',
+          })
+          .eq('id', item.id);
+
+        rejectedItems.push({
+          ...item,
+          computed_rate: rate,
+          computed_amount: computedAmount,
+        });
+      }
 
       console.log('Rejected items after filter:', rejectedItems.length);
       if (rejectedItems.length === 0) {
@@ -671,7 +719,7 @@ export class GrnService {
 
       // Calculate total debit amount
       const totalAmount = rejectedItems.reduce((sum: number, item: any) => 
-        sum + parseFloat(item.rejection_amount), 0
+        sum + parseFloat(item.computed_amount), 0
       );
 
       // Generate debit note number
@@ -707,8 +755,8 @@ export class GrnService {
         grn_item_id: item.id,
         item_id: item.item_id || item.po_item?.item_id,
         rejected_qty: item.rejected_qty,
-        unit_price: item.rate,
-        amount: item.rejection_amount,
+        unit_price: item.computed_rate,
+        amount: item.computed_amount,
         rejection_reason: item.rejection_reason || 'Quality inspection failed',
         return_status: 'PENDING',
       }));
