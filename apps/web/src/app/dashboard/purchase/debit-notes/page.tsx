@@ -94,7 +94,7 @@ export default function DebitNotesPage() {
     }
   };
 
-  const updateStatus = async (id: string, status: string) {
+  const updateStatus = async (id: string, status: string) => {
     try {
       await apiClient.put(`/purchase/debit-notes/${id}/status`, { status });
       alert(`Debit note status updated to ${status}`);

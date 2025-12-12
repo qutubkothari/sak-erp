@@ -1347,6 +1347,7 @@ function PurchaseOrdersContent() {
                   </div>
                 )}
               </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
@@ -1358,11 +1359,10 @@ function PurchaseOrdersContent() {
                   placeholder="Additional notes..."
                 />
               </div>
-              )}
 
               {/* Additional Charges */}
               {!editingPOId && (
-              <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Customs Duty (₹)</label>
                   <input
@@ -1388,6 +1388,7 @@ function PurchaseOrdersContent() {
                   />
                 </div>
               </div>
+              )}
 
               {/* Total */}
               <div className="border-t pt-4">
@@ -1422,7 +1423,6 @@ function PurchaseOrdersContent() {
                   </div>
                 </div>
               </div>
-              )}
             </div>
 
             <div className="p-6 border-t border-gray-200 flex justify-end gap-4">
