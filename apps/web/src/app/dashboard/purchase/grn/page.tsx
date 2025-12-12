@@ -660,7 +660,7 @@ export default function GRNPage() {
         </div>
 
         {/* GRN List */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        <div className="bg-white rounded-lg shadow-md overflow-x-auto">
           {loading ? (
             <div className="p-8 text-center text-gray-500">Loading GRNs...</div>
           ) : grns.length === 0 ? (
