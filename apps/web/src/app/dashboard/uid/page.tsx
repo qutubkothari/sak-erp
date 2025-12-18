@@ -117,8 +117,8 @@ export default function UIDTrackingPage() {
 
   const fetchAllUIDs = async () => {
     try {
-      // Fetch ALL UIDs without filters for search functionality
-      const response = await apiClient.get<any>('/uid');
+      // Fetch ALL UIDs without filters for search functionality - set high limit
+      const response = await apiClient.get<any>('/uid?limit=10000');
       const data = Array.isArray(response) ? response : response.data || [];
       setAllUIDs(data);
     } catch (error) {
@@ -133,6 +133,9 @@ export default function UIDTrackingPage() {
       if (filters.status) queryParams.append('status', filters.status);
       if (filters.entity_type) queryParams.append('entity_type', filters.entity_type);
       if (filters.location) queryParams.append('location', filters.location);
+      
+      // Increase limit for table display
+      queryParams.append('limit', '1000');
 
       const response = await apiClient.get<any>(`/uid?${queryParams}`);
       // Handle both old array format and new paginated format
