@@ -49,16 +49,16 @@ export class DeploymentController {
     });
   }
 
-  @Get(':id')
-  async findOne(@Request() req: any, @Param('id') id: string) {
-    return this.deploymentService.getDeploymentById(req.user.tenantId, id);
-  }
-
   @Get(':uidId/history')
   async getHistory(@Request() req: any, @Param('uidId') uidId: string) {
     return this.deploymentService.getDeployments(req.user.tenantId, {
       uid_id: uidId,
     });
+  }
+
+  @Get(':id')
+  async findOne(@Request() req: any, @Param('id') id: string) {
+    return this.deploymentService.getDeploymentById(req.user.tenantId, id);
   }
 
   @Get('uid/:uidId/chain')
