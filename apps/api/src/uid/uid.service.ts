@@ -240,4 +240,59 @@ export class UidService {
       createdAt: uidRecord.createdAt,
     };
   }
+
+  /**
+   * Update client part number for UID
+   */
+  async updatePartNumber(
+    uid: string,
+    clientPartNumber: string,
+    assignedBy: string,
+  ): Promise<void> {
+    const uidRecord = await this.prisma.uidRegistry.findUnique({
+      where: { uid },
+    });
+
+    if (!uidRecord) {
+      throw new Error(`UID ${uid} not found`);
+    }
+
+    await this.prisma.uidRegistry.update({
+      where: { uid },
+      data: {
+        clientPartNumber,
+        partNumberAssignedAt: new Date(),
+        partNumberAssignedBy: assignedBy,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Search UIDs by part number
+   */
+  async searchByPartNumber(partNumber: string) {
+    const uids = await this.prisma.uidRegistry.findMany({
+      where: {
+        clientPartNumber: {
+          contains: partNumber,
+          mode: 'insensitive',
+        },
+      },
+      select: {
+        uid: true,
+        clientPartNumber: true,
+        entityType: true,
+        entityId: true,
+        status: true,
+        location: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return uids;
+  }
 }

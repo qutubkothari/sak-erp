@@ -1,8 +1,9 @@
-import { Controller, Get, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Put, Param, Query, Body, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { UidService } from './uid.service';
 import { UidSupabaseService } from './services/uid-supabase.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { UpdatePartNumberDto } from './dto/deployment.dto';
 
 @ApiTags('UID Tracking')
 @Controller('uid')
@@ -51,5 +52,26 @@ export class UidController {
       isValid,
       message: isValid ? 'UID is valid' : 'Invalid UID format or checksum',
     };
+  }
+
+  @Put(':uid/part-number')
+  @ApiOperation({ summary: 'Update client part number for UID' })
+  async updatePartNumber(
+    @Param('uid') uid: string,
+    @Body() dto: UpdatePartNumberDto,
+    @Request() req: any,
+  ) {
+    await this.uidService.updatePartNumber(uid, dto.client_part_number, req.user.userId);
+    return {
+      message: 'Part number updated successfully',
+      uid,
+      client_part_number: dto.client_part_number,
+    };
+  }
+
+  @Get('search/part-number')
+  @ApiOperation({ summary: 'Search UIDs by client part number' })
+  async searchByPartNumber(@Query('q') partNumber: string) {
+    return this.uidService.searchByPartNumber(partNumber);
   }
 }
