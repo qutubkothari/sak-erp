@@ -159,9 +159,7 @@ SELECT
   u.id as uid_id,
   u.uid,
   u.client_part_number,
-  u.item_id,
-  i.name as item_name,
-  i.code as item_code,
+  u.job_order_id,
   
   -- Current location
   curr.id as current_deployment_id,
@@ -185,7 +183,6 @@ SELECT
   
   u.tenant_id
 FROM uid_registry u
-LEFT JOIN items i ON u.item_id = i.id
 LEFT JOIN product_deployment_history curr 
   ON u.id = curr.uid_id AND curr.is_current_location = true
 LEFT JOIN LATERAL (
