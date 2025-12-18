@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { DeploymentService } from './deployment.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateDeploymentDto, UpdateDeploymentDto, PublicDeploymentUpdateDto } from './dto/deployment.dto';
 
 @Controller('api/v1/uid/deployment')
@@ -9,7 +9,7 @@ export class DeploymentController {
   constructor(private readonly deploymentService: DeploymentService) {}
 
   @Post()
-  async create(@Request() req, @Body() dto: CreateDeploymentDto) {
+  async create(@Request() req: any, @Body() dto: CreateDeploymentDto) {
     return this.deploymentService.createDeployment(
       req.user.tenantId,
       req.user.userId,
@@ -19,7 +19,7 @@ export class DeploymentController {
 
   @Get()
   async findAll(
-    @Request() req,
+    @Request() req: any,
     @Query('uid_id') uidId?: string,
     @Query('organization') organization?: string,
     @Query('deployment_level') deploymentLevel?: string,
@@ -34,23 +34,23 @@ export class DeploymentController {
   }
 
   @Get(':id')
-  async findOne(@Request() req, @Param('id') id: string) {
+  async findOne(@Request() req: any, @Param('id') id: string) {
     return this.deploymentService.getDeploymentById(req.user.tenantId, id);
   }
 
   @Get('uid/:uidId/chain')
-  async getChain(@Request() req, @Param('uidId') uidId: string) {
+  async getChain(@Request() req: any, @Param('uidId') uidId: string) {
     return this.deploymentService.getDeploymentChain(req.user.tenantId, uidId);
   }
 
   @Get('uid/:uidId/current')
-  async getCurrentLocation(@Request() req, @Param('uidId') uidId: string) {
+  async getCurrentLocation(@Request() req: any, @Param('uidId') uidId: string) {
     return this.deploymentService.getCurrentLocation(req.user.tenantId, uidId);
   }
 
   @Put(':id')
   async update(
-    @Request() req,
+    @Request() req: any,
     @Param('id') id: string,
     @Body() dto: UpdateDeploymentDto,
   ) {
@@ -59,7 +59,7 @@ export class DeploymentController {
 
   @Post('uid/:uidId/set-current/:deploymentId')
   async setCurrentLocation(
-    @Request() req,
+    @Request() req: any,
     @Param('uidId') uidId: string,
     @Param('deploymentId') deploymentId: string,
   ) {
@@ -71,7 +71,7 @@ export class DeploymentController {
   }
 
   @Delete(':id')
-  async delete(@Request() req, @Param('id') id: string) {
+  async delete(@Request() req: any, @Param('id') id: string) {
     return this.deploymentService.deleteDeployment(req.user.tenantId, id);
   }
 }

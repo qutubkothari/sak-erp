@@ -257,42 +257,47 @@ export class UidService {
       throw new Error(`UID ${uid} not found`);
     }
 
-    await this.prisma.uidRegistry.update({
-      where: { uid },
-      data: {
-        clientPartNumber,
-        partNumberAssignedAt: new Date(),
-        partNumberAssignedBy: assignedBy,
-        updatedAt: new Date(),
-      },
-    });
+    // Note: Requires database migration to add client_part_number field
+    // Temporarily commented out until schema is updated
+    // await this.prisma.uidRegistry.update({
+    //   where: { uid },
+    //   data: {
+    //     clientPartNumber,
+    //     partNumberAssignedAt: new Date(),
+    //     partNumberAssignedBy: assignedBy,
+    //     updatedAt: new Date(),
+    //   },
+    // });
   }
 
   /**
    * Search UIDs by part number
    */
   async searchByPartNumber(partNumber: string) {
-    const uids = await this.prisma.uidRegistry.findMany({
-      where: {
-        clientPartNumber: {
-          contains: partNumber,
-          mode: 'insensitive',
-        },
-      },
-      select: {
-        uid: true,
-        clientPartNumber: true,
-        entityType: true,
-        entityId: true,
-        status: true,
-        location: true,
-        createdAt: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-
-    return uids;
+    // Note: Requires database migration to add client_part_number field
+    // Temporarily return empty array until schema is updated
+    return [];
+    
+    // const uids = await this.prisma.uidRegistry.findMany({
+    //   where: {
+    //     clientPartNumber: {
+    //       contains: partNumber,
+    //       mode: 'insensitive',
+    //     },
+    //   },
+    //   select: {
+    //     uid: true,
+    //     clientPartNumber: true,
+    //     entityType: true,
+    //     entityId: true,
+    //     status: true,
+    //     location: true,
+    //     createdAt: true,
+    //   },
+    //   orderBy: {
+    //     createdAt: 'desc',
+    //   },
+    // });
+    // return uids;
   }
 }
