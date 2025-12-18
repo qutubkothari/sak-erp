@@ -116,9 +116,9 @@ export default function UIDDeploymentPage() {
         maintenance_schedule: '',
         is_current_location: true,
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to add deployment:', error);
-      alert(`Failed to add deployment: ${error.message || 'Unknown error'}`);
+      alert(`Failed to add deployment: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -270,7 +270,7 @@ export default function UIDDeploymentPage() {
                 <p className="text-gray-500 text-center py-8">No deployment history</p>
               ) : (
                 <div className="space-y-4">
-                  {deploymentHistory.map((history, index) => (
+                  {deploymentHistory.map((history) => (
                     <div key={history.id} className="relative pl-8 pb-6 border-l-2 border-purple-300 last:border-l-0">
                       <div className={`absolute left-0 top-0 transform -translate-x-1/2 ${
                         history.is_current_location ? 'w-4 h-4 bg-green-500' : 'w-3 h-3 bg-purple-300'
@@ -309,7 +309,7 @@ export default function UIDDeploymentPage() {
                         
                         {history.deployment_notes && (
                           <div className="mt-2 text-sm text-gray-600 italic">
-                            "{history.deployment_notes}"
+                            &quot;{history.deployment_notes}&quot;
                           </div>
                         )}
                       </div>
