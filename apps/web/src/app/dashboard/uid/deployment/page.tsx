@@ -154,9 +154,9 @@ export default function UIDDeploymentPage() {
   };
 
   const filteredDeployments = deployments.filter(d =>
-    d.uid.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (d.uid && d.uid.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (d.client_part_number && d.client_part_number.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    d.item_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (d.item_name && d.item_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (d.current_organization && d.current_organization.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (d.current_location && d.current_location.toLowerCase().includes(searchTerm.toLowerCase()))
   );
