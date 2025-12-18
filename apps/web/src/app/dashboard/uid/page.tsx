@@ -89,6 +89,40 @@ export default function UIDTrackingPage() {
     location: '',
   });
 
+  const fetchUIDs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const queryParams = new URLSearchParams();
+      
+      if (filters.status) queryParams.append('status', filters.status);
+      if (filters.entity_type) queryParams.append('entity_type', filters.entity_type);
+      if (filters.location) queryParams.append('location', filters.location);
+      
+      // Server-side pagination
+      const offset = (currentPage - 1) * itemsPerPage;
+      queryParams.append('limit', itemsPerPage.toString());
+      queryParams.append('offset', offset.toString());
+      
+      // Sorting
+      queryParams.append('sortBy', sortField);
+      queryParams.append('sortOrder', sortOrder);
+
+      const response = await apiClient.get<any>(`/uid?${queryParams}`);
+      // Handle both old array format and new paginated format
+      const data = Array.isArray(response) ? response : response.data || [];
+      setUids(data);
+      
+      // If API returns total count, use it for pagination
+      if (response.total) {
+        setTotalCount(response.total);
+      }
+    } catch (error) {
+      console.error('Error fetching UIDs:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, currentPage, itemsPerPage, sortField, sortOrder]);
+
   useEffect(() => {
     fetchUIDs();
   }, [fetchUIDs]);
@@ -125,40 +159,6 @@ export default function UIDTrackingPage() {
       setSearchLoading(false);
     }
   };
-
-  const fetchUIDs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const queryParams = new URLSearchParams();
-      
-      if (filters.status) queryParams.append('status', filters.status);
-      if (filters.entity_type) queryParams.append('entity_type', filters.entity_type);
-      if (filters.location) queryParams.append('location', filters.location);
-      
-      // Server-side pagination
-      const offset = (currentPage - 1) * itemsPerPage;
-      queryParams.append('limit', itemsPerPage.toString());
-      queryParams.append('offset', offset.toString());
-      
-      // Sorting
-      queryParams.append('sortBy', sortField);
-      queryParams.append('sortOrder', sortOrder);
-
-      const response = await apiClient.get<any>(`/uid?${queryParams}`);
-      // Handle both old array format and new paginated format
-      const data = Array.isArray(response) ? response : response.data || [];
-      setUids(data);
-      
-      // If API returns total count, use it for pagination
-      if (response.total) {
-        setTotalCount(response.total);
-      }
-    } catch (error) {
-      console.error('Error fetching UIDs:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters, currentPage, itemsPerPage, sortField, sortOrder]);
 
   const searchForUID = async (uid: string) => {
     try {
