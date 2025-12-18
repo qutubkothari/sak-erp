@@ -65,6 +65,8 @@ export default function UIDTrackingPage() {
   const [uids, setUids] = useState<UIDRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchUID, setSearchUID] = useState('');
+  const [searchResults, setSearchResults] = useState<UIDRecord[]>([]);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [selectedUID, setSelectedUID] = useState<UIDRecord | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showTraceModal, setShowTraceModal] = useState(false);
@@ -82,6 +84,28 @@ export default function UIDTrackingPage() {
   useEffect(() => {
     fetchUIDs();
   }, [filters]);
+
+  useEffect(() => {
+    // Smart search with autocomplete
+    if (searchUID.trim().length > 0) {
+      const filtered = uids.filter(uid => {
+        const search = searchUID.toLowerCase();
+        return (
+          uid.uid.toLowerCase().includes(search) ||
+          (uid.client_part_number && uid.client_part_number.toLowerCase().includes(search)) ||
+          (uid.itemName && uid.itemName.toLowerCase().includes(search)) ||
+          (uid.itemCode && uid.itemCode.toLowerCase().includes(search)) ||
+          (uid.location && uid.location.toLowerCase().includes(search)) ||
+          (uid.batch_number && uid.batch_number.toLowerCase().includes(search))
+        );
+      });
+      setSearchResults(filtered.slice(0, 10)); // Show top 10 results
+      setShowSearchDropdown(filtered.length > 0);
+    } else {
+      setSearchResults([]);
+      setShowSearchDropdown(false);
+    }
+  }, [searchUID, uids]);
 
   const fetchUIDs = async () => {
     try {
@@ -102,11 +126,9 @@ export default function UIDTrackingPage() {
     }
   };
 
-  const searchForUID = async () => {
-    if (!searchUID.trim()) return;
-
+  const searchForUID = async (uid: string) => {
     try {
-      const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(searchUID)}`);
+      const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(uid)}`);
       // Parse JSON strings to objects and add vendor/GRN names
       const parsedData: any = {
         ...data,
@@ -119,10 +141,16 @@ export default function UIDTrackingPage() {
       };
       setSelectedUID(parsedData);
       setShowTraceModal(true);
+      setShowSearchDropdown(false);
     } catch (error) {
       console.error('Error searching UID:', error);
       alert('Error searching for UID');
     }
+  };
+
+  const selectSearchResult = (uid: UIDRecord) => {
+    setSearchUID(uid.uid);
+    searchForUID(uid.uid);
   };
 
   const openPartNumberModal = (uid: UIDRecord) => {
@@ -207,21 +235,56 @@ export default function UIDTrackingPage() {
       {/* Search Bar */}
       <div className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 p-6 rounded-xl shadow">
         <h2 className="text-lg font-semibold mb-3 text-gray-800">🔎 Track Any UID</h2>
-        <div className="flex gap-3">
+        <div className="relative">
           <input
             type="text"
-            placeholder="Enter UID (e.g., UID-SAIF-KOL-RM-000001-A7)"
+            placeholder="Start typing UID, Part No, Item, Location..."
             value={searchUID}
             onChange={(e) => setSearchUID(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && searchForUID()}
-            className="flex-1 px-4 py-3 border-2 border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-lg"
+            onFocus={() => searchUID && setShowSearchDropdown(true)}
+            onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)}
+            className="w-full px-4 py-3 pr-10 border-2 border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-lg"
           />
-          <button
-            onClick={searchForUID}
-            className="bg-amber-600 text-white px-8 py-3 rounded-lg hover:bg-amber-700 transition-colors font-medium"
-          >
-            Search
-          </button>
+          <svg className="absolute right-3 top-3.5 h-6 w-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          
+          {/* Autocomplete Dropdown */}
+          {showSearchDropdown && searchResults.length > 0 && (
+            <div className="absolute z-50 w-full mt-2 bg-white border-2 border-amber-300 rounded-lg shadow-xl max-h-96 overflow-y-auto">
+              {searchResults.map((uid) => (
+                <div
+                  key={uid.id}
+                  onClick={() => selectSearchResult(uid)}
+                  className="px-4 py-3 cursor-pointer hover:bg-amber-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="font-semibold text-gray-900">{uid.uid}</div>
+                      <div className="text-sm text-gray-600 mt-1 flex items-center gap-2">
+                        {uid.itemName && <span>📦 {uid.itemName}</span>}
+                        {uid.itemCode && <span className="text-amber-600">({uid.itemCode})</span>}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1 flex items-center gap-3">
+                        {uid.client_part_number && <span>🔖 {uid.client_part_number}</span>}
+                        {uid.location && <span>📍 {uid.location}</span>}
+                        {uid.batch_number && <span>🏷️ Batch: {uid.batch_number}</span>}
+                      </div>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColors[uid.status] || 'bg-gray-100 text-gray-800'}`}>
+                      {uid.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {searchUID && searchResults.length === 0 && !showSearchDropdown && (
+            <div className="absolute z-50 w-full mt-2 bg-white border-2 border-amber-300 rounded-lg shadow-xl p-4 text-center text-gray-500">
+              No UIDs found matching "{searchUID}"
+            </div>
+          )}
         </div>
         <p className="text-sm text-gray-600 mt-2">
           💡 Scan QR code or enter UID to view complete history and traceability
