@@ -65,6 +65,17 @@ export default function UIDDeploymentPage() {
   const [filteredLocations, setFilteredLocations] = useState<CustomerLocation[]>([]);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   
+  // Deployment level autocomplete
+  const [deploymentLevels] = useState([
+    'CUSTOMER',
+    'DEPOT',
+    'END_LOCATION',
+    'SERVICE_CENTER',
+    'RETURNED'
+  ]);
+  const [filteredLevels, setFilteredLevels] = useState<string[]>([]);
+  const [showLevelDropdown, setShowLevelDropdown] = useState(false);
+  
   const [newDeployment, setNewDeployment] = useState({
     deployment_level: 'CUSTOMER',
     organization_name: '',
@@ -159,6 +170,21 @@ export default function UIDDeploymentPage() {
   const selectLocation = (location: CustomerLocation) => {
     setNewDeployment({ ...newDeployment, location_name: location.location_name });
     setShowLocationDropdown(false);
+  };
+  
+  const handleDeploymentLevelChange = (value: string) => {
+    setNewDeployment({ ...newDeployment, deployment_level: value.toUpperCase() });
+    
+    const filtered = deploymentLevels.filter(level =>
+      level.toLowerCase().includes(value.toLowerCase())
+    );
+    setFilteredLevels(filtered);
+    setShowLevelDropdown(value.length > 0 && filtered.length > 0);
+  };
+  
+  const selectLevel = (level: string) => {
+    setNewDeployment({ ...newDeployment, deployment_level: level });
+    setShowLevelDropdown(false);
   };
 
   const fetchDeployments = async () => {
@@ -656,19 +682,43 @@ export default function UIDDeploymentPage() {
               </div>
 
               {/* Deployment Level */}
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Deployment Level *</label>
-                <select
+                <input
+                  type="text"
                   value={newDeployment.deployment_level}
-                  onChange={(e) => setNewDeployment({ ...newDeployment, deployment_level: e.target.value })}
+                  onChange={(e) => handleDeploymentLevelChange(e.target.value)}
+                  onFocus={() => {
+                    const filtered = deploymentLevels.filter(level =>
+                      level.toLowerCase().includes(newDeployment.deployment_level.toLowerCase())
+                    );
+                    setFilteredLevels(filtered);
+                    setShowLevelDropdown(filtered.length > 0);
+                  }}
+                  onBlur={() => setTimeout(() => setShowLevelDropdown(false), 200)}
+                  placeholder="Type or select level..."
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="CUSTOMER">Customer</option>
-                  <option value="DEPOT">Depot/Warehouse</option>
-                  <option value="END_LOCATION">End Location</option>
-                  <option value="SERVICE_CENTER">Service Center</option>
-                  <option value="RETURNED">Returned</option>
-                </select>
+                />
+                
+                {/* Level Autocomplete Dropdown */}
+                {showLevelDropdown && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {filteredLevels.map((level, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => selectLevel(level)}
+                        className="px-4 py-3 cursor-pointer hover:bg-purple-50 border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="font-medium text-gray-900">{level}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!showLevelDropdown && newDeployment.deployment_level && !deploymentLevels.includes(newDeployment.deployment_level) && (
+                  <div className="mt-1 text-sm text-purple-600 italic">
+                    ✨ New custom level: "{newDeployment.deployment_level}"
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
