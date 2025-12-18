@@ -586,7 +586,11 @@ export default function UIDTrackingPage() {
         {/* Pagination */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
           <div className="text-sm text-gray-700">
-            Showing {startIndex + 1} to {Math.min(endIndex, sortedUIDs.length)} of {sortedUIDs.length} results
+            {totalCount > 0 ? (
+              <>Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, totalCount)} of {totalCount} results</>
+            ) : (
+              <>Showing {uids.length} results</>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
