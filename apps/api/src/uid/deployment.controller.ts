@@ -8,6 +8,22 @@ import { CreateDeploymentDto, UpdateDeploymentDto, PublicDeploymentUpdateDto } f
 export class DeploymentController {
   constructor(private readonly deploymentService: DeploymentService) {}
 
+  @Get('status')
+  async getStatus(
+    @Request() req: any,
+    @Query('uid') uid?: string,
+    @Query('part_number') partNumber?: string,
+    @Query('organization') organization?: string,
+    @Query('location') location?: string,
+  ) {
+    return this.deploymentService.getDeploymentStatus(req.user.tenantId, {
+      uid,
+      part_number: partNumber,
+      organization,
+      location,
+    });
+  }
+
   @Post()
   async create(@Request() req: any, @Body() dto: CreateDeploymentDto) {
     return this.deploymentService.createDeployment(
@@ -36,6 +52,13 @@ export class DeploymentController {
   @Get(':id')
   async findOne(@Request() req: any, @Param('id') id: string) {
     return this.deploymentService.getDeploymentById(req.user.tenantId, id);
+  }
+
+  @Get(':uidId/history')
+  async getHistory(@Request() req: any, @Param('uidId') uidId: string) {
+    return this.deploymentService.getDeployments(req.user.tenantId, {
+      uid_id: uidId,
+    });
   }
 
   @Get('uid/:uidId/chain')

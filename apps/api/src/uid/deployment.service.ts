@@ -61,6 +61,43 @@ export class DeploymentService {
     return data;
   }
 
+  async getDeploymentStatus(tenantId: string, filters?: {
+    uid?: string;
+    part_number?: string;
+    organization?: string;
+    location?: string;
+  }) {
+    let query = this.supabase
+      .from('v_uid_deployment_status')
+      .select('*')
+      .eq('tenant_id', tenantId);
+
+    if (filters?.uid) {
+      query = query.eq('uid', filters.uid);
+    }
+
+    if (filters?.part_number) {
+      query = query.eq('client_part_number', filters.part_number);
+    }
+
+    if (filters?.organization) {
+      query = query.ilike('current_organization', `%${filters.organization}%`);
+    }
+
+    if (filters?.location) {
+      query = query.ilike('current_location', `%${filters.location}%`);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Fetch deployment status error:', error);
+      throw new BadRequestException(error.message);
+    }
+
+    return data;
+  }
+
   async getDeployments(tenantId: string, filters?: {
     uid_id?: string;
     organization?: string;
