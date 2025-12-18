@@ -73,6 +73,12 @@ export default function UIDTrackingPage() {
   const [showPartNumberModal, setShowPartNumberModal] = useState(false);
   const [editingUID, setEditingUID] = useState<UIDRecord | null>(null);
   const [partNumberInput, setPartNumberInput] = useState('');
+  
+  // Pagination and sorting
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [sortField, setSortField] = useState<keyof UIDRecord>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Filters
   const [filters, setFilters] = useState({
@@ -184,6 +190,39 @@ export default function UIDTrackingPage() {
   const generateQRCode = (uid: string) => {
     // Generate QR code URL using a QR code API
     return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(uid)}`;
+  };
+
+  const handleSort = (field: keyof UIDRecord) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+    setCurrentPage(1);
+  };
+
+  const getSortIcon = (field: keyof UIDRecord) => {
+    if (sortField !== field) return '⇅';
+    return sortOrder === 'asc' ? '↑' : '↓';
+  };
+
+  // Sort and paginate UIDs
+  const sortedUIDs = [...uids].sort((a, b) => {
+    const aValue = a[sortField] || '';
+    const bValue = b[sortField] || '';
+    if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const totalPages = Math.ceil(sortedUIDs.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedUIDs = sortedUIDs.slice(startIndex, endIndex);
+
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
   };
 
   const formatDate = (dateString: string) => {
@@ -351,21 +390,56 @@ export default function UIDTrackingPage() {
       {/* UID Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+          <thead className="bg-amber-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">UID</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Part No</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Level</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+              <th 
+                onClick={() => handleSort('uid')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                UID {getSortIcon('uid')}
+              </th>
+              <th 
+                onClick={() => handleSort('client_part_number')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                Part No {getSortIcon('client_part_number')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Item</th>
+              <th 
+                onClick={() => handleSort('entity_type')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                Type {getSortIcon('entity_type')}
+              </th>
+              <th 
+                onClick={() => handleSort('status')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                Status {getSortIcon('status')}
+              </th>
+              <th 
+                onClick={() => handleSort('location')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                Location {getSortIcon('location')}
+              </th>
+              <th 
+                onClick={() => handleSort('assembly_level')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                Level {getSortIcon('assembly_level')}
+              </th>
+              <th 
+                onClick={() => handleSort('created_at')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                Created {getSortIcon('created_at')}
+              </th>
+              <th className="px-6 py-3 text-center text-xs font-medium text-amber-900 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {uids.map((uid) => (
+            {paginatedUIDs.map((uid) => (
               <tr key={uid.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4">
                   <div className="font-mono text-sm font-medium text-amber-600">{uid.uid}</div>
@@ -467,9 +541,73 @@ export default function UIDTrackingPage() {
             ))}
           </tbody>
         </table>
+
+        {/* Pagination */}
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+          <div className="text-sm text-gray-700">
+            Showing {startIndex + 1} to {Math.min(endIndex, sortedUIDs.length)} of {sortedUIDs.length} results
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => goToPage(1)}
+              disabled={currentPage === 1}
+              className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+            >
+              ««
+            </button>
+            <button
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+            >
+              «
+            </button>
+            
+            {[...Array(totalPages)].map((_, i) => {
+              const page = i + 1;
+              if (
+                page === 1 ||
+                page === totalPages ||
+                (page >= currentPage - 1 && page <= currentPage + 1)
+              ) {
+                return (
+                  <button
+                    key={page}
+                    onClick={() => goToPage(page)}
+                    className={`px-3 py-1 rounded text-sm ${
+                      currentPage === page
+                        ? 'bg-amber-600 text-white font-semibold'
+                        : 'border border-gray-300 hover:bg-gray-100'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                );
+              } else if (page === currentPage - 2 || page === currentPage + 2) {
+                return <span key={page} className="px-2">...</span>;
+              }
+              return null;
+            })}
+            
+            <button
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+            >
+              »
+            </button>
+            <button
+              onClick={() => goToPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+            >
+              »»
+            </button>
+          </div>
+        </div>
       </div>
 
-      {uids.length === 0 && (
+      {sortedUIDs.length === 0 && (
         <div className="text-center py-12 bg-white rounded-lg shadow mt-6">
           <p className="text-gray-500">No UIDs found. UIDs are auto-generated at Goods Receipt.</p>
         </div>
