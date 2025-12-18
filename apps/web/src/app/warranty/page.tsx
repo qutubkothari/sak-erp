@@ -1,7 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+
+interface Customer {
+  id: string;
+  customer_name: string;
+  customer_code: string;
+  contact_email: string;
+  contact_person: string;
+}
 
 interface ProductInfo {
   uid: string;
@@ -37,6 +45,11 @@ export default function WarrantyPortalPage() {
   const [deploymentHistory, setDeploymentHistory] = useState<DeploymentHistory[]>([]);
   const [showUpdateForm, setShowUpdateForm] = useState(false);
   
+  // Customer list for autocomplete
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  
   // Update form state
   const [updateForm, setUpdateForm] = useState({
     deployment_level: 'END_LOCATION',
@@ -58,6 +71,47 @@ export default function WarrantyPortalPage() {
     invoice_number: '',
     warranty_years: '1',
   });
+  
+  // Fetch customers on mount
+  useEffect(() => {
+    fetchCustomers();
+  }, []);
+  
+  const fetchCustomers = async () => {
+    try {
+      const response = await fetch('/api/v1/sales/customers', {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCustomers(data);
+        setFilteredCustomers(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch customers:', err);
+    }
+  };
+  
+  const handleCustomerNameChange = (value: string) => {
+    setRegistrationForm({ ...registrationForm, customer_name: value });
+    
+    // Filter customers based on input
+    const filtered = customers.filter(customer =>
+      customer.customer_name.toLowerCase().includes(value.toLowerCase()) ||
+      customer.customer_code.toLowerCase().includes(value.toLowerCase())
+    );
+    setFilteredCustomers(filtered);
+    setShowCustomerDropdown(value.length > 0 && filtered.length > 0);
+  };
+  
+  const selectCustomer = (customer: Customer) => {
+    setRegistrationForm({
+      ...registrationForm,
+      customer_name: customer.customer_name,
+      customer_email: customer.contact_email || registrationForm.customer_email,
+    });
+    setShowCustomerDropdown(false);
+  };
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [registrationLoading, setRegistrationLoading] = useState(false);
 
@@ -636,20 +690,48 @@ export default function WarrantyPortalPage() {
                 <div className="space-y-4">
                   <h3 className="font-semibold text-lg mb-4" style={{ color: '#6F4E37' }}>Customer Details</h3>
                   
-                  <div>
+                  <div className="relative">
                     <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                      Customer Name *
+                      Customer / Organization Name *
                     </label>
                     <input
                       type="text"
                       value={registrationForm.customer_name}
-                      onChange={(e) => setRegistrationForm({ ...registrationForm, customer_name: e.target.value })}
-                      placeholder="Full Name"
+                      onChange={(e) => handleCustomerNameChange(e.target.value)}
+                      onFocus={() => setShowCustomerDropdown(registrationForm.customer_name.length > 0 && filteredCustomers.length > 0)}
+                      onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                      placeholder="Start typing customer name..."
                       className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none transition-colors"
                       style={{ borderColor: '#E8DCC4', backgroundColor: '#FFFFFF' }}
-                      onFocus={(e) => { e.currentTarget.style.borderColor = '#8B6F47'; }}
-                      onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DCC4'; }}
+                      onFocusCapture={(e) => { e.currentTarget.style.borderColor = '#8B6F47'; }}
+                      onBlurCapture={(e) => { e.currentTarget.style.borderColor = '#E8DCC4'; }}
                     />
+                    
+                    {/* Autocomplete Dropdown */}
+                    {showCustomerDropdown && (
+                      <div 
+                        className="absolute z-10 w-full mt-1 bg-white border-2 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                        style={{ borderColor: '#E8DCC4' }}
+                      >
+                        {filteredCustomers.map((customer) => (
+                          <div
+                            key={customer.id}
+                            onClick={() => selectCustomer(customer)}
+                            className="px-4 py-3 cursor-pointer border-b transition-colors"
+                            style={{ borderColor: '#F5F5F5' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#FAF8F3'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#FFFFFF'; }}
+                          >
+                            <div className="font-medium" style={{ color: '#6F4E37' }}>
+                              {customer.customer_name}
+                            </div>
+                            <div className="text-sm" style={{ color: '#8B6F47' }}>
+                              Code: {customer.customer_code} {customer.contact_email && `• ${customer.contact_email}`}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div>

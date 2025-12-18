@@ -32,29 +32,29 @@ ssh ubuntu@13.205.17.214 "
     set -e
     cd ~/manufacturing_erp
     
-    echo '📥 Pulling latest code from production-clean branch...'
+    echo 'Pulling latest code from production-clean branch...'
     git pull origin production-clean
     
     echo ''
-    echo '📦 Installing dependencies...'
+    echo 'Installing dependencies...'
     npm install
     
     echo ''
-    echo '🔨 Building application...'
+    echo 'Building application...'
     npm run build
     
     echo ''
-    echo '🔄 Restarting API service...'
+    echo 'Restarting API service...'
     pm2 restart api
     
     echo ''
-    echo '✅ Deployment complete!'
+    echo 'Deployment complete!'
     echo ''
-    echo '📊 Current PM2 Status:'
+    echo 'Current PM2 Status:'
     pm2 status
     
     echo ''
-    echo '📝 Latest Git Commit:'
+    echo 'Latest Git Commit:'
     git log -1 --oneline
 "
 
