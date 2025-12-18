@@ -12,6 +12,8 @@ interface ServiceTicket {
   ticket_number: string;
   customer: { customer_name: string };
   uid?: string;
+  ship_name?: string;
+  location?: string;
   service_type: string;
   priority: string;
   status: string;
@@ -25,6 +27,7 @@ interface ServiceTicket {
   estimated_cost: number;
   actual_cost: number;
   expected_completion_date?: string;
+  attachments?: string[];
   created_at: string;
 }
 
@@ -99,6 +102,8 @@ export default function ServicePage() {
   const [ticketForm, setTicketForm] = useState({
     customer_id: '',
     uid: '',
+    ship_name: '',
+    location: '',
     complaint_description: '',
     reported_by: '',
     contact_number: '',
@@ -110,6 +115,9 @@ export default function ServicePage() {
     priority: 'MEDIUM',
     expected_completion_date: '',
   });
+
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [uploadPreviews, setUploadPreviews] = useState<string[]>([]);
 
   const [technicianForm, setTechnicianForm] = useState({
     technician_name: '',
@@ -200,6 +208,36 @@ export default function ServicePage() {
     }
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const validFiles = files.filter(file => {
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+      const isUnder50MB = file.size <= 50 * 1024 * 1024; // 50MB limit
+      return (isImage || isVideo) && isUnder50MB;
+    });
+
+    if (validFiles.length < files.length) {
+      alert('Some files were rejected. Only images and videos under 50MB are allowed.');
+    }
+
+    setUploadedFiles(prev => [...prev, ...validFiles]);
+
+    // Create previews
+    validFiles.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUploadPreviews(prev => [...prev, reader.result as string]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeFile = (index: number) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+    setUploadPreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
   const fetchReports = async () => {
     setLoading(true);
     setError(null);
@@ -228,12 +266,42 @@ export default function ServicePage() {
       };
       
       console.log('Submitting ticket data:', cleanedData);
-      const response = await apiClient.post('/service/tickets', cleanedData);
+      
+      // If there are files, upload them first
+      let attachmentUrls: string[] = [];
+      if (uploadedFiles.length > 0) {
+        const formData = new FormData();
+        uploadedFiles.forEach(file => {
+          formData.append('files', file);
+        });
+        
+        try {
+          const uploadResponse = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          const uploadResult = await uploadResponse.json();
+          attachmentUrls = uploadResult.urls || [];
+        } catch (uploadError) {
+          console.error('File upload failed:', uploadError);
+          alert('Warning: File upload failed. Ticket will be created without attachments.');
+        }
+      }
+      
+      // Create ticket with attachment URLs
+      const ticketDataWithAttachments = {
+        ...cleanedData,
+        attachments: attachmentUrls,
+      };
+      
+      const response = await apiClient.post('/service/tickets', ticketDataWithAttachments);
       console.log('Ticket creation response:', response);
       setShowTicketForm(false);
       setTicketForm({
         customer_id: '',
         uid: '',
+        ship_name: '',
+        location: '',
         complaint_description: '',
         reported_by: '',
         contact_number: '',
@@ -245,6 +313,8 @@ export default function ServicePage() {
         priority: 'MEDIUM',
         expected_completion_date: '',
       });
+      setUploadedFiles([]);
+      setUploadPreviews([]);
       fetchTickets();
     } catch (err: any) {
       console.error('Ticket creation error:', err);
@@ -366,11 +436,11 @@ export default function ServicePage() {
       {/* Service Tickets Tab */}
       {activeTab === 'tickets' && (
         <div>
-          <div className="mb-4 flex justify-between items-center">
+          <div className="mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <h2 className="text-lg font-semibold">Service Tickets</h2>
             <button
               onClick={() => setShowTicketForm(true)}
-              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+              className="w-full sm:w-auto px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-center"
             >
               + Create Ticket
             </button>
@@ -380,6 +450,8 @@ export default function ServicePage() {
             <p className="text-gray-600">Loading service tickets...</p>
           ) : (
             <div className="bg-white rounded-lg shadow overflow-hidden">
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -449,17 +521,64 @@ export default function ServicePage() {
                   ))}
                 </tbody>
               </table>
+              </div>
+              
+              {/* Mobile Card View */}
+              <div className="md:hidden space-y-4 p-4">
+                {tickets.map((ticket) => (
+                  <div key={ticket.id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="font-semibold text-amber-600">{ticket.ticket_number}</span>
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(ticket.status)}`}>
+                        {ticket.status}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-900 mb-1">{ticket.customer?.customer_name}</div>
+                    <div className="text-xs text-gray-600 space-y-1">
+                      {ticket.product_name && <div>📦 {ticket.product_name}</div>}
+                      {ticket.uid && <div className="font-mono">🔖 {ticket.uid}</div>}
+                      {ticket.ship_name && <div>🚢 {ticket.ship_name}</div>}
+                      {ticket.location && <div>📍 {ticket.location}</div>}
+                      <div>📅 {new Date(ticket.complaint_date).toLocaleDateString()}</div>
+                      <div>
+                        <span className={`px-2 py-0.5 rounded-full text-xs ${getPriorityColor(ticket.priority)}`}>
+                          {ticket.priority}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button 
+                        onClick={() => { setSelectedTicket(ticket); setShowTicketDetails(true); }}
+                        className="flex-1 text-xs px-3 py-2 bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
+                      >
+                        View
+                      </button>
+                      <button 
+                        onClick={() => { setSelectedTicket(ticket); setShowStatusModal(true); }}
+                        className="flex-1 text-xs px-3 py-2 bg-amber-50 text-amber-700 rounded hover:bg-amber-100"
+                      >
+                        Update
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
           {/* Ticket Form Modal */}
           {showTicketForm && (
-            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                <h3 className="text-lg font-semibold mb-4">Create Service Ticket</h3>
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg p-4 md:p-6 max-w-2xl w-full max-h-[95vh] overflow-y-auto">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg md:text-xl font-semibold">Create Service Ticket</h3>
+                  <button onClick={() => setShowTicketForm(false)} className="text-gray-500 hover:text-gray-700">
+                    ✕
+                  </button>
+                </div>
                 <form onSubmit={handleCreateTicket}>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Customer ID *</label>
                       <SearchableSelect
                         options={customers.map(c => ({ value: c.id, label: `${c.customer_code} - ${c.customer_name}` }))}
@@ -469,6 +588,32 @@ export default function ServicePage() {
                         required
                       />
                     </div>
+
+                    {/* NEW FIELDS */}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">🚢 Ship Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={ticketForm.ship_name}
+                        onChange={(e) => setTicketForm({ ...ticketForm, ship_name: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                        placeholder="Enter vessel/ship name"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">📍 Location *</label>
+                      <input
+                        type="text"
+                        required
+                        value={ticketForm.location}
+                        onChange={(e) => setTicketForm({ ...ticketForm, location: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                        placeholder="Port, coordinates, or specific location"
+                      />
+                    </div>
+                    
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
                       <SearchableSelect
@@ -572,15 +717,67 @@ export default function ServicePage() {
                         rows={2}
                       />
                     </div>
-                    <div className="col-span-2">
+                    <div className="col-span-2 md:col-span-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Complaint Description *</label>
                       <textarea
                         required
                         value={ticketForm.complaint_description}
                         onChange={(e) => setTicketForm({ ...ticketForm, complaint_description: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                         rows={3}
+                        placeholder="Describe the issue in detail"
                       />
+                    </div>
+
+                    {/* FILE UPLOAD SECTION */}
+                    <div className="col-span-2 md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">📸 Photos & Videos</label>
+                      <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg hover:border-amber-400 transition">
+                        <div className="space-y-1 text-center">
+                          <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          <div className="flex text-sm text-gray-600">
+                            <label className="relative cursor-pointer bg-white rounded-md font-medium text-amber-600 hover:text-amber-500 focus-within:outline-none">
+                              <span>Upload files</span>
+                              <input
+                                type="file"
+                                multiple
+                                accept="image/*,video/*"
+                                onChange={handleFileUpload}
+                                className="sr-only"
+                              />
+                            </label>
+                            <p className="pl-1">or drag and drop</p>
+                          </div>
+                          <p className="text-xs text-gray-500">Photos or videos up to 50MB each</p>
+                        </div>
+                      </div>
+                      
+                      {/* File Previews */}
+                      {uploadedFiles.length > 0 && (
+                        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                          {uploadPreviews.map((preview, index) => (
+                            <div key={index} className="relative group">
+                              {uploadedFiles[index].type.startsWith('image/') ? (
+                                <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-24 object-cover rounded-lg" />
+                              ) : (
+                                <video src={preview} className="w-full h-24 object-cover rounded-lg" />
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeFile(index)}
+                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                              <p className="text-xs text-gray-600 mt-1 truncate">{uploadedFiles[index].name}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="mt-6 flex justify-end space-x-3">
