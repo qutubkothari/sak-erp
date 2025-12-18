@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { DeploymentService } from './deployment.service';
 import { PublicDeploymentUpdateDto } from './dto/deployment.dto';
 
-@Controller('api/v1/public/warranty')
+@Controller('public/warranty')
 export class PublicWarrantyController {
   constructor(private readonly deploymentService: DeploymentService) {}
 

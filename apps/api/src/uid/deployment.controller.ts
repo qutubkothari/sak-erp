@@ -3,7 +3,7 @@ import { DeploymentService } from './deployment.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateDeploymentDto, UpdateDeploymentDto, PublicDeploymentUpdateDto } from './dto/deployment.dto';
 
-@Controller('api/v1/uid/deployment')
+@Controller('uid/deployment')
 @UseGuards(JwtAuthGuard)
 export class DeploymentController {
   constructor(private readonly deploymentService: DeploymentService) {}
