@@ -38,6 +38,12 @@ export default function UIDDeploymentPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [deploymentHistory, setDeploymentHistory] = useState<DeploymentHistory[]>([]);
   
+  // Pagination & Sorting
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [sortField, setSortField] = useState<keyof UIDDeployment>('uid');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  
   const [newDeployment, setNewDeployment] = useState({
     deployment_level: 'CUSTOMER',
     organization_name: '',
@@ -134,6 +140,21 @@ export default function UIDDeploymentPage() {
     }
   };
 
+  const handleSort = (field: keyof UIDDeployment) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+    setCurrentPage(1); // Reset to first page when sorting
+  };
+
+  const getSortIcon = (field: keyof UIDDeployment) => {
+    if (sortField !== field) return '⇅';
+    return sortOrder === 'asc' ? '↑' : '↓';
+  };
+
   const filteredDeployments = deployments.filter(d =>
     d.uid.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (d.client_part_number && d.client_part_number.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -141,6 +162,26 @@ export default function UIDDeploymentPage() {
     (d.current_organization && d.current_organization.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (d.current_location && d.current_location.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  // Sort filtered deployments
+  const sortedDeployments = [...filteredDeployments].sort((a, b) => {
+    const aValue = a[sortField] || '';
+    const bValue = b[sortField] || '';
+    
+    if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // Pagination
+  const totalPages = Math.ceil(sortedDeployments.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedDeployments = sortedDeployments.slice(startIndex, endIndex);
+
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 p-8">
@@ -150,21 +191,57 @@ export default function UIDDeploymentPage() {
           <h1 className="text-4xl font-bold text-gray-900 mb-2">🗺️ Product Deployment Tracking</h1>
           <p className="text-gray-600">Track product locations through distribution channels</p>
         </div>
-
-        {/* Search and Stats */}
-        <div className="grid grid-cols-4 gap-6 mb-8">
-          <div className="col-span-2">
-            <input
-              type="text"
-              placeholder="Search by UID, Part No, Location..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            />
-          </div>
-          <div className="bg-white rounded-lg shadow-md p-4">
-            <div className="text-sm text-gray-600 mb-1">Total Products</div>
-            <div className="text-3xl font-bold text-purple-600">{deployments.length}</div>
+>
+              <table className="w-full">
+                <thead className="bg-purple-50">
+                  <tr>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase cursor-pointer hover:bg-purple-100"
+                      onClick={() => handleSort('uid')}
+                    >
+                      UID {getSortIcon('uid')}
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase cursor-pointer hover:bg-purple-100"
+                      onClick={() => handleSort('client_part_number')}
+                    >
+                      Part No {getSortIcon('client_part_number')}
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase cursor-pointer hover:bg-purple-100"
+                      onClick={() => handleSort('item_name')}
+                    >
+                      Item {getSortIcon('item_name')}
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase cursor-pointer hover:bg-purple-100"
+                      onClick={() => handleSort('current_level')}
+                    >
+                      Level {getSortIcon('current_level')}
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase cursor-pointer hover:bg-purple-100"
+                      onClick={() => handleSort('current_organization')}
+                    >
+                      Organization {getSortIcon('current_organization')}
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase cursor-pointer hover:bg-purple-100"
+                      onClick={() => handleSort('current_location')}
+                    >
+                      Location {getSortIcon('current_location')}
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase cursor-pointer hover:bg-purple-100"
+                      onClick={() => handleSort('current_deployment_date')}
+                    >
+                      Date {getSortIcon('current_deployment_date')}
+                    </th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-purple-900 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {paginatame="text-3xl font-bold text-purple-600">{deployments.length}</div>
           </div>
           <div className="bg-white rounded-lg shadow-md p-4">
             <div className="text-sm text-gray-600 mb-1">With Locations</div>
@@ -208,6 +285,75 @@ export default function UIDDeploymentPage() {
                     <td className="px-6 py-4">
                       <div className="font-medium text-gray-900">{deployment.item_name}</div>
                       <div className="text-sm text-gray-500">{deployment.item_code}</div>
+            
+            {/* Pagination Controls */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+              <div className="text-sm text-gray-700">
+                Showing {startIndex + 1} to {Math.min(endIndex, sortedDeployments.length)} of {sortedDeployments.length} results
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => goToPage(1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                >
+                  ««
+                </button>
+                <button
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                >
+                  «
+                </button>
+                
+                {[...Array(totalPages)].map((_, i) => {
+                  const page = i + 1;
+                  // Show first page, last page, current page, and pages around current
+                  if (
+                    page === 1 ||
+                    page === totalPages ||
+                    (page >= currentPage - 1 && page <= currentPage + 1)
+                  ) {
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => goToPage(page)}
+                        className={`px-3 py-1 rounded text-sm ${
+                          currentPage === page
+                            ? 'bg-purple-600 text-white font-semibold'
+                            : 'border border-gray-300 hover:bg-gray-100'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    );
+                  } else if (
+                    page === currentPage - 2 ||
+                    page === currentPage + 2
+                  ) {
+                    return <span key={page} className="px-2">...</span>;
+                  }
+                  return null;
+                })}
+                
+                <button
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                >
+                  »
+                </button>
+                <button
+                  onClick={() => goToPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                >
+                  »»
+                </button>
+              </div>
+            </div>
+            </>
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getLevelBadgeColor(deployment.current_level)}`}>
