@@ -356,15 +356,18 @@ export default function UIDTrackingPage() {
         <p className="text-sm text-gray-600 mt-2">
           💡 Scan QR code or enter UID to view complete history and traceability
         </p>
+        <p className="text-xs text-amber-600 mt-1">
+          ℹ️ Showing 10 UIDs per page. Use search above to find specific UIDs, or navigate pages below to browse all records.
+        </p>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Total UIDs', value: uids.length, color: 'amber', icon: '🏷️' },
-          { label: 'Active', value: uids.filter(u => u.status === 'ACTIVE').length, color: 'green', icon: '✅' },
-          { label: 'In Production', value: uids.filter(u => u.status === 'IN_PRODUCTION').length, color: 'amber', icon: '⚙️' },
-          { label: 'Sold', value: uids.filter(u => u.status === 'SOLD').length, color: 'orange', icon: '🚚' },
+          { label: 'Total UIDs', value: totalCount || uids.length, color: 'amber', icon: '🏷️' },
+          { label: 'Showing', value: uids.length, color: 'blue', icon: '📄' },
+          { label: 'Current Page', value: currentPage, color: 'green', icon: '📖' },
+          { label: 'Total Pages', value: totalPages, color: 'orange', icon: '📚' },
         ].map((stat, idx) => (
           <div key={idx} className="bg-white p-5 rounded-lg shadow border-l-4 border-amber-500">
             <div className="flex items-center justify-between">
