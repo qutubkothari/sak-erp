@@ -63,6 +63,7 @@ const statusColors: Record<string, string> = {
 export default function UIDTrackingPage() {
   const router = useRouter();
   const [uids, setUids] = useState<UIDRecord[]>([]);
+  const [allUIDs, setAllUIDs] = useState<UIDRecord[]>([]); // All UIDs for search
   const [loading, setLoading] = useState(true);
   const [searchUID, setSearchUID] = useState('');
   const [searchResults, setSearchResults] = useState<UIDRecord[]>([]);
@@ -89,12 +90,13 @@ export default function UIDTrackingPage() {
 
   useEffect(() => {
     fetchUIDs();
+    fetchAllUIDs(); // Fetch all UIDs for search
   }, [filters]);
 
   useEffect(() => {
-    // Smart search with autocomplete
+    // Smart search with autocomplete - searches ALL UIDs
     if (searchUID.trim().length > 0) {
-      const filtered = uids.filter(uid => {
+      const filtered = allUIDs.filter(uid => {
         const search = searchUID.toLowerCase();
         return (
           uid.uid.toLowerCase().includes(search) ||
@@ -111,7 +113,18 @@ export default function UIDTrackingPage() {
       setSearchResults([]);
       setShowSearchDropdown(false);
     }
-  }, [searchUID, uids]);
+  }, [searchUID, allUIDs]);
+
+  const fetchAllUIDs = async () => {
+    try {
+      // Fetch ALL UIDs without filters for search functionality
+      const response = await apiClient.get<any>('/uid');
+      const data = Array.isArray(response) ? response : response.data || [];
+      setAllUIDs(data);
+    } catch (error) {
+      console.error('Error fetching all UIDs:', error);
+    }
+  };
 
   const fetchUIDs = async () => {
     try {
