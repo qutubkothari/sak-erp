@@ -111,10 +111,8 @@ export class DeploymentService {
         uid:uid_registry (
           uid,
           client_part_number,
-          item:items (
-            name,
-            code
-          )
+          entity_id,
+          entity_type
         )
       `)
       .eq('tenant_id', tenantId)
@@ -154,10 +152,8 @@ export class DeploymentService {
         uid:uid_registry (
           uid,
           client_part_number,
-          item:items (
-            name,
-            code
-          )
+          entity_id,
+          entity_type
         ),
         parent:product_deployment_history!parent_deployment_id (
           id,
