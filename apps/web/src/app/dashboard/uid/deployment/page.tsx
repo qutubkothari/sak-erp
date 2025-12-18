@@ -3,6 +3,19 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
 
+interface Customer {
+  id: string;
+  customer_name: string;
+  customer_code: string;
+  contact_email: string;
+  contact_person: string;
+}
+
+interface CustomerLocation {
+  location_name: string;
+  count: number;
+}
+
 interface UIDDeployment {
   uid_id: string;
   uid: string;
@@ -42,6 +55,16 @@ export default function UIDDeploymentPage() {
   const [sortField, setSortField] = useState<keyof UIDDeployment>('uid');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   
+  // Customer and location autocomplete
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  
+  const [customerLocations, setCustomerLocations] = useState<CustomerLocation[]>([]);
+  const [filteredLocations, setFilteredLocations] = useState<CustomerLocation[]>([]);
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  
   const [newDeployment, setNewDeployment] = useState({
     deployment_level: 'CUSTOMER',
     organization_name: '',
@@ -58,7 +81,85 @@ export default function UIDDeploymentPage() {
 
   useEffect(() => {
     fetchDeployments();
+    fetchCustomers();
   }, []);
+  
+  const fetchCustomers = async () => {
+    try {
+      const data = await apiClient.get<Customer[]>('/sales/customers');
+      setCustomers(data);
+      setFilteredCustomers(data);
+    } catch (error) {
+      console.error('Failed to fetch customers:', error);
+    }
+  };
+  
+  const fetchCustomerLocations = async (customerName: string) => {
+    try {
+      // Fetch unique locations for this customer from deployment history
+      const allDeployments = await apiClient.get<any[]>('/uid/deployment/status');
+      const locations = allDeployments
+        .filter(d => d.current_organization === customerName)
+        .reduce((acc: Map<string, number>, curr) => {
+          if (curr.current_location) {
+            acc.set(curr.current_location, (acc.get(curr.current_location) || 0) + 1);
+          }
+          return acc;
+        }, new Map());
+      
+      const locationArray: CustomerLocation[] = Array.from(locations.entries()).map(([location_name, count]) => ({
+        location_name,
+        count
+      }));
+      
+      setCustomerLocations(locationArray);
+      setFilteredLocations(locationArray);
+    } catch (error) {
+      console.error('Failed to fetch locations:', error);
+      setCustomerLocations([]);
+      setFilteredLocations([]);
+    }
+  };
+  
+  const handleOrganizationChange = (value: string) => {
+    setNewDeployment({ ...newDeployment, organization_name: value });
+    
+    const filtered = customers.filter(customer =>
+      customer.customer_name.toLowerCase().includes(value.toLowerCase()) ||
+      customer.customer_code.toLowerCase().includes(value.toLowerCase())
+    );
+    setFilteredCustomers(filtered);
+    setShowCustomerDropdown(value.length > 0 && filtered.length > 0);
+  };
+  
+  const selectCustomer = (customer: Customer) => {
+    setNewDeployment({
+      ...newDeployment,
+      organization_name: customer.customer_name,
+      contact_email: customer.contact_email || newDeployment.contact_email,
+      contact_person: customer.contact_person || newDeployment.contact_person,
+    });
+    setSelectedCustomerId(customer.id);
+    setShowCustomerDropdown(false);
+    
+    // Fetch locations for this customer
+    fetchCustomerLocations(customer.customer_name);
+  };
+  
+  const handleLocationChange = (value: string) => {
+    setNewDeployment({ ...newDeployment, location_name: value });
+    
+    const filtered = customerLocations.filter(loc =>
+      loc.location_name.toLowerCase().includes(value.toLowerCase())
+    );
+    setFilteredLocations(filtered);
+    setShowLocationDropdown(value.length > 0);
+  };
+  
+  const selectLocation = (location: CustomerLocation) => {
+    setNewDeployment({ ...newDeployment, location_name: location.location_name });
+    setShowLocationDropdown(false);
+  };
 
   const fetchDeployments = async () => {
     try {
@@ -479,6 +580,82 @@ export default function UIDDeploymentPage() {
             </div>
 
             <div className="p-6 space-y-4">
+              {/* Organization Name - First with Autocomplete */}
+              <div className="relative">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Organization Name *</label>
+                <input
+                  type="text"
+                  value={newDeployment.organization_name}
+                  onChange={(e) => handleOrganizationChange(e.target.value)}
+                  onFocus={() => setShowCustomerDropdown(newDeployment.organization_name.length > 0 && filteredCustomers.length > 0)}
+                  onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                  placeholder="Start typing customer name..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                />
+                
+                {/* Customer Autocomplete Dropdown */}
+                {showCustomerDropdown && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {filteredCustomers.map((customer) => (
+                      <div
+                        key={customer.id}
+                        onClick={() => selectCustomer(customer)}
+                        className="px-4 py-3 cursor-pointer hover:bg-purple-50 border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="font-medium text-gray-900">{customer.customer_name}</div>
+                        <div className="text-sm text-gray-500">
+                          Code: {customer.customer_code} {customer.contact_email && `• ${customer.contact_email}`}
+                        </div>
+                      </div>
+                    ))}
+                    {filteredCustomers.length === 0 && newDeployment.organization_name && (
+                      <div className="px-4 py-3 text-sm text-gray-500 italic">
+                        New customer will be created: "{newDeployment.organization_name}"
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Location Name - Second with Autocomplete */}
+              <div className="relative">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Location Name *</label>
+                <input
+                  type="text"
+                  value={newDeployment.location_name}
+                  onChange={(e) => handleLocationChange(e.target.value)}
+                  onFocus={() => setShowLocationDropdown(newDeployment.location_name.length > 0)}
+                  onBlur={() => setTimeout(() => setShowLocationDropdown(false), 200)}
+                  placeholder={newDeployment.organization_name ? "Start typing location..." : "Select customer first"}
+                  disabled={!newDeployment.organization_name}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
+                />
+                
+                {/* Location Autocomplete Dropdown */}
+                {showLocationDropdown && customerLocations.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {filteredLocations.map((location, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => selectLocation(location)}
+                        className="px-4 py-3 cursor-pointer hover:bg-purple-50 border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="font-medium text-gray-900">{location.location_name}</div>
+                        <div className="text-sm text-gray-500">Used {location.count} time(s)</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {showLocationDropdown && customerLocations.length === 0 && newDeployment.location_name && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg">
+                    <div className="px-4 py-3 text-sm text-gray-500 italic">
+                      New location will be created: "{newDeployment.location_name}"
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Deployment Level */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Deployment Level *</label>
                 <select
@@ -492,29 +669,6 @@ export default function UIDDeploymentPage() {
                   <option value="SERVICE_CENTER">Service Center</option>
                   <option value="RETURNED">Returned</option>
                 </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Organization Name *</label>
-                  <input
-                    type="text"
-                    value={newDeployment.organization_name}
-                    onChange={(e) => setNewDeployment({ ...newDeployment, organization_name: e.target.value })}
-                    placeholder="e.g., Indian Navy"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Location Name *</label>
-                  <input
-                    type="text"
-                    value={newDeployment.location_name}
-                    onChange={(e) => setNewDeployment({ ...newDeployment, location_name: e.target.value })}
-                    placeholder="e.g., INS Vikrant"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                  />
-                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
