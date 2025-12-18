@@ -652,7 +652,7 @@ export default function UIDTrackingPage() {
         </div>
       </div>
 
-      {sortedUIDs.length === 0 && (
+      {uids.length === 0 && !loading && (
         <div className="text-center py-12 bg-white rounded-lg shadow mt-6">
           <p className="text-gray-500">No UIDs found. UIDs are auto-generated at Goods Receipt.</p>
         </div>
