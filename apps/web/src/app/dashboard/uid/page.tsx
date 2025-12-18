@@ -39,6 +39,7 @@ interface UIDRecord {
   itemName?: string;
   itemCode?: string;
   quality_status: string;
+  client_part_number?: string;
   lifecycle: Array<{
     stage: string;
     timestamp: string;
@@ -67,6 +68,9 @@ export default function UIDTrackingPage() {
   const [selectedUID, setSelectedUID] = useState<UIDRecord | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showTraceModal, setShowTraceModal] = useState(false);
+  const [showPartNumberModal, setShowPartNumberModal] = useState(false);
+  const [editingUID, setEditingUID] = useState<UIDRecord | null>(null);
+  const [partNumberInput, setPartNumberInput] = useState('');
 
   // Filters
   const [filters, setFilters] = useState({
@@ -118,6 +122,34 @@ export default function UIDTrackingPage() {
     } catch (error) {
       console.error('Error searching UID:', error);
       alert('Error searching for UID');
+    }
+  };
+
+  const openPartNumberModal = (uid: UIDRecord) => {
+    setEditingUID(uid);
+    setPartNumberInput(uid.client_part_number || '');
+    setShowPartNumberModal(true);
+  };
+
+  const updatePartNumber = async () => {
+    if (!editingUID) return;
+
+    try {
+      await apiClient.put(`/uid/${editingUID.uid}/part-number`, {
+        client_part_number: partNumberInput.trim() || null,
+      });
+      
+      // Refresh UIDs list
+      await fetchUIDs();
+      
+      setShowPartNumberModal(false);
+      setEditingUID(null);
+      setPartNumberInput('');
+      
+      alert('Part number updated successfully!');
+    } catch (error) {
+      console.error('Error updating part number:', error);
+      alert('Failed to update part number');
     }
   };
 
@@ -259,6 +291,7 @@ export default function UIDTrackingPage() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">UID</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Part No</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -276,6 +309,24 @@ export default function UIDTrackingPage() {
                   {uid.batch_number && (
                     <div className="text-xs text-gray-500">Batch: {uid.batch_number}</div>
                   )}
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    {uid.client_part_number ? (
+                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
+                        {uid.client_part_number}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 text-xs">Not assigned</span>
+                    )}
+                    <button
+                      onClick={() => openPartNumberModal(uid)}
+                      className="text-blue-600 hover:text-blue-800 text-xs"
+                      title="Edit Part Number"
+                    >
+                      ✏️
+                    </button>
+                  </div>
                 </td>
                 <td className="px-6 py-4">
                   {uid.items ? (
@@ -532,6 +583,53 @@ export default function UIDTrackingPage() {
                 className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Part Number Edit Modal */}
+      {showPartNumberModal && editingUID && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h2 className="text-xl font-bold mb-4">Edit Part Number</h2>
+            
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">UID: <span className="font-mono font-semibold">{editingUID.uid}</span></p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Client Part Number
+              </label>
+              <input
+                type="text"
+                value={partNumberInput}
+                onChange={(e) => setPartNumberInput(e.target.value)}
+                placeholder="Enter part number (e.g., 53022)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                autoFocus
+              />
+              <p className="text-xs text-gray-500 mt-1">Leave empty to remove part number</p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={updatePartNumber}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => {
+                  setShowPartNumberModal(false);
+                  setEditingUID(null);
+                  setPartNumberInput('');
+                }}
+                className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
+              >
+                Cancel
               </button>
             </div>
           </div>
