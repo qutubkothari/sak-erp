@@ -83,7 +83,13 @@ const navigation = [
     children: [
       { name: 'UID Management', href: '/dashboard/uid' },
       { name: 'Trace UID', href: '/dashboard/uid/trace' },
+      { name: 'Deployment Tracking', href: '/dashboard/uid/deployment' },
     ],
+  },
+  {
+    name: 'Warranty Portal',
+    href: '/warranty',
+    icon: '🛡️',
   },
   {
     name: 'Settings',
