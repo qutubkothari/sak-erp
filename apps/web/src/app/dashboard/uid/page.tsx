@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 
@@ -91,7 +91,7 @@ export default function UIDTrackingPage() {
 
   useEffect(() => {
     fetchUIDs();
-  }, [filters, currentPage, sortField, sortOrder]);
+  }, [fetchUIDs]);
 
   // Debounced search - only call API after user stops typing
   useEffect(() => {
@@ -126,7 +126,7 @@ export default function UIDTrackingPage() {
     }
   };
 
-  const fetchUIDs = async () => {
+  const fetchUIDs = useCallback(async () => {
     setLoading(true);
     try {
       const queryParams = new URLSearchParams();
@@ -158,7 +158,7 @@ export default function UIDTrackingPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters, currentPage, itemsPerPage, sortField, sortOrder]);
 
   const searchForUID = async (uid: string) => {
     try {
