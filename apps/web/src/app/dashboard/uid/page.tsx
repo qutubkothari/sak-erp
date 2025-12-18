@@ -351,40 +351,53 @@ export default function UIDTrackingPage() {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 bg-white p-4 rounded-lg shadow flex gap-4 items-center">
-        <select
-          value={filters.status}
-          onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-        >
-          <option value="">All Status</option>
-          <option value="ACTIVE">Active</option>
-          <option value="IN_PRODUCTION">In Production</option>
-          <option value="IN_TRANSIT">In Transit</option>
-          <option value="SOLD">Sold</option>
-          <option value="IN_SERVICE">In Service</option>
-          <option value="SCRAPPED">Scrapped</option>
-        </select>
+      <div className="mb-6 bg-white p-4 rounded-lg shadow">
+        <div className="flex gap-4 items-center justify-between">
+          <div className="flex gap-4 items-center flex-1">
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="">All Status</option>
+              <option value="ACTIVE">Active</option>
+              <option value="IN_PRODUCTION">In Production</option>
+              <option value="IN_TRANSIT">In Transit</option>
+              <option value="SOLD">Sold</option>
+              <option value="IN_SERVICE">In Service</option>
+              <option value="SCRAPPED">Scrapped</option>
+            </select>
 
-        <select
-          value={filters.entity_type}
-          onChange={(e) => setFilters({ ...filters, entity_type: e.target.value })}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-        >
-          <option value="">All Types</option>
-          <option value="RAW_MATERIAL">Raw Material</option>
-          <option value="COMPONENT">Component</option>
-          <option value="ASSEMBLY">Assembly</option>
-          <option value="FINISHED_GOOD">Finished Good</option>
-        </select>
+            <select
+              value={filters.entity_type}
+              onChange={(e) => setFilters({ ...filters, entity_type: e.target.value })}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="">All Types</option>
+              <option value="RAW_MATERIAL">Raw Material</option>
+              <option value="COMPONENT">Component</option>
+              <option value="ASSEMBLY">Assembly</option>
+              <option value="FINISHED_GOOD">Finished Good</option>
+            </select>
 
-        <input
-          type="text"
-          placeholder="Filter by location..."
-          value={filters.location}
-          onChange={(e) => setFilters({ ...filters, location: e.target.value })}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-        />
+            <input
+              type="text"
+              placeholder="Filter by location..."
+              value={filters.location}
+              onChange={(e) => setFilters({ ...filters, location: e.target.value })}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+          
+          {(filters.status || filters.entity_type || filters.location) && (
+            <button
+              onClick={() => setFilters({ status: '', entity_type: '', location: '' })}
+              className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium flex items-center gap-2"
+            >
+              ✕ Clear Filters
+            </button>
+          )}
+        </div>
       </div>
 
       {/* UID Table */}
