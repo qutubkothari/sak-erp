@@ -28,6 +28,7 @@ interface DeploymentHistory {
 
 export default function WarrantyPortalPage() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<'search' | 'register'>('search');
   const [searchType, setSearchType] = useState<'part_number' | 'access_token'>('part_number');
   const [searchValue, setSearchValue] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,6 +44,22 @@ export default function WarrantyPortalPage() {
     location_name: '',
     deployment_notes: '',
   });
+  
+  // Registration form state
+  const [registrationForm, setRegistrationForm] = useState({
+    uid: '',
+    part_number: '',
+    customer_name: '',
+    customer_email: '',
+    customer_phone: '',
+    customer_address: '',
+    purchase_date: '',
+    dealer_name: '',
+    invoice_number: '',
+    warranty_years: '1',
+  });
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [registrationLoading, setRegistrationLoading] = useState(false);
 
   const handleSearch = async () => {
     if (!searchValue.trim()) {
@@ -137,6 +154,66 @@ export default function WarrantyPortalPage() {
       default: return 'bg-gray-100 text-gray-800';
     }
   };
+  
+  const handleWarrantyRegistration = async () => {
+    if (!registrationForm.uid || !registrationForm.customer_name || !registrationForm.customer_email || !registrationForm.purchase_date) {
+      alert('Please fill in all required fields (UID, Name, Email, Purchase Date)');
+      return;
+    }
+    
+    setRegistrationLoading(true);
+    
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      
+      // Calculate warranty expiry
+      const purchaseDate = new Date(registrationForm.purchase_date);
+      const warrantyExpiry = new Date(purchaseDate);
+      warrantyExpiry.setFullYear(warrantyExpiry.getFullYear() + parseInt(registrationForm.warranty_years));
+      
+      // Create initial deployment record
+      const response = await fetch(`${apiUrl}/uid/deployment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: registrationForm.uid,
+          deployment_level: 'CUSTOMER',
+          organization_name: registrationForm.customer_name,
+          location_name: registrationForm.customer_address || 'Customer Location',
+          deployment_date: registrationForm.purchase_date,
+          contact_person: registrationForm.customer_name,
+          contact_email: registrationForm.customer_email,
+          contact_phone: registrationForm.customer_phone,
+          deployment_notes: `Warranty Registration - Invoice: ${registrationForm.invoice_number || 'N/A'}, Dealer: ${registrationForm.dealer_name || 'N/A'}`,
+          warranty_expiry_date: warrantyExpiry.toISOString().split('T')[0],
+          is_current_location: true,
+        }),
+      });
+      
+      if (!response.ok) throw new Error('Failed to register warranty');
+      
+      setRegistrationSuccess(true);
+      alert('Warranty registered successfully! You will receive a confirmation email shortly.');
+      
+      // Reset form
+      setRegistrationForm({
+        uid: '',
+        part_number: '',
+        customer_name: '',
+        customer_email: '',
+        customer_phone: '',
+        customer_address: '',
+        purchase_date: '',
+        dealer_name: '',
+        invoice_number: '',
+        warranty_years: '1',
+      });
+    } catch (err: any) {
+      alert(err.message || 'Failed to register warranty');
+    } finally {
+      setRegistrationLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(to bottom right, #FAF8F3, #E8DCC4)' }}>
@@ -160,6 +237,35 @@ export default function WarrantyPortalPage() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Tab Navigation */}
+        <div className="flex gap-4 mb-6">
+          <button
+            onClick={() => setActiveTab('search')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all ${
+              activeTab === 'search'
+                ? 'text-white shadow-lg'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+            style={activeTab === 'search' ? { backgroundColor: '#6F4E37' } : {}}
+          >
+            🔍 Search Warranty
+          </button>
+          <button
+            onClick={() => setActiveTab('register')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all ${
+              activeTab === 'register'
+                ? 'text-white shadow-lg'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+            style={activeTab === 'register' ? { backgroundColor: '#6F4E37' } : {}}
+          >
+            📝 Register Product
+          </button>
+        </div>
+        
+        {/* Search Tab Content */}
+        {activeTab === 'search' && (
+          <>
         {/* Search Card */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Find Your Product</h2>
@@ -422,6 +528,257 @@ export default function WarrantyPortalPage() {
             </ul>
           </div>
         )}
+      </>
+      )}
+
+      {/* Registration Tab */}
+      {activeTab === 'register' && (
+        <>
+          {/* Success Message */}
+          {registrationSuccess && (
+            <div className="rounded-xl p-6 border-2 mb-6" style={{ backgroundColor: '#E8F5E9', borderColor: '#4CAF50' }}>
+              <div className="flex items-start gap-3">
+                <svg className="w-6 h-6 flex-shrink-0 mt-0.5" style={{ color: '#4CAF50' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <h3 className="font-semibold text-lg mb-1" style={{ color: '#2E7D32' }}>Warranty Registration Successful!</h3>
+                  <p className="text-sm" style={{ color: '#558B2F' }}>
+                    Your product has been registered for warranty. You will receive a confirmation email shortly.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Registration Form */}
+          <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E8DCC4' }}>
+            <div className="px-6 py-4" style={{ backgroundColor: '#6F4E37' }}>
+              <h2 className="text-xl font-bold text-white">Register Product for Warranty</h2>
+              <p className="text-sm mt-1 text-white/90">Fill in the details below to activate your product warranty</p>
+            </div>
+            
+            <div className="p-6" style={{ backgroundColor: '#FAF8F3' }}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Product Details */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg mb-4" style={{ color: '#6F4E37' }}>Product Details</h3>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+                      Product UID / Serial Number *
+                    </label>
+                    <input
+                      type="text"
+                      value={registrationForm.uid}
+                      onChange={(e) => setRegistrationForm({ ...registrationForm, uid: e.target.value.toUpperCase() })}
+                      placeholder="e.g., DIO-SMD-PNJM7"
+                      className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none transition-colors"
+                      style={{ borderColor: '#E8DCC4', backgroundColor: '#FFFFFF' }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = '#8B6F47'; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DCC4'; }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+                      Part Number (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={registrationForm.part_number}
+                      onChange={(e) => setRegistrationForm({ ...registrationForm, part_number: e.target.value })}
+                      placeholder="e.g., DIO-SMD-001"
+                      className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none transition-colors"
+                      style={{ borderColor: '#E8DCC4', backgroundColor: '#FFFFFF' }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = '#8B6F47'; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DCC4'; }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+                      Purchase Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={registrationForm.purchase_date}
+                      onChange={(e) => setRegistrationForm({ ...registrationForm, purchase_date: e.target.value })}
+                      className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none transition-colors"
+                      style={{ borderColor: '#E8DCC4', backgroundColor: '#FFFFFF' }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = '#8B6F47'; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DCC4'; }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+                      Warranty Period (Years)
+                    </label>
+                    <select
+                      value={registrationForm.warranty_years}
+                      onChange={(e) => setRegistrationForm({ ...registrationForm, warranty_years: e.target.value })}
+                      className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none transition-colors"
+                      style={{ borderColor: '#E8DCC4', backgroundColor: '#FFFFFF' }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = '#8B6F47'; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DCC4'; }}
+                    >
+                      <option value="1">1 Year</option>
+                      <option value="2">2 Years</option>
+                      <option value="3">3 Years</option>
+                      <option value="5">5 Years</option>
+                      <option value="10">10 Years</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Customer Details */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg mb-4" style={{ color: '#6F4E37' }}>Customer Details</h3>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+                      Customer Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={registrationForm.customer_name}
+                      onChange={(e) => setRegistrationForm({ ...registrationForm, customer_name: e.target.value })}
+                      placeholder="Full Name"
+                      className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none transition-colors"
+                      style={{ borderColor: '#E8DCC4', backgroundColor: '#FFFFFF' }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = '#8B6F47'; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DCC4'; }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+                      Email Address *
+                    </label>
+                    <input
+                      type="email"
+                      value={registrationForm.customer_email}
+                      onChange={(e) => setRegistrationForm({ ...registrationForm, customer_email: e.target.value })}
+                      placeholder="customer@example.com"
+                      className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none transition-colors"
+                      style={{ borderColor: '#E8DCC4', backgroundColor: '#FFFFFF' }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = '#8B6F47'; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DCC4'; }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+                      Phone Number (Optional)
+                    </label>
+                    <input
+                      type="tel"
+                      value={registrationForm.customer_phone}
+                      onChange={(e) => setRegistrationForm({ ...registrationForm, customer_phone: e.target.value })}
+                      placeholder="+91 XXXXX XXXXX"
+                      className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none transition-colors"
+                      style={{ borderColor: '#E8DCC4', backgroundColor: '#FFFFFF' }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = '#8B6F47'; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DCC4'; }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+                      Address (Optional)
+                    </label>
+                    <textarea
+                      value={registrationForm.customer_address}
+                      onChange={(e) => setRegistrationForm({ ...registrationForm, customer_address: e.target.value })}
+                      placeholder="Full Address"
+                      rows={3}
+                      className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none transition-colors"
+                      style={{ borderColor: '#E8DCC4', backgroundColor: '#FFFFFF' }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = '#8B6F47'; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DCC4'; }}
+                    />
+                  </div>
+                </div>
+
+                {/* Purchase Details */}
+                <div className="space-y-4 md:col-span-2">
+                  <h3 className="font-semibold text-lg mb-4" style={{ color: '#6F4E37' }}>Purchase Details (Optional)</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+                        Dealer / Seller Name
+                      </label>
+                      <input
+                        type="text"
+                        value={registrationForm.dealer_name}
+                        onChange={(e) => setRegistrationForm({ ...registrationForm, dealer_name: e.target.value })}
+                        placeholder="Dealer Name"
+                        className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none transition-colors"
+                        style={{ borderColor: '#E8DCC4', backgroundColor: '#FFFFFF' }}
+                        onFocus={(e) => { e.currentTarget.style.borderColor = '#8B6F47'; }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DCC4'; }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+                        Invoice / Order Number
+                      </label>
+                      <input
+                        type="text"
+                        value={registrationForm.invoice_number}
+                        onChange={(e) => setRegistrationForm({ ...registrationForm, invoice_number: e.target.value })}
+                        placeholder="INV-XXXXX"
+                        className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none transition-colors"
+                        style={{ borderColor: '#E8DCC4', backgroundColor: '#FFFFFF' }}
+                        onFocus={(e) => { e.currentTarget.style.borderColor = '#8B6F47'; }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DCC4'; }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <div className="mt-8 flex justify-end gap-4">
+                <button
+                  onClick={() => {
+                    setRegistrationForm({
+                      uid: '', part_number: '', customer_name: '', customer_email: '',
+                      customer_phone: '', customer_address: '', purchase_date: '',
+                      dealer_name: '', invoice_number: '', warranty_years: '1'
+                    });
+                    setRegistrationSuccess(false);
+                  }}
+                  className="px-6 py-2 border-2 rounded-lg font-medium transition-colors"
+                  style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
+                >
+                  Clear Form
+                </button>
+                <button
+                  onClick={handleWarrantyRegistration}
+                  disabled={registrationLoading}
+                  className="px-8 py-2 rounded-lg font-medium text-white transition-colors disabled:opacity-50"
+                  style={{ backgroundColor: '#6F4E37' }}
+                  onMouseEnter={(e) => { if (!registrationLoading) e.currentTarget.style.backgroundColor = '#8B6F47'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#6F4E37'; }}
+                >
+                  {registrationLoading ? 'Registering...' : 'Register Warranty'}
+                </button>
+              </div>
+
+              {/* Info Note */}
+              <div className="mt-6 p-4 rounded-lg border-2" style={{ backgroundColor: '#FFF9E6', borderColor: '#FFE082' }}>
+                <p className="text-sm" style={{ color: '#6F4E37' }}>
+                  <strong>Note:</strong> Fields marked with * are required. After registration, you will receive a confirmation email with your warranty details and token.
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
       </div>
     </div>
   );

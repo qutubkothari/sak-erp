@@ -1,12 +1,13 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Request } from 'express';
+import { EmailService } from '../../email/email.service';
 
 @Injectable()
 export class SalesService {
   private supabase: SupabaseClient;
 
-  constructor() {
+  constructor(private emailService: EmailService) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_KEY!
@@ -616,6 +617,9 @@ export class SalesService {
       customer_id: salesOrder.customer_id,
     });
 
+    // 🎫 Generate and email issue certificate for final products
+    await this.generateAndEmailCertificate(req, dispatchRecord, salesOrder, dispatchData);
+
     return dispatchRecord;
   }
 
@@ -749,6 +753,108 @@ export class SalesService {
     const date = new Date(startDate);
     date.setMonth(date.getMonth() + durationMonths);
     return date.toISOString().split('T')[0];
+  }
+
+  /**
+   * 🎫 Generate and email issue certificate for dispatched products
+   * Automatically triggered when final products are dispatched
+   */
+  private async generateAndEmailCertificate(
+    req: Request,
+    dispatchRecord: any,
+    salesOrder: any,
+    dispatchData: any
+  ) {
+    try {
+      // Get customer details
+      const { data: customer } = await this.supabase
+        .from('customers')
+        .select('customer_name, contact_email, contact_person')
+        .eq('id', salesOrder.customer_id)
+        .single();
+
+      if (!customer || !customer.contact_email) {
+        console.warn('⚠️ Certificate not sent - customer email not found');
+        return;
+      }
+
+      // Get sales order details
+      const { data: salesOrderDetails } = await this.supabase
+        .from('sales_orders')
+        .select('order_number')
+        .eq('id', dispatchData.sales_order_id)
+        .single();
+
+      // Get dispatch items with product details
+      const { data: dispatchItems } = await this.supabase
+        .from('dispatch_items')
+        .select(`
+          *,
+          items:item_id (
+            item_code,
+            item_name
+          )
+        `)
+        .eq('dispatch_note_id', dispatchRecord.id);
+
+      if (!dispatchItems || dispatchItems.length === 0) {
+        console.warn('⚠️ Certificate not sent - no dispatch items found');
+        return;
+      }
+
+      // Get warranty information for each item
+      const { data: warranties } = await this.supabase
+        .from('warranties')
+        .select('uid, warranty_duration_months, warranty_end_date')
+        .in('uid', dispatchItems.map((item: any) => item.uid));
+
+      const warrantyMap = new Map(warranties?.map((w: any) => [w.uid, w]) || []);
+
+      // Prepare certificate data
+      const certificateData = {
+        certificate_number: `CERT-${dispatchRecord.dn_number}`,
+        customer_name: customer.customer_name,
+        issue_date: dispatchRecord.dispatch_date,
+        so_number: salesOrderDetails?.order_number || 'N/A',
+        dispatch_number: dispatchRecord.dn_number,
+        items: dispatchItems.map((item: any) => {
+          const warranty = warrantyMap.get(item.uid);
+          const warrantyMonths = warranty?.warranty_duration_months || 12;
+          const warrantyYears = Math.floor(warrantyMonths / 12);
+          const remainingMonths = warrantyMonths % 12;
+          let warrantyPeriod = '';
+          
+          if (warrantyYears > 0) {
+            warrantyPeriod = `${warrantyYears} Year${warrantyYears > 1 ? 's' : ''}`;
+            if (remainingMonths > 0) {
+              warrantyPeriod += ` ${remainingMonths} Month${remainingMonths > 1 ? 's' : ''}`;
+            }
+          } else {
+            warrantyPeriod = `${warrantyMonths} Month${warrantyMonths > 1 ? 's' : ''}`;
+          }
+
+          return {
+            product_name: item.items?.item_name || 'Unknown',
+            uid_number: item.uid,
+            serial_number: item.serial_number,
+            warranty_period: warrantyPeriod,
+            warranty_expiry: warranty?.warranty_end_date,
+          };
+        }),
+        warranty_info: 'Standard warranty terms apply as per sales agreement. Please retain this certificate for warranty claims.',
+      };
+
+      // Send certificate email
+      await this.emailService.sendIssueCertificate(
+        customer.contact_email,
+        certificateData
+      );
+
+      console.log(`✅ Issue certificate sent to ${customer.contact_email} for dispatch ${dispatchRecord.dn_number}`);
+    } catch (error) {
+      console.error('❌ Failed to send issue certificate:', error);
+      // Don't throw - certificate generation failure should not block dispatch
+    }
   }
 
   async getWarranties(req: Request, filters?: any) {
