@@ -814,18 +814,27 @@ export class UidSupabaseService {
   /**
    * Get all UIDs with filtering - for quality inspection form
    */
-  async getAllUIDs(req: any, status?: string, entityType?: string, itemId?: string, page?: number, limit?: number) {
+  async getAllUIDs(
+    req: any, 
+    status?: string, 
+    entityType?: string, 
+    itemId?: string, 
+    search?: string,
+    limit?: number,
+    offset?: number,
+    sortBy?: string,
+    sortOrder?: 'asc' | 'desc'
+  ) {
     const tenantId = req.user?.tenantId || req.tenantId;
-    console.log('[getAllUIDs] Called with:', { tenantId, status, entityType, itemId, page, limit });
+    console.log('[getAllUIDs] Called with:', { tenantId, status, entityType, itemId, search, limit, offset, sortBy, sortOrder });
     
     if (!tenantId) {
       throw new Error('Tenant ID is required');
     }
 
     // Pagination parameters
-    const currentPage = page || 1;
-    const pageLimit = limit || 50;
-    const offset = (currentPage - 1) * pageLimit;
+    const pageLimit = limit || 10;
+    const pageOffset = offset || 0;
     
     let query = this.supabase
       .from('uid_registry')
@@ -837,11 +846,15 @@ export class UidSupabaseService {
         location, 
         batch_number, 
         quality_status, 
+        client_part_number,
         created_at
       `, { count: 'exact' })
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + pageLimit - 1);
+      .eq('tenant_id', tenantId);
+
+    // Search across multiple fields
+    if (search) {
+      query = query.or(`uid.ilike.%${search}%,client_part_number.ilike.%${search}%,location.ilike.%${search}%,batch_number.ilike.%${search}%`);
+    }
 
     if (status) {
       // Support comma-separated statuses
@@ -860,6 +873,14 @@ export class UidSupabaseService {
     if (itemId) {
       query = query.eq('entity_id', itemId);
     }
+
+    // Sorting
+    const orderField = sortBy || 'created_at';
+    const orderAscending = sortOrder === 'asc';
+    query = query.order(orderField, { ascending: orderAscending });
+    
+    // Pagination
+    query = query.range(pageOffset, pageOffset + pageLimit - 1);
 
     const { data, error, count } = await query;
 
@@ -905,12 +926,9 @@ export class UidSupabaseService {
 
     return {
       data,
-      pagination: {
-        page: currentPage,
-        limit: pageLimit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / pageLimit)
-      }
+      total: count || 0,
+      limit: pageLimit,
+      offset: pageOffset
     };
   }
 

@@ -63,7 +63,6 @@ const statusColors: Record<string, string> = {
 export default function UIDTrackingPage() {
   const router = useRouter();
   const [uids, setUids] = useState<UIDRecord[]>([]);
-  const [allUIDs, setAllUIDs] = useState<UIDRecord[]>([]); // All UIDs for search
   const [loading, setLoading] = useState(true);
   const [searchUID, setSearchUID] = useState('');
   const [searchResults, setSearchResults] = useState<UIDRecord[]>([]);
@@ -74,10 +73,12 @@ export default function UIDTrackingPage() {
   const [showPartNumberModal, setShowPartNumberModal] = useState(false);
   const [editingUID, setEditingUID] = useState<UIDRecord | null>(null);
   const [partNumberInput, setPartNumberInput] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
   
   // Pagination and sorting
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
   const [sortField, setSortField] = useState<keyof UIDRecord>('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
@@ -90,43 +91,43 @@ export default function UIDTrackingPage() {
 
   useEffect(() => {
     fetchUIDs();
-    fetchAllUIDs(); // Fetch all UIDs for search
-  }, [filters]);
+  }, [filters, currentPage, sortField, sortOrder]);
 
+  // Debounced search - only call API after user stops typing
   useEffect(() => {
-    // Smart search with autocomplete - searches ALL UIDs
     if (searchUID.trim().length > 0) {
-      const filtered = allUIDs.filter(uid => {
-        const search = searchUID.toLowerCase();
-        return (
-          uid.uid.toLowerCase().includes(search) ||
-          (uid.client_part_number && uid.client_part_number.toLowerCase().includes(search)) ||
-          (uid.itemName && uid.itemName.toLowerCase().includes(search)) ||
-          (uid.itemCode && uid.itemCode.toLowerCase().includes(search)) ||
-          (uid.location && uid.location.toLowerCase().includes(search)) ||
-          (uid.batch_number && uid.batch_number.toLowerCase().includes(search))
-        );
-      });
-      setSearchResults(filtered.slice(0, 10)); // Show top 10 results
-      setShowSearchDropdown(filtered.length > 0);
+      const timeoutId = setTimeout(() => {
+        performSearch();
+      }, 300); // Wait 300ms after user stops typing
+      return () => clearTimeout(timeoutId);
     } else {
       setSearchResults([]);
       setShowSearchDropdown(false);
     }
-  }, [searchUID, allUIDs]);
+  }, [searchUID]);
 
-  const fetchAllUIDs = async () => {
+  const performSearch = async () => {
+    if (!searchUID.trim()) return;
+    
+    setSearchLoading(true);
     try {
-      // Fetch UIDs without filters for search functionality - reasonable limit
-      const response = await apiClient.get<any>('/uid?limit=500');
+      const queryParams = new URLSearchParams();
+      queryParams.append('search', searchUID.trim());
+      queryParams.append('limit', '10'); // Only fetch top 10 results
+      
+      const response = await apiClient.get<any>(`/uid?${queryParams}`);
       const data = Array.isArray(response) ? response : response.data || [];
-      setAllUIDs(data);
+      setSearchResults(data);
+      setShowSearchDropdown(data.length > 0);
     } catch (error) {
-      console.error('Error fetching all UIDs:', error);
+      console.error('Error searching UIDs:', error);
+    } finally {
+      setSearchLoading(false);
     }
   };
 
   const fetchUIDs = async () => {
+    setLoading(true);
     try {
       const queryParams = new URLSearchParams();
       
@@ -134,13 +135,24 @@ export default function UIDTrackingPage() {
       if (filters.entity_type) queryParams.append('entity_type', filters.entity_type);
       if (filters.location) queryParams.append('location', filters.location);
       
-      // Reasonable limit for table display
-      queryParams.append('limit', '500');
+      // Server-side pagination
+      const offset = (currentPage - 1) * itemsPerPage;
+      queryParams.append('limit', itemsPerPage.toString());
+      queryParams.append('offset', offset.toString());
+      
+      // Sorting
+      queryParams.append('sortBy', sortField);
+      queryParams.append('sortOrder', sortOrder);
 
       const response = await apiClient.get<any>(`/uid?${queryParams}`);
       // Handle both old array format and new paginated format
       const data = Array.isArray(response) ? response : response.data || [];
       setUids(data);
+      
+      // If API returns total count, use it for pagination
+      if (response.total) {
+        setTotalCount(response.total);
+      }
     } catch (error) {
       console.error('Error fetching UIDs:', error);
     } finally {
@@ -215,7 +227,7 @@ export default function UIDTrackingPage() {
       setSortField(field);
       setSortOrder('asc');
     }
-    setCurrentPage(1);
+    setCurrentPage(1); // Reset to first page when sorting
   };
 
   const getSortIcon = (field: keyof UIDRecord) => {
@@ -223,19 +235,13 @@ export default function UIDTrackingPage() {
     return sortOrder === 'asc' ? '↑' : '↓';
   };
 
-  // Sort and paginate UIDs
-  const sortedUIDs = [...uids].sort((a, b) => {
-    const aValue = a[sortField] || '';
-    const bValue = b[sortField] || '';
-    if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
-    if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  const totalPages = Math.ceil(sortedUIDs.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedUIDs = sortedUIDs.slice(startIndex, endIndex);
+  // Calculate total pages based on total count or current data
+  const totalPages = totalCount > 0 
+    ? Math.ceil(totalCount / itemsPerPage)
+    : Math.ceil(uids.length / itemsPerPage);
+  
+  // No need to sort or paginate client-side - server does it
+  const paginatedUIDs = uids;
 
   const goToPage = (page: number) => {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
@@ -300,9 +306,15 @@ export default function UIDTrackingPage() {
             onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)}
             className="w-full px-4 py-3 pr-10 border-2 border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-lg"
           />
-          <svg className="absolute right-3 top-3.5 h-6 w-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+          {searchLoading ? (
+            <div className="absolute right-3 top-3.5 h-6 w-6">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-amber-600"></div>
+            </div>
+          ) : (
+            <svg className="absolute right-3 top-3.5 h-6 w-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          )}
           
           {/* Autocomplete Dropdown */}
           {showSearchDropdown && searchResults.length > 0 && (
@@ -335,7 +347,7 @@ export default function UIDTrackingPage() {
             </div>
           )}
           
-          {searchUID && searchResults.length === 0 && !showSearchDropdown && (
+          {searchUID && searchResults.length === 0 && !showSearchDropdown && !searchLoading && (
             <div className="absolute z-50 w-full mt-2 bg-white border-2 border-amber-300 rounded-lg shadow-xl p-4 text-center text-gray-500">
               No UIDs found matching "{searchUID}"
             </div>

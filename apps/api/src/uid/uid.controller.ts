@@ -27,8 +27,25 @@ export class UidController {
     @Query('status') status?: string,
     @Query('entityType') entityType?: string,
     @Query('item_id') itemId?: string,
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
   ) {
-    return this.uidSupabaseService.getAllUIDs(req, status, entityType, itemId);
+    const parsedLimit = limit ? parseInt(limit) : undefined;
+    const parsedOffset = offset ? parseInt(offset) : undefined;
+    return this.uidSupabaseService.getAllUIDs(
+      req, 
+      status, 
+      entityType, 
+      itemId, 
+      search,
+      parsedLimit,
+      parsedOffset,
+      sortBy,
+      sortOrder
+    );
   }
 
   @Get(':uid')
