@@ -29,6 +29,8 @@ export class ServiceService {
       ticket_number: ticketNumber,
       customer_id: data.customer_id,
       uid: data.uid || null,
+      ship_name: data.ship_name || null,
+      location: data.location || null,
       warranty_id: warrantyValidation?.warranty?.id || null,
       service_type: warrantyValidation?.is_valid ? 'WARRANTY' : data.service_type || 'PAID',
       priority: data.priority || 'MEDIUM',
@@ -47,6 +49,7 @@ export class ServiceService {
       warranty_valid_until: warrantyValidation?.warranty?.warranty_end_date || null,
       expected_completion_date: data.expected_completion_date,
       estimated_cost: warrantyValidation?.is_valid ? 0 : data.estimated_cost || 0,
+      attachments: data.attachments || [],
       created_by: userId,
     };
 
