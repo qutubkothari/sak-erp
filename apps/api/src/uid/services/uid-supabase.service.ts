@@ -1043,4 +1043,48 @@ export class UidSupabaseService {
     }
     return Math.abs(hash).toString(36).toUpperCase().substring(0, 2).padEnd(2, '0');
   }
+
+  /**
+   * Update client part number for a UID
+   */
+  async updatePartNumber(
+    req: any,
+    uid: string,
+    clientPartNumber: string | null,
+  ): Promise<void> {
+    const tenantId = req.user?.tenantId || req.tenantId;
+    
+    if (!tenantId) {
+      throw new Error('Tenant ID is required');
+    }
+
+    // Verify UID exists and belongs to tenant
+    const { data: existing, error: fetchError } = await this.supabase
+      .from('uid_registry')
+      .select('id')
+      .eq('uid', uid)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (fetchError || !existing) {
+      throw new Error(`UID ${uid} not found`);
+    }
+
+    // Update the part number
+    const { error: updateError } = await this.supabase
+      .from('uid_registry')
+      .update({ 
+        client_part_number: clientPartNumber,
+        updated_at: new Date().toISOString()
+      })
+      .eq('uid', uid)
+      .eq('tenant_id', tenantId);
+
+    if (updateError) {
+      console.error('[updatePartNumber] Error:', updateError);
+      throw new Error(`Failed to update part number: ${updateError.message}`);
+    }
+
+    console.log(`[updatePartNumber] Successfully updated UID ${uid} with part number: ${clientPartNumber}`);
+  }
 }

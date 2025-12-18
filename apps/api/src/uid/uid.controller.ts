@@ -78,7 +78,7 @@ export class UidController {
     @Body() dto: UpdatePartNumberDto,
     @Request() req: any,
   ) {
-    await this.uidService.updatePartNumber(uid, dto.client_part_number, req.user.userId);
+    await this.uidSupabaseService.updatePartNumber(req, uid, dto.client_part_number);
     return {
       message: 'Part number updated successfully',
       uid,
