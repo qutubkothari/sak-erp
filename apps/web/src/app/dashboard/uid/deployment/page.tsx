@@ -116,9 +116,9 @@ export default function UIDDeploymentPage() {
             acc.set(curr.current_location, (acc.get(curr.current_location) || 0) + 1);
           }
           return acc;
-        }, new Map());
+        }, new Map<string, number>());
       
-      const locationArray: CustomerLocation[] = Array.from(locations.entries()).map(([location_name, count]) => ({
+      const locationArray: CustomerLocation[] = Array.from(locations.entries()).map(([location_name, count]: [string, number]) => ({
         location_name,
         count
       }));
