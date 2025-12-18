@@ -1,12 +1,15 @@
 -- Update v_uid_deployment_status view to include item information
-CREATE OR REPLACE VIEW v_uid_deployment_status AS
+-- Drop and recreate the view to change column structure
+DROP VIEW IF EXISTS v_uid_deployment_status;
+
+CREATE VIEW v_uid_deployment_status AS
 SELECT 
   u.id as uid_id,
   u.uid,
   u.client_part_number,
   u.job_order_id,
   
-  -- Item information
+  -- Item information (using entity_id and entity_type)
   i.name as item_name,
   i.code as item_code,
   
@@ -32,7 +35,7 @@ SELECT
   
   u.tenant_id
 FROM uid_registry u
-LEFT JOIN items i ON u.item_id = i.id
+LEFT JOIN items i ON u.entity_id = i.id AND u.entity_type = 'Item'
 LEFT JOIN product_deployment_history curr 
   ON u.id = curr.uid_id AND curr.is_current_location = true
 LEFT JOIN LATERAL (

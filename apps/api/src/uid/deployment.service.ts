@@ -17,7 +17,7 @@ export class DeploymentService {
     // Verify UID exists and belongs to tenant
     const { data: uid, error: uidError } = await this.supabase
       .from('uid_registry')
-      .select('id, uid, item_id')
+      .select('id, uid, entity_id, entity_type')
       .eq('id', dto.uid_id)
       .eq('tenant_id', tenantId)
       .single();
