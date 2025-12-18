@@ -37,8 +37,6 @@ export default function UIDDeploymentPage() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [deploymentHistory, setDeploymentHistory] = useState<DeploymentHistory[]>([]);
-  
-  // Pagination & Sorting
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [sortField, setSortField] = useState<keyof UIDDeployment>('uid');
@@ -147,7 +145,7 @@ export default function UIDDeploymentPage() {
       setSortField(field);
       setSortOrder('asc');
     }
-    setCurrentPage(1); // Reset to first page when sorting
+    setCurrentPage(1);
   };
 
   const getSortIcon = (field: keyof UIDDeployment) => {
@@ -163,17 +161,14 @@ export default function UIDDeploymentPage() {
     (d.current_location && d.current_location.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  // Sort filtered deployments
   const sortedDeployments = [...filteredDeployments].sort((a, b) => {
     const aValue = a[sortField] || '';
     const bValue = b[sortField] || '';
-    
     if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
     if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
     return 0;
   });
 
-  // Pagination
   const totalPages = Math.ceil(sortedDeployments.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
@@ -191,7 +186,42 @@ export default function UIDDeploymentPage() {
           <h1 className="text-4xl font-bold text-gray-900 mb-2">🗺️ Product Deployment Tracking</h1>
           <p className="text-gray-600">Track product locations through distribution channels</p>
         </div>
->
+
+        {/* Search and Stats */}
+        <div className="grid grid-cols-4 gap-6 mb-8">
+          <div className="col-span-2">
+            <input
+              type="text"
+              placeholder="Search by UID, Part No, Location..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
+          </div>
+          <div className="bg-white rounded-lg shadow-md p-4">
+            <div className="text-sm text-gray-600 mb-1">Total Products</div>
+            <div className="text-3xl font-bold text-purple-600">{deployments.length}</div>
+          </div>
+          <div className="bg-white rounded-lg shadow-md p-4">
+            <div className="text-sm text-gray-600 mb-1">With Locations</div>
+            <div className="text-3xl font-bold text-green-600">
+              {deployments.filter(d => d.current_location).length}
+            </div>
+          </div>
+        </div>
+
+        {/* Deployments Table */}
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          {loading ? (
+            <div className="p-8 text-center text-gray-500">Loading deployments...</div>
+          ) : filteredDeployments.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="text-6xl mb-4">📦</div>
+              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Deployments Found</h3>
+              <p className="text-gray-500">Start tracking products by adding deployment information</p>
+            </div>
+          ) : (
+            <>
               <table className="w-full">
                 <thead className="bg-purple-50">
                   <tr>
@@ -241,42 +271,7 @@ export default function UIDDeploymentPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {paginatame="text-3xl font-bold text-purple-600">{deployments.length}</div>
-          </div>
-          <div className="bg-white rounded-lg shadow-md p-4">
-            <div className="text-sm text-gray-600 mb-1">With Locations</div>
-            <div className="text-3xl font-bold text-green-600">
-              {deployments.filter(d => d.current_location).length}
-            </div>
-          </div>
-        </div>
-
-        {/* Deployments Table */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          {loading ? (
-            <div className="p-8 text-center text-gray-500">Loading deployments...</div>
-          ) : filteredDeployments.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="text-6xl mb-4">📦</div>
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Deployments Found</h3>
-              <p className="text-gray-500">Start tracking products by adding deployment information</p>
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead className="bg-purple-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase">UID</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase">Part No</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase">Item</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase">Level</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase">Organization</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase">Location</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-purple-900 uppercase">Date</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-purple-900 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredDeployments.map((deployment) => (
+                  {paginatedDeployments.map((deployment) => (
                   <tr key={deployment.uid_id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm font-semibold text-gray-900">{deployment.uid}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">
@@ -285,8 +280,43 @@ export default function UIDDeploymentPage() {
                     <td className="px-6 py-4">
                       <div className="font-medium text-gray-900">{deployment.item_name}</div>
                       <div className="text-sm text-gray-500">{deployment.item_code}</div>
-            
-            {/* Pagination Controls */}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getLevelBadgeColor(deployment.current_level)}`}>
+                        {deployment.current_level || 'Not Deployed'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      {deployment.current_organization || <span className="text-gray-400">-</span>}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      {deployment.current_location || <span className="text-gray-400">-</span>}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {deployment.current_deployment_date 
+                        ? new Date(deployment.current_deployment_date).toLocaleDateString()
+                        : <span className="text-gray-400">-</span>
+                      }
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <button
+                        onClick={() => viewHistory(deployment)}
+                        className="text-purple-600 hover:text-purple-800 font-medium mr-3"
+                      >
+                        History
+                      </button>
+                      <button
+                        onClick={() => openAddModal(deployment)}
+                        className="text-green-600 hover:text-green-800 font-medium"
+                      >
+                        + Add
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
               <div className="text-sm text-gray-700">
                 Showing {startIndex + 1} to {Math.min(endIndex, sortedDeployments.length)} of {sortedDeployments.length} results
@@ -309,7 +339,6 @@ export default function UIDDeploymentPage() {
                 
                 {[...Array(totalPages)].map((_, i) => {
                   const page = i + 1;
-                  // Show first page, last page, current page, and pages around current
                   if (
                     page === 1 ||
                     page === totalPages ||
@@ -354,42 +383,6 @@ export default function UIDDeploymentPage() {
               </div>
             </div>
             </>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getLevelBadgeColor(deployment.current_level)}`}>
-                        {deployment.current_level || 'Not Deployed'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      {deployment.current_organization || <span className="text-gray-400">-</span>}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      {deployment.current_location || <span className="text-gray-400">-</span>}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {deployment.current_deployment_date 
-                        ? new Date(deployment.current_deployment_date).toLocaleDateString()
-                        : <span className="text-gray-400">-</span>
-                      }
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => viewHistory(deployment)}
-                        className="text-purple-600 hover:text-purple-800 font-medium mr-3"
-                      >
-                        History
-                      </button>
-                      <button
-                        onClick={() => openAddModal(deployment)}
-                        className="text-green-600 hover:text-green-800 font-medium"
-                      >
-                        + Add
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           )}
         </div>
       </div>
