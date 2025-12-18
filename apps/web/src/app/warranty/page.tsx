@@ -129,7 +129,7 @@ export default function WarrantyPortalPage() {
 
   const getLevelBadgeColor = (level: string) => {
     switch (level) {
-      case 'CUSTOMER': return 'bg-blue-100 text-blue-800';
+      case 'CUSTOMER': return 'bg-purple-100 text-purple-800';
       case 'DEPOT': return 'bg-yellow-100 text-yellow-800';
       case 'END_LOCATION': return 'bg-green-100 text-green-800';
       case 'SERVICE_CENTER': return 'bg-orange-100 text-orange-800';
@@ -139,7 +139,7 @@ export default function WarrantyPortalPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100">
       {/* Header */}
       <div className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -170,7 +170,7 @@ export default function WarrantyPortalPage() {
               onClick={() => setSearchType('part_number')}
               className={`px-4 py-2 rounded-lg font-medium ${
                 searchType === 'part_number'
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-purple-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -180,7 +180,7 @@ export default function WarrantyPortalPage() {
               onClick={() => setSearchType('access_token')}
               className={`px-4 py-2 rounded-lg font-medium ${
                 searchType === 'access_token'
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-purple-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -200,12 +200,12 @@ export default function WarrantyPortalPage() {
                   ? 'Enter part number (e.g., 53022)'
                   : 'Enter warranty token (e.g., WRT-XXXXX)'
               }
-              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
             />
             <button
               onClick={handleSearch}
               disabled={loading}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-medium"
+              className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 font-medium"
             >
               {loading ? 'Searching...' : 'Search'}
             </button>
@@ -312,7 +312,7 @@ export default function WarrantyPortalPage() {
                     <select
                       value={updateForm.deployment_level}
                       onChange={(e) => setUpdateForm({ ...updateForm, deployment_level: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                     >
                       <option value="CUSTOMER">Customer</option>
                       <option value="DEPOT">Depot</option>
@@ -328,7 +328,7 @@ export default function WarrantyPortalPage() {
                       value={updateForm.organization_name}
                       onChange={(e) => setUpdateForm({ ...updateForm, organization_name: e.target.value })}
                       placeholder="e.g., Indian Navy"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                     />
                   </div>
                   <div>
@@ -338,7 +338,7 @@ export default function WarrantyPortalPage() {
                       value={updateForm.location_name}
                       onChange={(e) => setUpdateForm({ ...updateForm, location_name: e.target.value })}
                       placeholder="e.g., INS Vikrant"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                     />
                   </div>
                   <div>
@@ -348,14 +348,14 @@ export default function WarrantyPortalPage() {
                       value={updateForm.deployment_notes}
                       onChange={(e) => setUpdateForm({ ...updateForm, deployment_notes: e.target.value })}
                       placeholder="Additional notes"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                     />
                   </div>
                 </div>
                 <div className="mt-4">
                   <button
                     onClick={handleUpdateDeployment}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                    className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium"
                   >
                     Submit Update
                   </button>
@@ -369,7 +369,7 @@ export default function WarrantyPortalPage() {
                 <h2 className="text-xl font-semibold text-gray-900 mb-4">Deployment History</h2>
                 <div className="space-y-4">
                   {deploymentHistory.map((deployment, index) => (
-                    <div key={index} className="border-l-4 border-blue-500 pl-4 py-2">
+                    <div key={index} className="border-l-4 border-purple-500 pl-4 py-2">
                       <div className="flex items-center gap-3 mb-1">
                         <span className={`px-2 py-1 rounded text-xs font-semibold ${getLevelBadgeColor(deployment.deployment_level)}`}>
                           {deployment.deployment_level.replace('_', ' ')}
@@ -393,9 +393,9 @@ export default function WarrantyPortalPage() {
 
         {/* Info Card */}
         {!productInfo && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
-            <h3 className="font-semibold text-blue-900 mb-2">How to use this portal:</h3>
-            <ul className="space-y-2 text-sm text-blue-800">
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
+            <h3 className="font-semibold text-purple-900 mb-2">How to use this portal:</h3>
+            <ul className="space-y-2 text-sm text-purple-800">
               <li>• <strong>Part Number Search:</strong> Enter the part number found on your product label</li>
               <li>• <strong>Warranty Token:</strong> Use the WRT-XXXXX code provided during purchase or deployment</li>
               <li>• <strong>Update Location:</strong> Click &quot;Update Location&quot; to report where your product is currently deployed</li>
