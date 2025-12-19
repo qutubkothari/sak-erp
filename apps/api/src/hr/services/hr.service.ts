@@ -479,6 +479,105 @@ export class HrService {
     return data || [];
   }
 
+  // Monthly Payroll Processing
+  async createMonthlyPayroll(tenantId: string, data: any) {
+    const payload = {
+      tenant_id: tenantId,
+      employee_id: data.employee_id,
+      payroll_month: data.payroll_month,
+      days_in_month: data.days_in_month,
+      days_travelled: data.days_travelled || 0,
+      extra_days_worked: data.extra_days_worked || 0,
+      full_overtime_hours: data.full_overtime_hours || 0,
+      half_overtime_hours: data.half_overtime_hours || 0,
+      production_incentive: data.production_incentive || 0,
+      yearly_bonus_hold: data.yearly_bonus_hold || 0,
+      special_allowance: data.special_allowance || 0,
+      professional_tax: data.professional_tax || 0,
+      gross_salary: data.gross_salary,
+      total_deductions: data.total_deductions,
+      net_salary: data.net_salary,
+      amount_paid: data.amount_paid,
+      status: data.status || 'DRAFT'
+    };
+
+    const { data: result, error } = await this.supabase
+      .from('monthly_payroll')
+      .insert([payload])
+      .select();
+    if (error) throw new Error(error.message);
+    return result;
+  }
+
+  async getMonthlyPayrolls(tenantId: string, month?: string) {
+    let query = this.supabase
+      .from('monthly_payroll')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('payroll_month', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (month) {
+      query = query.eq('payroll_month', month);
+    }
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  async updateMonthlyPayroll(tenantId: string, id: string, data: any) {
+    const payload: any = {
+      payroll_month: data.payroll_month,
+      days_in_month: data.days_in_month,
+      days_travelled: data.days_travelled || 0,
+      extra_days_worked: data.extra_days_worked || 0,
+      full_overtime_hours: data.full_overtime_hours || 0,
+      half_overtime_hours: data.half_overtime_hours || 0,
+      production_incentive: data.production_incentive || 0,
+      yearly_bonus_hold: data.yearly_bonus_hold || 0,
+      special_allowance: data.special_allowance || 0,
+      professional_tax: data.professional_tax || 0,
+      gross_salary: data.gross_salary,
+      total_deductions: data.total_deductions,
+      net_salary: data.net_salary,
+      amount_paid: data.amount_paid
+    };
+
+    const { data: result, error } = await this.supabase
+      .from('monthly_payroll')
+      .update(payload)
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .select();
+    if (error) throw new Error(error.message);
+    return result;
+  }
+
+  async processMonthlyPayroll(tenantId: string, id: string) {
+    const { data: result, error } = await this.supabase
+      .from('monthly_payroll')
+      .update({ 
+        status: 'PROCESSED',
+        processed_at: new Date().toISOString()
+      })
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .select();
+    if (error) throw new Error(error.message);
+    return result;
+  }
+
+  async deleteMonthlyPayroll(tenantId: string, id: string) {
+    const { error } = await this.supabase
+      .from('monthly_payroll')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('id', id);
+    if (error) throw new Error(error.message);
+    return { message: 'Monthly payroll deleted successfully' };
+  }
+
   // Employee Documents
   async getEmployeeDocuments(tenantId: string, employeeId: string) {
     const { data, error } = await this.supabase
@@ -486,7 +585,7 @@ export class HrService {
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('employee_id', employeeId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false});
     if (error) throw new Error(error.message);
     return data || [];
   }

@@ -113,6 +113,32 @@ export class HrController {
     return this.hrService.getPayslips(req.user.tenantId, employeeId);
   }
 
+  // Monthly Payroll Processing
+  @Post('payroll/monthly')
+  createMonthlyPayroll(@Request() req: any, @Body() body: any) {
+    return this.hrService.createMonthlyPayroll(req.user.tenantId, body);
+  }
+
+  @Get('payroll/monthly')
+  getMonthlyPayrolls(@Request() req: any, @Query('month') month?: string) {
+    return this.hrService.getMonthlyPayrolls(req.user.tenantId, month);
+  }
+
+  @Put('payroll/monthly/:id')
+  updateMonthlyPayroll(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.hrService.updateMonthlyPayroll(req.user.tenantId, id, body);
+  }
+
+  @Put('payroll/monthly/:id/process')
+  processMonthlyPayroll(@Request() req: any, @Param('id') id: string) {
+    return this.hrService.processMonthlyPayroll(req.user.tenantId, id);
+  }
+
+  @Delete('payroll/monthly/:id')
+  deleteMonthlyPayroll(@Request() req: any, @Param('id') id: string) {
+    return this.hrService.deleteMonthlyPayroll(req.user.tenantId, id);
+  }
+
   // Employee Documents
   @Get('employees/:id/documents')
   getEmployeeDocuments(@Request() req: any, @Param('id') employeeId: string) {

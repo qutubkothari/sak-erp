@@ -92,6 +92,29 @@ interface MeritDemerit {
   created_at: string;
 }
 
+interface MonthlyPayroll {
+  id?: string;
+  employee_id: string;
+  employee_name?: string;
+  payroll_month: string;
+  days_in_month: number;
+  days_travelled: number;
+  extra_days_worked: number;
+  full_overtime_hours: number;
+  half_overtime_hours: number;
+  production_incentive: number;
+  yearly_bonus_hold: number;
+  special_allowance: number;
+  professional_tax: number;
+  gross_salary: number;
+  total_deductions: number;
+  net_salary: number;
+  amount_paid: number;
+  status: 'DRAFT' | 'PROCESSED' | 'PAID';
+  created_at?: string;
+  processed_at?: string;
+}
+
 export default function HrPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leaves' | 'payroll'>('employees');
@@ -101,12 +124,15 @@ export default function HrPage() {
   const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [salaryComponents, setSalaryComponents] = useState<SalaryComponent[]>([]);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
-  const [payrollSubTab, setPayrollSubTab] = useState<'salary' | 'runs' | 'payslips'>('salary');
+  const [monthlyPayrolls, setMonthlyPayrolls] = useState<MonthlyPayroll[]>([]);
+  const [payrollSubTab, setPayrollSubTab] = useState<'salary' | 'runs' | 'payslips' | 'monthly'>('salary');
   
   // Payroll modals
   const [showSalaryForm, setShowSalaryForm] = useState(false);
   const [showPayrollRunForm, setShowPayrollRunForm] = useState(false);
   const [selectedSalaryComponent, setSelectedSalaryComponent] = useState<SalaryComponent | null>(null);
+  const [showMonthlyPayrollForm, setShowMonthlyPayrollForm] = useState(false);
+  const [selectedMonthlyPayroll, setSelectedMonthlyPayroll] = useState<MonthlyPayroll | null>(null);
   
   // Employee modals
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
@@ -200,6 +226,20 @@ export default function HrPage() {
   const [payrollRunForm, setPayrollRunForm] = useState({
     payroll_month: new Date().toISOString().substring(0, 7),
     remarks: ''
+  });
+
+  const [monthlyPayrollForm, setMonthlyPayrollForm] = useState({
+    employee_id: '',
+    payroll_month: new Date().toISOString().substring(0, 7),
+    days_in_month: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate(),
+    days_travelled: 0,
+    extra_days_worked: 0,
+    full_overtime_hours: 0,
+    half_overtime_hours: 0,
+    production_incentive: 0,
+    yearly_bonus_hold: 0,
+    special_allowance: 0,
+    professional_tax: 0
   });
 
   useEffect(() => {
@@ -297,6 +337,14 @@ export default function HrPage() {
             return { ...slip, employee_name: emp?.employee_name || 'Unknown' };
           });
           setPayslips(slipsWithNames);
+        } else if (payrollSubTab === 'monthly') {
+          const monthlyData = await apiClient.get<any>('/hr/payroll/monthly');
+          const records = Array.isArray(monthlyData) ? monthlyData : (monthlyData.data || []);
+          const recordsWithNames = records.map((rec: any) => {
+            const emp = allEmployees.find((e: Employee) => e.id === rec.employee_id);
+            return { ...rec, employee_name: emp?.employee_name || 'Unknown' };
+          });
+          setMonthlyPayrolls(recordsWithNames);
         }
       }
     } catch (error) {
@@ -454,6 +502,119 @@ export default function HrPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSaveMonthlyPayroll = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      // Calculate gross, net, and amount paid
+      const empRes = await apiClient.get<any>(`/hr/salary/${monthlyPayrollForm.employee_id}`);
+      const components = Array.isArray(empRes) ? empRes : (empRes.data || []);
+      
+      // Fixed components (BASIC, HRA, MEDICAL, TRAVELLING)
+      const fixedComponents = components.filter((c: any) => 
+        ['BASIC', 'HRA'].includes(c.component_type) || 
+        ['Medical', 'Travelling'].includes(c.component_name)
+      );
+      const fixedTotal = fixedComponents.reduce((sum: number, c: any) => sum + Number(c.amount || 0), 0);
+      
+      const grossSalary = fixedTotal + 
+        Number(monthlyPayrollForm.production_incentive) + 
+        Number(monthlyPayrollForm.yearly_bonus_hold) + 
+        Number(monthlyPayrollForm.special_allowance);
+      
+      const totalDeductions = Number(monthlyPayrollForm.professional_tax);
+      const netSalary = grossSalary - totalDeductions;
+      const amountPaid = netSalary - Number(monthlyPayrollForm.yearly_bonus_hold);
+
+      const payload = {
+        ...monthlyPayrollForm,
+        gross_salary: grossSalary,
+        total_deductions: totalDeductions,
+        net_salary: netSalary,
+        amount_paid: amountPaid,
+        status: 'DRAFT'
+      };
+
+      if (selectedMonthlyPayroll?.id) {
+        await apiClient.put(`/hr/payroll/monthly/${selectedMonthlyPayroll.id}`, payload);
+        alert('Monthly payroll updated successfully');
+      } else {
+        await apiClient.post('/hr/payroll/monthly', payload);
+        alert('Monthly payroll created successfully');
+      }
+      
+      setShowMonthlyPayrollForm(false);
+      setSelectedMonthlyPayroll(null);
+      setMonthlyPayrollForm({
+        employee_id: '',
+        payroll_month: new Date().toISOString().substring(0, 7),
+        days_in_month: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate(),
+        days_travelled: 0,
+        extra_days_worked: 0,
+        full_overtime_hours: 0,
+        half_overtime_hours: 0,
+        production_incentive: 0,
+        yearly_bonus_hold: 0,
+        special_allowance: 0,
+        professional_tax: 0
+      });
+      fetchData();
+    } catch (error) {
+      console.error('Error saving monthly payroll:', error);
+      alert('Failed to save monthly payroll');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleProcessMonthlyPayroll = async (id: string) => {
+    if (!confirm('Process this monthly payroll? This will lock the record.')) return;
+    setLoading(true);
+    try {
+      await apiClient.put(`/hr/payroll/monthly/${id}/process`);
+      fetchData();
+      alert('Monthly payroll processed successfully');
+    } catch (error) {
+      console.error('Error processing monthly payroll:', error);
+      alert('Failed to process monthly payroll');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteMonthlyPayroll = async (id: string) => {
+    if (!confirm('Delete this monthly payroll record?')) return;
+    setLoading(true);
+    try {
+      await apiClient.delete(`/hr/payroll/monthly/${id}`);
+      fetchData();
+      alert('Monthly payroll deleted successfully');
+    } catch (error) {
+      console.error('Error deleting monthly payroll:', error);
+      alert('Failed to delete monthly payroll');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditMonthlyPayroll = (record: MonthlyPayroll) => {
+    setSelectedMonthlyPayroll(record);
+    setMonthlyPayrollForm({
+      employee_id: record.employee_id,
+      payroll_month: record.payroll_month,
+      days_in_month: record.days_in_month,
+      days_travelled: record.days_travelled,
+      extra_days_worked: record.extra_days_worked,
+      full_overtime_hours: record.full_overtime_hours,
+      half_overtime_hours: record.half_overtime_hours,
+      production_incentive: record.production_incentive,
+      yearly_bonus_hold: record.yearly_bonus_hold,
+      special_allowance: record.special_allowance,
+      professional_tax: record.professional_tax
+    });
+    setShowMonthlyPayrollForm(true);
   };
 
   const handlePrintPayslip = async (slip: any) => {
@@ -1054,10 +1215,91 @@ export default function HrPage() {
         <div className="bg-white rounded-lg shadow p-6">
           {/* Payroll Sub-tabs */}
           <div className="flex space-x-6 border-b mb-6">
+            <button onClick={() => setPayrollSubTab('monthly')} className={`pb-3 px-2 ${payrollSubTab === 'monthly' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}>Monthly Processing</button>
             <button onClick={() => setPayrollSubTab('salary')} className={`pb-3 px-2 ${payrollSubTab === 'salary' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}>Salary Components</button>
             <button onClick={() => setPayrollSubTab('runs')} className={`pb-3 px-2 ${payrollSubTab === 'runs' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}>Payroll Runs</button>
             <button onClick={() => setPayrollSubTab('payslips')} className={`pb-3 px-2 ${payrollSubTab === 'payslips' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}>Payslips</button>
           </div>
+
+          {/* Monthly Processing Section */}
+          {payrollSubTab === 'monthly' && (
+            <>
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold">Monthly Payroll Processing</h3>
+                  <p className="text-sm text-gray-600">Process employee salaries with variable components</p>
+                </div>
+                <button onClick={() => { setSelectedMonthlyPayroll(null); setShowMonthlyPayrollForm(true); }} className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700">+ Process Salary</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Days</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Travel</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Extra/OT</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Incentive</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bonus Hold</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sp. Allow.</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net Pay</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount Paid</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {monthlyPayrolls.map((record) => (
+                      <tr key={record.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{record.employee_name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{record.payroll_month}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{record.days_in_month}d</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{record.days_travelled}d</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-xs">
+                          {record.extra_days_worked}d / {record.full_overtime_hours}F+{record.half_overtime_hours}H
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">₹{record.production_incentive.toFixed(0)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-amber-600">₹{record.yearly_bonus_hold.toFixed(0)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">₹{record.special_allowance.toFixed(0)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold">₹{record.net_salary.toFixed(0)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-700">₹{record.amount_paid.toFixed(0)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 py-1 text-xs rounded ${
+                            record.status === 'DRAFT' ? 'bg-gray-100 text-gray-800' :
+                            record.status === 'PROCESSED' ? 'bg-blue-100 text-blue-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>{record.status}</span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <div className="flex space-x-2">
+                            {record.status === 'DRAFT' && (
+                              <>
+                                <button onClick={() => handleEditMonthlyPayroll(record)} className="text-amber-600 hover:text-amber-800" title="Edit">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                </button>
+                                <button onClick={() => handleProcessMonthlyPayroll(record.id!)} className="text-blue-600 hover:text-blue-800" title="Process">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                </button>
+                                <button onClick={() => handleDeleteMonthlyPayroll(record.id!)} className="text-red-600 hover:text-red-800" title="Delete">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                              </>
+                            )}
+                            {record.status !== 'DRAFT' && (
+                              <button onClick={() => handlePrintPayslip(record)} className="text-purple-600 hover:text-purple-800" title="Print">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
 
           {/* Salary Components Section */}
           {payrollSubTab === 'salary' && (
@@ -1788,6 +2030,105 @@ export default function HrPage() {
               <div><label className="block text-sm font-medium mb-1">Amount</label><input type="number" step="0.01" value={salaryForm.amount} onChange={(e) => setSalaryForm({ ...salaryForm, amount: parseFloat(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" required /></div>
               <div className="flex items-center"><input type="checkbox" id="is_taxable" checked={salaryForm.is_taxable} onChange={(e) => setSalaryForm({ ...salaryForm, is_taxable: e.target.checked })} className="mr-2" /><label htmlFor="is_taxable" className="text-sm font-medium">Taxable Component</label></div>
               <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowSalaryForm(false)} className="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button><button type="submit" disabled={loading} className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50">{loading ? 'Adding...' : 'Add Component'}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Monthly Payroll Form Modal */}
+      {showMonthlyPayrollForm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 my-8">
+            <h3 className="text-lg font-semibold mb-4">{selectedMonthlyPayroll ? 'Edit' : 'Process'} Monthly Payroll</h3>
+            <form onSubmit={handleSaveMonthlyPayroll} className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Employee *</label>
+                  <select value={monthlyPayrollForm.employee_id} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, employee_id: e.target.value })} className="w-full border rounded px-3 py-2" required disabled={!!selectedMonthlyPayroll}>
+                    <option value="">Select Employee</option>
+                    {employees.map(emp => (<option key={emp.id} value={emp.id}>{emp.employee_name} ({emp.employee_code})</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Payroll Month *</label>
+                  <input type="month" value={monthlyPayrollForm.payroll_month} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, payroll_month: e.target.value })} className="w-full border rounded px-3 py-2" required />
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <h4 className="font-semibold mb-3 text-amber-600">📅 Attendance & Working Days</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Days in Month</label>
+                    <input type="number" value={monthlyPayrollForm.days_in_month} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, days_in_month: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="28" max="31" required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Days Travelled (Out of Station)</label>
+                    <input type="number" value={monthlyPayrollForm.days_travelled} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, days_travelled: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Extra Days Worked (Holidays)</label>
+                    <input type="number" value={monthlyPayrollForm.extra_days_worked} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, extra_days_worked: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <h4 className="font-semibold mb-3 text-purple-600">⏰ Overtime Hours</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Full Overtime (4 hours extra)</label>
+                    <input type="number" value={monthlyPayrollForm.full_overtime_hours} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, full_overtime_hours: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.5" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Half Overtime (2 hours extra)</label>
+                    <input type="number" value={monthlyPayrollForm.half_overtime_hours} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, half_overtime_hours: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.5" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <h4 className="font-semibold mb-3 text-green-600">💰 Variable Salary Components</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Production Incentive (Paid)</label>
+                    <input type="number" value={monthlyPayrollForm.production_incentive} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, production_incentive: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
+                    <p className="text-xs text-gray-500 mt-1">Actual production bonus to be paid this month</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Yearly Bonus (On Hold)</label>
+                    <input type="number" value={monthlyPayrollForm.yearly_bonus_hold} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, yearly_bonus_hold: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
+                    <p className="text-xs text-amber-600 mt-1">Calculated but held, paid at year-end</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Special Allowance (Balancing)</label>
+                    <input type="number" value={monthlyPayrollForm.special_allowance} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, special_allowance: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
+                    <p className="text-xs text-gray-500 mt-1">Difference to make up the target salary</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Professional Tax (Deduction)</label>
+                    <input type="number" value={monthlyPayrollForm.professional_tax} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, professional_tax: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded p-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div><strong>Formula:</strong></div>
+                  <div></div>
+                  <div>Gross Salary =</div>
+                  <div>Fixed (Basic+HRA+Medical+Travelling) + Incentive + Bonus Hold + Sp. Allowance</div>
+                  <div>Net Salary =</div>
+                  <div>Gross Salary - Professional Tax</div>
+                  <div className="font-bold text-green-700">Amount Paid =</div>
+                  <div className="font-bold text-green-700">Net Salary - Yearly Bonus Hold</div>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button type="button" onClick={() => { setShowMonthlyPayrollForm(false); setSelectedMonthlyPayroll(null); }} className="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button>
+                <button type="submit" disabled={loading} className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50">{loading ? 'Saving...' : (selectedMonthlyPayroll ? 'Update' : 'Save as Draft')}</button>
+              </div>
             </form>
           </div>
         </div>
