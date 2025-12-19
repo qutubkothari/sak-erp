@@ -89,6 +89,10 @@ export default function ServicePage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [availableUIDs, setAvailableUIDs] = useState<UIDRecord[]>([]);
+  const [shipNames, setShipNames] = useState<string[]>([]);
+  const [shipNameInput, setShipNameInput] = useState('');
+  const [filteredShipNames, setFilteredShipNames] = useState<string[]>([]);
+  const [showShipNameDropdown, setShowShipNameDropdown] = useState(false);
 
   // Forms
   const [showTicketForm, setShowTicketForm] = useState(false);
@@ -148,6 +152,7 @@ export default function ServicePage() {
     // Fetch customers and items when component mounts
     fetchCustomers();
     fetchItems();
+    fetchShipNames();
   }, []);
 
   const fetchCustomers = async () => {
@@ -166,6 +171,38 @@ export default function ServicePage() {
     } catch (err) {
       console.error('Failed to fetch items:', err);
     }
+  };
+
+  const fetchShipNames = async () => {
+    try {
+      const data = await apiClient.get<ServiceTicket[]>('/service/tickets');
+      const uniqueShipNames = [...new Set(data.map(t => t.ship_name).filter(Boolean))] as string[];
+      setShipNames(uniqueShipNames.sort());
+    } catch (err) {
+      console.error('Failed to fetch ship names:', err);
+    }
+  };
+
+  const updateShipNameSuggestions = (value: string) => {
+    const query = value.trim().toLowerCase();
+    const suggestions = query
+      ? shipNames.filter((name) => name.toLowerCase().includes(query))
+      : shipNames;
+
+    setFilteredShipNames(suggestions);
+    setShowShipNameDropdown(suggestions.length > 0);
+  };
+
+  const handleShipNameChange = (value: string) => {
+    setShipNameInput(value);
+    setTicketForm((prev) => ({ ...prev, ship_name: value }));
+    updateShipNameSuggestions(value);
+  };
+
+  const selectShipName = (name: string) => {
+    setShipNameInput(name);
+    setTicketForm((prev) => ({ ...prev, ship_name: name }));
+    setShowShipNameDropdown(false);
   };
 
   const fetchAvailableUIDs = async (itemId: string) => {
@@ -315,7 +352,9 @@ export default function ServicePage() {
       });
       setUploadedFiles([]);
       setUploadPreviews([]);
+      setShipNameInput('');
       fetchTickets();
+      fetchShipNames(); // Refresh ship names list
     } catch (err: any) {
       console.error('Ticket creation error:', err);
       setError(err.message || 'Failed to create service ticket');
@@ -590,16 +629,40 @@ export default function ServicePage() {
                     </div>
 
                     {/* NEW FIELDS */}
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">🚢 Ship Name *</label>
+                    <div className="md:col-span-2 relative">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        🚢 Ship Name * 
+                        {shipNameInput && !shipNames.includes(shipNameInput) && (
+                          <span className="ml-2 text-xs text-amber-600">✨ New ship (will be saved)</span>
+                        )}
+                      </label>
                       <input
                         type="text"
                         required
-                        value={ticketForm.ship_name}
-                        onChange={(e) => setTicketForm({ ...ticketForm, ship_name: e.target.value })}
+                        value={shipNameInput}
+                        onChange={(e) => handleShipNameChange(e.target.value)}
+                        onFocus={() => {
+                          updateShipNameSuggestions(shipNameInput);
+                        }}
+                        onBlur={() => setTimeout(() => setShowShipNameDropdown(false), 200)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-                        placeholder="Enter vessel/ship name"
+                        placeholder="Enter or select vessel/ship name"
                       />
+                      
+                      {/* Autocomplete Dropdown */}
+                      {showShipNameDropdown && filteredShipNames.length > 0 && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {filteredShipNames.map((name, index) => (
+                            <div
+                              key={index}
+                              onClick={() => selectShipName(name)}
+                              className="px-4 py-2 hover:bg-amber-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0"
+                            >
+                              🚢 {name}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="md:col-span-2">
