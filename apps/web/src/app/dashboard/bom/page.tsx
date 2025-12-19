@@ -5,6 +5,52 @@ import { useRouter } from 'next/navigation';
 import ItemSearch from '../../../components/ItemSearch';
 import DrawingManager from '../../../components/DrawingManager';
 
+const fileToDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.readAsDataURL(file);
+  });
+
+const dataUrlToBlob = (dataUrl: string) => {
+  const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
+  if (!match) return null;
+
+  const mimeType = match[1];
+  const base64Data = match[2];
+  const byteString = atob(base64Data);
+  const byteArray = new Uint8Array(byteString.length);
+  for (let i = 0; i < byteString.length; i++) {
+    byteArray[i] = byteString.charCodeAt(i);
+  }
+
+  return new Blob([byteArray], { type: mimeType });
+};
+
+const openDrawingUrlInNewTab = (url: string) => {
+  try {
+    if (!url) return;
+
+    if (url.startsWith('data:')) {
+      const blob = dataUrlToBlob(url);
+      if (!blob) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      return;
+    }
+
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch (error) {
+    console.error('Error opening drawing:', error);
+    alert('Failed to open drawing');
+  }
+};
+
 interface BOM {
   id: string;
   version: number;
@@ -104,6 +150,7 @@ export default function BOMPage() {
       scrapPercentage: number;
       sequence: number;
       notes: string;
+      drawingUrl: string;
     }>,
   });
   const [availableBOMs, setAvailableBOMs] = useState<BOM[]>([]);
@@ -373,9 +420,33 @@ export default function BOMPage() {
           scrapPercentage: 0,
           sequence: formData.items.length + 1,
           notes: '',
+          drawingUrl: '',
         },
       ],
     });
+  };
+
+  const handleDrawingFileSelect = async (index: number, file?: File | null) => {
+    if (!file) return;
+
+    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload PNG, JPG, or PDF files only');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      handleUpdateItem(index, 'drawingUrl', dataUrl);
+    } catch (error) {
+      console.error('Error reading drawing file:', error);
+      alert('Failed to attach drawing');
+    }
   };
 
   const handleUpdateItem = (index: number, field: string, value: any) => {
@@ -692,6 +763,40 @@ export default function BOMPage() {
                             className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                             placeholder="Specifications / Notes..."
                           />
+                        </div>
+
+                        <div className="mt-3">
+                          <label className="text-xs text-gray-600 font-medium block mb-1">Drawing (optional)</label>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <input
+                              type="text"
+                              value={item.drawingUrl || ''}
+                              onChange={(e) => handleUpdateItem(index, 'drawingUrl', e.target.value)}
+                              className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm"
+                              placeholder="Paste drawing URL (or use Upload)"
+                            />
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/jpg,application/pdf"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  await handleDrawingFileSelect(index, file);
+                                  e.target.value = '';
+                                }}
+                                className="text-sm"
+                              />
+                              {item.drawingUrl ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openDrawingUrlInNewTab(item.drawingUrl)}
+                                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                >
+                                  View
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     ))}
