@@ -36,6 +36,7 @@ interface Requisition {
 
 interface PRDetailItem {
   id: string;
+  item_id?: string;
   item_code: string;
   item_name: string;
   requested_qty: number;
@@ -107,6 +108,7 @@ export default function PurchaseRequisitionsPage() {
   const [rfqSending, setRfqSending] = useState(false);
   const [rfqResponseDate, setRfqResponseDate] = useState('');
   const [rfqRemarks, setRfqRemarks] = useState('');
+  const [rfqPreferredVendors, setRfqPreferredVendors] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
     fetchRequisitions();
@@ -246,6 +248,7 @@ export default function PurchaseRequisitionsPage() {
     setRfqVendorIds([]);
     setRfqResponseDate('');
     setRfqRemarks('');
+    setRfqPreferredVendors([]);
     try {
       const data = await apiClient.get(`/purchase/requisitions/${prId}`);
       console.log('PR Details Response:', data);
@@ -256,6 +259,81 @@ export default function PurchaseRequisitionsPage() {
       setShowDetailModal(false);
     } finally {
       setLoadingDetail(false);
+    }
+  };
+
+  const resolveItemIdForPRItem = async (prItem: PRDetailItem): Promise<string | null> => {
+    if (prItem.item_id) return prItem.item_id;
+
+    const query = (prItem.item_code || prItem.item_name || '').trim();
+    if (!query) return null;
+
+    try {
+      const results = await apiClient.get<Array<{ id: string; code: string; name: string }>>(
+        `/items/search?q=${encodeURIComponent(query)}`,
+      );
+      const list = Array.isArray(results) ? results : [];
+
+      const exactCode = prItem.item_code
+        ? list.find((i) => i.code?.toLowerCase() === prItem.item_code.toLowerCase())
+        : undefined;
+      if (exactCode?.id) return exactCode.id;
+
+      const exactName = prItem.item_name
+        ? list.find((i) => i.name?.toLowerCase() === prItem.item_name.toLowerCase())
+        : undefined;
+      if (exactName?.id) return exactName.id;
+
+      return list[0]?.id || null;
+    } catch (error) {
+      console.error('Error resolving item for RFQ preferred vendor:', error);
+      return null;
+    }
+  };
+
+  const fetchPreferredVendorsForPR = async (pr: PRDetail) => {
+    const items = Array.isArray(pr.purchase_requisition_items) ? pr.purchase_requisition_items : [];
+    if (items.length === 0) return;
+
+    const itemIdCache = new Map<string, string | null>();
+    const preferredVendorByItemId = new Map<string, any>();
+    const preferredVendors: Array<{ id: string; name: string }> = [];
+
+    for (const prItem of items) {
+      const cacheKey = prItem.item_id || prItem.item_code || prItem.item_name || prItem.id;
+      let itemId: string | null | undefined = itemIdCache.get(cacheKey);
+      if (itemId === undefined) {
+        itemId = await resolveItemIdForPRItem(prItem);
+        itemIdCache.set(cacheKey, itemId);
+      }
+
+      if (!itemId) continue;
+
+      let pref = preferredVendorByItemId.get(itemId);
+      if (!pref) {
+        try {
+          pref = await apiClient.get(`/items/${itemId}/vendors/preferred`);
+          preferredVendorByItemId.set(itemId, pref);
+        } catch (error) {
+          console.error('Error fetching preferred vendor for item:', error);
+          continue;
+        }
+      }
+
+      const vendorId = pref?.vendor_id;
+      const vendorName = pref?.vendor_name;
+
+      if (vendorId && !preferredVendors.some((v) => v.id === vendorId)) {
+        preferredVendors.push({ id: vendorId, name: vendorName || 'Preferred Vendor' });
+      }
+    }
+
+    if (preferredVendors.length > 0) {
+      setRfqPreferredVendors(preferredVendors);
+      setRfqVendorIds((prev) => {
+        if (prev.length > 0) return prev;
+        return preferredVendors.map((v) => v.id);
+      });
     }
   };
 
@@ -982,6 +1060,9 @@ export default function PurchaseRequisitionsPage() {
                             if (nextOpen && rfqVendors.length === 0) {
                               await fetchRFQVendors();
                             }
+                            if (nextOpen && selectedPR) {
+                              await fetchPreferredVendorsForPR(selectedPR);
+                            }
                           }}
                           className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors"
                         >
@@ -1017,6 +1098,17 @@ export default function PurchaseRequisitionsPage() {
                           Hide
                         </button>
                       </div>
+
+                      {rfqPreferredVendors.length > 0 ? (
+                        <div className="mb-3 text-sm text-gray-700">
+                          <span className="font-semibold">Preferred vendor auto-selected:</span>{' '}
+                          {rfqPreferredVendors.map((v) => v.name).join(', ')}
+                        </div>
+                      ) : (
+                        <div className="mb-3 text-sm text-gray-600">
+                          Preferred vendor not found — please select vendor(s).
+                        </div>
+                      )}
 
                       {rfqLoadingVendors ? (
                         <p className="text-sm text-gray-600">Loading vendors...</p>
