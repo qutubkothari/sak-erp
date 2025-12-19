@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
 
 interface Customer {
@@ -42,9 +42,17 @@ interface DeploymentHistory {
   is_current_location: boolean;
 }
 
+interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 export default function UIDDeploymentPage() {
   const [deployments, setDeployments] = useState<UIDDeployment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUID, setSelectedUID] = useState<UIDDeployment | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -52,6 +60,7 @@ export default function UIDDeploymentPage() {
   const [deploymentHistory, setDeploymentHistory] = useState<DeploymentHistory[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
   const [sortField, setSortField] = useState<keyof UIDDeployment>('uid');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   
@@ -91,9 +100,20 @@ export default function UIDDeploymentPage() {
   });
 
   useEffect(() => {
-    fetchDeployments();
+    fetchDeployments(1, searchTerm, sortField, sortOrder);
     fetchCustomers();
   }, []);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setSearchTerm(searchInput);
+      setCurrentPage(1);
+      fetchDeployments(1, searchInput, sortField, sortOrder);
+    }, 300);
+
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
   
   const fetchCustomers = async () => {
     try {
@@ -108,7 +128,11 @@ export default function UIDDeploymentPage() {
   const fetchCustomerLocations = async (customerName: string) => {
     try {
       // Fetch unique locations for this customer from deployment history
-      const allDeployments = await apiClient.get<any[]>('/uid/deployment/status');
+      const response = await apiClient.get<PaginatedResponse<any>>(
+        `/uid/deployment/status?organization=${encodeURIComponent(customerName)}&offset=0&limit=200`,
+      );
+      const allDeployments = response?.data || [];
+
       const locations = allDeployments
         .filter(d => d.current_organization === customerName)
         .reduce((acc: Map<string, number>, curr) => {
@@ -187,17 +211,31 @@ export default function UIDDeploymentPage() {
     setShowLevelDropdown(false);
   };
 
-  const fetchDeployments = async () => {
+  const fetchDeployments = useCallback(async (
+    page = 1,
+    search = '',
+    sortBy: keyof UIDDeployment = sortField,
+    order: 'asc' | 'desc' = sortOrder,
+  ) => {
     try {
       setLoading(true);
-      const data = await apiClient.get<UIDDeployment[]>('/uid/deployment/status');
-      setDeployments(data);
+      const offset = (page - 1) * itemsPerPage;
+      const params = new URLSearchParams();
+      params.set('offset', String(offset));
+      params.set('limit', String(itemsPerPage));
+      params.set('sort_by', String(sortBy));
+      params.set('sort_order', order);
+      if (search.trim()) params.set('search', search.trim());
+
+      const res = await apiClient.get<PaginatedResponse<UIDDeployment>>(`/uid/deployment/status?${params.toString()}`);
+      setDeployments(res.data);
+      setTotalCount(res.total);
     } catch (error) {
       console.error('Failed to fetch deployments:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [itemsPerPage, sortField, sortOrder]);
 
   const viewHistory = async (uid: UIDDeployment) => {
     try {
@@ -266,13 +304,18 @@ export default function UIDDeploymentPage() {
   };
 
   const handleSort = (field: keyof UIDDeployment) => {
+    let nextSortOrder: 'asc' | 'desc' = 'asc';
     if (sortField === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+      nextSortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+      setSortOrder(nextSortOrder);
     } else {
       setSortField(field);
+      nextSortOrder = 'asc';
       setSortOrder('asc');
     }
+
     setCurrentPage(1);
+    fetchDeployments(1, searchTerm, field, nextSortOrder);
   };
 
   const getSortIcon = (field: keyof UIDDeployment) => {
@@ -280,37 +323,13 @@ export default function UIDDeploymentPage() {
     return sortOrder === 'asc' ? '↑' : '↓';
   };
 
-  const filteredDeployments = deployments.filter(d => {
-    if (!searchTerm.trim()) return true;
-    
-    const search = searchTerm.toLowerCase().trim();
-    
-    return (
-      (d.uid && d.uid.toLowerCase().includes(search)) ||
-      (d.client_part_number && d.client_part_number.toLowerCase().includes(search)) ||
-      (d.item_name && d.item_name.toLowerCase().includes(search)) ||
-      (d.item_code && d.item_code.toLowerCase().includes(search)) ||
-      (d.current_organization && d.current_organization.toLowerCase().includes(search)) ||
-      (d.current_location && d.current_location.toLowerCase().includes(search)) ||
-      (d.current_level && d.current_level.toLowerCase().includes(search))
-    );
-  });
-
-  const sortedDeployments = [...filteredDeployments].sort((a, b) => {
-    const aValue = a[sortField] || '';
-    const bValue = b[sortField] || '';
-    if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
-    if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  const totalPages = Math.ceil(sortedDeployments.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedDeployments = sortedDeployments.slice(startIndex, endIndex);
+  const totalPages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
+  const paginatedDeployments = deployments;
 
   const goToPage = (page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+    const nextPage = Math.max(1, Math.min(page, totalPages));
+    setCurrentPage(nextPage);
+    fetchDeployments(nextPage, searchTerm, sortField, sortOrder);
   };
 
   return (
@@ -329,16 +348,16 @@ export default function UIDDeploymentPage() {
               <input
                 type="text"
                 placeholder="🔍 Search by UID, Part No, Item, Organization, Location, Level..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full px-4 py-3 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
               <svg className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              {searchTerm && (
+              {searchInput && (
                 <button
-                  onClick={() => setSearchTerm('')}
+                  onClick={() => setSearchInput('')}
                   className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                 >
                   ✕
@@ -348,13 +367,15 @@ export default function UIDDeploymentPage() {
           </div>
           <div className="bg-white rounded-lg shadow-md p-4">
             <div className="text-sm text-gray-600 mb-1">Total Products</div>
-            <div className="text-3xl font-bold text-purple-600">{deployments.length}</div>
+            <div className="text-3xl font-bold text-purple-600">{totalCount}</div>
+            <div className="text-xs text-gray-500 mt-1">Showing {deployments.length} on this page</div>
           </div>
           <div className="bg-white rounded-lg shadow-md p-4">
             <div className="text-sm text-gray-600 mb-1">With Locations</div>
             <div className="text-3xl font-bold text-green-600">
               {deployments.filter(d => d.current_location).length}
             </div>
+            <div className="text-xs text-gray-500 mt-1">(current page)</div>
           </div>
         </div>
 
@@ -362,7 +383,7 @@ export default function UIDDeploymentPage() {
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-gray-500">Loading deployments...</div>
-          ) : filteredDeployments.length === 0 ? (
+          ) : totalCount === 0 ? (
             <div className="p-12 text-center">
               <div className="text-6xl mb-4">📦</div>
               <h3 className="text-xl font-semibold text-gray-700 mb-2">No Deployments Found</h3>
@@ -467,7 +488,7 @@ export default function UIDDeploymentPage() {
 
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
               <div className="text-sm text-gray-700">
-                Showing {startIndex + 1} to {Math.min(endIndex, sortedDeployments.length)} of {sortedDeployments.length} results
+                Showing {totalCount === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, totalCount)} of {totalCount} results
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -485,13 +506,37 @@ export default function UIDDeploymentPage() {
                   «
                 </button>
                 
-                {[...Array(totalPages)].map((_, i) => {
-                  const page = i + 1;
-                  if (
-                    page === 1 ||
-                    page === totalPages ||
-                    (page >= currentPage - 1 && page <= currentPage + 1)
-                  ) {
+                {(() => {
+                  const candidates = [
+                    1,
+                    totalPages,
+                    currentPage - 1,
+                    currentPage,
+                    currentPage + 1,
+                  ].filter((p) => p >= 1 && p <= totalPages);
+
+                  const uniqueSorted = Array.from(new Set(candidates)).sort((a, b) => a - b);
+
+                  const parts: Array<number | 'ellipsis'> = [];
+                  for (let i = 0; i < uniqueSorted.length; i++) {
+                    const p = uniqueSorted[i];
+                    const prev = uniqueSorted[i - 1];
+                    if (i > 0 && prev !== undefined && p - prev > 1) {
+                      parts.push('ellipsis');
+                    }
+                    parts.push(p);
+                  }
+
+                  return parts.map((part, idx) => {
+                    if (part === 'ellipsis') {
+                      return (
+                        <span key={`ellipsis-${idx}`} className="px-2">
+                          ...
+                        </span>
+                      );
+                    }
+
+                    const page = part;
                     return (
                       <button
                         key={page}
@@ -505,14 +550,8 @@ export default function UIDDeploymentPage() {
                         {page}
                       </button>
                     );
-                  } else if (
-                    page === currentPage - 2 ||
-                    page === currentPage + 2
-                  ) {
-                    return <span key={page} className="px-2">...</span>;
-                  }
-                  return null;
-                })}
+                  });
+                })()}
                 
                 <button
                   onClick={() => goToPage(currentPage + 1)}

@@ -66,10 +66,34 @@ export class DeploymentService {
     part_number?: string;
     organization?: string;
     location?: string;
+    search?: string;
+    offset?: number;
+    limit?: number;
+    sort_by?: string;
+    sort_order?: string;
   }) {
+    const offset = Number.isFinite(filters?.offset) ? Math.max(0, filters!.offset!) : 0;
+    const limit = Number.isFinite(filters?.limit) ? Math.min(200, Math.max(1, filters!.limit!)) : 50;
+
+    const allowedSortFields = new Set([
+      'uid',
+      'client_part_number',
+      'item_name',
+      'item_code',
+      'current_level',
+      'current_organization',
+      'current_location',
+      'current_deployment_date',
+      'deployment_count',
+      'warranty_expiry_date',
+    ]);
+
+    const sortBy = allowedSortFields.has(filters?.sort_by || '') ? (filters!.sort_by as string) : 'uid';
+    const sortAscending = (filters?.sort_order || 'asc').toLowerCase() !== 'desc';
+
     let query = this.supabase
       .from('v_uid_deployment_status')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('tenant_id', tenantId);
 
     if (filters?.uid) {
@@ -88,14 +112,36 @@ export class DeploymentService {
       query = query.ilike('current_location', `%${filters.location}%`);
     }
 
-    const { data, error } = await query;
+    if (filters?.search && filters.search.trim()) {
+      const q = filters.search.trim();
+      query = query.or(
+        [
+          `uid.ilike.%${q}%`,
+          `client_part_number.ilike.%${q}%`,
+          `item_name.ilike.%${q}%`,
+          `item_code.ilike.%${q}%`,
+          `current_organization.ilike.%${q}%`,
+          `current_location.ilike.%${q}%`,
+          `current_level.ilike.%${q}%`,
+        ].join(','),
+      );
+    }
+
+    query = query.order(sortBy, { ascending: sortAscending }).range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
 
     if (error) {
       console.error('Fetch deployment status error:', error);
       throw new BadRequestException(error.message);
     }
 
-    return data;
+    return {
+      data: data || [],
+      total: count || 0,
+      offset,
+      limit,
+    };
   }
 
   async getDeployments(tenantId: string, filters?: {

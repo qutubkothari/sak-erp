@@ -15,13 +15,36 @@ export class DeploymentController {
     @Query('part_number') partNumber?: string,
     @Query('organization') organization?: string,
     @Query('location') location?: string,
+    @Query('search') search?: string,
+    @Query('offset') offset?: string,
+    @Query('limit') limit?: string,
+    @Query('sort_by') sortBy?: string,
+    @Query('sort_order') sortOrder?: string,
   ) {
-    return this.deploymentService.getDeploymentStatus(req.user.tenantId, {
+    const parsedOffset = offset !== undefined ? Number(offset) : undefined;
+    const parsedLimit = limit !== undefined ? Number(limit) : undefined;
+
+    const wantsPagination =
+      parsedOffset !== undefined ||
+      parsedLimit !== undefined ||
+      (search !== undefined && search !== '') ||
+      (sortBy !== undefined && sortBy !== '') ||
+      (sortOrder !== undefined && sortOrder !== '');
+
+    const result = await this.deploymentService.getDeploymentStatus(req.user.tenantId, {
       uid,
       part_number: partNumber,
       organization,
       location,
+      search,
+      offset: parsedOffset,
+      limit: parsedLimit,
+      sort_by: sortBy,
+      sort_order: sortOrder,
     });
+
+    // Backward compatible: existing callers expect an array.
+    return wantsPagination ? result : result.data;
   }
 
   @Post()
