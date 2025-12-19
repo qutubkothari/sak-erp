@@ -691,11 +691,14 @@ export class SalesService {
 
     // Update UID status/location and create deployment mapping (customer/location) for each dispatched UID.
     // This ensures dispatched UIDs stop appearing as AVAILABLE/GENERATED and can be traced to customer + delivery address.
+    const isNonEmptyString = (u: unknown): u is string =>
+      typeof u === 'string' && u.trim().length > 0;
+
     const dispatchedUids = Array.from(
-      new Set(
+      new Set<string>(
         (dispatchData.items || [])
-          .map((i: any) => i?.uid)
-          .filter((u: any) => typeof u === 'string' && u.trim().length > 0)
+          .map((i: any) => i?.uid as unknown)
+          .filter(isNonEmptyString)
       )
     );
 
