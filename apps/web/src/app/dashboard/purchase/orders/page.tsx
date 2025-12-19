@@ -1217,43 +1217,49 @@ function PurchaseOrdersContent() {
                       <div key={index} className={`border border-gray-300 rounded-lg p-4 ${pendingItemIndex === index ? 'ring-2 ring-red-300' : ''}`}>
                         <div className="grid grid-cols-7 gap-4">
                           <div className="col-span-2">
-                            {item.itemCode && item.itemName ? (
+                            {item.itemId ? (
                               <div className="space-y-1">
                                 <div className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50">
-                                  <div className="font-medium text-sm">{item.itemCode} - {item.itemName}</div>
                                   {(() => {
-                                    const masterItem = items.find(i => i.id === item.itemId || i.code === item.itemCode);
+                                    const masterItem = items.find((i) => i.id === item.itemId || i.code === item.itemCode);
+                                    const displayCode = item.itemCode || masterItem?.code || '';
+                                    const displayName = item.itemName || masterItem?.name || '';
                                     const drawingRequired = masterItem?.drawing_required || 'OPTIONAL';
                                     const resolvedItemId = masterItem?.id || item.itemId;
 
-                                    if (!resolvedItemId) return null;
-
                                     return (
-                                      <div className="mt-1 flex items-center justify-between gap-2">
-                                        <span className={`text-xs px-2 py-0.5 rounded ${
-                                          drawingRequired === 'COMPULSORY'
-                                            ? 'bg-red-100 text-red-800'
-                                            : 'bg-gray-100 text-gray-700'
-                                        }`}>
-                                          Drawing: {drawingRequired}
-                                        </span>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setPendingItemIndex(index);
-                                            setSelectedItemForDrawing({
-                                              id: resolvedItemId,
-                                              code: masterItem?.code || item.itemCode,
-                                              name: masterItem?.name || item.itemName,
-                                              mandatory: drawingRequired === 'COMPULSORY',
-                                            });
-                                            setShowDrawingManager(true);
-                                          }}
-                                          className="text-xs text-amber-700 hover:text-amber-900 font-medium"
-                                        >
-                                          Manage Drawings
-                                        </button>
-                                      </div>
+                                      <>
+                                        <div className="font-medium text-sm">
+                                          {displayCode && displayName ? `${displayCode} - ${displayName}` : (displayName || displayCode || 'Selected Item')}
+                                        </div>
+                                        {resolvedItemId ? (
+                                          <div className="mt-1 flex items-center justify-between gap-2">
+                                            <span className={`text-xs px-2 py-0.5 rounded ${
+                                              drawingRequired === 'COMPULSORY'
+                                                ? 'bg-red-100 text-red-800'
+                                                : 'bg-gray-100 text-gray-700'
+                                            }`}>
+                                              Drawing: {drawingRequired}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setPendingItemIndex(index);
+                                                setSelectedItemForDrawing({
+                                                  id: resolvedItemId,
+                                                  code: displayCode,
+                                                  name: displayName,
+                                                  mandatory: drawingRequired === 'COMPULSORY',
+                                                });
+                                                setShowDrawingManager(true);
+                                              }}
+                                              className="text-xs text-amber-700 hover:text-amber-900 font-medium"
+                                            >
+                                              Manage Drawings
+                                            </button>
+                                          </div>
+                                        ) : null}
+                                      </>
                                     );
                                   })()}
                                   {item.itemId && stockInfo[item.itemId] && (
@@ -1632,7 +1638,7 @@ function PurchaseOrdersContent() {
                             <td className="px-4 py-2">
                               {(() => {
                                 const itemCode = item.item?.code || item.item_code;
-                                const itemId = item.item_id;
+                                const itemId = item.item_id || item.itemId || item.item?.id;
                                 const masterItem = items.find((i) => i.id === itemId || i.code === itemCode);
                                 const drawingRequired = masterItem?.drawing_required || 'OPTIONAL';
                                 const resolvedItemId = masterItem?.id || itemId;
@@ -1663,7 +1669,7 @@ function PurchaseOrdersContent() {
                                       }}
                                       className="text-xs text-amber-700 hover:text-amber-900 font-medium"
                                     >
-                                      Manage
+                                      Manage Drawings
                                     </button>
                                   </div>
                                 );
