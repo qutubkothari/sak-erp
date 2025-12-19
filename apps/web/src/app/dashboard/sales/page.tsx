@@ -116,6 +116,7 @@ export default function SalesPage() {
   const [loadingUIDs, setLoadingUIDs] = useState<{ [key: number]: boolean }>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sendingSOEmailId, setSendingSOEmailId] = useState<string | null>(null);
   
   // Customer form
   const [showCustomerForm, setShowCustomerForm] = useState(false);
@@ -262,6 +263,19 @@ export default function SalesPage() {
       setError(err.message || 'Failed to fetch sales orders');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSendSalesOrderEmail = async (orderId: string) => {
+    try {
+      setSendingSOEmailId(orderId);
+      const result = await apiClient.post(`/sales/orders/${orderId}/send-email`, {});
+      alert(`Sales order email sent to: ${result?.to || 'customer email'}`);
+    } catch (err: any) {
+      console.error('Error sending sales order email:', err);
+      alert(err?.message || 'Failed to send sales order email');
+    } finally {
+      setSendingSOEmailId(null);
     }
   };
 
@@ -1401,19 +1415,29 @@ export default function SalesPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        {(order.status === 'READY_TO_DISPATCH' || order.status === 'CONFIRMED') && (
+                        <div className="flex items-center gap-3">
+                          {(order.status === 'READY_TO_DISPATCH' || order.status === 'CONFIRMED') && (
+                            <button
+                              onClick={async () => {
+                                setSelectedOrderForDispatch(order);
+                                setDispatchForm({ ...dispatchForm, sales_order_id: order.id });
+                                await fetchSalesOrderItems(order.id);
+                                setShowDispatchForm(true);
+                              }}
+                              className="text-amber-600 hover:text-amber-900"
+                            >
+                              Create Dispatch
+                            </button>
+                          )}
+
                           <button
-                            onClick={async () => {
-                              setSelectedOrderForDispatch(order);
-                              setDispatchForm({ ...dispatchForm, sales_order_id: order.id });
-                              await fetchSalesOrderItems(order.id);
-                              setShowDispatchForm(true);
-                            }}
-                            className="text-amber-600 hover:text-amber-900"
+                            onClick={() => handleSendSalesOrderEmail(order.id)}
+                            disabled={sendingSOEmailId === order.id}
+                            className="text-amber-600 hover:text-amber-900 disabled:opacity-50"
                           >
-                            Create Dispatch
+                            {sendingSOEmailId === order.id ? 'Sending...' : 'Send SO Email'}
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   ))}

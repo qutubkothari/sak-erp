@@ -9,6 +9,11 @@ import { useSelection } from '../../../../hooks/useSelection';
 interface PurchaseOrder {
   id: string;
   po_number: string;
+  pr_id?: string;
+  pr?: {
+    id: string;
+    pr_number: string;
+  } | null;
   vendor: {
     name: string;
     contact_person: string;
@@ -915,6 +920,7 @@ function PurchaseOrdersContent() {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase w-12"></th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">PO Number</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">PR Ref</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Vendor</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Order Date</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Expected Delivery</th>
@@ -937,6 +943,9 @@ function PurchaseOrdersContent() {
                       />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{order.po_number}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {order.pr?.pr_number || '-'}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900">{order.vendor.name}</div>
                       <div className="text-sm text-gray-500">{order.vendor.contact_person}</div>
@@ -1587,6 +1596,10 @@ function PurchaseOrdersContent() {
                 <div>
                   <p className="text-sm text-gray-600">PO Number</p>
                   <p className="font-semibold text-lg">{selectedPO.po_number}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">PR Reference</p>
+                  <p className="font-semibold">{selectedPO.pr?.pr_number || '-'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Status</p>

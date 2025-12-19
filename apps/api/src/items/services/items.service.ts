@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 
 @Injectable()
@@ -18,6 +18,95 @@ export class ItemsService {
       : parseFloat(value);
 
     return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  private normalizeAndValidateHsn(value: any, options: { required: boolean }): string | null {
+    if (value === undefined || value === null || value === '') {
+      if (options.required) {
+        throw new BadRequestException('HSN code is required');
+      }
+      return null;
+    }
+
+    const hsnStr = String(value).trim();
+    if (!/^\d{4}$|^\d{6}$|^\d{8}$/.test(hsnStr)) {
+      throw new BadRequestException('Invalid HSN code. Must be 4, 6, or 8 digits.');
+    }
+
+    return hsnStr;
+  }
+
+  private normalizeUidFields(itemData: any): {
+    uid_tracking?: boolean;
+    uid_strategy?: 'SERIALIZED' | 'BATCHED' | 'NONE';
+    batch_uom?: string | null;
+    batch_quantity?: number | null;
+  } {
+    const rawUidTracking = itemData.uid_tracking ?? itemData.uidTracking;
+    const rawUidStrategy = itemData.uid_strategy ?? itemData.uidStrategy;
+    const rawBatchUom = itemData.batch_uom ?? itemData.batchUom;
+    const rawBatchQuantity = itemData.batch_quantity ?? itemData.batchQuantity;
+
+    const anyProvided =
+      rawUidTracking !== undefined ||
+      rawUidStrategy !== undefined ||
+      rawBatchUom !== undefined ||
+      rawBatchQuantity !== undefined;
+
+    if (!anyProvided) {
+      return {};
+    }
+
+    // If tracking is explicitly disabled, force NONE strategy.
+    if (rawUidTracking === false) {
+      return {
+        uid_tracking: false,
+        uid_strategy: 'NONE',
+        batch_uom: null,
+        batch_quantity: null,
+      };
+    }
+
+    const strategy = (rawUidStrategy || 'SERIALIZED') as string;
+    if (strategy !== 'SERIALIZED' && strategy !== 'BATCHED' && strategy !== 'NONE') {
+      throw new BadRequestException('Invalid UID strategy. Must be SERIALIZED, BATCHED, or NONE.');
+    }
+
+    if (strategy === 'NONE') {
+      return {
+        uid_tracking: false,
+        uid_strategy: 'NONE',
+        batch_uom: null,
+        batch_quantity: null,
+      };
+    }
+
+    if (strategy === 'BATCHED') {
+      const batchUom = rawBatchUom ? String(rawBatchUom).trim() : '';
+      const batchQty = this.normalizeNumber(rawBatchQuantity);
+
+      if (!batchUom) {
+        throw new BadRequestException('For BATCHED UID strategy, batch_uom is required.');
+      }
+      if (!batchQty || batchQty <= 0) {
+        throw new BadRequestException('For BATCHED UID strategy, batch_quantity must be > 0.');
+      }
+
+      return {
+        uid_tracking: true,
+        uid_strategy: 'BATCHED',
+        batch_uom: batchUom,
+        batch_quantity: batchQty,
+      };
+    }
+
+    // SERIALIZED
+    return {
+      uid_tracking: true,
+      uid_strategy: 'SERIALIZED',
+      batch_uom: null,
+      batch_quantity: null,
+    };
   }
 
   async findAll(tenantId: string, search?: string, includeInactive?: boolean) {
@@ -113,13 +202,21 @@ export class ItemsService {
   }
 
   async create(tenantId: string, itemData: any) {
-    // Validate HSN code if provided
-    let validatedHsn = null;
-    if (itemData.hsnCode || itemData.hsn_code) {
-      const hsnStr = String(itemData.hsnCode || itemData.hsn_code).trim();
-      if (/^\d{4}$|^\d{6}$|^\d{8}$/.test(hsnStr)) {
-        validatedHsn = hsnStr;
-      }
+    const validatedHsn = this.normalizeAndValidateHsn(
+      itemData.hsnCode ?? itemData.hsn_code,
+      { required: true },
+    );
+
+    const uidFields = this.normalizeUidFields(itemData);
+
+    const drawingRequired = itemData.drawing_required ?? itemData.drawingRequired;
+    if (
+      drawingRequired !== undefined &&
+      drawingRequired !== 'OPTIONAL' &&
+      drawingRequired !== 'COMPULSORY' &&
+      drawingRequired !== 'NOT_REQUIRED'
+    ) {
+      throw new BadRequestException('Invalid drawing_required. Must be OPTIONAL, COMPULSORY, or NOT_REQUIRED.');
     }
 
     const standardCost = this.normalizeNumber(itemData.standard_cost ?? itemData.standardCost);
@@ -145,6 +242,8 @@ export class ItemsService {
         reorder_quantity: reorderQuantity,
         lead_time_days: leadTimeDays,
         hsn_code: validatedHsn,
+        drawing_required: drawingRequired,
+        ...uidFields,
         is_active: true,
         metadata: itemData.metadata || {},
       })
@@ -188,16 +287,7 @@ export class ItemsService {
         const rawUom = item['Default Unit of Measure'] || item.uom || item.UOM || item.unit || item.Unit || item['Unit of Measure'];
         const rawHsn = item['HSN/SAC'] || item.hsn || item.HSN || item.hsn_code || item['HSN Code'];
 
-        // Validate HSN code (must be 4, 6, or 8 digits)
-        let validatedHsn = null;
-        if (rawHsn) {
-          const hsnStr = String(rawHsn).trim();
-          if (/^\d{4}$|^\d{6}$|^\d{8}$/.test(hsnStr)) {
-            validatedHsn = hsnStr;
-          } else {
-            console.warn(`Invalid HSN code for row ${i + 1}: ${hsnStr}. Must be 4, 6, or 8 digits.`);
-          }
-        }
+        const validatedHsn = this.normalizeAndValidateHsn(rawHsn, { required: true });
 
         // Map category to database format
         let mappedCategory = categoryMap[rawCategory] || rawCategory || 'RAW_MATERIAL';
@@ -264,14 +354,10 @@ export class ItemsService {
   }
 
   async update(tenantId: string, id: string, itemData: any) {
-    // Validate HSN code if provided
-    let validatedHsn = null;
-    if (itemData.hsnCode || itemData.hsn_code) {
-      const hsnStr = String(itemData.hsnCode || itemData.hsn_code).trim();
-      if (/^\d{4}$|^\d{6}$|^\d{8}$/.test(hsnStr)) {
-        validatedHsn = hsnStr;
-      }
-    }
+    const hsnProvided = itemData.hsnCode !== undefined || itemData.hsn_code !== undefined;
+    const validatedHsn = hsnProvided
+      ? this.normalizeAndValidateHsn(itemData.hsnCode ?? itemData.hsn_code, { required: true })
+      : null;
 
     const updateData: any = {
       updated_at: new Date().toISOString(),
@@ -327,6 +413,21 @@ export class ItemsService {
     if (itemData.metadata !== undefined) updateData.metadata = itemData.metadata;
     if (validatedHsn !== null) updateData.hsn_code = validatedHsn;
     if (itemData.is_active !== undefined) updateData.is_active = itemData.is_active;
+
+    const drawingRequired = itemData.drawing_required ?? itemData.drawingRequired;
+    if (drawingRequired !== undefined) {
+      if (
+        drawingRequired !== 'OPTIONAL' &&
+        drawingRequired !== 'COMPULSORY' &&
+        drawingRequired !== 'NOT_REQUIRED'
+      ) {
+        throw new BadRequestException('Invalid drawing_required. Must be OPTIONAL, COMPULSORY, or NOT_REQUIRED.');
+      }
+      updateData.drawing_required = drawingRequired;
+    }
+
+    const uidFields = this.normalizeUidFields(itemData);
+    Object.assign(updateData, uidFields);
 
     const { data, error } = await this.supabase
       .from('items')

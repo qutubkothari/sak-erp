@@ -110,6 +110,17 @@ export default function PurchaseRequisitionsPage() {
   const [rfqRemarks, setRfqRemarks] = useState('');
   const [rfqPreferredVendors, setRfqPreferredVendors] = useState<Array<{ id: string; name: string }>>([]);
 
+  const rfqPreferredVendorIdSet = new Set(rfqPreferredVendors.map((v) => v.id));
+  const rfqVendorsDisplay =
+    rfqPreferredVendorIdSet.size === 0
+      ? rfqVendors
+      : [...rfqVendors].sort((a, b) => {
+          const aPreferred = rfqPreferredVendorIdSet.has(a.id);
+          const bPreferred = rfqPreferredVendorIdSet.has(b.id);
+          if (aPreferred === bPreferred) return 0;
+          return aPreferred ? -1 : 1;
+        });
+
   useEffect(() => {
     fetchRequisitions();
   }, []);
@@ -1116,7 +1127,7 @@ export default function PurchaseRequisitionsPage() {
                         <p className="text-sm text-gray-600">No vendors found.</p>
                       ) : (
                         <div className="max-h-48 overflow-auto border rounded bg-white">
-                          {rfqVendors.map((vendor) => (
+                          {rfqVendorsDisplay.map((vendor) => (
                             <label
                               key={vendor.id}
                               className="flex items-center gap-3 px-3 py-2 border-b last:border-b-0 cursor-pointer"

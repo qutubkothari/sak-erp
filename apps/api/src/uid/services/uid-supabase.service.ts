@@ -760,26 +760,27 @@ export class UidSupabaseService {
       }
     }
 
-    // 6. Get customer details (from sales order/delivery if available)
+    // 6. Get customer + location details from deployment tracking (authoritative)
     let customer = null;
-    const shipmentRef = lifecycle.find((event: any) => 
-      event.stage.includes('SHIPPED') || 
-      event.stage.includes('DELIVERED') ||
-      event.reference.includes('SO-') ||
-      event.reference.includes('INV-')
-    );
+    try {
+      const { data: deploymentStatus } = await this.supabase
+        .from('v_uid_deployment_status')
+        .select('current_level, current_organization, current_location, current_deployment_date, warranty_expiry_date')
+        .eq('tenant_id', tenantId)
+        .eq('uid', uidRecord.uid)
+        .maybeSingle();
 
-    if (shipmentRef) {
-      // Try to extract invoice or SO number
-      const refNumber = shipmentRef.reference;
-      
-      // You can enhance this to fetch from sales_orders or invoices table
-      customer = {
-        name: 'Customer Name', // Placeholder - fetch from sales_orders
-        location: shipmentRef.location || 'Customer Location',
-        delivery_date: shipmentRef.timestamp,
-        invoice_number: refNumber,
-      };
+      if (deploymentStatus?.current_organization || deploymentStatus?.current_location) {
+        customer = {
+          name: deploymentStatus.current_organization || null,
+          location: deploymentStatus.current_location || null,
+          deployment_level: deploymentStatus.current_level || null,
+          deployment_date: deploymentStatus.current_deployment_date || null,
+          warranty_expiry_date: deploymentStatus.warranty_expiry_date || null,
+        };
+      }
+    } catch (e) {
+      console.warn('[UID Trace] Deployment status lookup failed:', e);
     }
 
     const itemData = Array.isArray(uidRecord.item) ? uidRecord.item[0] : uidRecord.item;

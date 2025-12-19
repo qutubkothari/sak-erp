@@ -2,12 +2,16 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Request } from 'express';
 import { EmailService } from '../../email/email.service';
+import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
 
 @Injectable()
 export class SalesService {
   private supabase: SupabaseClient;
 
-  constructor(private emailService: EmailService) {
+  constructor(
+    private emailService: EmailService,
+    private uidSupabaseService: UidSupabaseService,
+  ) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_KEY!
@@ -516,6 +520,107 @@ export class SalesService {
     return data;
   }
 
+  async sendSalesOrderEmail(req: Request, soId: string) {
+    const { tenantId } = req.user as any;
+
+    const { data: so, error } = await this.supabase
+      .from('sales_orders')
+      .select(`
+        *,
+        customers:customer_id(
+          id,
+          customer_name,
+          contact_person,
+          email,
+          contact_email,
+          shipping_address,
+          billing_address
+        ),
+        sales_order_items(*)
+      `)
+      .eq('id', soId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!so) throw new NotFoundException('Sales order not found');
+
+    const customer = (so as any).customers;
+    const toEmail = customer?.contact_email || customer?.email;
+    if (!toEmail) {
+      throw new BadRequestException('Customer email not found for this sales order');
+    }
+
+    const soItems = Array.isArray((so as any).sales_order_items) ? (so as any).sales_order_items : [];
+
+    const itemIds = Array.from(
+      new Set(
+        soItems
+          .map((i: any) => i?.item_id)
+          .filter((id: any) => typeof id === 'string' && id.length > 0),
+      ),
+    );
+
+    const itemMetaById = new Map<string, { code?: string; name?: string }>();
+    if (itemIds.length > 0) {
+      const { data: itemsData, error: itemsError } = await this.supabase
+        .from('items')
+        .select('id, code, name')
+        .in('id', itemIds)
+        .eq('tenant_id', tenantId);
+
+      if (!itemsError && Array.isArray(itemsData)) {
+        for (const item of itemsData as any[]) {
+          if (item?.id) itemMetaById.set(item.id, { code: item.code, name: item.name });
+        }
+      }
+    }
+
+    const emailItems = soItems.map((item: any) => {
+      const quantity = Number(item?.quantity) || 0;
+      const unitPrice = Number(item?.unit_price) || 0;
+      const amount = item?.line_total !== undefined && item?.line_total !== null
+        ? Number(item.line_total) || 0
+        : quantity * unitPrice;
+
+      const meta = item?.item_id ? itemMetaById.get(item.item_id) : undefined;
+      const metaName = meta?.name ? `${meta.code ? `${meta.code} - ` : ''}${meta.name}` : '';
+      const itemName = metaName || item?.item_description || 'Item';
+
+      return {
+        item_name: itemName,
+        quantity,
+        unit_price: unitPrice,
+        amount,
+      };
+    });
+
+    const totalAmount = Number(
+      (so as any).net_amount ??
+      (so as any).total_amount ??
+      emailItems.reduce((sum: number, i: any) => sum + (Number(i.amount) || 0), 0),
+    );
+
+    const soData = {
+      so_number: (so as any).so_number,
+      customer_name: customer?.customer_name || '',
+      order_date: (so as any).order_date,
+      delivery_date: (so as any).expected_delivery_date || (so as any).delivery_date,
+      payment_terms: (so as any).payment_terms,
+      shipping_address:
+        (so as any).shipping_address || customer?.shipping_address || customer?.billing_address,
+      total_amount: totalAmount,
+      items: emailItems,
+    };
+
+    await this.emailService.sendSO(toEmail, soData);
+
+    return {
+      message: 'Sales order email sent successfully',
+      to: toEmail,
+    };
+  }
+
   private async generateSONumber(req: Request): Promise<string> {
     const { tenantId } = req.user as any;
 
@@ -583,6 +688,76 @@ export class SalesService {
       .insert(dispatchItems);
 
     if (itemsError) throw new BadRequestException(itemsError.message);
+
+    // Update UID status/location and create deployment mapping (customer/location) for each dispatched UID.
+    // This ensures dispatched UIDs stop appearing as AVAILABLE/GENERATED and can be traced to customer + delivery address.
+    const dispatchedUids = Array.from(
+      new Set(
+        (dispatchData.items || [])
+          .map((i: any) => i?.uid)
+          .filter((u: any) => typeof u === 'string' && u.trim().length > 0)
+      )
+    );
+
+    if (dispatchedUids.length > 0) {
+      // Fetch customer contact + name
+      const { data: customer } = await this.supabase
+        .from('customers')
+        .select('customer_name, contact_person, contact_email, contact_phone, email, phone, shipping_address')
+        .eq('id', salesOrder.customer_id)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      const deliveryLocation =
+        dispatchData.delivery_address || customer?.shipping_address || 'Customer Location';
+
+      // Mark each UID as shipped/in-transit and log lifecycle
+      for (const uid of dispatchedUids) {
+        try {
+          await this.uidSupabaseService.updateStatus(req as any, uid, 'IN_TRANSIT', deliveryLocation);
+          await this.uidSupabaseService.updateLifecycle(
+            req as any,
+            uid,
+            'SHIPPED',
+            deliveryLocation,
+            `Dispatch ${dispatchRecord.dn_number}`,
+          );
+        } catch (e) {
+          // Do not block dispatch if UID tagging fails, but log it.
+          console.error(`[Dispatch] Failed to tag UID ${uid}:`, e);
+        }
+      }
+
+      // Create deployment history entry (customer/location mapping) per UID
+      try {
+        const { data: uidRows } = await this.supabase
+          .from('uid_registry')
+          .select('id, uid')
+          .eq('tenant_id', tenantId)
+          .in('uid', dispatchedUids);
+
+        if (uidRows && uidRows.length > 0) {
+          await this.supabase.from('product_deployment_history').insert(
+            uidRows.map((row: any) => ({
+              tenant_id: tenantId,
+              uid_id: row.id,
+              deployment_level: 'CUSTOMER',
+              organization_name: customer?.customer_name || 'Customer',
+              location_name: deliveryLocation,
+              deployment_date: dispatchRecord.dispatch_date,
+              contact_person: customer?.contact_person || null,
+              contact_email: customer?.contact_email || customer?.email || null,
+              contact_phone: customer?.contact_phone || customer?.phone || null,
+              deployment_notes: `Auto-created from dispatch ${dispatchRecord.dn_number}`,
+              is_current_location: true,
+              created_by: userId,
+            }))
+          );
+        }
+      } catch (e) {
+        console.error(`[Dispatch] Failed to create deployment mapping for ${dispatchRecord.dn_number}:`, e);
+      }
+    }
 
     // ✅ CRITICAL FIX: Reduce stock for dispatched items
     await this.reduceStockForDispatch(tenantId, dispatchData.items, dispatchRecord.dn_number);

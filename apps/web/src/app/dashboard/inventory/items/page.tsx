@@ -12,6 +12,7 @@ interface Item {
   description?: string;
   category: string;
   uom: string;
+  hsn_code?: string;
   standard_cost?: number;
   selling_price?: number;
   reorder_level?: number;
@@ -73,6 +74,7 @@ export default function ItemsPage() {
     description: '',
     category: 'RAW_MATERIAL',
     uom: 'PCS',
+    hsn_code: '',
     standard_cost: '',
     selling_price: '',
     reorder_level: '',
@@ -228,6 +230,7 @@ export default function ItemsPage() {
       description: item.description || '',
       category: item.category,
       uom: item.uom,
+      hsn_code: item.hsn_code || '',
       standard_cost: item.standard_cost?.toString() || '',
       selling_price: item.selling_price?.toString() || '',
       reorder_level: item.reorder_level?.toString() || '',
@@ -331,6 +334,7 @@ export default function ItemsPage() {
       description: '',
       category: 'RAW_MATERIAL',
       uom: 'PCS',
+      hsn_code: '',
       standard_cost: '',
       selling_price: '',
       reorder_level: '',
@@ -437,6 +441,9 @@ export default function ItemsPage() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">UOM</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">HSN</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">UID</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drawing</th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
@@ -447,7 +454,7 @@ export default function ItemsPage() {
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={12} className="px-6 py-12 text-center text-gray-500">
                   <p className="text-lg">No items found</p>
                   <p className="text-sm mt-2">Create your first item to get started</p>
                 </td>
@@ -461,6 +468,27 @@ export default function ItemsPage() {
                     {item.category ? item.category.replace(/_/g, ' ') : 'N/A'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.uom}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {item.hsn_code || '-'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      item.uid_tracking !== false
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {item.uid_tracking !== false ? 'YES' : 'NO'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      (item.drawing_required || 'OPTIONAL') === 'COMPULSORY'
+                        ? 'bg-red-100 text-red-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {item.drawing_required || 'OPTIONAL'}
+                    </span>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold">
                     <span className={item.total_stock && item.total_stock > 0 ? 'text-green-700' : 'text-gray-400'}>
                       {item.total_stock ?? 0} {item.uom}
@@ -575,7 +603,7 @@ export default function ItemsPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Category *
@@ -606,6 +634,23 @@ export default function ItemsPage() {
                         <option key={uom} value={uom}>{uom}</option>
                       ))}
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      HSN Code *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      inputMode="numeric"
+                      pattern="^(\\d{4}|\\d{6}|\\d{8})$"
+                      value={formData.hsn_code}
+                      onChange={(e) => setFormData({ ...formData, hsn_code: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                      placeholder="e.g., 8542"
+                      title="HSN must be 4, 6, or 8 digits"
+                    />
                   </div>
                 </div>
 

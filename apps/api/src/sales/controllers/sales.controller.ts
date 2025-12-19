@@ -67,6 +67,11 @@ export class SalesController {
     return this.salesService.getSalesOrderById(req, soId);
   }
 
+  @Post('orders/:id/send-email')
+  async sendSalesOrderEmail(@Request() req: any, @Param('id') soId: string) {
+    return this.salesService.sendSalesOrderEmail(req, soId);
+  }
+
   // ==================== DISPATCH ====================
   
   @Get('dispatch')
