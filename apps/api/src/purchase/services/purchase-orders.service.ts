@@ -332,11 +332,195 @@ export class PurchaseOrdersService {
     return `${prefix}-${String(lastNumber + 1).padStart(3, '0')}`;
   }
 
+  private sanitizeFilename(value: string) {
+    const safe = (value || 'attachment').trim();
+    return safe.replace(/[\\/:*?"<>|\r\n]+/g, '_');
+  }
+
+  private dataUrlToNodemailerAttachment(input: {
+    fileUrl: string;
+    filename: string;
+    contentType?: string | null;
+  }) {
+    const filename = this.sanitizeFilename(input.filename);
+    const fileUrl = input.fileUrl;
+
+    if (!fileUrl) {
+      throw new BadRequestException('Attachment fileUrl missing');
+    }
+
+    if (fileUrl.startsWith('data:')) {
+      const commaIndex = fileUrl.indexOf(',');
+      if (commaIndex === -1) {
+        throw new BadRequestException('Invalid data URL');
+      }
+
+      const header = fileUrl.slice(0, commaIndex);
+      const base64Payload = fileUrl.slice(commaIndex + 1);
+
+      const isBase64 = header.toLowerCase().includes(';base64');
+      const mimeMatch = header.match(/^data:([^;]+)/i);
+      const contentType = input.contentType || (mimeMatch ? mimeMatch[1] : undefined);
+
+      if (!isBase64) {
+        throw new BadRequestException('Unsupported data URL encoding (expected base64)');
+      }
+
+      return {
+        filename,
+        content: Buffer.from(base64Payload, 'base64'),
+        contentType,
+      };
+    }
+
+    // Fallback for non-data URLs (e.g. http(s) links)
+    return {
+      filename,
+      path: fileUrl,
+      contentType: input.contentType || undefined,
+    };
+  }
+
   async sendPOEmail(tenantId: string, poId: string) {
     const po = await this.findOne(tenantId, poId);
     
     if (!po.vendor?.email) {
       throw new BadRequestException('Vendor email not found');
+    }
+
+    const poItems: any[] = Array.isArray(po.purchase_order_items)
+      ? po.purchase_order_items
+      : [];
+
+    // Resolve drawing requirements + item ids (some older PO items may not have item_id populated)
+    const uniqueItemIds = Array.from(
+      new Set(poItems.map((i) => i?.item_id).filter(Boolean)),
+    );
+    const uniqueItemCodes = Array.from(
+      new Set(poItems.map((i) => i?.item_code).filter(Boolean)),
+    );
+
+    const itemsById = new Map<string, any>();
+    const itemsByCode = new Map<string, any>();
+
+    if (uniqueItemIds.length > 0) {
+      const { data: itemsByIdData, error: itemsByIdError } = await this.supabase
+        .from('items')
+        .select('id, code, name, drawing_required')
+        .eq('tenant_id', tenantId)
+        .in('id', uniqueItemIds);
+
+      if (itemsByIdError) {
+        throw new BadRequestException(itemsByIdError.message);
+      }
+
+      for (const row of itemsByIdData || []) {
+        itemsById.set(row.id, row);
+        if (row.code) {
+          itemsByCode.set(row.code, row);
+        }
+      }
+    }
+
+    if (uniqueItemCodes.length > 0) {
+      const { data: itemsByCodeData, error: itemsByCodeError } = await this.supabase
+        .from('items')
+        .select('id, code, name, drawing_required')
+        .eq('tenant_id', tenantId)
+        .in('code', uniqueItemCodes);
+
+      if (itemsByCodeError) {
+        throw new BadRequestException(itemsByCodeError.message);
+      }
+
+      for (const row of itemsByCodeData || []) {
+        itemsById.set(row.id, row);
+        if (row.code) {
+          itemsByCode.set(row.code, row);
+        }
+      }
+    }
+
+    const attachments: any[] = [];
+    const missingCompulsory: string[] = [];
+
+    const resolvedItemIds = Array.from(
+      new Set(
+        poItems
+          .map((poItem) => {
+            const resolvedItem =
+              (poItem?.item_id ? itemsById.get(poItem.item_id) : null) ||
+              (poItem?.item_code ? itemsByCode.get(poItem.item_code) : null);
+            return resolvedItem?.id || poItem?.item_id || null;
+          })
+          .filter(Boolean),
+      ),
+    );
+
+    const activeDrawingByItemId = new Map<string, any>();
+    if (resolvedItemIds.length > 0) {
+      const { data: activeDrawings, error: activeDrawingsError } = await this.supabase
+        .from('item_drawings')
+        .select('id, item_id, file_name, file_type, file_url, file_size, version, is_active')
+        .eq('tenant_id', tenantId)
+        .in('item_id', resolvedItemIds)
+        .eq('is_active', true)
+        .order('version', { ascending: false });
+
+      if (activeDrawingsError) {
+        throw new BadRequestException(activeDrawingsError.message);
+      }
+
+      for (const drawing of activeDrawings || []) {
+        // Defensive: if multiple active exist, keep highest version due to order()
+        if (!activeDrawingByItemId.has(drawing.item_id)) {
+          activeDrawingByItemId.set(drawing.item_id, drawing);
+        }
+      }
+    }
+
+    for (const poItem of poItems) {
+      const resolvedItem =
+        (poItem?.item_id ? itemsById.get(poItem.item_id) : null) ||
+        (poItem?.item_code ? itemsByCode.get(poItem.item_code) : null);
+
+      const resolvedItemId = resolvedItem?.id || poItem?.item_id || null;
+      const drawingRequired = resolvedItem?.drawing_required;
+      const isCompulsory = drawingRequired === 'COMPULSORY';
+
+      if (!resolvedItemId) {
+        // Can't resolve item -> don't attach drawings; also can't enforce compulsory reliably
+        continue;
+      }
+
+      const activeDrawing = activeDrawingByItemId.get(resolvedItemId) || null;
+
+      if (!activeDrawing) {
+        if (isCompulsory) {
+          const label = poItem?.item_code || poItem?.item_name || resolvedItem?.code || resolvedItem?.name || resolvedItemId;
+          missingCompulsory.push(label);
+        }
+        continue;
+      }
+
+      const itemCodeOrName = poItem?.item_code || resolvedItem?.code || poItem?.item_name || resolvedItem?.name || 'ITEM';
+      const versionText = activeDrawing.version ? `v${activeDrawing.version}` : 'v';
+      const baseName = activeDrawing.file_name || 'drawing';
+      const filename = `${itemCodeOrName}_${versionText}_${baseName}`;
+
+      attachments.push(
+        this.dataUrlToNodemailerAttachment({
+          fileUrl: activeDrawing.file_url,
+          filename,
+          contentType: activeDrawing.file_type,
+        }),
+      );
+    }
+
+    if (missingCompulsory.length > 0) {
+      throw new BadRequestException(
+        `Cannot send PO email. ACTIVE drawing missing for compulsory item(s): ${missingCompulsory.join(', ')}`,
+      );
     }
 
     const emailData = {
@@ -357,6 +541,7 @@ export class PurchaseOrdersService {
       total_amount: po.total_amount,
       delivery_address: po.delivery_address,
       remarks: po.remarks,
+      attachments,
     };
 
     await this.emailService.sendPO(po.vendor.email, emailData);

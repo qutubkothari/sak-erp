@@ -49,6 +49,10 @@ export class GrnService {
         receipt_date: data.grnDate || new Date().toISOString().split('T')[0],
         invoice_number: data.invoiceNumber || null,
         invoice_date: data.invoiceDate || null,
+        invoice_file_url: data.invoiceFileUrl || null,
+        invoice_file_name: data.invoiceFileName || null,
+        invoice_file_type: data.invoiceFileType || null,
+        invoice_file_size: data.invoiceFileSize || null,
         warehouse_id: data.warehouseId,
         status: data.status || 'DRAFT',
         notes: data.remarks || null,
@@ -185,6 +189,10 @@ export class GrnService {
         receipt_date: data.grnDate || null,
         invoice_number: data.invoiceNumber || null,
         invoice_date: data.invoiceDate || null,
+        invoice_file_url: data.invoiceFileUrl || null,
+        invoice_file_name: data.invoiceFileName || null,
+        invoice_file_type: data.invoiceFileType || null,
+        invoice_file_size: data.invoiceFileSize || null,
         warehouse_id: data.warehouseId,
         notes: data.remarks || null,
         updated_at: new Date().toISOString(),
@@ -860,7 +868,6 @@ export class GrnService {
       .select('*')
       .eq('id', grnItemId)
       .single();
-
     if (error || !grnItem) {
       throw new NotFoundException('GRN item not found');
     }

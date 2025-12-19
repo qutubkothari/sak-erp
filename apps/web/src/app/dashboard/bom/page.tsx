@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ItemSearch from '../../../components/ItemSearch';
+import DrawingManager from '../../../components/DrawingManager';
 
 interface BOM {
   id: string;
@@ -25,6 +26,7 @@ interface BOM {
     drawing_url?: string;
     notes?: string;
     item?: {
+      id?: string;
       code: string;
       name: string;
       uom: string;
@@ -85,6 +87,8 @@ export default function BOMPage() {
   const [showTrailModal, setShowTrailModal] = useState(false);
   const [purchaseTrail, setPurchaseTrail] = useState<PurchaseTrail | null>(null);
   const [loadingTrail, setLoadingTrail] = useState(false);
+  const [showDrawingManager, setShowDrawingManager] = useState(false);
+  const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string } | null>(null);
 
   const [formData, setFormData] = useState({
     itemId: '',
@@ -982,18 +986,37 @@ export default function BOMPage() {
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">{item.notes || '-'}</td>
                             <td className="px-4 py-3 text-center">
-                              {item.drawing_url ? (
-                                <a 
-                                  href={item.drawing_url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800"
-                                >
-                                  📎 View
-                                </a>
-                              ) : (
-                                <span className="text-gray-400">-</span>
-                              )}
+                              <div className="flex items-center justify-center gap-3">
+                                {item.drawing_url ? (
+                                  <a 
+                                    href={item.drawing_url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800"
+                                  >
+                                    📎 View
+                                  </a>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
+
+                                {item.component_type === 'ITEM' && item.item?.id && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedItemForDrawing({
+                                        id: item.item!.id!,
+                                        code: item.item?.code || '',
+                                        name: item.item?.name || '',
+                                      });
+                                      setShowDrawingManager(true);
+                                    }}
+                                    className="text-amber-700 hover:text-amber-900 text-sm font-medium"
+                                  >
+                                    Manage
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1147,6 +1170,19 @@ export default function BOMPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Drawing Manager Modal (BOM component item drawings) */}
+      {showDrawingManager && selectedItemForDrawing && (
+        <DrawingManager
+          itemId={selectedItemForDrawing.id}
+          itemCode={selectedItemForDrawing.code}
+          itemName={selectedItemForDrawing.name}
+          onClose={() => {
+            setShowDrawingManager(false);
+            setSelectedItemForDrawing(null);
+          }}
+        />
       )}
     </div>
   );

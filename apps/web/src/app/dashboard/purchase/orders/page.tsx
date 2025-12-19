@@ -54,7 +54,7 @@ function PurchaseOrdersContent() {
   const [loadingPR, setLoadingPR] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showDrawingManager, setShowDrawingManager] = useState(false);
-  const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string } | null>(null);
+  const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string; mandatory: boolean } | null>(null);
   const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [currentPrId, setCurrentPrId] = useState<string | null>(null);
@@ -367,34 +367,77 @@ function PurchaseOrdersContent() {
       }
 
       // Check for compulsory drawings
-      const compulsoryItems = formData.items.filter(item => {
-        const itemDetails = items.find(i => i.id === item.itemId || i.code === item.itemCode);
-        return itemDetails?.drawing_required === 'COMPULSORY';
-      });
+      const compulsoryItems = formData.items
+        .map((row, index) => {
+          const masterItem = items.find(i => i.id === row.itemId || i.code === row.itemCode);
+          return {
+            row,
+            index,
+            resolvedItemId: masterItem?.id || row.itemId,
+            resolvedCode: masterItem?.code || row.itemCode,
+            resolvedName: masterItem?.name || row.itemName,
+            drawingRequired: masterItem?.drawing_required,
+          };
+        })
+        .filter(x => x.drawingRequired === 'COMPULSORY');
 
       if (compulsoryItems.length > 0) {
-        // Fetch drawings for compulsory items
-        const itemsWithoutDrawings = [];
-        
+        const itemsWithoutDrawings: Array<{ name: string; firstMissing?: { id: string; code: string; name: string; index: number } }> = [];
+        let firstMissing: { id: string; code: string; name: string; index: number } | null = null;
+
         for (const item of compulsoryItems) {
+          const id = item.resolvedItemId;
+          const name = item.resolvedName || item.resolvedCode || 'Unknown item';
+
+          if (!id) {
+            itemsWithoutDrawings.push({ name });
+            continue;
+          }
+
           try {
-            const drawings = await apiClient.get(`/inventory/items/${item.itemId}/drawings`);
+            const drawings = await apiClient.get(`/inventory/items/${id}/drawings`);
             if (!drawings || drawings.length === 0) {
-              const itemDetails = items.find(i => i.id === item.itemId);
-              itemsWithoutDrawings.push(itemDetails?.name || item.itemName || item.itemCode);
+              itemsWithoutDrawings.push({ name });
+              if (!firstMissing) {
+                firstMissing = {
+                  id,
+                  code: item.resolvedCode || '',
+                  name: item.resolvedName || '',
+                  index: item.index,
+                };
+              }
             }
           } catch (error) {
-            console.error(`Error checking drawings for item ${item.itemId}:`, error);
-            const itemDetails = items.find(i => i.id === item.itemId);
-            itemsWithoutDrawings.push(itemDetails?.name || item.itemName || item.itemCode);
+            console.error(`Error checking drawings for item ${id}:`, error);
+            itemsWithoutDrawings.push({ name });
+            if (!firstMissing) {
+              firstMissing = {
+                id,
+                code: item.resolvedCode || '',
+                name: item.resolvedName || '',
+                index: item.index,
+              };
+            }
           }
         }
 
         if (itemsWithoutDrawings.length > 0) {
-          setAlertMessage({ 
-            type: 'error', 
-            message: `Drawing upload is compulsory for: ${itemsWithoutDrawings.join(', ')}. Please upload drawings before creating PO.` 
+          setAlertMessage({
+            type: 'error',
+            message: `Drawing upload is compulsory for: ${itemsWithoutDrawings.map(i => i.name).join(', ')}. Please upload drawings before creating PO.`,
           });
+
+          if (firstMissing) {
+            setPendingItemIndex(firstMissing.index);
+            setSelectedItemForDrawing({
+              id: firstMissing.id,
+              code: firstMissing.code,
+              name: firstMissing.name,
+              mandatory: true,
+            });
+            setShowDrawingManager(true);
+          }
+
           setSubmitting(false);
           return;
         }
@@ -635,6 +678,11 @@ function PurchaseOrdersContent() {
       console.log('PO Details:', data);
       setSelectedPO(data);
       setShowViewModal(true);
+
+      // Ensure we have item master data so we can resolve drawing_required + item ids
+      if (items.length === 0) {
+        fetchItems();
+      }
     } catch (error) {
       console.error('Error fetching PO details:', error);
       setAlertMessage({ type: 'error', message: 'Failed to load PO details' });
@@ -1166,13 +1214,48 @@ function PurchaseOrdersContent() {
                     </div>
                     
                     {formData.items.map((item, index) => (
-                      <div key={index} className="border border-gray-300 rounded-lg p-4">
+                      <div key={index} className={`border border-gray-300 rounded-lg p-4 ${pendingItemIndex === index ? 'ring-2 ring-red-300' : ''}`}>
                         <div className="grid grid-cols-7 gap-4">
                           <div className="col-span-2">
                             {item.itemCode && item.itemName ? (
                               <div className="space-y-1">
                                 <div className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50">
                                   <div className="font-medium text-sm">{item.itemCode} - {item.itemName}</div>
+                                  {(() => {
+                                    const masterItem = items.find(i => i.id === item.itemId || i.code === item.itemCode);
+                                    const drawingRequired = masterItem?.drawing_required || 'OPTIONAL';
+                                    const resolvedItemId = masterItem?.id || item.itemId;
+
+                                    if (!resolvedItemId) return null;
+
+                                    return (
+                                      <div className="mt-1 flex items-center justify-between gap-2">
+                                        <span className={`text-xs px-2 py-0.5 rounded ${
+                                          drawingRequired === 'COMPULSORY'
+                                            ? 'bg-red-100 text-red-800'
+                                            : 'bg-gray-100 text-gray-700'
+                                        }`}>
+                                          Drawing: {drawingRequired}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setPendingItemIndex(index);
+                                            setSelectedItemForDrawing({
+                                              id: resolvedItemId,
+                                              code: masterItem?.code || item.itemCode,
+                                              name: masterItem?.name || item.itemName,
+                                              mandatory: drawingRequired === 'COMPULSORY',
+                                            });
+                                            setShowDrawingManager(true);
+                                          }}
+                                          className="text-xs text-amber-700 hover:text-amber-900 font-medium"
+                                        >
+                                          Manage Drawings
+                                        </button>
+                                      </div>
+                                    );
+                                  })()}
                                   {item.itemId && stockInfo[item.itemId] && (
                                     <div className="text-xs text-gray-600 mt-1 space-y-0.5">
                                       <div className="flex justify-between">
@@ -1467,10 +1550,15 @@ function PurchaseOrdersContent() {
             setShowDrawingManager(false);
             setSelectedItemForDrawing(null);
             setPendingItemIndex(null);
-            // After closing, user needs to try creating PO again
-            setAlertMessage({ type: 'info', message: 'Drawing uploaded! Please try creating the PO again.' });
+
+            // Context-aware message
+            if (showModal && !editingPOId) {
+              setAlertMessage({ type: 'info', message: 'Drawing uploaded! Please try creating the PO again.' });
+            } else {
+              setAlertMessage({ type: 'success', message: 'Drawing updated successfully.' });
+            }
           }}
-          mandatory={true}
+          mandatory={selectedItemForDrawing.mandatory}
         />
       )}
 
@@ -1527,6 +1615,7 @@ function PurchaseOrdersContent() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Item</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Drawing</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Quantity</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Rate</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Amount</th>
@@ -1540,6 +1629,46 @@ function PurchaseOrdersContent() {
                               <div className="font-medium">{item.item?.name || item.item_name || '-'}</div>
                               <div className="text-xs text-gray-500">{item.item?.code || item.item_code || ''}</div>
                             </td>
+                            <td className="px-4 py-2">
+                              {(() => {
+                                const itemCode = item.item?.code || item.item_code;
+                                const itemId = item.item_id;
+                                const masterItem = items.find((i) => i.id === itemId || i.code === itemCode);
+                                const drawingRequired = masterItem?.drawing_required || 'OPTIONAL';
+                                const resolvedItemId = masterItem?.id || itemId;
+
+                                if (!resolvedItemId) {
+                                  return <span className="text-xs text-gray-500">-</span>;
+                                }
+
+                                return (
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className={`text-xs px-2 py-0.5 rounded ${
+                                      drawingRequired === 'COMPULSORY'
+                                        ? 'bg-red-100 text-red-800'
+                                        : 'bg-gray-100 text-gray-700'
+                                    }`}>
+                                      {drawingRequired}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedItemForDrawing({
+                                          id: resolvedItemId,
+                                          code: masterItem?.code || itemCode || '',
+                                          name: masterItem?.name || item.item?.name || item.item_name || '',
+                                          mandatory: drawingRequired === 'COMPULSORY',
+                                        });
+                                        setShowDrawingManager(true);
+                                      }}
+                                      className="text-xs text-amber-700 hover:text-amber-900 font-medium"
+                                    >
+                                      Manage
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+                            </td>
                             <td className="px-4 py-2 text-right">{item.quantity || item.ordered_qty || 0}</td>
                             <td className="px-4 py-2 text-right">₹{(item.rate || 0).toLocaleString()}</td>
                             <td className="px-4 py-2 text-right font-medium">₹{(item.amount || 0).toLocaleString()}</td>
@@ -1547,7 +1676,7 @@ function PurchaseOrdersContent() {
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={4} className="px-4 py-8 text-center text-gray-500">No items found</td>
+                          <td colSpan={5} className="px-4 py-8 text-center text-gray-500">No items found</td>
                         </tr>
                       )}
                     </tbody>

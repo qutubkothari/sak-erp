@@ -409,6 +409,18 @@ export class ItemsService {
       throw new Error(`Failed to upload drawing: ${error.message}`);
     }
 
+    // Ensure only one active drawing per item (latest by default)
+    const { error: deactivateError } = await this.supabase
+      .from('item_drawings')
+      .update({ is_active: false })
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .neq('id', data.id);
+
+    if (deactivateError) {
+      throw new Error(`Failed to finalize drawing upload: ${deactivateError.message}`);
+    }
+
     return data;
   }
 
@@ -428,6 +440,20 @@ export class ItemsService {
 
     if (error) {
       throw new Error(`Failed to update drawing: ${error.message}`);
+    }
+
+    // If activated, deactivate all others to keep exactly one ACTIVE drawing
+    if (drawingData.isActive === true) {
+      const { error: deactivateError } = await this.supabase
+        .from('item_drawings')
+        .update({ is_active: false })
+        .eq('tenant_id', tenantId)
+        .eq('item_id', itemId)
+        .neq('id', drawingId);
+
+      if (deactivateError) {
+        throw new Error(`Failed to activate drawing: ${deactivateError.message}`);
+      }
     }
 
     return data;

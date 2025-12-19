@@ -27,6 +27,7 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [updatingActiveId, setUpdatingActiveId] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [revisionNotes, setRevisionNotes] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -45,7 +46,7 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
 
       if (response.ok) {
         const data = await response.json();
-        setDrawings(data.filter((d: Drawing) => d.is_active));
+        setDrawings(data);
       }
     } catch (error) {
       console.error('Error fetching drawings:', error);
@@ -139,6 +140,39 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
     }
   };
 
+  const handleSetActive = async (drawing: Drawing) => {
+    if (drawing.is_active) return;
+
+    try {
+      setUpdatingActiveId(drawing.id);
+      const token = localStorage.getItem('accessToken');
+
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/inventory/items/${itemId}/drawings/${drawing.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          revisionNotes: drawing.revision_notes,
+          isActive: true,
+        }),
+      });
+
+      if (response.ok) {
+        await fetchDrawings();
+      } else {
+        const error = await response.json().catch(() => ({}));
+        alert(`Failed to set active drawing: ${error.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error setting active drawing:', error);
+      alert('Failed to set active drawing');
+    } finally {
+      setUpdatingActiveId(null);
+    }
+  };
+
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
@@ -156,6 +190,8 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
   };
 
   const canClose = !mandatory || drawings.length > 0;
+
+  const activeDrawing = drawings.find(d => d.is_active) || null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -248,6 +284,12 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
               Drawing History ({drawings.length} versions)
             </h3>
 
+            {activeDrawing && (
+              <div className="mb-3 text-sm bg-green-50 border border-green-200 rounded px-3 py-2 text-green-900">
+                Active drawing: <span className="font-semibold">v{activeDrawing.version}</span> ({activeDrawing.file_name})
+              </div>
+            )}
+
             {loading ? (
               <div className="text-center py-8 text-gray-500">Loading drawings...</div>
             ) : drawings.length === 0 ? (
@@ -273,6 +315,11 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
                           {drawing.version === drawings[0].version && (
                             <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold">
                               LATEST
+                            </span>
+                          )}
+                          {drawing.is_active && (
+                            <span className="bg-amber-100 text-amber-900 px-2 py-1 rounded text-xs font-semibold">
+                              ACTIVE
                             </span>
                           )}
                         </div>
@@ -306,6 +353,16 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
                         >
                           Download
                         </a>
+                        {!drawing.is_active && (
+                          <button
+                            type="button"
+                            onClick={() => handleSetActive(drawing)}
+                            disabled={updatingActiveId === drawing.id}
+                            className="bg-amber-100 text-amber-900 px-4 py-2 rounded hover:bg-amber-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {updatingActiveId === drawing.id ? 'Applying...' : 'Set Active'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

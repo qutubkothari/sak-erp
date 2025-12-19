@@ -9,6 +9,10 @@ interface GRN {
   grn_date: string;
   invoice_number: string;
   invoice_date: string;
+  invoice_file_url?: string;
+  invoice_file_name?: string;
+  invoice_file_type?: string;
+  invoice_file_size?: number;
   status: string;
   remarks?: string;
   qc_completed?: boolean;
@@ -143,6 +147,10 @@ export default function GRNPage() {
   const [editFormData, setEditFormData] = useState<{
     invoiceNumber: string;
     invoiceDate: string;
+    invoiceFileUrl: string;
+    invoiceFileName: string;
+    invoiceFileType: string;
+    invoiceFileSize: number;
     warehouseId: string;
     notes: string;
     items: Array<{
@@ -157,6 +165,10 @@ export default function GRNPage() {
   }>({
     invoiceNumber: '',
     invoiceDate: '',
+    invoiceFileUrl: '',
+    invoiceFileName: '',
+    invoiceFileType: '',
+    invoiceFileSize: 0,
     warehouseId: '',
     notes: '',
     items: [],
@@ -168,6 +180,10 @@ export default function GRNPage() {
     receiptDate: new Date().toISOString().split('T')[0],
     invoiceNumber: '',
     invoiceDate: '',
+    invoiceFileUrl: '',
+    invoiceFileName: '',
+    invoiceFileType: '',
+    invoiceFileSize: 0,
     warehouseId: '',
     notes: '',
     items: [] as Array<{
@@ -187,6 +203,41 @@ export default function GRNPage() {
       masterHsnCode?: string;
     }>,
   });
+
+  const handleInvoiceFileSelect = (file: File, target: 'create' | 'edit') => {
+    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload PNG, JPG, or PDF files only');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      if (target === 'create') {
+        setFormData(prev => ({
+          ...prev,
+          invoiceFileUrl: base64,
+          invoiceFileName: file.name,
+          invoiceFileType: file.type,
+          invoiceFileSize: file.size,
+        }));
+      } else {
+        setEditFormData(prev => ({
+          ...prev,
+          invoiceFileUrl: base64,
+          invoiceFileName: file.name,
+          invoiceFileType: file.type,
+          invoiceFileSize: file.size,
+        }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   useEffect(() => {
     fetchGRNs();
@@ -331,6 +382,10 @@ export default function GRNPage() {
         body: JSON.stringify({
           invoiceNumber: editFormData.invoiceNumber,
           invoiceDate: editFormData.invoiceDate,
+          invoiceFileUrl: editFormData.invoiceFileUrl || null,
+          invoiceFileName: editFormData.invoiceFileName || null,
+          invoiceFileType: editFormData.invoiceFileType || null,
+          invoiceFileSize: editFormData.invoiceFileSize || null,
           warehouseId: editFormData.warehouseId,
           remarks: editFormData.notes,
           items: editFormData.items.map(item => ({
@@ -384,6 +439,10 @@ export default function GRNPage() {
         grnDate: formData.receiptDate,
         invoiceNumber: formData.invoiceNumber || null,
         invoiceDate: formData.invoiceDate || null,
+        invoiceFileUrl: formData.invoiceFileUrl || null,
+        invoiceFileName: formData.invoiceFileName || null,
+        invoiceFileType: formData.invoiceFileType || null,
+        invoiceFileSize: formData.invoiceFileSize || null,
         warehouseId: formData.warehouseId,
         remarks: formData.notes || null,
         status: 'DRAFT',
@@ -592,6 +651,10 @@ export default function GRNPage() {
       receiptDate: new Date().toISOString().split('T')[0],
       invoiceNumber: '',
       invoiceDate: '',
+      invoiceFileUrl: '',
+      invoiceFileName: '',
+      invoiceFileType: '',
+      invoiceFileSize: 0,
       warehouseId: '',
       notes: '',
       items: [],
@@ -703,6 +766,16 @@ export default function GRNPage() {
                       {grn.invoice_date && (
                         <div className="text-xs text-gray-400">{new Date(grn.invoice_date).toLocaleDateString()}</div>
                       )}
+                      {grn.invoice_file_url && (
+                        <a
+                          href={grn.invoice_file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:text-blue-800"
+                        >
+                          View Invoice
+                        </a>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {grn.warehouse?.name || '-'}
@@ -787,6 +860,10 @@ export default function GRNPage() {
                           setEditFormData({
                             invoiceNumber: grn.invoice_number || '',
                             invoiceDate: grn.invoice_date || '',
+                            invoiceFileUrl: grn.invoice_file_url || '',
+                            invoiceFileName: grn.invoice_file_name || '',
+                            invoiceFileType: grn.invoice_file_type || '',
+                            invoiceFileSize: grn.invoice_file_size || 0,
                             warehouseId: grn.warehouse?.id || '',
                             notes: grn.remarks || '',
                             items: grn.grn_items.map(item => ({
@@ -893,6 +970,22 @@ export default function GRNPage() {
                     onChange={(e) => setFormData({ ...formData, invoiceDate: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
                   />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Purchase Invoice (File)</label>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,application/pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleInvoiceFileSelect(file, 'create');
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                  />
+                  {formData.invoiceFileName && (
+                    <div className="text-xs text-gray-600 mt-1">Selected: {formData.invoiceFileName}</div>
+                  )}
                 </div>
               </div>
 
@@ -1126,6 +1219,37 @@ export default function GRNPage() {
                     />
                   ) : (
                     <p className="mt-1 text-gray-900">{selectedGRN.invoice_date ? new Date(selectedGRN.invoice_date).toLocaleDateString() : '-'}</p>
+                  )}
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">Purchase Invoice (File)</label>
+                  {editMode ? (
+                    <>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,application/pdf"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleInvoiceFileSelect(file, 'edit');
+                        }}
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                      />
+                      {editFormData.invoiceFileName && (
+                        <div className="text-xs text-gray-600 mt-1">Selected: {editFormData.invoiceFileName}</div>
+                      )}
+                    </>
+                  ) : selectedGRN.invoice_file_url ? (
+                    <a
+                      href={selectedGRN.invoice_file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 inline-block text-blue-600 hover:text-blue-800"
+                    >
+                      View Invoice
+                    </a>
+                  ) : (
+                    <p className="mt-1 text-gray-900">-</p>
                   )}
                 </div>
               </div>
