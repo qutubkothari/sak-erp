@@ -456,84 +456,154 @@ export default function HrPage() {
     }
   };
 
-  const handlePrintPayslip = (slip: any) => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Payslip - ${slip.payslip_number}</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 40px; }
-          .header { text-align: center; margin-bottom: 30px; }
-          .company { font-size: 24px; font-weight: bold; }
-          .payslip-title { font-size: 18px; margin-top: 10px; }
-          .info-section { margin: 20px 0; }
-          .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
-          .label { font-weight: bold; }
-          .salary-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-          .salary-table th, .salary-table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-          .salary-table th { background-color: #f5f5f5; }
-          .total-row { font-weight: bold; background-color: #f9f9f9; }
-          .net-pay { font-size: 20px; color: #16a34a; }
-          @media print { body { padding: 20px; } }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="company">SAK ERP</div>
-          <div class="payslip-title">PAYSLIP</div>
-        </div>
-        
-        <div class="info-section">
-          <div class="info-row">
-            <span><span class="label">Employee:</span> ${slip.employee_name}</span>
-            <span><span class="label">Payslip #:</span> ${slip.payslip_number}</span>
-          </div>
-          <div class="info-row">
-            <span><span class="label">Month:</span> ${slip.salary_month}</span>
-            <span><span class="label">Generated:</span> ${new Date().toLocaleDateString()}</span>
-          </div>
-          <div class="info-row">
-            <span><span class="label">Attendance Days:</span> ${slip.attendance_days}</span>
-            <span><span class="label">Leave Days:</span> ${slip.leave_days}</span>
-          </div>
-        </div>
+  const handlePrintPayslip = async (slip: any) => {
+    try {
+      const salaryRes = await apiClient.get<any>(`/hr/salary/${slip.employee_id}`);
+      const salaryComponents = Array.isArray(salaryRes) ? salaryRes : (salaryRes.data || []);
 
-        <table class="salary-table">
-          <thead>
-            <tr>
-              <th>Earnings</th>
-              <th>Amount (₹)</th>
-              <th>Deductions</th>
-              <th>Amount (₹)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Gross Salary</td>
-              <td>${slip.gross_salary.toFixed(2)}</td>
-              <td>Total Deductions</td>
-              <td>${slip.total_deductions.toFixed(2)}</td>
-            </tr>
-            <tr class="total-row">
-              <td colspan="3">Net Pay</td>
-              <td class="net-pay">₹${slip.net_salary.toFixed(2)}</td>
-            </tr>
-          </tbody>
-        </table>
+      const grossTypes = new Set(['BASIC', 'HRA', 'ALLOWANCE', 'BONUS']);
+      const deductionTypes = new Set(['DEDUCTION', 'PF', 'ESI', 'TAX']);
 
-        <div style="margin-top: 40px; text-align: center; color: #666;">
-          <p>This is a computer-generated payslip and does not require a signature.</p>
-        </div>
-      </body>
-      </html>
-    `);
-    
-    printWindow.document.close();
-    printWindow.print();
+      const isHoldName = (name: unknown) => typeof name === 'string' && /\bon\s*hold\b|\bhold\b/i.test(name);
+
+      const earnings = salaryComponents.filter((sc: any) => grossTypes.has(String(sc.component_type || '')));
+      const onHold = earnings.filter((sc: any) => isHoldName(sc.component_name));
+      const deductions = salaryComponents.filter((sc: any) => deductionTypes.has(String(sc.component_type || '')));
+
+      const holdTotal = onHold.reduce((sum: number, sc: any) => sum + (parseFloat(sc.amount) || 0), 0);
+      const netSalary = Number(slip.net_salary || 0);
+      const amountPaid = Math.max(0, netSalary - holdTotal);
+
+      const [yearStr, monthStr] = String(slip.salary_month || '').split('-');
+      const year = parseInt(yearStr || '0', 10);
+      const month = parseInt(monthStr || '0', 10);
+      const daysInMonth = year && month ? new Date(year, month, 0).getDate() : '';
+      const paidForTotalDays = (Number(slip.attendance_days || 0) + Number(slip.leave_days || 0));
+
+      const rows: Array<{ label: string; amount: number; kind: 'earning' | 'deduction' | 'total' | 'paid' | 'hold' | 'net' }> = [];
+      earnings.forEach((sc: any) => {
+        rows.push({ label: String(sc.component_name || sc.component_type || 'Earning'), amount: parseFloat(sc.amount) || 0, kind: 'earning' });
+      });
+      rows.push({ label: 'Gross Monthly Salary', amount: parseFloat(slip.gross_salary) || 0, kind: 'total' });
+
+      deductions.forEach((sc: any) => {
+        rows.push({ label: `Less : ${String(sc.component_name || sc.component_type || 'Deduction')}`, amount: parseFloat(sc.amount) || 0, kind: 'deduction' });
+      });
+
+      onHold.forEach((sc: any) => {
+        rows.push({ label: `Less : ${String(sc.component_name || 'On Hold')} (On Hold)`, amount: parseFloat(sc.amount) || 0, kind: 'hold' });
+      });
+
+      rows.push({ label: 'Amount Paid', amount: amountPaid, kind: 'paid' });
+      if (holdTotal > 0) rows.push({ label: 'Monthly Hold', amount: holdTotal, kind: 'hold' });
+      rows.push({ label: 'Net Salary', amount: netSalary, kind: 'net' });
+
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) return;
+
+      const fmt = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const today = new Date().toLocaleDateString();
+
+      const rowsHtml = rows
+        .map((r, idx) => {
+          const highlight = r.kind === 'total' ? 'bg:#fff8a6;' : r.kind === 'paid' ? 'bg:#dff0d8;' : r.kind === 'net' ? 'bg:#f0f4ff;' : '';
+          const sign = (r.kind === 'deduction' || r.kind === 'hold') ? '-' : '';
+          return `
+            <tr style="${highlight}">
+              <td style="text-align:center;">${idx + 1}</td>
+              <td>${r.label}</td>
+              <td style="text-align:right;">${sign}${fmt(r.amount)}</td>
+            </tr>
+          `;
+        })
+        .join('');
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Salary Sheet - ${slip.payslip_number}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 28px; color: #111; }
+            .topbar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+            .brand { font-size: 22px; font-weight: 700; }
+            .meta { font-size: 12px; color: #444; text-align: right; }
+            .letter { font-size: 13px; line-height: 1.55; margin: 14px 0; }
+            .grid { display: grid; grid-template-columns: 1fr 270px; gap: 12px; align-items: start; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #333; padding: 6px 8px; font-size: 12px; }
+            thead th { background: #f5f5f5; }
+            .small th, .small td { font-size: 12px; }
+            .footer { margin-top: 18px; font-size: 12px; }
+            @media print { body { padding: 16px; } }
+          </style>
+        </head>
+        <body>
+          <div class="topbar">
+            <div class="brand">SAK ERP</div>
+            <div class="meta">
+              <div><strong>Dated:</strong> ${today}</div>
+              <div><strong>Salary Month:</strong> ${slip.salary_month}</div>
+            </div>
+          </div>
+
+          <div class="letter">
+            <div><strong>To,</strong></div>
+            <div>${slip.employee_name || 'Employee'}</div>
+            <br />
+            <div>Dear Sir/Madam,</div>
+            <div>
+              We are pleased to inform you that the salary has been processed for the month of <strong>${slip.salary_month}</strong>.
+              The detailed breakup is as under:
+            </div>
+          </div>
+
+          <div class="grid">
+            <div>
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width:56px;">Sl. No.</th>
+                    <th>Salary Break Up</th>
+                    <th style="width:140px; text-align:right;">Amount (INR)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rowsHtml}
+                </tbody>
+              </table>
+            </div>
+
+            <div>
+              <table class="small">
+                <tbody>
+                  <tr><th style="text-align:left;">Days In Month</th><td style="text-align:right;">${daysInMonth}</td></tr>
+                  <tr><th style="text-align:left;">No. of days Travelled</th><td style="text-align:right;">0</td></tr>
+                  <tr><th style="text-align:left;">Comp-Offs</th><td style="text-align:right;">0</td></tr>
+                  <tr><th style="text-align:left;">Leave(s) / Absent</th><td style="text-align:right;">0</td></tr>
+                  <tr><th style="text-align:left;">Approved Paid Leaves</th><td style="text-align:right;">${Number(slip.leave_days || 0)}</td></tr>
+                  <tr><th style="text-align:left;">Paid for Total Days</th><td style="text-align:right;">${paidForTotalDays}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="footer">
+            <div>Thanking You,</div>
+            <div style="margin-top: 22px;">With Regards,</div>
+            <div><strong>Accounts In Charge</strong></div>
+          </div>
+
+        </body>
+        </html>
+      `);
+
+      printWindow.document.close();
+      printWindow.print();
+    } catch (error: any) {
+      console.error(error);
+      alert(error?.message || 'Failed to print payslip');
+    }
   };
 
   const fileToDataUrl = (file: File): Promise<string> =>
