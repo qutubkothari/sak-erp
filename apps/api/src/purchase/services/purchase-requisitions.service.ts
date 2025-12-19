@@ -1,11 +1,16 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { EmailService } from '../../email/email.service';
+import { VendorsService } from './vendors.service';
 
 @Injectable()
 export class PurchaseRequisitionsService {
   private supabase: SupabaseClient;
 
-  constructor() {
+  constructor(
+    private readonly emailService: EmailService,
+    private readonly vendorsService: VendorsService,
+  ) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_KEY!,
@@ -188,6 +193,93 @@ export class PurchaseRequisitionsService {
 
     if (error) throw new BadRequestException(error.message);
     return this.findOne(tenantId, id);
+  }
+
+  async sendRFQ(tenantId: string, requisitionId: string, body: any) {
+    const vendorIds: string[] = Array.isArray(body?.vendorIds) ? body.vendorIds : [];
+    const vendorEmails: string[] = Array.isArray(body?.vendorEmails) ? body.vendorEmails : [];
+
+    if (vendorIds.length === 0 && vendorEmails.length === 0) {
+      throw new BadRequestException('vendorIds or vendorEmails is required');
+    }
+
+    const pr = await this.findOne(tenantId, requisitionId);
+
+    if (!pr) {
+      throw new NotFoundException('Purchase Requisition not found');
+    }
+
+    if (pr.status !== 'APPROVED') {
+      throw new BadRequestException('PR must be APPROVED to send RFQ');
+    }
+
+    const rfqNumber = `RFQ-${pr.pr_number}`;
+    const items = (pr.purchase_requisition_items || []).map((item: any) => ({
+      item_name: item.item_name || item.itemName || '-',
+      description: item.description || item.specifications || item.remarks || '-',
+      quantity: item.requested_qty ?? item.quantity ?? 0,
+      required_date: item.required_date || pr.required_date || '-',
+    }));
+
+    const vendorLookups = await Promise.all(
+      vendorIds.map(async (vendorId) => this.vendorsService.findOne(tenantId, vendorId)),
+    );
+
+    const recipients: Array<{ email: string; name: string } > = [];
+
+    for (const vendor of vendorLookups) {
+      if (vendor?.email) {
+        recipients.push({ email: vendor.email, name: vendor.name || 'Vendor' });
+      }
+    }
+
+    for (const email of vendorEmails) {
+      if (typeof email === 'string' && email.trim()) {
+        recipients.push({ email: email.trim(), name: 'Vendor' });
+      }
+    }
+
+    if (recipients.length === 0) {
+      throw new BadRequestException('No valid vendor emails found');
+    }
+
+    const responseDate = body?.responseDate || body?.response_date;
+    const remarks = body?.remarks;
+
+    const sendResults = await Promise.allSettled(
+      recipients.map((recipient) =>
+        this.emailService.sendRFQ(recipient.email, {
+          rfq_number: rfqNumber,
+          vendor_name: recipient.name,
+          items,
+          response_date: responseDate,
+          remarks,
+          attachments: Array.isArray(body?.attachments) ? body.attachments : [],
+        }),
+      ),
+    );
+
+    const sent: Array<{ email: string; messageId?: string }> = [];
+    const failed: Array<{ email: string; error: string }> = [];
+
+    sendResults.forEach((result, idx) => {
+      const email = recipients[idx]?.email;
+      if (!email) return;
+      if (result.status === 'fulfilled') {
+        sent.push({ email, messageId: (result.value as any)?.messageId });
+      } else {
+        failed.push({ email, error: result.reason?.message || String(result.reason) });
+      }
+    });
+
+    return {
+      rfq_number: rfqNumber,
+      requisition_id: requisitionId,
+      sent_count: sent.length,
+      failed_count: failed.length,
+      sent,
+      failed,
+    };
   }
 
   async delete(tenantId: string, id: string) {

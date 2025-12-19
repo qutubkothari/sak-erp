@@ -59,6 +59,14 @@ interface PRDetail {
   purchase_requisition_items: PRDetailItem[];
 }
 
+interface Vendor {
+  id: string;
+  code: string;
+  name: string;
+  email: string;
+  is_active: boolean;
+}
+
 export default function PurchaseRequisitionsPage() {
   const router = useRouter();
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -91,6 +99,14 @@ export default function PurchaseRequisitionsPage() {
   const [useManualEntry, setUseManualEntry] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [itemsLoadError, setItemsLoadError] = useState<string | null>(null);
+
+  const [rfqPanelOpen, setRfqPanelOpen] = useState(false);
+  const [rfqVendors, setRfqVendors] = useState<Vendor[]>([]);
+  const [rfqVendorIds, setRfqVendorIds] = useState<string[]>([]);
+  const [rfqLoadingVendors, setRfqLoadingVendors] = useState(false);
+  const [rfqSending, setRfqSending] = useState(false);
+  const [rfqResponseDate, setRfqResponseDate] = useState('');
+  const [rfqRemarks, setRfqRemarks] = useState('');
 
   useEffect(() => {
     fetchRequisitions();
@@ -226,6 +242,10 @@ export default function PurchaseRequisitionsPage() {
     setSelectedPR(null);
     setLoadingDetail(true);
     setShowDetailModal(true);
+    setRfqPanelOpen(false);
+    setRfqVendorIds([]);
+    setRfqResponseDate('');
+    setRfqRemarks('');
     try {
       const data = await apiClient.get(`/purchase/requisitions/${prId}`);
       console.log('PR Details Response:', data);
@@ -236,6 +256,54 @@ export default function PurchaseRequisitionsPage() {
       setShowDetailModal(false);
     } finally {
       setLoadingDetail(false);
+    }
+  };
+
+  const fetchRFQVendors = async () => {
+    try {
+      setRfqLoadingVendors(true);
+      const data = await apiClient.get<Vendor[]>('/purchase/vendors');
+      const list = Array.isArray(data) ? data : [];
+      setRfqVendors(list.filter((v) => v?.is_active !== false));
+    } catch (error) {
+      console.error('Error fetching vendors for RFQ:', error);
+      alert('Failed to load vendors');
+    } finally {
+      setRfqLoadingVendors(false);
+    }
+  };
+
+  const toggleRFQVendor = (vendorId: string) => {
+    setRfqVendorIds((prev) =>
+      prev.includes(vendorId) ? prev.filter((id) => id !== vendorId) : [...prev, vendorId],
+    );
+  };
+
+  const handleSendRFQ = async () => {
+    if (!selectedPR) return;
+    if (rfqVendorIds.length === 0) {
+      alert('Please select at least one vendor');
+      return;
+    }
+
+    try {
+      setRfqSending(true);
+      const result = await apiClient.post(`/purchase/requisitions/${selectedPR.id}/rfq/send`, {
+        vendorIds: rfqVendorIds,
+        responseDate: rfqResponseDate || undefined,
+        remarks: rfqRemarks || undefined,
+      });
+
+      alert(`RFQ sent: ${result?.sent_count ?? 0}, failed: ${result?.failed_count ?? 0}`);
+      setRfqPanelOpen(false);
+      setRfqVendorIds([]);
+      setRfqResponseDate('');
+      setRfqRemarks('');
+    } catch (error) {
+      console.error('Error sending RFQ:', error);
+      alert('Failed to send RFQ');
+    } finally {
+      setRfqSending(false);
     }
   };
 
@@ -906,15 +974,29 @@ export default function PurchaseRequisitionsPage() {
                       </>
                     )}
                     {selectedPR.status === 'APPROVED' && (
-                      <button
-                        onClick={() => {
-                          setShowDetailModal(false);
-                          router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
-                        }}
-                        className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors"
-                      >
-                        Create PO from this PR
-                      </button>
+                      <>
+                        <button
+                          onClick={async () => {
+                            const nextOpen = !rfqPanelOpen;
+                            setRfqPanelOpen(nextOpen);
+                            if (nextOpen && rfqVendors.length === 0) {
+                              await fetchRFQVendors();
+                            }
+                          }}
+                          className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors"
+                        >
+                          Send RFQ
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowDetailModal(false);
+                            router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
+                          }}
+                          className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors"
+                        >
+                          Create PO from this PR
+                        </button>
+                      </>
                     )}
                     <button
                       onClick={() => setShowDetailModal(false)}
@@ -923,6 +1005,81 @@ export default function PurchaseRequisitionsPage() {
                       Close
                     </button>
                   </div>
+
+                  {selectedPR.status === 'APPROVED' && rfqPanelOpen && (
+                    <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-bold text-gray-900">Send RFQ to Vendors</h3>
+                        <button
+                          onClick={() => setRfqPanelOpen(false)}
+                          className="text-gray-600 hover:text-gray-900 font-medium"
+                        >
+                          Hide
+                        </button>
+                      </div>
+
+                      {rfqLoadingVendors ? (
+                        <p className="text-sm text-gray-600">Loading vendors...</p>
+                      ) : rfqVendors.length === 0 ? (
+                        <p className="text-sm text-gray-600">No vendors found.</p>
+                      ) : (
+                        <div className="max-h-48 overflow-auto border rounded bg-white">
+                          {rfqVendors.map((vendor) => (
+                            <label
+                              key={vendor.id}
+                              className="flex items-center gap-3 px-3 py-2 border-b last:border-b-0 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={rfqVendorIds.includes(vendor.id)}
+                                onChange={() => toggleRFQVendor(vendor.id)}
+                              />
+                              <div className="flex-1">
+                                <div className="text-sm font-semibold text-gray-900">{vendor.name}</div>
+                                <div className="text-xs text-gray-600">{vendor.email}</div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">Expected Response Date (optional)</label>
+                          <input
+                            type="date"
+                            value={rfqResponseDate}
+                            onChange={(e) => setRfqResponseDate(e.target.value)}
+                            className="w-full px-3 py-2 border rounded-lg text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">Remarks (optional)</label>
+                          <input
+                            type="text"
+                            value={rfqRemarks}
+                            onChange={(e) => setRfqRemarks(e.target.value)}
+                            placeholder="Any notes to vendor"
+                            className="w-full px-3 py-2 border rounded-lg text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end mt-3">
+                        <button
+                          onClick={handleSendRFQ}
+                          disabled={rfqSending || rfqLoadingVendors}
+                          className={`px-6 py-2 rounded-lg transition-colors ${
+                            rfqSending || rfqLoadingVendors
+                              ? 'bg-gray-300 text-gray-600'
+                              : 'bg-green-600 text-white hover:bg-green-700'
+                          }`}
+                        >
+                          {rfqSending ? 'Sending...' : 'Send RFQ Email'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="p-8 text-center">
