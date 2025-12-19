@@ -28,21 +28,70 @@ export class UidSupabaseController {
     
     // Support both itemId and item_id (snake_case from frontend)
     const itemId = filters.itemId || filters.item_id;
+    const entityType = filters.entityType || filters.entity_type;
+    const search = typeof filters.search === 'string' ? filters.search : undefined;
+
+    const parsedLimit = filters.limit !== undefined ? parseInt(filters.limit, 10) : undefined;
+    const parsedOffset = filters.offset !== undefined ? parseInt(filters.offset, 10) : undefined;
+    const sortBy = typeof filters.sortBy === 'string' ? filters.sortBy : undefined;
+    const sortOrder = filters.sortOrder === 'asc' || filters.sortOrder === 'desc' ? filters.sortOrder : undefined;
     
     console.log('[UidController] Resolved itemId:', itemId, 'status:', filters.status);
     
     // If requesting with item_id and status (dispatch scenario), use getAllUIDs
     if (itemId && filters.status) {
       console.log('[UidController] Using getAllUIDs for dispatch scenario');
-      return this.uidService.getAllUIDs(req, filters.status, filters.entityType, itemId);
+      return this.uidService.getAllUIDs(
+        req,
+        filters.status,
+        entityType,
+        itemId,
+        search,
+        parsedLimit,
+        parsedOffset,
+        sortBy,
+        sortOrder,
+      );
     }
     
     // If requesting for quality inspection (simple list), use getAllUIDs
     if (filters.forInspection === 'true') {
-      const page = filters.page ? parseInt(filters.page) : undefined;
-      const limit = filters.limit ? parseInt(filters.limit) : undefined;
       console.log('[UidController] Using getAllUIDs for inspection');
-      return this.uidService.getAllUIDs(req, filters.status, filters.entityType, itemId, page, limit);
+      return this.uidService.getAllUIDs(
+        req,
+        filters.status,
+        entityType,
+        itemId,
+        search,
+        parsedLimit,
+        parsedOffset,
+        sortBy,
+        sortOrder,
+      );
+    }
+
+    // If the caller is explicitly using pagination/search/sort, route to getAllUIDs
+    // so we don't fall back to the legacy full findAll which may cap results.
+    const wantsPagedResponse =
+      search !== undefined ||
+      parsedLimit !== undefined ||
+      parsedOffset !== undefined ||
+      sortBy !== undefined ||
+      sortOrder !== undefined;
+
+    if (wantsPagedResponse) {
+      console.log('[UidController] Using getAllUIDs for paginated/list view');
+      return this.uidService.getAllUIDs(
+        req,
+        filters.status,
+        entityType,
+        itemId,
+        search,
+        parsedLimit,
+        parsedOffset,
+        sortBy,
+        sortOrder,
+      );
     }
     // Otherwise use the full findAll
     console.log('[UidController] Using full findAll');
