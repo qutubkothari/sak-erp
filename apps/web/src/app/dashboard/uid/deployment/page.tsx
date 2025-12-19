@@ -696,7 +696,7 @@ export default function UIDDeploymentPage() {
                     ))}
                     {filteredCustomers.length === 0 && newDeployment.organization_name && (
                       <div className="px-4 py-3 text-sm text-gray-500 italic">
-                        New customer will be created: "{newDeployment.organization_name}"
+                        New customer will be created: &quot;{newDeployment.organization_name}&quot;
                       </div>
                     )}
                   </div>
@@ -735,7 +735,7 @@ export default function UIDDeploymentPage() {
                 {showLocationDropdown && customerLocations.length === 0 && newDeployment.location_name && (
                   <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg">
                     <div className="px-4 py-3 text-sm text-gray-500 italic">
-                      New location will be created: "{newDeployment.location_name}"
+                      New location will be created: &quot;{newDeployment.location_name}&quot;
                     </div>
                   </div>
                 )}
@@ -776,7 +776,7 @@ export default function UIDDeploymentPage() {
                 )}
                 {!showLevelDropdown && newDeployment.deployment_level && !deploymentLevels.includes(newDeployment.deployment_level) && (
                   <div className="mt-1 text-sm text-purple-600 italic">
-                    ✨ New custom level: "{newDeployment.deployment_level}"
+                    ✨ New custom level: &quot;{newDeployment.deployment_level}&quot;
                   </div>
                 )}
               </div>

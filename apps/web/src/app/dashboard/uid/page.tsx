@@ -349,7 +349,7 @@ export default function UIDTrackingPage() {
           
           {searchUID && searchResults.length === 0 && !showSearchDropdown && !searchLoading && (
             <div className="absolute z-50 w-full mt-2 bg-white border-2 border-amber-300 rounded-lg shadow-xl p-4 text-center text-gray-500">
-              No UIDs found matching "{searchUID}"
+              No UIDs found matching &quot;{searchUID}&quot;
             </div>
           )}
         </div>

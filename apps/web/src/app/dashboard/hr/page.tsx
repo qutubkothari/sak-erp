@@ -1517,14 +1517,14 @@ export default function HrPage() {
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-semibold mb-2">Import Biometric Attendance</h3>
             <p className="text-sm text-gray-600 mb-3">
-              Paste JSON array of records, e.g. <span className="font-mono">[{"biometric_id":"1001","attendance_date":"2025-12-19","check_in_time":"09:00","check_out_time":"18:00","status":"PRESENT"}]</span>
+              Paste JSON array of records, e.g. <span className="font-mono">[{`{"biometric_id":"1001","attendance_date":"2025-12-19","check_in_time":"09:00","check_out_time":"18:00","status":"PRESENT"}`}]</span>
             </p>
             <textarea
               value={attendanceImportText}
               onChange={(e) => setAttendanceImportText(e.target.value)}
               className="w-full border rounded px-3 py-2 font-mono text-sm"
               rows={10}
-              placeholder='[{"biometric_id":"1001","attendance_date":"2025-12-19","check_in_time":"09:00","check_out_time":"18:00","status":"PRESENT"}]'
+              placeholder={'[{"biometric_id":"1001","attendance_date":"2025-12-19","check_in_time":"09:00","check_out_time":"18:00","status":"PRESENT"}]'}
             />
             {attendanceImportResult && (
               <div className="mt-3 p-3 bg-gray-50 rounded text-sm">{attendanceImportResult}</div>
