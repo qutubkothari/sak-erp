@@ -32,6 +32,84 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
   const [revisionNotes, setRevisionNotes] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  const dataUrlToBlob = (dataUrl: string) => {
+    const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
+    if (!match) return null;
+
+    const mimeType = match[1];
+    const base64Data = match[2];
+    const byteString = atob(base64Data);
+    const byteArray = new Uint8Array(byteString.length);
+    for (let i = 0; i < byteString.length; i++) {
+      byteArray[i] = byteString.charCodeAt(i);
+    }
+
+    return new Blob([byteArray], { type: mimeType });
+  };
+
+  const openDrawingInNewTab = async (drawing: Drawing) => {
+    try {
+      if (!drawing?.file_url) return;
+
+      // Prefer Blob URLs for reliability (data: URLs can be too long / blocked in some browsers)
+      if (drawing.file_url.startsWith('data:')) {
+        const blob = dataUrlToBlob(drawing.file_url);
+        if (!blob) {
+          window.open(drawing.file_url, '_blank', 'noopener,noreferrer');
+          return;
+        }
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank', 'noopener,noreferrer');
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+        return;
+      }
+
+      window.open(drawing.file_url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error('Error opening drawing:', error);
+      alert('Failed to open drawing');
+    }
+  };
+
+  const downloadDrawing = async (drawing: Drawing) => {
+    try {
+      if (!drawing?.file_url) return;
+
+      if (drawing.file_url.startsWith('data:')) {
+        const blob = dataUrlToBlob(drawing.file_url);
+        if (!blob) {
+          const link = document.createElement('a');
+          link.href = drawing.file_url;
+          link.download = drawing.file_name || 'drawing';
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          return;
+        }
+
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = drawing.file_name || 'drawing';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+        return;
+      }
+
+      const link = document.createElement('a');
+      link.href = drawing.file_url;
+      link.download = drawing.file_name || 'drawing';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error('Error downloading drawing:', error);
+      alert('Failed to download drawing');
+    }
+  };
+
   useEffect(() => {
     fetchDrawings();
   }, [itemId]);
@@ -338,21 +416,20 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
                       </div>
 
                       <div className="flex gap-2">
-                        <a
-                          href={drawing.file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => openDrawingInNewTab(drawing)}
                           className="bg-blue-100 text-blue-700 px-4 py-2 rounded hover:bg-blue-200 text-sm font-medium"
                         >
                           View
-                        </a>
-                        <a
-                          href={drawing.file_url}
-                          download={drawing.file_name}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => downloadDrawing(drawing)}
                           className="bg-green-100 text-green-700 px-4 py-2 rounded hover:bg-green-200 text-sm font-medium"
                         >
                           Download
-                        </a>
+                        </button>
                         {!drawing.is_active && (
                           <button
                             type="button"
