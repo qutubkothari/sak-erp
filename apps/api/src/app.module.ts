@@ -4,6 +4,7 @@ import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bull';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { join } from 'path';
 
@@ -71,6 +72,9 @@ import { EmailModule } from './email/email.module';
         password: process.env.REDIS_PASSWORD,
       },
     }),
+
+    // Scheduled Jobs
+    ScheduleModule.forRoot(),
 
     // Core
     PrismaModule,

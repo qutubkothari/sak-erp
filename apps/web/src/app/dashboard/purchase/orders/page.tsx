@@ -1691,13 +1691,16 @@ function PurchaseOrdersContent() {
               </div>
 
               {/* Tracking Information */}
-              {(selectedPO as any).tracking_number && (
+              {(selectedPO as any).status && (selectedPO as any).status !== 'DRAFT' && (
                 <div className="border-t pt-4">
                   <h3 className="text-lg font-semibold mb-3">Tracking Information</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-gray-600">Tracking Number</p>
-                      <p className="font-semibold">{(selectedPO as any).tracking_number}</p>
+                      <p className="font-semibold">{(selectedPO as any).tracking_number || '-'}</p>
+                      {!(selectedPO as any).tracking_number && (
+                        <p className="text-xs text-gray-500 mt-1">No tracking added yet</p>
+                      )}
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Delivery Status</p>
@@ -1819,6 +1822,18 @@ function PurchaseOrdersContent() {
                       Reject
                     </button>
                   </>
+                )}
+
+                {selectedPO.status !== 'DRAFT' && (
+                  <button
+                    onClick={() => {
+                      setShowViewModal(false);
+                      handleEditDetails(selectedPO.id);
+                    }}
+                    className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                  >
+                    Update Tracking
+                  </button>
                 )}
               </div>
               <button

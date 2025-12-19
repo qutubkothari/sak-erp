@@ -11,6 +11,7 @@ import { GrnService } from './services/grn.service';
 import { DebitNoteService } from './services/debit-note.service';
 import { UidModule } from '../uid/uid.module';
 import { EmailModule } from '../email/email.module';
+import { PoTrackingReminderJob } from './jobs/po-tracking-reminder.job';
 
 @Module({
   imports: [UidModule, EmailModule],
@@ -27,6 +28,7 @@ import { EmailModule } from '../email/email.module';
     VendorsService,
     GrnService,
     DebitNoteService,
+    PoTrackingReminderJob,
   ],
   exports: [
     PurchaseRequisitionsService,

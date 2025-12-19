@@ -231,13 +231,21 @@ export class PurchaseOrdersService {
 
   async updateStatus(tenantId: string, id: string, status: string) {
     console.log('Updating PO status:', { tenantId, id, status });
+
+    const nowIso = new Date().toISOString();
+    const updateData: any = {
+      status,
+      updated_at: nowIso,
+    };
+
+    // In DB, purchase order status is pr_po_status (no 'SENT'). We treat 'PENDING' as "sent to vendor".
+    if (status === 'PENDING') {
+      updateData.sent_at = nowIso;
+    }
     
     const { data, error } = await this.supabase
       .from('purchase_orders')
-      .update({
-        status,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .select()
@@ -545,6 +553,22 @@ export class PurchaseOrdersService {
     };
 
     await this.emailService.sendPO(po.vendor.email, emailData);
+
+    // Record that the PO was sent (used for automatic tracking reminders).
+    // Also move APPROVED -> PENDING to represent "sent to vendor" using the existing pr_po_status enum.
+    const nowIso = new Date().toISOString();
+    const statusUpdate: any = {
+      sent_at: po.sent_at || nowIso,
+      updated_at: nowIso,
+    };
+    if (po.status === 'APPROVED') {
+      statusUpdate.status = 'PENDING';
+    }
+    await this.supabase
+      .from('purchase_orders')
+      .update(statusUpdate)
+      .eq('tenant_id', tenantId)
+      .eq('id', poId);
 
     return { message: 'PO email sent successfully', recipient: po.vendor.email };
   }
