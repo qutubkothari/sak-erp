@@ -151,7 +151,8 @@ export class InventoryController {
     @Param('id') itemId: string,
     @Body() drawingData: any
   ) {
-    return this.itemsService.uploadDrawing(req.user.tenantId, req.user.sub, itemId, drawingData);
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    return this.itemsService.uploadDrawing(req.user.tenantId, userId, itemId, drawingData);
   }
 
   @Put('items/:id/drawings/:drawingId')
