@@ -83,6 +83,25 @@ CREATE INDEX IF NOT EXISTS idx_attendance_tenant ON attendance_records(tenant_id
 CREATE INDEX IF NOT EXISTS idx_attendance_employee ON attendance_records(employee_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_records(attendance_date);
 
+-- De-duplicate attendance to enable unique constraint for biometric import
+WITH ranked_attendance AS (
+        SELECT
+                id,
+                ROW_NUMBER() OVER (
+                        PARTITION BY tenant_id, employee_id, attendance_date
+                        ORDER BY created_at DESC, id DESC
+                ) AS rn
+        FROM attendance_records
+)
+DELETE FROM attendance_records ar
+USING ranked_attendance r
+WHERE ar.id = r.id
+    AND r.rn > 1;
+
+-- Unique index needed for upsert(onConflict: 'tenant_id,employee_id,attendance_date')
+CREATE UNIQUE INDEX IF NOT EXISTS uq_attendance_tenant_employee_date
+    ON attendance_records(tenant_id, employee_id, attendance_date);
+
 -- Create leave_requests table
 CREATE TABLE IF NOT EXISTS leave_requests (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -158,6 +177,41 @@ CREATE TABLE IF NOT EXISTS payslips (
 CREATE INDEX IF NOT EXISTS idx_payslip_tenant ON payslips(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_payslip_employee ON payslips(employee_id);
 CREATE INDEX IF NOT EXISTS idx_payslip_month ON payslips(salary_month);
+
+-- Employee documents
+CREATE TABLE IF NOT EXISTS employee_documents (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL,
+    employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    doc_type VARCHAR(100) NOT NULL,
+    file_name VARCHAR(255),
+    file_url TEXT NOT NULL,
+    file_type VARCHAR(100),
+    file_size INTEGER,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_employee_documents_tenant ON employee_documents(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_employee_documents_employee ON employee_documents(employee_id);
+
+-- Employee merits & demerits
+CREATE TABLE IF NOT EXISTS employee_merits_demerits (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL,
+    employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    record_type VARCHAR(20) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    description TEXT,
+    points INTEGER,
+    event_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT chk_employee_merit_demerit_type CHECK (record_type IN ('MERIT', 'DEMERIT'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_employee_merits_demerits_tenant ON employee_merits_demerits(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_employee_merits_demerits_employee ON employee_merits_demerits(employee_id);
+CREATE INDEX IF NOT EXISTS idx_employee_merits_demerits_date ON employee_merits_demerits(event_date);
 `;
 
     try {

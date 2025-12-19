@@ -34,9 +34,25 @@ export class HrController {
   recordAttendance(@Request() req: any, @Body() body: any) {
     return this.hrService.recordAttendance(req.user.tenantId, body);
   }
+
+  @Post('attendance/import')
+  importAttendance(@Request() req: any, @Body() body: { records: any[] }) {
+    return this.hrService.importBiometricAttendance(req.user.tenantId, body);
+  }
+
   @Get('attendance')
   getAttendance(@Request() req: any, @Query('employeeId') employeeId?: string, @Query('month') month?: string) {
     return this.hrService.getAttendance(req.user.tenantId, employeeId, month);
+  }
+
+  @Put('attendance/:id')
+  updateAttendance(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.hrService.updateAttendance(req.user.tenantId, id, body);
+  }
+
+  @Delete('attendance/:id')
+  deleteAttendance(@Request() req: any, @Param('id') id: string) {
+    return this.hrService.deleteAttendance(req.user.tenantId, id);
   }
 
   // Leave Requests
@@ -57,6 +73,11 @@ export class HrController {
     return this.hrService.rejectLeave(req.user.tenantId, id, approverId);
   }
 
+  @Put('leaves/:id')
+  updateLeave(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.hrService.updateLeave(req.user.tenantId, id, body);
+  }
+
   // Salary Components
   @Post('salary')
   addSalaryComponent(@Request() req: any, @Body() body: any) {
@@ -65,6 +86,11 @@ export class HrController {
   @Get('salary/:employeeId')
   getSalaryComponents(@Request() req: any, @Param('employeeId') employeeId: string) {
     return this.hrService.getSalaryComponents(req.user.tenantId, employeeId);
+  }
+
+  @Delete('salary/:id')
+  deleteSalaryComponent(@Request() req: any, @Param('id') id: string) {
+    return this.hrService.deleteSalaryComponent(req.user.tenantId, id);
   }
 
   // Payroll Run
@@ -85,5 +111,45 @@ export class HrController {
   @Get('payroll/payslips')
   getPayslips(@Request() req: any, @Query('employeeId') employeeId?: string) {
     return this.hrService.getPayslips(req.user.tenantId, employeeId);
+  }
+
+  // Employee Documents
+  @Get('employees/:id/documents')
+  getEmployeeDocuments(@Request() req: any, @Param('id') employeeId: string) {
+    return this.hrService.getEmployeeDocuments(req.user.tenantId, employeeId);
+  }
+
+  @Post('employees/:id/documents')
+  addEmployeeDocument(@Request() req: any, @Param('id') employeeId: string, @Body() body: any) {
+    return this.hrService.addEmployeeDocument(req.user.tenantId, employeeId, body);
+  }
+
+  @Delete('employees/:id/documents/:docId')
+  deleteEmployeeDocument(
+    @Request() req: any,
+    @Param('id') employeeId: string,
+    @Param('docId') docId: string,
+  ) {
+    return this.hrService.deleteEmployeeDocument(req.user.tenantId, employeeId, docId);
+  }
+
+  // Merits & Demerits
+  @Get('employees/:id/merits-demerits')
+  getMeritsDemerits(@Request() req: any, @Param('id') employeeId: string) {
+    return this.hrService.getMeritsDemerits(req.user.tenantId, employeeId);
+  }
+
+  @Post('employees/:id/merits-demerits')
+  addMeritDemerit(@Request() req: any, @Param('id') employeeId: string, @Body() body: any) {
+    return this.hrService.addMeritDemerit(req.user.tenantId, employeeId, body);
+  }
+
+  @Delete('employees/:id/merits-demerits/:recordId')
+  deleteMeritDemerit(
+    @Request() req: any,
+    @Param('id') employeeId: string,
+    @Param('recordId') recordId: string,
+  ) {
+    return this.hrService.deleteMeritDemerit(req.user.tenantId, employeeId, recordId);
   }
 }

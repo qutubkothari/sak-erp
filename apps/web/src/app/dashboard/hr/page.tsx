@@ -69,6 +69,29 @@ interface PayrollRun {
   remarks?: string;
 }
 
+interface EmployeeDocument {
+  id: string;
+  employee_id: string;
+  doc_type: string;
+  file_name?: string;
+  file_url: string;
+  file_type?: string;
+  file_size?: number;
+  notes?: string;
+  created_at: string;
+}
+
+interface MeritDemerit {
+  id: string;
+  employee_id: string;
+  record_type: 'MERIT' | 'DEMERIT' | string;
+  title: string;
+  description?: string;
+  points?: number;
+  event_date: string;
+  created_at: string;
+}
+
 export default function HrPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leaves' | 'payroll'>('employees');
@@ -95,6 +118,10 @@ export default function HrPage() {
   const [showAttendanceDetails, setShowAttendanceDetails] = useState(false);
   const [showEditAttendance, setShowEditAttendance] = useState(false);
   const [selectedAttendance, setSelectedAttendance] = useState<AttendanceRecord | null>(null);
+
+  const [showAttendanceImport, setShowAttendanceImport] = useState(false);
+  const [attendanceImportText, setAttendanceImportText] = useState('');
+  const [attendanceImportResult, setAttendanceImportResult] = useState('');
   
   // Leave modals
   const [showLeaveDetails, setShowLeaveDetails] = useState(false);
@@ -117,6 +144,26 @@ export default function HrPage() {
     email: '',
     address: '',
     biometric_id: ''
+  });
+
+  const [employeeDocuments, setEmployeeDocuments] = useState<EmployeeDocument[]>([]);
+  const [meritsDemerits, setMeritsDemerits] = useState<MeritDemerit[]>([]);
+
+  const [documentForm, setDocumentForm] = useState({
+    doc_type: '',
+    file_url: '',
+    file_name: '',
+    file_type: '',
+    file_size: 0,
+    notes: ''
+  });
+
+  const [meritDemeritForm, setMeritDemeritForm] = useState({
+    record_type: 'MERIT',
+    title: '',
+    description: '',
+    points: '',
+    event_date: new Date().toISOString().split('T')[0]
   });
 
   // Attendance form
@@ -158,6 +205,27 @@ export default function HrPage() {
   useEffect(() => {
     fetchData();
   }, [activeTab, payrollSubTab]);
+
+  useEffect(() => {
+    const loadEmployeeExtras = async () => {
+      if (!showEmployeeDetails || !selectedEmployee?.id) return;
+      try {
+        const [docs, md] = await Promise.all([
+          apiClient.get<any>(`/hr/employees/${selectedEmployee.id}/documents`),
+          apiClient.get<any>(`/hr/employees/${selectedEmployee.id}/merits-demerits`)
+        ]);
+
+        setEmployeeDocuments(Array.isArray(docs) ? docs : (docs.data || []));
+        setMeritsDemerits(Array.isArray(md) ? md : (md.data || []));
+      } catch (e) {
+        console.error('Failed to load employee documents/merits:', e);
+        setEmployeeDocuments([]);
+        setMeritsDemerits([]);
+      }
+    };
+
+    loadEmployeeExtras();
+  }, [showEmployeeDetails, selectedEmployee?.id]);
 
   const fetchData = async () => {
     try {
@@ -468,6 +536,185 @@ export default function HrPage() {
     printWindow.print();
   };
 
+  const fileToDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+  const dataUrlToBlob = (dataUrl: string) => {
+    const [meta, data] = dataUrl.split(',');
+    const match = /data:(.*?);base64/.exec(meta || '');
+    const mimeType = match?.[1] || 'application/octet-stream';
+    const binary = atob(data || '');
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mimeType });
+  };
+
+  const openFileUrlInNewTab = (fileUrl: string) => {
+    if (!fileUrl) return;
+    if (fileUrl.startsWith('data:')) {
+      const blob = dataUrlToBlob(fileUrl);
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      return;
+    }
+    window.open(fileUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleAttendanceImport = async () => {
+    setLoading(true);
+    setAttendanceImportResult('');
+    try {
+      let parsed: any;
+      try {
+        parsed = JSON.parse(attendanceImportText);
+      } catch {
+        throw new Error('Invalid JSON. Paste a JSON array of records, or {"records": [...]}');
+      }
+
+      const records = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.records) ? parsed.records : null);
+      if (!records) throw new Error('Expected JSON array or {"records": [...]}');
+
+      const res = await apiClient.post<any>('/hr/attendance/import', { records });
+      const imported = (res as any)?.imported ?? (res as any)?.data?.imported ?? 0;
+      const skipped = (res as any)?.skipped ?? (res as any)?.data?.skipped ?? 0;
+      setAttendanceImportResult(`Imported: ${imported}, Skipped: ${skipped}`);
+      fetchData();
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || 'Failed to import attendance');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmployeeDocumentFileSelect = async (file: File) => {
+    const allowed = new Set([
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ]);
+
+    if (!allowed.has(file.type)) {
+      alert('Only PDF, PNG, JPG, DOC, DOCX allowed');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Max file size is 10MB');
+      return;
+    }
+
+    const dataUrl = await fileToDataUrl(file);
+    setDocumentForm((prev) => ({
+      ...prev,
+      file_url: dataUrl,
+      file_name: file.name,
+      file_type: file.type,
+      file_size: file.size
+    }));
+  };
+
+  const handleAddEmployeeDocument = async () => {
+    if (!selectedEmployee?.id) return;
+    if (!documentForm.doc_type.trim()) {
+      alert('Document type is required');
+      return;
+    }
+    if (!documentForm.file_url.trim()) {
+      alert('Upload a file or paste file URL');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await apiClient.post(`/hr/employees/${selectedEmployee.id}/documents`, {
+        doc_type: documentForm.doc_type.trim(),
+        file_url: documentForm.file_url.trim(),
+        file_name: documentForm.file_name || null,
+        file_type: documentForm.file_type || null,
+        file_size: documentForm.file_size || null,
+        notes: documentForm.notes || null
+      });
+
+      const docs = await apiClient.get<any>(`/hr/employees/${selectedEmployee.id}/documents`);
+      setEmployeeDocuments(Array.isArray(docs) ? docs : (docs.data || []));
+      setDocumentForm({ doc_type: '', file_url: '', file_name: '', file_type: '', file_size: 0, notes: '' });
+    } catch (err: any) {
+      alert(err?.message || 'Failed to add document');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteEmployeeDocument = async (docId: string) => {
+    if (!selectedEmployee?.id) return;
+    if (!confirm('Delete this document?')) return;
+    setLoading(true);
+    try {
+      await apiClient.delete(`/hr/employees/${selectedEmployee.id}/documents/${docId}`);
+      setEmployeeDocuments((prev) => prev.filter((d) => d.id !== docId));
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete document');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddMeritDemerit = async () => {
+    if (!selectedEmployee?.id) return;
+    if (!meritDemeritForm.title.trim()) {
+      alert('Title is required');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await apiClient.post(`/hr/employees/${selectedEmployee.id}/merits-demerits`, {
+        record_type: meritDemeritForm.record_type,
+        title: meritDemeritForm.title.trim(),
+        description: meritDemeritForm.description || null,
+        points: meritDemeritForm.points ? parseInt(meritDemeritForm.points, 10) : null,
+        event_date: meritDemeritForm.event_date
+      });
+
+      const md = await apiClient.get<any>(`/hr/employees/${selectedEmployee.id}/merits-demerits`);
+      setMeritsDemerits(Array.isArray(md) ? md : (md.data || []));
+      setMeritDemeritForm({
+        record_type: 'MERIT',
+        title: '',
+        description: '',
+        points: '',
+        event_date: new Date().toISOString().split('T')[0]
+      });
+    } catch (err: any) {
+      alert(err?.message || 'Failed to add record');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteMeritDemerit = async (recordId: string) => {
+    if (!selectedEmployee?.id) return;
+    if (!confirm('Delete this record?')) return;
+    setLoading(true);
+    try {
+      await apiClient.delete(`/hr/employees/${selectedEmployee.id}/merits-demerits/${recordId}`);
+      setMeritsDemerits((prev) => prev.filter((r) => r.id !== recordId));
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete record');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     const colors: { [key: string]: string } = {
       'ACTIVE': 'bg-green-100 text-green-800',
@@ -506,12 +753,20 @@ export default function HrPage() {
             </button>
           )}
           {activeTab === 'attendance' && (
-            <button
-              onClick={() => setShowAttendanceForm(true)}
-              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-            >
-              + Record Attendance
-            </button>
+            <>
+              <button
+                onClick={() => setShowAttendanceForm(true)}
+                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+              >
+                + Record Attendance
+              </button>
+              <button
+                onClick={() => { setAttendanceImportText(''); setAttendanceImportResult(''); setShowAttendanceImport(true); }}
+                className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700"
+              >
+                Import Attendance
+              </button>
+            </>
           )}
           {activeTab === 'leaves' && (
             <button
@@ -1186,6 +1441,45 @@ export default function HrPage() {
         </div>
       )}
 
+      {/* Attendance Import Modal */}
+      {showAttendanceImport && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-2">Import Biometric Attendance</h3>
+            <p className="text-sm text-gray-600 mb-3">
+              Paste JSON array of records, e.g. <span className="font-mono">[{"biometric_id":"1001","attendance_date":"2025-12-19","check_in_time":"09:00","check_out_time":"18:00","status":"PRESENT"}]</span>
+            </p>
+            <textarea
+              value={attendanceImportText}
+              onChange={(e) => setAttendanceImportText(e.target.value)}
+              className="w-full border rounded px-3 py-2 font-mono text-sm"
+              rows={10}
+              placeholder='[{"biometric_id":"1001","attendance_date":"2025-12-19","check_in_time":"09:00","check_out_time":"18:00","status":"PRESENT"}]'
+            />
+            {attendanceImportResult && (
+              <div className="mt-3 p-3 bg-gray-50 rounded text-sm">{attendanceImportResult}</div>
+            )}
+            <div className="mt-4 flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setShowAttendanceImport(false)}
+                className="px-4 py-2 border rounded hover:bg-gray-50"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={handleAttendanceImport}
+                disabled={loading}
+                className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50"
+              >
+                {loading ? 'Importing...' : 'Import'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Employee Details Modal */}
       {showEmployeeDetails && selectedEmployee && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
@@ -1203,6 +1497,113 @@ export default function HrPage() {
                 <div><span className="font-medium">Status:</span> <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedEmployee.status)}`}>{selectedEmployee.status}</span></div>
               </div>
             </div>
+
+            <div className="mt-6">
+              <h4 className="text-sm font-semibold mb-2">Documents</h4>
+              <div className="border rounded">
+                <div className="divide-y">
+                  {employeeDocuments.length === 0 && (
+                    <div className="p-3 text-sm text-gray-500">No documents</div>
+                  )}
+                  {employeeDocuments.map((d) => (
+                    <div key={d.id} className="p-3 flex items-center justify-between">
+                      <div className="text-sm">
+                        <div className="font-medium">{d.doc_type}</div>
+                        <div className="text-gray-600">
+                          {d.file_name || 'Attachment'}
+                          {d.created_at ? ` • ${new Date(d.created_at).toLocaleDateString()}` : ''}
+                        </div>
+                      </div>
+                      <div className="space-x-2">
+                        <button type="button" onClick={() => openFileUrlInNewTab(d.file_url)} className="px-3 py-1 border rounded hover:bg-gray-50 text-sm">View</button>
+                        <button type="button" onClick={() => handleDeleteEmployeeDocument(d.id)} className="px-3 py-1 border rounded hover:bg-gray-50 text-sm text-red-600">Delete</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Document Type</label>
+                  <input type="text" value={documentForm.doc_type} onChange={(e) => setDocumentForm({ ...documentForm, doc_type: e.target.value })} className="w-full border rounded px-3 py-2" placeholder="Aadhar / Photo / Police Verification" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Upload File</label>
+                  <input type="file" className="w-full border rounded px-3 py-2" accept="application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={async (e) => { const file = e.target.files?.[0]; if (file) await handleEmployeeDocumentFileSelect(file); }} />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium mb-1">Or Paste File URL</label>
+                  <input type="text" value={documentForm.file_url} onChange={(e) => setDocumentForm({ ...documentForm, file_url: e.target.value })} className="w-full border rounded px-3 py-2" placeholder="https://... or data:..." />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium mb-1">Notes (optional)</label>
+                  <input type="text" value={documentForm.notes} onChange={(e) => setDocumentForm({ ...documentForm, notes: e.target.value })} className="w-full border rounded px-3 py-2" placeholder="Any notes" />
+                </div>
+                <div className="col-span-2 flex justify-end">
+                  <button type="button" onClick={handleAddEmployeeDocument} disabled={loading} className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50">{loading ? 'Saving...' : 'Add Document'}</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <h4 className="text-sm font-semibold mb-2">Merits & Demerits</h4>
+              <div className="border rounded">
+                <div className="divide-y">
+                  {meritsDemerits.length === 0 && (
+                    <div className="p-3 text-sm text-gray-500">No records</div>
+                  )}
+                  {meritsDemerits.map((r) => (
+                    <div key={r.id} className="p-3 flex items-center justify-between">
+                      <div className="text-sm">
+                        <div className="font-medium">
+                          <span className={`px-2 py-0.5 rounded text-xs ${r.record_type === 'DEMERIT' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>{r.record_type}</span>
+                          <span className="ml-2">{r.title}</span>
+                        </div>
+                        <div className="text-gray-600">
+                          {r.event_date ? new Date(r.event_date).toLocaleDateString() : ''}
+                          {typeof r.points === 'number' ? ` • Points: ${r.points}` : ''}
+                        </div>
+                        {r.description && <div className="text-gray-600 mt-1">{r.description}</div>}
+                      </div>
+                      <div>
+                        <button type="button" onClick={() => handleDeleteMeritDemerit(r.id)} className="px-3 py-1 border rounded hover:bg-gray-50 text-sm text-red-600">Delete</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Type</label>
+                  <select value={meritDemeritForm.record_type} onChange={(e) => setMeritDemeritForm({ ...meritDemeritForm, record_type: e.target.value })} className="w-full border rounded px-3 py-2">
+                    <option value="MERIT">Merit</option>
+                    <option value="DEMERIT">Demerit</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Event Date</label>
+                  <input type="date" value={meritDemeritForm.event_date} onChange={(e) => setMeritDemeritForm({ ...meritDemeritForm, event_date: e.target.value })} className="w-full border rounded px-3 py-2" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium mb-1">Title</label>
+                  <input type="text" value={meritDemeritForm.title} onChange={(e) => setMeritDemeritForm({ ...meritDemeritForm, title: e.target.value })} className="w-full border rounded px-3 py-2" placeholder="Good performance / Late coming / etc." />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Points (optional)</label>
+                  <input type="number" value={meritDemeritForm.points} onChange={(e) => setMeritDemeritForm({ ...meritDemeritForm, points: e.target.value })} className="w-full border rounded px-3 py-2" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium mb-1">Description (optional)</label>
+                  <textarea value={meritDemeritForm.description} onChange={(e) => setMeritDemeritForm({ ...meritDemeritForm, description: e.target.value })} className="w-full border rounded px-3 py-2" rows={2} />
+                </div>
+                <div className="col-span-2 flex justify-end">
+                  <button type="button" onClick={handleAddMeritDemerit} disabled={loading} className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50">{loading ? 'Saving...' : 'Add Record'}</button>
+                </div>
+              </div>
+            </div>
+
             <div className="mt-6 flex justify-end"><button onClick={() => setShowEmployeeDetails(false)} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">Close</button></div>
           </div>
         </div>
