@@ -4,6 +4,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import compression from 'compression';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 
@@ -14,6 +15,9 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('APP_PORT', 4000);
+
+  // Body size limits (needed for base64 document uploads)
+  const bodySizeLimit = configService.get<string>('BODY_SIZE_LIMIT', '50mb');
 
   // Security
   app.use(helmet());
@@ -27,6 +31,10 @@ async function bootstrap() {
 
   // Compression
   app.use(compression());
+
+  // Increase request payload limits (default is too small for base64 PDFs/images)
+  app.use(json({ limit: bodySizeLimit }));
+  app.use(urlencoded({ extended: true, limit: bodySizeLimit }));
 
   // Global validation pipe
   app.useGlobalPipes(
