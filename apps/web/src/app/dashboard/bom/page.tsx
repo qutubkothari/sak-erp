@@ -429,9 +429,16 @@ export default function BOMPage() {
   const handleDrawingFileSelect = async (index: number, file?: File | null) => {
     if (!file) return;
 
-    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
+    const validTypes = [
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
     if (!validTypes.includes(file.type)) {
-      alert('Please upload PNG, JPG, or PDF files only');
+      alert('Please upload PNG, JPG, PDF, DOC, or DOCX files only');
       return;
     }
 
@@ -778,7 +785,7 @@ export default function BOMPage() {
                             <div className="flex items-center gap-3">
                               <input
                                 type="file"
-                                accept="image/png,image/jpeg,image/jpg,application/pdf"
+                                accept="image/png,image/jpeg,image/jpg,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                                 onChange={async (e) => {
                                   const file = e.target.files?.[0];
                                   await handleDrawingFileSelect(index, file);
