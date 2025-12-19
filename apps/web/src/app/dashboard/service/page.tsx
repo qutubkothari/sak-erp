@@ -78,6 +78,20 @@ interface UIDRecord {
   batch_number?: string;
 }
 
+interface DeploymentStatusRecord {
+  uid_id: string;
+  uid: string;
+  client_part_number: string | null;
+  job_order_id: string | null;
+  item_name: string | null;
+  item_code: string | null;
+  current_level: string | null;
+  current_organization: string | null;
+  current_location: string | null;
+  current_deployment_date: string | null;
+  warranty_expiry_date: string | null;
+}
+
 export default function ServicePage() {
   const [activeTab, setActiveTab] = useState<TabType>('tickets');
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
@@ -93,6 +107,13 @@ export default function ServicePage() {
   const [shipNameInput, setShipNameInput] = useState('');
   const [filteredShipNames, setFilteredShipNames] = useState<string[]>([]);
   const [showShipNameDropdown, setShowShipNameDropdown] = useState(false);
+
+  // Product/Part Number/UID lookup (searches deployed units)
+  const [productLookupInput, setProductLookupInput] = useState('');
+  const [productLookupResults, setProductLookupResults] = useState<DeploymentStatusRecord[]>([]);
+  const [showProductLookupDropdown, setShowProductLookupDropdown] = useState(false);
+  const [productLookupLoading, setProductLookupLoading] = useState(false);
+  const [selectedDeployment, setSelectedDeployment] = useState<DeploymentStatusRecord | null>(null);
 
   // Forms
   const [showTicketForm, setShowTicketForm] = useState(false);
@@ -154,6 +175,88 @@ export default function ServicePage() {
     fetchItems();
     fetchShipNames();
   }, []);
+
+  useEffect(() => {
+    if (!showTicketForm) return;
+
+    const query = productLookupInput.trim();
+    if (!query) {
+      setProductLookupResults([]);
+      setShowProductLookupDropdown(false);
+      return;
+    }
+
+    const handle = setTimeout(async () => {
+      try {
+        setProductLookupLoading(true);
+        const response = await apiClient.get<{
+          data: DeploymentStatusRecord[];
+          total: number;
+          offset: number;
+          limit: number;
+        }>(
+          `/uid/deployment/status?search=${encodeURIComponent(query)}&offset=0&limit=20&sort_by=uid&sort_order=asc`,
+        );
+
+        const results = response?.data || [];
+        setProductLookupResults(results);
+        setShowProductLookupDropdown(results.length > 0);
+      } catch (err) {
+        console.error('Failed to lookup product/part/uid:', err);
+        setProductLookupResults([]);
+        setShowProductLookupDropdown(false);
+      } finally {
+        setProductLookupLoading(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(handle);
+  }, [productLookupInput, showTicketForm]);
+
+  const formatWarrantyDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return dateStr;
+    // 20-Jan-2026 style
+    return date
+      .toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      .replace(/ /g, '-');
+  };
+
+  const getWarrantyStatusText = (warrantyExpiryDate: string | null | undefined) => {
+    if (!warrantyExpiryDate) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expiry = new Date(warrantyExpiryDate);
+    if (Number.isNaN(expiry.getTime())) return null;
+    expiry.setHours(0, 0, 0, 0);
+
+    if (expiry >= today) {
+      return `In warranty, expiring by ${formatWarrantyDate(warrantyExpiryDate)}`;
+    }
+    return `Warranty expired on ${formatWarrantyDate(warrantyExpiryDate)}`;
+  };
+
+  const selectDeployment = (deployment: DeploymentStatusRecord) => {
+    setSelectedDeployment(deployment);
+    setProductLookupInput(
+      deployment.client_part_number
+        ? `${deployment.client_part_number}`
+        : deployment.uid,
+    );
+    setShowProductLookupDropdown(false);
+
+    const matchedItem = deployment.item_code
+      ? items.find((item) => item.code === deployment.item_code)
+      : undefined;
+
+    setTicketForm((prev) => ({
+      ...prev,
+      uid: deployment.uid,
+      product_id: matchedItem?.id || prev.product_id,
+      product_name: deployment.item_name || matchedItem?.name || prev.product_name,
+      model_number: deployment.client_part_number || prev.model_number,
+    }));
+  };
 
   const fetchCustomers = async () => {
     try {
@@ -695,30 +798,80 @@ export default function ServicePage() {
                       />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">UID (Optional)</label>
-                      {availableUIDs.length > 0 ? (
-                        <SearchableSelect
-                          options={availableUIDs.map(u => ({ 
-                            value: u.uid, 
-                            label: `${u.uid}${u.batch_number ? ` - Batch: ${u.batch_number}` : ''}${u.location ? ` - ${u.location}` : ''}` 
-                          }))}
-                          value={ticketForm.uid}
-                          onChange={(value) => setTicketForm({ ...ticketForm, uid: value })}
-                          placeholder="Select UID for warranty check"
-                        />
-                      ) : (
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Search by Product / Part No / UID</label>
+                      <div className="relative">
                         <input
                           type="text"
-                          value={ticketForm.uid}
-                          onChange={(e) => setTicketForm({ ...ticketForm, uid: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                          placeholder={ticketForm.product_id ? "No UIDs available for this product" : "Select a product first"}
-                          disabled
+                          value={productLookupInput}
+                          onChange={(e) => {
+                            setProductLookupInput(e.target.value);
+                            setShowProductLookupDropdown(true);
+                          }}
+                          onFocus={() => {
+                            if (productLookupResults.length > 0) setShowProductLookupDropdown(true);
+                          }}
+                          onBlur={() => setTimeout(() => setShowProductLookupDropdown(false), 200)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                          placeholder="Type product name, part number, or UID"
                         />
-                      )}
-                      {availableUIDs.length === 0 && ticketForm.product_id && (
-                        <p className="text-xs text-gray-500 mt-1">No available UIDs for this product - manual entry disabled</p>
-                      )}
+
+                        {showProductLookupDropdown && (
+                          <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                            {productLookupLoading ? (
+                              <div className="px-4 py-2 text-sm text-gray-500">Searching...</div>
+                            ) : productLookupResults.length === 0 ? (
+                              <div className="px-4 py-2 text-sm text-gray-500">No matches found</div>
+                            ) : (
+                              productLookupResults.map((d) => (
+                                <div
+                                  key={d.uid_id}
+                                  onClick={() => selectDeployment(d)}
+                                  className="px-4 py-2 hover:bg-amber-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0"
+                                >
+                                  <div className="font-medium">
+                                    {d.item_name || 'Unknown Product'}
+                                    {d.item_code ? <span className="text-gray-500"> ({d.item_code})</span> : null}
+                                  </div>
+                                  <div className="text-xs text-gray-600 mt-0.5">
+                                    <span className="font-mono">UID: {d.uid}</span>
+                                    {d.client_part_number ? <span className="ml-2">Part: {d.client_part_number}</span> : null}
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">Use this when the customer shares a part number</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">UID</label>
+                      <input
+                        type="text"
+                        value={selectedDeployment?.uid || ticketForm.uid}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono"
+                        placeholder="Select from search above"
+                        disabled
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Part Number</label>
+                      <input
+                        type="text"
+                        value={selectedDeployment?.client_part_number || ''}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                        placeholder="Select from search above"
+                        disabled
+                      />
+                      {selectedDeployment?.warranty_expiry_date ? (
+                        <p className="text-xs text-gray-600 mt-1">
+                          {getWarrantyStatusText(selectedDeployment.warranty_expiry_date)}
+                        </p>
+                      ) : selectedDeployment ? (
+                        <p className="text-xs text-gray-500 mt-1">Warranty status not available</p>
+                      ) : null}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Model Number</label>

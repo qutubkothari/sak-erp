@@ -216,10 +216,39 @@ export class ServiceService {
       .single();
 
     if (error || !warranty) {
+      // Fallback: deployment tracking (supports part-number based workflows)
+      const { data: deploymentStatus } = await this.supabase
+        .from('v_uid_deployment_status')
+        .select('warranty_expiry_date')
+        .eq('tenant_id', tenantId)
+        .eq('uid', uid)
+        .single();
+
+      const warrantyExpiryDate = deploymentStatus?.warranty_expiry_date;
+      if (!warrantyExpiryDate) {
+        return {
+          is_valid: false,
+          warranty: null,
+          message: 'No active warranty found for this UID',
+        };
+      }
+
+      const today = new Date();
+      const warrantyEndDate = new Date(warrantyExpiryDate);
+      const isValid = today <= warrantyEndDate;
+
       return {
-        is_valid: false,
-        warranty: null,
-        message: 'No active warranty found for this UID',
+        is_valid: isValid,
+        warranty: {
+          warranty_end_date: warrantyExpiryDate,
+          source: 'deployment',
+        },
+        message: isValid
+          ? 'Warranty is valid'
+          : `Warranty expired on ${warrantyExpiryDate}`,
+        days_remaining: isValid
+          ? Math.ceil((warrantyEndDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+          : 0,
       };
     }
 
