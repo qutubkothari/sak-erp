@@ -1,4 +1,4 @@
--- Create Monthly Payroll Processing Table
+-- Create Monthly Payroll Processing Table (Updated to match salary slip format)
 -- This table stores monthly variable payroll records with detailed breakdown
 
 CREATE TABLE IF NOT EXISTS monthly_payroll (
@@ -12,24 +12,29 @@ CREATE TABLE IF NOT EXISTS monthly_payroll (
     
     -- Attendance & Working Days
     days_in_month INT NOT NULL DEFAULT 30,
-    days_travelled INT DEFAULT 0, -- Out of station travel days
-    extra_days_worked INT DEFAULT 0, -- Holiday/Extra days worked
+    days_travelled INT DEFAULT 0, -- No. of days Travelled
+    comp_offs NUMERIC(4,1) DEFAULT 0, -- Comp-Offs
+    leaves_absent INT DEFAULT 0, -- Leave(s) / Absent
+    approved_paid_leaves INT DEFAULT 0, -- Approved Paid Leaves
+    paid_for_total_days NUMERIC(5,1) NOT NULL DEFAULT 0, -- Paid for Total Days
     
-    -- Overtime Hours
-    full_overtime_hours NUMERIC(5,2) DEFAULT 0, -- 4 hours extra
-    half_overtime_hours NUMERIC(5,2) DEFAULT 0, -- 2 hours extra
+    -- Variable Salary Components (included in gross)
+    bonus_monthly NUMERIC(12,2) DEFAULT 0, -- Bonus Monthly
+    production_incentive NUMERIC(12,2) DEFAULT 0, -- Production Incentive Monthly
     
-    -- Variable Salary Components
-    production_incentive NUMERIC(12,2) DEFAULT 0, -- Paid this month
-    yearly_bonus_hold NUMERIC(12,2) DEFAULT 0, -- Calculated but held for year-end
-    special_allowance NUMERIC(12,2) DEFAULT 0, -- Balancing figure
-    professional_tax NUMERIC(12,2) DEFAULT 0, -- Deduction
+    -- Held Components (on hold, not paid immediately)
+    bonus_hold NUMERIC(12,2) DEFAULT 0, -- Bonus Monthly (On Hold)
+    production_incentive_hold NUMERIC(12,2) DEFAULT 0, -- Production Incentive Monthly (On Hold)
     
-    -- Calculated Amounts
-    gross_salary NUMERIC(12,2) NOT NULL DEFAULT 0,
-    total_deductions NUMERIC(12,2) NOT NULL DEFAULT 0,
-    net_salary NUMERIC(12,2) NOT NULL DEFAULT 0,
-    amount_paid NUMERIC(12,2) NOT NULL DEFAULT 0, -- Net Salary - Yearly Bonus Hold
+    -- Other Components
+    special_allowance NUMERIC(12,2) DEFAULT 0, -- Monthly Special Allowance
+    professional_tax NUMERIC(12,2) DEFAULT 0, -- Less: Professional Tax (deduction)
+    
+    -- Calculated Amounts (as per salary slip format)
+    gross_salary NUMERIC(12,2) NOT NULL DEFAULT 0, -- Fixed + Bonus + Incentive + Special Allowance
+    net_salary NUMERIC(12,2) NOT NULL DEFAULT 0, -- Gross - Professional Tax
+    monthly_hold NUMERIC(12,2) NOT NULL DEFAULT 0, -- Bonus Hold + Incentive Hold
+    amount_paid NUMERIC(12,2) NOT NULL DEFAULT 0, -- Net Salary - Monthly Hold
     
     -- Audit Fields
     created_at TIMESTAMP DEFAULT NOW(),
@@ -58,12 +63,17 @@ GRANT ALL ON monthly_payroll TO authenticated;
 GRANT ALL ON monthly_payroll TO service_role;
 
 -- Add comments for documentation
-COMMENT ON TABLE monthly_payroll IS 'Monthly payroll processing records with variable components';
-COMMENT ON COLUMN monthly_payroll.days_travelled IS 'Number of days employee travelled out of station';
-COMMENT ON COLUMN monthly_payroll.extra_days_worked IS 'Number of days worked on holidays';
-COMMENT ON COLUMN monthly_payroll.full_overtime_hours IS 'Full overtime hours (4 extra hours per day)';
-COMMENT ON COLUMN monthly_payroll.half_overtime_hours IS 'Half overtime hours (2 extra hours per day)';
-COMMENT ON COLUMN monthly_payroll.production_incentive IS 'Production bonus paid in this month';
-COMMENT ON COLUMN monthly_payroll.yearly_bonus_hold IS 'Yearly bonus calculated but held until year-end';
-COMMENT ON COLUMN monthly_payroll.special_allowance IS 'Special allowance as balancing figure';
-COMMENT ON COLUMN monthly_payroll.amount_paid IS 'Actual amount paid (Net Salary - Yearly Bonus Hold)';
+COMMENT ON TABLE monthly_payroll IS 'Monthly payroll processing records matching salary slip format';
+COMMENT ON COLUMN monthly_payroll.days_travelled IS 'Number of days employee travelled (from salary slip)';
+COMMENT ON COLUMN monthly_payroll.comp_offs IS 'Compensatory offs taken (from salary slip)';
+COMMENT ON COLUMN monthly_payroll.leaves_absent IS 'Number of days absent or on leave (from salary slip)';
+COMMENT ON COLUMN monthly_payroll.approved_paid_leaves IS 'Approved paid leaves taken (from salary slip)';
+COMMENT ON COLUMN monthly_payroll.paid_for_total_days IS 'Total days for which salary is paid (from salary slip)';
+COMMENT ON COLUMN monthly_payroll.bonus_monthly IS 'Bonus Monthly - included in gross salary';
+COMMENT ON COLUMN monthly_payroll.production_incentive IS 'Production Incentive Monthly - included in gross salary';
+COMMENT ON COLUMN monthly_payroll.bonus_hold IS 'Bonus Monthly (On Hold) - calculated but not paid immediately';
+COMMENT ON COLUMN monthly_payroll.production_incentive_hold IS 'Production Incentive Monthly (On Hold) - calculated but not paid immediately';
+COMMENT ON COLUMN monthly_payroll.special_allowance IS 'Monthly Special Allowance as balancing figure';
+COMMENT ON COLUMN monthly_payroll.net_salary IS 'Net Salary = Gross Salary - Professional Tax (before holds)';
+COMMENT ON COLUMN monthly_payroll.monthly_hold IS 'Total amount held = Bonus Hold + Production Incentive Hold';
+COMMENT ON COLUMN monthly_payroll.amount_paid IS 'Actual amount paid = Net Salary - Monthly Hold';

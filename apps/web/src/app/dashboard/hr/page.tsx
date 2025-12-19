@@ -99,17 +99,20 @@ interface MonthlyPayroll {
   payroll_month: string;
   days_in_month: number;
   days_travelled: number;
-  extra_days_worked: number;
-  full_overtime_hours: number;
-  half_overtime_hours: number;
+  comp_offs: number;
+  leaves_absent: number;
+  approved_paid_leaves: number;
+  paid_for_total_days: number;
+  bonus_monthly: number;
   production_incentive: number;
-  yearly_bonus_hold: number;
+  bonus_hold: number; // Bonus Monthly (On Hold)
+  production_incentive_hold: number; // Production Incentive (On Hold)
   special_allowance: number;
   professional_tax: number;
   gross_salary: number;
-  total_deductions: number;
-  net_salary: number;
-  amount_paid: number;
+  net_salary: number; // Gross - Professional Tax
+  monthly_hold: number; // Bonus Hold + Production Incentive Hold
+  amount_paid: number; // Net - Monthly Hold
   status: 'DRAFT' | 'PROCESSED' | 'PAID';
   created_at?: string;
   processed_at?: string;
@@ -233,13 +236,16 @@ export default function HrPage() {
     payroll_month: new Date().toISOString().substring(0, 7),
     days_in_month: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate(),
     days_travelled: 0,
-    extra_days_worked: 0,
-    full_overtime_hours: 0,
-    half_overtime_hours: 0,
+    comp_offs: 0,
+    leaves_absent: 0,
+    approved_paid_leaves: 0,
+    paid_for_total_days: 0,
+    bonus_monthly: 0,
     production_incentive: 0,
-    yearly_bonus_hold: 0,
+    bonus_hold: 0,
+    production_incentive_hold: 0,
     special_allowance: 0,
-    professional_tax: 0
+    professional_tax: 200
   });
 
   useEffect(() => {
@@ -508,7 +514,7 @@ export default function HrPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      // Calculate gross, net, and amount paid
+      // Calculate gross, net, and amount paid per salary slip format
       const empRes = await apiClient.get<any>(`/hr/salary/${monthlyPayrollForm.employee_id}`);
       const components = Array.isArray(empRes) ? empRes : (empRes.data || []);
       
@@ -519,20 +525,26 @@ export default function HrPage() {
       );
       const fixedTotal = fixedComponents.reduce((sum: number, c: any) => sum + Number(c.amount || 0), 0);
       
+      // Gross = Fixed + Bonus Monthly + Production Incentive + Special Allowance
       const grossSalary = fixedTotal + 
+        Number(monthlyPayrollForm.bonus_monthly) + 
         Number(monthlyPayrollForm.production_incentive) + 
-        Number(monthlyPayrollForm.yearly_bonus_hold) + 
         Number(monthlyPayrollForm.special_allowance);
       
-      const totalDeductions = Number(monthlyPayrollForm.professional_tax);
-      const netSalary = grossSalary - totalDeductions;
-      const amountPaid = netSalary - Number(monthlyPayrollForm.yearly_bonus_hold);
+      // Net Salary = Gross - Professional Tax (holds are NOT deducted here)
+      const netSalary = grossSalary - Number(monthlyPayrollForm.professional_tax);
+      
+      // Monthly Hold = Bonus Hold + Production Incentive Hold
+      const monthlyHold = Number(monthlyPayrollForm.bonus_hold) + Number(monthlyPayrollForm.production_incentive_hold);
+      
+      // Amount Paid = Net Salary - Monthly Hold
+      const amountPaid = netSalary - monthlyHold;
 
       const payload = {
         ...monthlyPayrollForm,
         gross_salary: grossSalary,
-        total_deductions: totalDeductions,
         net_salary: netSalary,
+        monthly_hold: monthlyHold,
         amount_paid: amountPaid,
         status: 'DRAFT'
       };
@@ -552,13 +564,16 @@ export default function HrPage() {
         payroll_month: new Date().toISOString().substring(0, 7),
         days_in_month: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate(),
         days_travelled: 0,
-        extra_days_worked: 0,
-        full_overtime_hours: 0,
-        half_overtime_hours: 0,
+        comp_offs: 0,
+        leaves_absent: 0,
+        approved_paid_leaves: 0,
+        paid_for_total_days: 0,
+        bonus_monthly: 0,
         production_incentive: 0,
-        yearly_bonus_hold: 0,
+        bonus_hold: 0,
+        production_incentive_hold: 0,
         special_allowance: 0,
-        professional_tax: 0
+        professional_tax: 200
       });
       fetchData();
     } catch (error) {
@@ -606,11 +621,14 @@ export default function HrPage() {
       payroll_month: record.payroll_month,
       days_in_month: record.days_in_month,
       days_travelled: record.days_travelled,
-      extra_days_worked: record.extra_days_worked,
-      full_overtime_hours: record.full_overtime_hours,
-      half_overtime_hours: record.half_overtime_hours,
+      comp_offs: record.comp_offs,
+      leaves_absent: record.leaves_absent,
+      approved_paid_leaves: record.approved_paid_leaves,
+      paid_for_total_days: record.paid_for_total_days,
+      bonus_monthly: record.bonus_monthly,
       production_incentive: record.production_incentive,
-      yearly_bonus_hold: record.yearly_bonus_hold,
+      bonus_hold: record.bonus_hold,
+      production_incentive_hold: record.production_incentive_hold,
       special_allowance: record.special_allowance,
       professional_tax: record.professional_tax
     });
@@ -1238,12 +1256,14 @@ export default function HrPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Days</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Travel</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Extra/OT</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paid Days</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bonus</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Incentive</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bonus Hold</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sp. Allow.</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net Pay</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Incentive Hold</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gross</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monthly Hold</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount Paid</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -1255,14 +1275,14 @@ export default function HrPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{record.employee_name}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{record.payroll_month}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{record.days_in_month}d</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">{record.days_travelled}d</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-xs">
-                          {record.extra_days_worked}d / {record.full_overtime_hours}F+{record.half_overtime_hours}H
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">₹{record.production_incentive.toFixed(0)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-amber-600">₹{record.yearly_bonus_hold.toFixed(0)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">₹{record.special_allowance.toFixed(0)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">{record.paid_for_total_days}d</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">₹{record.bonus_monthly.toFixed(0)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">₹{record.production_incentive.toFixed(0)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-amber-600">(₹{record.bonus_hold.toFixed(0)})</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-amber-600">(₹{record.production_incentive_hold.toFixed(0)})</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold">₹{record.gross_salary.toFixed(0)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold">₹{record.net_salary.toFixed(0)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-medium">(₹{record.monthly_hold.toFixed(0)})</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-700">₹{record.amount_paid.toFixed(0)}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 py-1 text-xs rounded ${
@@ -2038,7 +2058,7 @@ export default function HrPage() {
       {/* Monthly Payroll Form Modal */}
       {showMonthlyPayrollForm && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 my-8">
+          <div className="bg-white rounded-lg p-6 max-w-5xl w-full mx-4 my-8 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-semibold mb-4">{selectedMonthlyPayroll ? 'Edit' : 'Process'} Monthly Payroll</h3>
             <form onSubmit={handleSaveMonthlyPayroll} className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
@@ -2063,26 +2083,24 @@ export default function HrPage() {
                     <input type="number" value={monthlyPayrollForm.days_in_month} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, days_in_month: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="28" max="31" required />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Days Travelled (Out of Station)</label>
+                    <label className="block text-sm font-medium mb-1">No. of days Travelled</label>
                     <input type="number" value={monthlyPayrollForm.days_travelled} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, days_travelled: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Extra Days Worked (Holidays)</label>
-                    <input type="number" value={monthlyPayrollForm.extra_days_worked} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, extra_days_worked: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <h4 className="font-semibold mb-3 text-purple-600">⏰ Overtime Hours</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Full Overtime (4 hours extra)</label>
-                    <input type="number" value={monthlyPayrollForm.full_overtime_hours} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, full_overtime_hours: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.5" />
+                    <label className="block text-sm font-medium mb-1">Comp-Offs</label>
+                    <input type="number" value={monthlyPayrollForm.comp_offs} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, comp_offs: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.5" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Half Overtime (2 hours extra)</label>
-                    <input type="number" value={monthlyPayrollForm.half_overtime_hours} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, half_overtime_hours: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.5" />
+                    <label className="block text-sm font-medium mb-1">Leave(s) / Absent</label>
+                    <input type="number" value={monthlyPayrollForm.leaves_absent} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, leaves_absent: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Approved Paid Leaves</label>
+                    <input type="number" value={monthlyPayrollForm.approved_paid_leaves} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, approved_paid_leaves: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-green-600">Paid for Total Days *</label>
+                    <input type="number" value={monthlyPayrollForm.paid_for_total_days} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, paid_for_total_days: Number(e.target.value) })} className="w-full border rounded px-3 py-2 font-semibold" min="0" step="0.5" required />
                   </div>
                 </div>
               </div>
@@ -2090,38 +2108,51 @@ export default function HrPage() {
               <div className="border-t pt-4">
                 <h4 className="font-semibold mb-3 text-green-600">💰 Variable Salary Components</h4>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Production Incentive (Paid)</label>
+                  <div className="border-l-4 border-green-400 pl-3">
+                    <label className="block text-sm font-medium mb-1">Bonus Monthly</label>
+                    <input type="number" value={monthlyPayrollForm.bonus_monthly} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, bonus_monthly: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
+                    <p className="text-xs text-gray-500 mt-1">Monthly bonus (included in gross)</p>
+                  </div>
+                  <div className="border-l-4 border-green-400 pl-3">
+                    <label className="block text-sm font-medium mb-1">Production Incentive Monthly</label>
                     <input type="number" value={monthlyPayrollForm.production_incentive} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, production_incentive: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
-                    <p className="text-xs text-gray-500 mt-1">Actual production bonus to be paid this month</p>
+                    <p className="text-xs text-gray-500 mt-1">Production bonus (included in gross)</p>
+                  </div>
+                  <div className="border-l-4 border-amber-400 pl-3">
+                    <label className="block text-sm font-medium mb-1 text-amber-700">Bonus Monthly (On Hold)</label>
+                    <input type="number" value={monthlyPayrollForm.bonus_hold} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, bonus_hold: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
+                    <p className="text-xs text-amber-600 mt-1">Calculated but held, not paid now</p>
+                  </div>
+                  <div className="border-l-4 border-amber-400 pl-3">
+                    <label className="block text-sm font-medium mb-1 text-amber-700">Production Incentive (On Hold)</label>
+                    <input type="number" value={monthlyPayrollForm.production_incentive_hold} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, production_incentive_hold: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
+                    <p className="text-xs text-amber-600 mt-1">Calculated but held, not paid now</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Yearly Bonus (On Hold)</label>
-                    <input type="number" value={monthlyPayrollForm.yearly_bonus_hold} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, yearly_bonus_hold: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
-                    <p className="text-xs text-amber-600 mt-1">Calculated but held, paid at year-end</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Special Allowance (Balancing)</label>
+                    <label className="block text-sm font-medium mb-1">Monthly Special Allowance</label>
                     <input type="number" value={monthlyPayrollForm.special_allowance} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, special_allowance: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
-                    <p className="text-xs text-gray-500 mt-1">Difference to make up the target salary</p>
+                    <p className="text-xs text-gray-500 mt-1">Additional allowance (balancing figure)</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">Professional Tax (Deduction)</label>
                     <input type="number" value={monthlyPayrollForm.professional_tax} onChange={(e) => setMonthlyPayrollForm({ ...monthlyPayrollForm, professional_tax: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
+                    <p className="text-xs text-gray-500 mt-1">Statutory deduction</p>
                   </div>
                 </div>
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded p-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div><strong>Formula:</strong></div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><strong>Calculation Formula (as per salary slip):</strong></div>
                   <div></div>
-                  <div>Gross Salary =</div>
-                  <div>Fixed (Basic+HRA+Medical+Travelling) + Incentive + Bonus Hold + Sp. Allowance</div>
-                  <div>Net Salary =</div>
-                  <div>Gross Salary - Professional Tax</div>
-                  <div className="font-bold text-green-700">Amount Paid =</div>
-                  <div className="font-bold text-green-700">Net Salary - Yearly Bonus Hold</div>
+                  <div className="text-gray-700">1. Gross Monthly Salary =</div>
+                  <div className="text-gray-700">Fixed Components + Bonus Monthly + Production Incentive + Special Allowance</div>
+                  <div className="text-gray-700">2. Net Salary =</div>
+                  <div className="text-gray-700">Gross Salary - Professional Tax</div>
+                  <div className="text-amber-700 font-medium">3. Monthly Hold =</div>
+                  <div className="text-amber-700 font-medium">Bonus Monthly (On Hold) + Production Incentive (On Hold)</div>
+                  <div className="font-bold text-green-700">4. Amount Paid =</div>
+                  <div className="font-bold text-green-700">Net Salary - Monthly Hold</div>
                 </div>
               </div>
 
