@@ -22,6 +22,10 @@ dist/
 .env*.local
 .env.production
 
+# App-specific env files
+apps/api/.env.openai
+apps/api/.env.openai.*
+
 # IDEs
 .vscode/*
 !.vscode/settings.json
