@@ -125,6 +125,7 @@ export default function BOMPage() {
   const [boms, setBoms] = useState<BOM[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingBomId, setEditingBomId] = useState<string | null>(null);
   const [selectedBom, setSelectedBom] = useState<BOM | null>(null);
   const [showPRModal, setShowPRModal] = useState(false);
   const [prBomId, setPrBomId] = useState<string>('');
@@ -155,6 +156,8 @@ export default function BOMPage() {
   });
   const [availableBOMs, setAvailableBOMs] = useState<BOM[]>([]);
 
+  const isEditMode = Boolean(editingBomId);
+
   useEffect(() => {
     fetchBOMs();
     if (showModal) {
@@ -184,7 +187,7 @@ export default function BOMPage() {
   const fetchAvailableBOMs = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://13.205.17.214:4000/api/v1/bom', {
+      const response = await fetch('/api/v1/bom', {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
@@ -207,7 +210,7 @@ export default function BOMPage() {
         return;
       }
       
-      const response = await fetch('http://13.205.17.214:4000/api/v1/bom', {
+      const response = await fetch('/api/v1/bom', {
         headers: { Authorization: `Bearer ${token}` },
       });
       
@@ -256,7 +259,7 @@ export default function BOMPage() {
         effectiveTo: formData.effectiveTo || null,
       };
       
-      const response = await fetch('http://13.205.17.214:4000/api/v1/bom', {
+      const response = await fetch('/api/v1/bom', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -285,6 +288,88 @@ export default function BOMPage() {
     }
   };
 
+  const handleUpdateBOM = async () => {
+    if (!editingBomId) return;
+
+    // Validation
+    if (!formData.itemId) {
+      alert('Please select an item for the BOM');
+      return;
+    }
+
+    if (formData.items.length === 0) {
+      alert('Please add at least one component to the BOM');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('accessToken');
+
+      const cleanedData = {
+        ...formData,
+        effectiveTo: formData.effectiveTo || null,
+      };
+
+      const response = await fetch(`/api/v1/bom/${editingBomId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(cleanedData),
+      });
+
+      if (response.ok) {
+        await response.json().catch(() => null);
+        alert('✅ BOM updated successfully!');
+        setShowModal(false);
+        setEditingBomId(null);
+        resetForm();
+        await fetchBOMs();
+      } else {
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+        alert(`❌ Failed to update BOM: ${errorData.message || response.statusText}`);
+      }
+    } catch (error) {
+      console.error('[BOM] Update error:', error);
+      alert(`Error updating BOM: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const openEditModal = (bom: BOM) => {
+    const toDateOnly = (value?: string) => {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '';
+      return date.toISOString().slice(0, 10);
+    };
+
+    setEditingBomId(bom.id);
+    setFormData({
+      itemId: (bom as any).item_id || bom.item?.code ? (bom as any).item_id || '' : '',
+      version: bom.version || 1,
+      effectiveFrom: toDateOnly(bom.effective_from) || new Date().toISOString().slice(0, 10),
+      effectiveTo: toDateOnly(bom.effective_to),
+      notes: bom.notes || '',
+      items:
+        (bom.bom_items || []).map((bi, index) => ({
+          componentType: bi.component_type,
+          itemId: bi.component_type === 'ITEM' ? (bi.item?.id || (bi as any).item_id || '') : '',
+          childBomId: bi.component_type === 'BOM' ? (bi.child_bom?.id || (bi as any).child_bom_id || '') : '',
+          quantity: typeof bi.quantity === 'number' ? bi.quantity : Number(bi.quantity) || 0,
+          scrapPercentage:
+            typeof bi.scrap_percentage === 'number'
+              ? bi.scrap_percentage
+              : Number(bi.scrap_percentage) || 0,
+          sequence: typeof bi.sequence === 'number' ? bi.sequence : Number(bi.sequence) || index + 1,
+          notes: bi.notes || '',
+          drawingUrl: bi.drawing_url || '',
+        })) || [],
+    });
+
+    setShowModal(true);
+  };
+
   const handleGeneratePR = async (bomId: string) => {
     console.log('[BOM] Opening PR modal for BOM:', bomId);
     setPrBomId(bomId);
@@ -302,7 +387,7 @@ export default function BOMPage() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/bom/${prBomId}/generate-pr`, {
+      const response = await fetch(`/api/v1/bom/${prBomId}/generate-pr`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -354,7 +439,7 @@ export default function BOMPage() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/bom/${bomId}`, {
+      const response = await fetch(`/api/v1/bom/${bomId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -378,7 +463,7 @@ export default function BOMPage() {
       setLoadingTrail(true);
       const token = localStorage.getItem('accessToken');
       
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/uid/${uid}/purchase-trail`, {
+      const response = await fetch(`/api/v1/uid/${uid}/purchase-trail`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -496,7 +581,11 @@ export default function BOMPage() {
             <p className="text-amber-700">Define product structure and generate purchase requisitions</p>
           </div>
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => {
+              setEditingBomId(null);
+              resetForm();
+              setShowModal(true);
+            }}
             className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold"
           >
             + Create BOM
@@ -578,6 +667,14 @@ export default function BOMPage() {
                     View Details
                   </button>
                   <button
+                    onClick={() => {
+                      openEditModal(bom);
+                    }}
+                    className="flex-1 bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 text-sm"
+                  >
+                    Edit
+                  </button>
+                  <button
                     onClick={() => router.push(`/dashboard/bom/${bom.id}/routing`)}
                     className="flex-1 bg-blue-100 text-blue-700 px-4 py-2 rounded hover:bg-blue-200 text-sm"
                   >
@@ -604,7 +701,9 @@ export default function BOMPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-2xl font-bold text-gray-900">Create Bill of Materials</h2>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {isEditMode ? 'Edit Bill of Materials' : 'Create Bill of Materials'}
+              </h2>
             </div>
 
             <div className="p-6 space-y-6">
@@ -636,7 +735,13 @@ export default function BOMPage() {
                     value={formData.itemId}
                     onSelect={(item) => setFormData({ ...formData, itemId: item.id })}
                     placeholder="Search by item name or code..."
+                    disabled={isEditMode}
                   />
+                  {isEditMode ? (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Finished product cannot be changed in edit mode.
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Version</label>
@@ -645,7 +750,11 @@ export default function BOMPage() {
                     value={formData.version}
                     onChange={(e) => setFormData({ ...formData, version: parseInt(e.target.value) })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    disabled={isEditMode}
                   />
+                  {isEditMode ? (
+                    <p className="text-xs text-gray-500 mt-1">Version cannot be changed in edit mode.</p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Effective From</label>
@@ -827,6 +936,7 @@ export default function BOMPage() {
               <button
                 onClick={() => {
                   setShowModal(false);
+                  setEditingBomId(null);
                   resetForm();
                 }}
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -834,10 +944,10 @@ export default function BOMPage() {
                 Cancel
               </button>
               <button
-                onClick={handleCreateBOM}
+                onClick={isEditMode ? handleUpdateBOM : handleCreateBOM}
                 className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
               >
-                Create BOM
+                {isEditMode ? 'Save Changes' : 'Create BOM'}
               </button>
             </div>
           </div>
@@ -1149,6 +1259,15 @@ export default function BOMPage() {
                 Delete BOM
               </button>
               <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    openEditModal(selectedBom);
+                    setSelectedBom(null);
+                  }}
+                  className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                >
+                  Edit BOM
+                </button>
                 <button
                   onClick={() => setSelectedBom(null)}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
