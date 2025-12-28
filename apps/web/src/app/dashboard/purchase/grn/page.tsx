@@ -101,7 +101,7 @@ export default function GRNPage() {
       if (filterStatus !== 'ALL') params.append('status', filterStatus);
       if (searchTerm) params.append('search', searchTerm);
 
-      const response = await fetch(`/api/v1/purchase/grn?${params}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/purchase/grn?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
@@ -116,7 +116,7 @@ export default function GRNPage() {
   const handleCreateGRN = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/purchase/grn', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/purchase/grn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -142,7 +142,7 @@ export default function GRNPage() {
     try {
       setLoadingUIDs(true);
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/v1/purchase/grn/${grnId}/uids`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/purchase/grn/${grnId}/uids`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

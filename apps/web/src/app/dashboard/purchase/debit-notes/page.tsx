@@ -199,7 +199,7 @@ export default function DebitNotesPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">
-                      ₹{dn.total_amount?.toLocaleString() || '0'}
+                      ₹{(dn.total_amount || 0).toLocaleString()}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

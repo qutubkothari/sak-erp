@@ -142,7 +142,7 @@ function PurchaseOrdersContent() {
       if (filterStatus !== 'ALL') params.append('status', filterStatus);
       if (searchTerm) params.append('search', searchTerm);
 
-      const response = await fetch(`/api/v1/purchase/orders?${params}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/purchase/orders?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
@@ -157,7 +157,7 @@ function PurchaseOrdersContent() {
   const handleCreateOrder = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/purchase/orders', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/purchase/orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
