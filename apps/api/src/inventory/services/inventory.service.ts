@@ -19,20 +19,7 @@ export class InventoryService {
 
     let query = this.supabase
       .from('inventory_stock')
-      .select(`
-        *,
-        items:item_id (
-          id,
-          item_code,
-          item_name,
-          uom
-        ),
-        warehouses:warehouse_id (
-          id,
-          warehouse_code,
-          warehouse_name
-        )
-      `)
+      .select('*')
       .eq('tenant_id', tenantId);
 
     if (filters?.warehouse_id) {
@@ -52,10 +39,44 @@ export class InventoryService {
       query = query.lte('available_quantity', 'reorder_point');
     }
 
-    const { data, error } = await query.order('updated_at', { ascending: false });
+    const { data: stockData, error } = await query.order('updated_at', { ascending: false });
 
     if (error) throw new BadRequestException(error.message);
-    return data;
+    
+    if (!stockData || stockData.length === 0) {
+      return [];
+    }
+
+    // Fetch related items
+    const itemIds = [...new Set(stockData.map(s => s.item_id))];
+    const { data: items } = await this.supabase
+      .from('items')
+      .select('id, item_code, item_name, uom')
+      .in('id', itemIds);
+
+    // Fetch related warehouses
+    const warehouseIds = [...new Set(stockData.map(s => s.warehouse_id))];
+    const { data: warehouses } = await this.supabase
+      .from('warehouses')
+      .select('id, warehouse_code, warehouse_name')
+      .in('id', warehouseIds);
+
+    // Map items and warehouses to stock data
+    const itemsMap = (items || []).reduce((acc, item) => {
+      acc[item.id] = item;
+      return acc;
+    }, {});
+
+    const warehousesMap = (warehouses || []).reduce((acc, wh) => {
+      acc[wh.id] = wh;
+      return acc;
+    }, {});
+
+    return stockData.map(stock => ({
+      ...stock,
+      items: itemsMap[stock.item_id] || null,
+      warehouses: warehousesMap[stock.warehouse_id] || null
+    }));
   }
 
   // Get stock movements history
@@ -65,24 +86,7 @@ export class InventoryService {
 
     let query = this.supabase
       .from('stock_movements')
-      .select(`
-        *,
-        items:item_id (
-          id,
-          item_code,
-          item_name
-        ),
-        from_warehouse:from_warehouse_id (
-          id,
-          warehouse_code,
-          warehouse_name
-        ),
-        to_warehouse:to_warehouse_id (
-          id,
-          warehouse_code,
-          warehouse_name
-        )
-      `)
+      .select('*')
       .eq('tenant_id', tenantId);
 
     if (filters?.movement_type) {
@@ -105,12 +109,50 @@ export class InventoryService {
       query = query.lte('movement_date', filters.to_date);
     }
 
-    const { data, error } = await query
+    const { data: movements, error } = await query
       .order('movement_date', { ascending: false })
       .limit(filters?.limit || 100);
 
     if (error) throw new BadRequestException(error.message);
-    return data;
+    
+    if (!movements || movements.length === 0) {
+      return [];
+    }
+
+    // Fetch related items
+    const itemIds = [...new Set(movements.map(m => m.item_id))];
+    const { data: items } = await this.supabase
+      .from('items')
+      .select('id, item_code, item_name')
+      .in('id', itemIds);
+
+    // Fetch related warehouses
+    const fromWarehouseIds = [...new Set(movements.map(m => m.from_warehouse_id).filter(Boolean))];
+    const toWarehouseIds = [...new Set(movements.map(m => m.to_warehouse_id).filter(Boolean))];
+    const allWarehouseIds = [...new Set([...fromWarehouseIds, ...toWarehouseIds])];
+    
+    const { data: warehouses } = await this.supabase
+      .from('warehouses')
+      .select('id, warehouse_code, warehouse_name')
+      .in('id', allWarehouseIds);
+
+    // Create lookup maps
+    const itemsMap = (items || []).reduce((acc, item) => {
+      acc[item.id] = item;
+      return acc;
+    }, {});
+
+    const warehousesMap = (warehouses || []).reduce((acc, wh) => {
+      acc[wh.id] = wh;
+      return acc;
+    }, {});
+
+    return movements.map(movement => ({
+      ...movement,
+      items: itemsMap[movement.item_id] || null,
+      from_warehouse: warehousesMap[movement.from_warehouse_id] || null,
+      to_warehouse: warehousesMap[movement.to_warehouse_id] || null
+    }));
   }
 
   // Create stock movement (generic)
@@ -398,29 +440,51 @@ export class InventoryService {
 
     let query = this.supabase
       .from('inventory_alerts')
-      .select(`
-        *,
-        items:item_id (
-          id,
-          item_code,
-          item_name
-        ),
-        warehouses:warehouse_id (
-          id,
-          warehouse_code,
-          warehouse_name
-        )
-      `)
+      .select('*')
       .eq('tenant_id', tenantId);
 
     if (acknowledged !== undefined) {
       query = query.eq('acknowledged', acknowledged);
     }
 
-    const { data, error } = await query.order('created_at', { ascending: false });
+    const { data: alerts, error } = await query.order('created_at', { ascending: false });
 
     if (error) throw new BadRequestException(error.message);
-    return data;
+    
+    if (!alerts || alerts.length === 0) {
+      return [];
+    }
+
+    // Fetch related items
+    const itemIds = [...new Set(alerts.map(a => a.item_id).filter(Boolean))];
+    const { data: items } = itemIds.length > 0 ? await this.supabase
+      .from('items')
+      .select('id, item_code, item_name')
+      .in('id', itemIds) : { data: [] };
+
+    // Fetch related warehouses
+    const warehouseIds = [...new Set(alerts.map(a => a.warehouse_id).filter(Boolean))];
+    const { data: warehouses } = warehouseIds.length > 0 ? await this.supabase
+      .from('warehouses')
+      .select('id, warehouse_code, warehouse_name')
+      .in('id', warehouseIds) : { data: [] };
+
+    // Create lookup maps
+    const itemsMap = (items || []).reduce((acc, item) => {
+      acc[item.id] = item;
+      return acc;
+    }, {});
+
+    const warehousesMap = (warehouses || []).reduce((acc, wh) => {
+      acc[wh.id] = wh;
+      return acc;
+    }, {});
+
+    return alerts.map(alert => ({
+      ...alert,
+      items: itemsMap[alert.item_id] || null,
+      warehouses: warehousesMap[alert.warehouse_id] || null
+    }));
   }
 
   // Acknowledge alert
@@ -583,14 +647,7 @@ export class InventoryService {
 
     let query = this.supabase
       .from('demo_inventory')
-      .select(`
-        *,
-        items:item_id (
-          id,
-          item_code,
-          item_name
-        )
-      `)
+      .select('*')
       .eq('tenant_id', tenantId);
 
     if (filters?.status) {
@@ -601,10 +658,31 @@ export class InventoryService {
       query = query.eq('issued_to_staff_id', filters.staff_id);
     }
 
-    const { data, error } = await query.order('issue_date', { ascending: false });
+    const { data: demos, error } = await query.order('issue_date', { ascending: false });
 
     if (error) throw new BadRequestException(error.message);
-    return data;
+    
+    if (!demos || demos.length === 0) {
+      return [];
+    }
+
+    // Fetch related items
+    const itemIds = [...new Set(demos.map(d => d.item_id).filter(Boolean))];
+    const { data: items } = itemIds.length > 0 ? await this.supabase
+      .from('items')
+      .select('id, item_code, item_name')
+      .in('id', itemIds) : { data: [] };
+
+    // Create lookup map
+    const itemsMap = (items || []).reduce((acc, item) => {
+      acc[item.id] = item;
+      return acc;
+    }, {});
+
+    return demos.map(demo => ({
+      ...demo,
+      items: itemsMap[demo.item_id] || null
+    }));
   }
 
   private async generateDemoId(req: Request): Promise<string> {
