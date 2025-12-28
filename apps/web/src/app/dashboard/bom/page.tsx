@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ItemSearch from '../../../components/ItemSearch';
+import { apiClient } from '../../../../lib/api-client';
 
 interface BOM {
   id: string;
