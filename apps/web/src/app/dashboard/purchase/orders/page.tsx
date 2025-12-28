@@ -137,16 +137,11 @@ function PurchaseOrdersContent() {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
-      const params = new URLSearchParams();
-      if (filterStatus !== 'ALL') params.append('status', filterStatus);
-      if (searchTerm) params.append('search', searchTerm);
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/purchase/orders?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const data = await apiClient.get('/purchase/orders', {
+        status: filterStatus !== 'ALL' ? filterStatus : undefined,
+        search: searchTerm || undefined,
       });
-      const data = await response.json();
-      setOrders(data);
+      setOrders(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
@@ -156,25 +151,15 @@ function PurchaseOrdersContent() {
 
   const handleCreateOrder = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/purchase/orders`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          ...formData,
-          status: 'DRAFT',
-          totalAmount: formData.items.reduce((sum, item) => sum + item.totalPrice, 0),
-        }),
+      await apiClient.post('/purchase/orders', {
+        ...formData,
+        status: 'DRAFT',
+        totalAmount: formData.items.reduce((sum, item) => sum + item.totalPrice, 0),
       });
 
-      if (response.ok) {
-        setShowModal(false);
-        fetchOrders();
-        resetForm();
-      }
+      setShowModal(false);
+      fetchOrders();
+      resetForm();
     } catch (error) {
       console.error('Error creating order:', error);
     }

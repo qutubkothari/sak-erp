@@ -91,30 +91,7 @@ export default function BOMPage() {
   const fetchBOMs = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
-      
-      if (!token) {
-        console.error('No token found - user not logged in');
-        router.push('/login');
-        return;
-      }
-      
-      const response = await fetch('/api/v1/bom', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      
-      if (!response.ok) {
-        if (response.status === 401) {
-          console.error('Unauthorized - redirecting to login');
-          localStorage.removeItem('accessToken');
-          router.push('/login');
-          return;
-        }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      // Ensure data is an array
+      const data = await apiClient.get('/bom');
       setBoms(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching BOMs:', error);
@@ -126,21 +103,11 @@ export default function BOMPage() {
 
   const handleCreateBOM = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/bom', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      });
+      await apiClient.post('/bom', formData);
 
-      if (response.ok) {
-        setShowModal(false);
-        fetchBOMs();
-        resetForm();
-      }
+      setShowModal(false);
+      fetchBOMs();
+      resetForm();
     } catch (error) {
       console.error('Error creating BOM:', error);
     }
@@ -151,21 +118,8 @@ export default function BOMPage() {
     if (!quantity || isNaN(Number(quantity))) return;
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/v1/bom/${bomId}/generate-pr`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ quantity: Number(quantity) }),
-      });
-
-      const data = await response.json();
-      
-      if (response.ok) {
-        alert(`Purchase Requisition ${data.prNumber} generated successfully!\n\nItems to order: ${data.itemsToOrder.length}`);
-      }
+      const data = await apiClient.post(`/bom/${bomId}/generate-pr`, { quantity: Number(quantity) });
+      alert(`Purchase Requisition ${data.prNumber} generated successfully!\n\nItems to order: ${data.itemsToOrder.length}`);
     } catch (error) {
       console.error('Error generating PR:', error);
     }
@@ -174,19 +128,9 @@ export default function BOMPage() {
   const fetchPurchaseTrail = async (uid: string) => {
     try {
       setLoadingTrail(true);
-      const token = localStorage.getItem('accessToken');
-      
-      const response = await fetch(`/api/v1/uid/${uid}/purchase-trail`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setPurchaseTrail(data);
-        setShowTrailModal(true);
-      } else {
-        alert('Purchase trail not found for this UID');
-      }
+      const data = await apiClient.get(`/uid/${uid}/purchase-trail`);
+      setPurchaseTrail(data);
+      setShowTrailModal(true);
     } catch (error) {
       console.error('Error fetching purchase trail:', error);
       alert('Failed to fetch purchase trail');

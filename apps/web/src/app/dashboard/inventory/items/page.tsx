@@ -260,7 +260,7 @@ export default function ItemsPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.code}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {item.category.replace(/_/g, ' ')}
+                    {(item.category || 'N/A').replace(/_/g, ' ')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.uom}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

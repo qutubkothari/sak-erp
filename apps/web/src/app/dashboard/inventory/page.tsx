@@ -303,7 +303,7 @@ export default function InventoryPage() {
                       </td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-1 text-xs rounded-full ${getCategoryColor(stock.category)}`}>
-                          {stock.category.replace('_', ' ')}
+                          {(stock.category || 'N/A').replace('_', ' ')}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right text-sm text-gray-900">
@@ -378,7 +378,7 @@ export default function InventoryPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-sm text-gray-900">
-                        {movement.movement_type.replace(/_/g, ' ')}
+                        {(movement.movement_type || 'N/A').replace(/_/g, ' ')}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -437,7 +437,7 @@ export default function InventoryPage() {
                       <span className={`px-2 py-1 text-xs rounded-full ${getSeverityColor(alert.severity)}`}>
                         {alert.severity}
                       </span>
-                      <span className="text-sm text-gray-500">{alert.alert_type.replace(/_/g, ' ')}</span>
+                      <span className="text-sm text-gray-500">{(alert.alert_type || 'N/A').replace(/_/g, ' ')}</span>
                     </div>
                     <p className="text-gray-900 mb-2">{alert.message}</p>
                     <div className="text-sm text-gray-500">

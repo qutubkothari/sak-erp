@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '../../../../lib/api-client';
 
 interface ProductionOrder {
   id: string;
@@ -52,31 +53,10 @@ export default function ProductionPage() {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
-
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-      const params = new URLSearchParams();
-      if (filterStatus !== 'ALL') params.append('status', filterStatus);
-
-      const response = await fetch(`/api/v1/production?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const data = await apiClient.get('/production', {
+        status: filterStatus !== 'ALL' ? filterStatus : undefined,
       });
-      if (response.status === 401) {
-        localStorage.removeItem('accessToken');
-        router.push('/login');
-        return;
-      }
-
-      const data = await response.json();
-      const ordersData = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.data)
-          ? data.data
-          : [];
-      setOrders(ordersData);
+      setOrders(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching production orders:', error);
       setOrders([]);
@@ -87,30 +67,19 @@ export default function ProductionPage() {
 
   const handleCreate = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/production', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
+      await apiClient.post('/production', formData);
+      setShowModal(false);
+      fetchOrders();
+      setFormData({
+        itemId: '',
+        bomId: '',
+        quantity: 1,
+        plantCode: 'KOL',
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: '',
+        priority: 'NORMAL',
+        notes: '',
       });
-
-      if (response.ok) {
-        setShowModal(false);
-        fetchOrders();
-        setFormData({
-          itemId: '',
-          bomId: '',
-          quantity: 1,
-          plantCode: 'KOL',
-          startDate: new Date().toISOString().split('T')[0],
-          endDate: '',
-          priority: 'NORMAL',
-          notes: '',
-        });
-      }
     } catch (error) {
       console.error('Error creating production order:', error);
     }
@@ -118,11 +87,7 @@ export default function ProductionPage() {
 
   const handleStartProduction = async (orderId: string) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      await fetch(`/api/v1/production/${orderId}/start`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await apiClient.put(`/production/${orderId}/start`);
       fetchOrders();
     } catch (error) {
       console.error('Error starting production:', error);
@@ -131,23 +96,11 @@ export default function ProductionPage() {
 
   const handleCompleteAssembly = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/production/assembly/complete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(assemblyData),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        alert(`Assembly completed! Finished Product UID: ${result.finishedUid}`);
-        setShowAssemblyModal(false);
-        fetchOrders();
-        setAssemblyData({ productionOrderId: '', componentUids: [''] });
-      }
+      const result = await apiClient.post('/production/assembly/complete', assemblyData);
+      alert(`Assembly completed! Finished Product UID: ${result.finishedUid}`);
+      setShowAssemblyModal(false);
+      fetchOrders();
+      setAssemblyData({ productionOrderId: '', componentUids: [''] });
     } catch (error) {
       console.error('Error completing assembly:', error);
     }

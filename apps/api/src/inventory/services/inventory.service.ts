@@ -17,6 +17,8 @@ export class InventoryService {
   async getStockLevels(req: Request, filters?: any) {
     const { tenantId } = req.user as any;
 
+    const lowStockOnly = Boolean(filters?.low_stock);
+
     let query = this.supabase
       .from('inventory_stock')
       .select('*')
@@ -34,28 +36,39 @@ export class InventoryService {
       query = query.eq('item_id', filters.item_id);
     }
 
-    if (filters?.low_stock) {
-      // Compare available_quantity with reorder_point column
-      query = query.lte('available_quantity', 'reorder_point');
-    }
-
-    const { data: stockData, error } = await query.order('updated_at', { ascending: false });
+    const { data: stockDataRaw, error } = await query.order('updated_at', { ascending: false });
 
     if (error) throw new BadRequestException(error.message);
     
-    if (!stockData || stockData.length === 0) {
+    if (!stockDataRaw || stockDataRaw.length === 0) {
+      return [];
+    }
+
+    const toNumber = (value: any) => {
+      const parsed = typeof value === 'number' ? value : parseFloat(String(value ?? ''));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const stockData = lowStockOnly
+      ? stockDataRaw.filter((row) => {
+          if (row.reorder_point === null || row.reorder_point === undefined) return false;
+          return toNumber(row.available_quantity) <= toNumber(row.reorder_point);
+        })
+      : stockDataRaw;
+
+    if (stockData.length === 0) {
       return [];
     }
 
     // Fetch related items
-    const itemIds = [...new Set(stockData.map(s => s.item_id))];
+    const itemIds = [...new Set(stockData.map(s => s.item_id).filter(Boolean))];
     const { data: items } = await this.supabase
       .from('items')
       .select('id, item_code, item_name, uom')
       .in('id', itemIds);
 
     // Fetch related warehouses
-    const warehouseIds = [...new Set(stockData.map(s => s.warehouse_id))];
+    const warehouseIds = [...new Set(stockData.map(s => s.warehouse_id).filter(Boolean))];
     const { data: warehouses } = await this.supabase
       .from('warehouses')
       .select('id, warehouse_code, warehouse_name')
