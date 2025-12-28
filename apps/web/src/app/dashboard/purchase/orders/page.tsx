@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 
@@ -36,7 +36,7 @@ interface Item {
   uom: string;
 }
 
-export default function PurchaseOrdersPage() {
+function PurchaseOrdersContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prId = searchParams?.get('prId');
@@ -563,5 +563,13 @@ export default function PurchaseOrdersPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PurchaseOrdersPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 p-8 flex items-center justify-center">Loading...</div>}>
+      <PurchaseOrdersContent />
+    </Suspense>
   );
 }
