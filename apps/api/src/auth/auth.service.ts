@@ -192,15 +192,20 @@ export class AuthService {
     }
 
     // Verify password
-    // TESTING MODE: Accept any password temporarily
-    const isDevelopmentMode = process.env.NODE_ENV !== 'production';
+    // Verify password - support both plain text (legacy) and bcrypt hashed passwords
     let isPasswordValid = false;
     
-    if (isDevelopmentMode) {
-      // In testing mode, accept plain text password or bcrypt
-      isPasswordValid = dto.password === user.password || await bcrypt.compare(dto.password, user.password);
+    // First check plain text match (for legacy/migration purposes)
+    if (dto.password === user.password) {
+      isPasswordValid = true;
     } else {
-      isPasswordValid = await bcrypt.compare(dto.password, user.password);
+      // Try bcrypt comparison (for properly hashed passwords)
+      try {
+        isPasswordValid = await bcrypt.compare(dto.password, user.password);
+      } catch {
+        // If bcrypt fails (e.g., password isn't a valid hash), it's not valid
+        isPasswordValid = false;
+      }
     }
     
     if (!isPasswordValid) {
