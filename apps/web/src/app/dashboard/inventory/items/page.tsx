@@ -226,7 +226,7 @@ export default function ItemsPage() {
         >
           <option value="">All Categories</option>
           {categories.map(cat => (
-            <option key={cat} value={cat}>{cat.replace(/_/g, ' ')}</option>
+            <option key={cat.id} value={cat.code}>{cat.name}</option>
           ))}
         </select>
       </div>
