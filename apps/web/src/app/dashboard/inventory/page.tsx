@@ -294,12 +294,12 @@ export default function InventoryPage() {
                   stockLevels.map((stock) => (
                     <tr key={stock.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">{stock.items.item_name}</div>
-                        <div className="text-sm text-gray-500">{stock.items.item_code}</div>
+                        <div className="text-sm font-medium text-gray-900">{stock.items?.item_name || 'N/A'}</div>
+                        <div className="text-sm text-gray-500">{stock.items?.item_code || 'N/A'}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900">{stock.warehouses.warehouse_name}</div>
-                        <div className="text-sm text-gray-500">{stock.warehouses.warehouse_code}</div>
+                        <div className="text-sm text-gray-900">{stock.warehouses?.warehouse_name || 'N/A'}</div>
+                        <div className="text-sm text-gray-500">{stock.warehouses?.warehouse_code || 'N/A'}</div>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-1 text-xs rounded-full ${getCategoryColor(stock.category)}`}>
@@ -307,16 +307,16 @@ export default function InventoryPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right text-sm text-gray-900">
-                        {stock.quantity} {stock.items.uom}
+                        {stock.quantity} {stock.items?.uom || ''}
                       </td>
                       <td className="px-6 py-4 text-right text-sm text-gray-500">
-                        {stock.reserved_quantity} {stock.items.uom}
+                        {stock.reserved_quantity} {stock.items?.uom || ''}
                       </td>
                       <td className="px-6 py-4 text-right text-sm font-medium text-gray-900">
-                        {stock.available_quantity} {stock.items.uom}
+                        {stock.available_quantity} {stock.items?.uom || ''}
                       </td>
                       <td className="px-6 py-4 text-right text-sm text-gray-500">
-                        {stock.reorder_point} {stock.items.uom}
+                        {stock.reorder_point} {stock.items?.uom || ''}
                       </td>
                       <td className="px-6 py-4 text-center">
                         {parseFloat(stock.available_quantity.toString()) <= parseFloat(stock.reorder_point.toString()) ? (
@@ -382,8 +382,8 @@ export default function InventoryPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">{movement.items.item_name}</div>
-                      <div className="text-sm text-gray-500">{movement.items.item_code}</div>
+                      <div className="text-sm text-gray-900">{movement.items?.item_name || 'N/A'}</div>
+                      <div className="text-sm text-gray-500">{movement.items?.item_code || 'N/A'}</div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
                       {movement.from_warehouse?.warehouse_name || '-'}
@@ -441,7 +441,7 @@ export default function InventoryPage() {
                     </div>
                     <p className="text-gray-900 mb-2">{alert.message}</p>
                     <div className="text-sm text-gray-500">
-                      {alert.items.item_name} ({alert.items.item_code})
+                      {alert.items?.item_name || 'N/A'} ({alert.items?.item_code || 'N/A'})
                       {alert.warehouses && ` - ${alert.warehouses.warehouse_name}`}
                     </div>
                     <div className="text-xs text-gray-400 mt-2">
@@ -497,8 +497,8 @@ export default function InventoryPage() {
                       {demo.demo_id}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">{demo.items.item_name}</div>
-                      <div className="text-sm text-gray-500">{demo.items.item_code}</div>
+                      <div className="text-sm text-gray-900">{demo.items?.item_name || 'N/A'}</div>
+                      <div className="text-sm text-gray-500">{demo.items?.item_code || 'N/A'}</div>
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-sm font-mono text-amber-600">{demo.uid}</span>
