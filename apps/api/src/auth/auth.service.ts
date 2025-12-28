@@ -182,6 +182,8 @@ export class AuthService {
       .eq('tenant_id', tenantId)
       .maybeSingle();
 
+    console.log('Login attempt:', { email: dto.email, tenantId, userFound: !!user, userError });
+
     if (userError || !user) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -191,9 +193,10 @@ export class AuthService {
       throw new UnauthorizedException('Account is deactivated');
     }
 
-    // Verify password
     // Verify password - support both plain text (legacy) and bcrypt hashed passwords
     let isPasswordValid = false;
+    
+    console.log('Password check:', { inputPwd: dto.password, storedPwd: user.password, match: dto.password === user.password });
     
     // First check plain text match (for legacy/migration purposes)
     if (dto.password === user.password) {
