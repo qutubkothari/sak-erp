@@ -19,7 +19,20 @@ export class InventoryService {
 
     let query = this.supabase
       .from('inventory_stock')
-      .select('*')
+      .select(`
+        *,
+        items:item_id (
+          id,
+          item_code,
+          item_name,
+          uom
+        ),
+        warehouses:warehouse_id (
+          id,
+          warehouse_code,
+          warehouse_name
+        )
+      `)
       .eq('tenant_id', tenantId);
 
     if (filters?.warehouse_id) {
@@ -52,7 +65,24 @@ export class InventoryService {
 
     let query = this.supabase
       .from('stock_movements')
-      .select('*')
+      .select(`
+        *,
+        items:item_id (
+          id,
+          item_code,
+          item_name
+        ),
+        from_warehouse:from_warehouse_id (
+          id,
+          warehouse_code,
+          warehouse_name
+        ),
+        to_warehouse:to_warehouse_id (
+          id,
+          warehouse_code,
+          warehouse_name
+        )
+      `)
       .eq('tenant_id', tenantId);
 
     if (filters?.movement_type) {
@@ -368,7 +398,19 @@ export class InventoryService {
 
     let query = this.supabase
       .from('inventory_alerts')
-      .select('*')
+      .select(`
+        *,
+        items:item_id (
+          id,
+          item_code,
+          item_name
+        ),
+        warehouses:warehouse_id (
+          id,
+          warehouse_code,
+          warehouse_name
+        )
+      `)
       .eq('tenant_id', tenantId);
 
     if (acknowledged !== undefined) {
@@ -541,7 +583,14 @@ export class InventoryService {
 
     let query = this.supabase
       .from('demo_inventory')
-      .select('*')
+      .select(`
+        *,
+        items:item_id (
+          id,
+          item_code,
+          item_name
+        )
+      `)
       .eq('tenant_id', tenantId);
 
     if (filters?.status) {
