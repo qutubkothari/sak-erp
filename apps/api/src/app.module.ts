@@ -8,7 +8,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { join } from 'path';
 
 // Core Modules
-import { PrismaModule } from './prisma/prisma.module';
+// import { PrismaModule } from './prisma/prisma.module'; // DISABLED: Prisma not used on EC2
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
@@ -30,7 +30,7 @@ import { MasterModule } from './master/master.module';
 
 // Support Modules
 import { WorkflowModule } from './workflow/workflow.module';
-import { UidModule } from './uid/uid.module';
+// import { UidModule } from './uid/uid.module'; // DISABLED: Requires Prisma
 import { NotificationModule } from './notification/notification.module';
 import { AuditModule } from './audit/audit.module';
 
@@ -69,7 +69,7 @@ import { AuditModule } from './audit/audit.module';
     }),
 
     // Core
-    PrismaModule,
+    // PrismaModule, // DISABLED
     AuthModule,
     TenantModule,
     UserModule,
@@ -89,7 +89,7 @@ import { AuditModule } from './audit/audit.module';
 
     // Support
     WorkflowModule,
-    UidModule,
+    // UidModule, // DISABLED
     NotificationModule,
     AuditModule,
   ],
