@@ -319,7 +319,7 @@ export default function InventoryPage() {
                         {stock.reorder_point} {stock.items?.uom || ''}
                       </td>
                       <td className="px-6 py-4 text-center">
-                        {parseFloat(stock.available_quantity.toString()) <= parseFloat(stock.reorder_point.toString()) ? (
+                        {(stock.available_quantity || 0) <= (stock.reorder_point || 0) ? (
                           <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
                             Low Stock
                           </span>
