@@ -23,9 +23,6 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react'],
   },
-
-  // Output configuration
-  output: 'standalone',
 };
 
 module.exports = nextConfig;

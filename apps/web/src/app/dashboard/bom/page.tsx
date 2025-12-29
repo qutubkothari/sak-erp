@@ -229,8 +229,8 @@ export default function BOMPage() {
               <div key={bom.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900">{bom.item.name}</h3>
-                    <p className="text-sm text-gray-500">{bom.item.code} - Version {bom.version}</p>
+                    <h3 className="text-lg font-bold text-gray-900">{bom.item?.name || 'N/A'}</h3>
+                    <p className="text-sm text-gray-500">{bom.item?.code || 'N/A'} - Version {bom.version}</p>
                   </div>
                   <span
                     className={`px-2 py-1 text-xs rounded-full ${
@@ -242,23 +242,23 @@ export default function BOMPage() {
                 </div>
 
                 <div className="mb-4">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Components ({bom.bom_items.length})</h4>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Components ({(bom.bom_items || []).length})</h4>
                   <div className="space-y-2">
-                    {bom.bom_items.slice(0, 3).map((item) => (
+                    {(bom.bom_items || []).slice(0, 3).map((item) => (
                       <div key={item.id} className="flex justify-between text-sm">
                         <span className="text-gray-600">
-                          {item.item.code} - {item.item.name}
+                          {item.item?.code || 'N/A'} - {item.item?.name || 'N/A'}
                         </span>
                         <div className="flex items-center gap-2">
-                          <span className="font-medium">{item.quantity} {item.item.uom}</span>
+                          <span className="font-medium">{item.quantity} {item.item?.uom || ''}</span>
                           {item.drawing_url && (
                             <span className="text-blue-600" title="Drawing attached">📎</span>
                           )}
                         </div>
                       </div>
                     ))}
-                    {bom.bom_items.length > 3 && (
-                      <p className="text-xs text-gray-500">+ {bom.bom_items.length - 3} more items</p>
+                    {(bom.bom_items || []).length > 3 && (
+                      <p className="text-xs text-gray-500">+ {(bom.bom_items || []).length - 3} more items</p>
                     )}
                   </div>
                 </div>
