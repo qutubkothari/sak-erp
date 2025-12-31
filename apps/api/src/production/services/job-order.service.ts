@@ -295,6 +295,100 @@ export class JobOrderService {
   }
 
   /**
+   * Recursively explode BOM to get hierarchical structure with sub-assemblies
+   */
+  private async explodeBOMHierarchical(
+    bomId: string,
+    quantity: number,
+    tenantId: string,
+    level: number = 0
+  ): Promise<any[]> {
+    const { data: bomItems } = await this.supabase
+      .from('bom_items')
+      .select('component_type, item_id, child_bom_id, quantity, scrap_percentage')
+      .eq('bom_id', bomId);
+
+    if (!bomItems || bomItems.length === 0) return [];
+
+    const nodes = [];
+
+    for (const bomItem of bomItems) {
+      const scrapFactor = 1 + (bomItem.scrap_percentage || 0) / 100;
+      const adjustedQty = bomItem.quantity * quantity * scrapFactor;
+
+      if (bomItem.component_type === 'ITEM' && bomItem.item_id) {
+        // Get item details
+        const { data: itemData } = await this.supabase
+          .from('items')
+          .select('code, name, type')
+          .eq('id', bomItem.item_id)
+          .single();
+
+        // Get stock
+        const { data: stockEntries } = await this.supabase
+          .from('stock_entries')
+          .select('available_quantity')
+          .eq('tenant_id', tenantId)
+          .eq('item_id', bomItem.item_id);
+
+        const availableStock = stockEntries?.reduce((sum, entry) => sum + (Number(entry.available_quantity) || 0), 0) || 0;
+        const shortageQuantity = Math.max(0, adjustedQty - availableStock);
+
+        nodes.push({
+          itemId: bomItem.item_id,
+          itemCode: itemData?.code || 'Unknown',
+          itemName: itemData?.name || 'Unknown',
+          componentType: 'ITEM',
+          level,
+          requiredQuantity: adjustedQty,
+          availableStock,
+          shortageQuantity,
+          toMakeQuantity: 0,
+        });
+      } else if (bomItem.component_type === 'BOM' && bomItem.child_bom_id) {
+        // Get sub-assembly details
+        const { data: childBom } = await this.supabase
+          .from('bom_headers')
+          .select('*, items!bom_headers_item_id_fkey(code, name, type)')
+          .eq('id', bomItem.child_bom_id)
+          .single();
+
+        if (childBom) {
+          // Get stock for sub-assembly
+          const { data: stockEntries } = await this.supabase
+            .from('stock_entries')
+            .select('available_quantity')
+            .eq('tenant_id', tenantId)
+            .eq('item_id', childBom.item_id);
+
+          const availableStock = stockEntries?.reduce((sum, entry) => sum + (Number(entry.available_quantity) || 0), 0) || 0;
+          const shortageQuantity = Math.max(0, adjustedQty - availableStock);
+
+          // Add sub-assembly node
+          nodes.push({
+            bomId: childBom.id,
+            itemId: childBom.item_id,
+            itemCode: childBom.items.code,
+            itemName: childBom.items.name,
+            componentType: 'BOM',
+            level,
+            requiredQuantity: adjustedQty,
+            availableStock,
+            shortageQuantity,
+            toMakeQuantity: Math.max(0, adjustedQty - availableStock),
+          });
+
+          // Recursively get child components
+          const childNodes = await this.explodeBOMHierarchical(bomItem.child_bom_id, adjustedQty, tenantId, level + 1);
+          nodes.push(...childNodes);
+        }
+      }
+    }
+
+    return nodes;
+  }
+
+  /**
    * Recursively explode BOM to get all leaf items (raw materials/components)
    * Handles multi-level BOMs with sub-assemblies
    */
@@ -721,41 +815,11 @@ export class JobOrderService {
       };
     }
 
-    // Explode BOM recursively
+    // Explode BOM hierarchically to show sub-assemblies
+    const hierarchicalNodes = await this.explodeBOMHierarchical(bom.id, quantity, tenantId);
+
+    // Also get flattened leaf items for material requirement calculation
     const explodedItems = await this.explodeBOMRecursively(bom.id, quantity, tenantId);
-
-    // Enrich items with code, name, and stock info
-    const enrichedNodes = await Promise.all(
-      explodedItems.map(async (item) => {
-        const { data: itemData } = await this.supabase
-          .from('items')
-          .select('code, name, type')
-          .eq('id', item.itemId)
-          .single();
-
-        // Get stock
-        const { data: stockEntries } = await this.supabase
-          .from('stock_entries')
-          .select('available_quantity')
-          .eq('tenant_id', tenantId)
-          .eq('item_id', item.itemId);
-
-        const availableStock = stockEntries?.reduce((sum, entry) => sum + (Number(entry.available_quantity) || 0), 0) || 0;
-        const shortageQuantity = Math.max(0, item.quantity - availableStock);
-
-        return {
-          itemId: item.itemId,
-          itemCode: itemData?.code || 'Unknown',
-          itemName: itemData?.name || 'Unknown',
-          componentType: 'ITEM',
-          level: 0,
-          requiredQuantity: item.quantity,
-          availableStock,
-          shortageQuantity,
-          toMakeQuantity: 0,
-        };
-      })
-    );
 
     // Check stock availability for each material
     const availabilityCheck = await this.checkMaterialAvailability(tenantId, explodedItems, 1);
@@ -763,15 +827,26 @@ export class JobOrderService {
     const allAvailable = availabilityCheck.available;
     const hasShortages = availabilityCheck.shortages.length > 0;
 
+    // Calculate sub-assemblies to make
+    const subAssembliesToMake = hierarchicalNodes
+      .filter(node => node.componentType === 'BOM' && node.toMakeQuantity > 0)
+      .map(node => ({
+        itemCode: node.itemCode,
+        itemName: node.itemName,
+        requiredQuantity: node.requiredQuantity,
+        availableStock: node.availableStock,
+        toMakeQuantity: node.toMakeQuantity,
+      }));
+
     return {
       finishedItem: { code: item.code, name: item.name, type: item.type },
       topBom: { id: bom.id, version: bom.version, is_active: bom.is_active },
       hasBOM: true,
       quantity,
-      nodes: enrichedNodes,
+      nodes: hierarchicalNodes,
       materials: explodedItems,
       shortages: availabilityCheck.shortages,
-      subAssembliesToMake: [],
+      subAssembliesToMake,
       canCreate: true,
       allAvailable,
       message: allAvailable 
