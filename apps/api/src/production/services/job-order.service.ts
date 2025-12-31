@@ -682,4 +682,110 @@ export class JobOrderService {
       insufficientMaterials: materialsWithStock.filter(m => !m.sufficient),
     };
   }
+
+  /**
+   * Smart Job Order Preview - Auto-detects BOM and shows what will be created
+   */
+  async getSmartJobOrderPreview(tenantId: string, params: { itemId: string; quantity: number; salesOrderId?: string; salesOrderItemId?: string }) {
+    const { itemId, quantity } = params;
+
+    // Get item details
+    const { data: item } = await this.supabase
+      .from('items')
+      .select('*')
+      .eq('id', itemId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (!item) throw new NotFoundException('Item not found');
+
+    // Find active BOM for this item
+    const { data: boms } = await this.supabase
+      .from('bom_headers')
+      .select('*')
+      .eq('item_id', itemId)
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const bom = boms?.[0];
+    
+    if (!bom) {
+      return {
+        item: { code: item.code, name: item.name, type: item.type },
+        hasBOM: false,
+        message: 'No active BOM found for this item. A manual job order can still be created.',
+        materials: [],
+        canCreate: false,
+      };
+    }
+
+    // Explode BOM recursively
+    const explodedItems = await this.explodeBOMRecursively(bom.id, quantity, tenantId);
+
+    // Check stock availability for each material
+    const materialsWithStock = await this.checkMaterialAvailability(tenantId, explodedItems, quantity);
+
+    const allAvailable = materialsWithStock.every((m: any) => m.status === 'available');
+    const someAvailable = materialsWithStock.some((m: any) => m.status === 'available');
+
+    return {
+      item: { code: item.code, name: item.name, type: item.type },
+      bom: { id: bom.id, version: bom.version },
+      hasBOM: true,
+      quantity,
+      materials: materialsWithStock,
+      canCreate: true,
+      stockStatus: allAvailable ? 'all_available' : someAvailable ? 'partial' : 'none_available',
+      message: allAvailable 
+        ? 'All required sub-assemblies are available in stock' 
+        : someAvailable 
+        ? 'Some materials are available, but not all' 
+        : 'No materials are currently in stock',
+    };
+  }
+
+  /**
+   * Smart Job Order Creation - Auto-creates job order with BOM explosion
+   */
+  async createSmartJobOrder(tenantId: string, userId: string, params: { itemId: string; quantity: number; startDate?: string; salesOrderId?: string; salesOrderItemId?: string }) {
+    const { itemId, quantity, startDate, salesOrderId, salesOrderItemId } = params;
+
+    // Get item details
+    const { data: item } = await this.supabase
+      .from('items')
+      .select('*')
+      .eq('id', itemId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (!item) throw new NotFoundException('Item not found');
+
+    // Find active BOM
+    const { data: boms } = await this.supabase
+      .from('bom_headers')
+      .select('*')
+      .eq('item_id', itemId)
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const bom = boms?.[0];
+
+    if (!bom) {
+      throw new BadRequestException('No active BOM found for this item');
+    }
+
+    // Use the createFromBOM method
+    return this.createFromBOM(
+      tenantId,
+      userId,
+      itemId,
+      bom.id,
+      quantity,
+      startDate || new Date().toISOString().split('T')[0]
+    );
+  }
 }
