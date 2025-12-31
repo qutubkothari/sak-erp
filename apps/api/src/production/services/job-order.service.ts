@@ -731,8 +731,8 @@ export class JobOrderService {
     const hasShortages = availabilityCheck.shortages.length > 0;
 
     return {
-      item: { code: item.code, name: item.name, type: item.type },
-      bom: { id: bom.id, version: bom.version },
+      finishedItem: { code: item.code, name: item.name, type: item.type },
+      topBom: { id: bom.id, version: bom.version, is_active: bom.is_active },
       hasBOM: true,
       quantity,
       materials: explodedItems,
