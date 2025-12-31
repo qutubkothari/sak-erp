@@ -1,0 +1,57 @@
+# Documentation (keep local only)
+*.md
+docs/
+
+# SQL Migrations (database managed separately)
+*.sql
+migrations/
+migrations-old/
+
+# Archive & Debug Files
+archive/
+*.log
+*.txt
+
+# Test & Debug Scripts
+check-*.js
+test-*.js
+test-*.sh
+fix-*.js
+fix-*.py
+generate-*.py
+validate-*.sh
+debug-*.sql
+*.test.js
+
+# Excel Files
+*.xlsx
+*.xls
+
+# Docker (if not using)
+docker-compose.yml
+.docker/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts (will be built on server)
+.next/
+.turbo/
+dist/
+build/
+out/
+
+# Deployment files
+deploy/
+*.pem
+*.key
+ecosystem.config.js
+
+# Misc
+*.tar.gz
+*.zip

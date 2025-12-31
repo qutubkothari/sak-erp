@@ -725,24 +725,25 @@ export class JobOrderService {
     const explodedItems = await this.explodeBOMRecursively(bom.id, quantity, tenantId);
 
     // Check stock availability for each material
-    const materialsWithStock = await this.checkMaterialAvailability(tenantId, explodedItems, quantity);
+    const availabilityCheck = await this.checkMaterialAvailability(tenantId, explodedItems, 1);
 
-    const allAvailable = materialsWithStock.every((m: any) => m.status === 'available');
-    const someAvailable = materialsWithStock.some((m: any) => m.status === 'available');
+    const allAvailable = availabilityCheck.available;
+    const hasShortages = availabilityCheck.shortages.length > 0;
 
     return {
       item: { code: item.code, name: item.name, type: item.type },
       bom: { id: bom.id, version: bom.version },
       hasBOM: true,
       quantity,
-      materials: materialsWithStock,
+      materials: explodedItems,
+      shortages: availabilityCheck.shortages,
       canCreate: true,
-      stockStatus: allAvailable ? 'all_available' : someAvailable ? 'partial' : 'none_available',
+      allAvailable,
       message: allAvailable 
-        ? 'All required sub-assemblies are available in stock' 
-        : someAvailable 
-        ? 'Some materials are available, but not all' 
-        : 'No materials are currently in stock',
+        ? 'All required materials are available in stock' 
+        : hasShortages 
+        ? `${availabilityCheck.shortages.length} material(s) have insufficient stock` 
+        : 'Some materials may have insufficient stock',
     };
   }
 

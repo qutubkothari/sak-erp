@@ -4,11 +4,11 @@ This file is the handoff/context so work can continue on this machine without ne
 
 **Workspace root used for this context:** `C:\Users\QK\Documents\GitHub\sak-erp`
 
-## 🚨 ACTIVE STATUS (Based on Previous Session)
+## 🚨 ACTIVE STATUS (CURRENT - Dec 31, 2025)
 
 ### EC2 Production Server: **3.110.100.60**
-- ✅ **API (port 4000)**: Running via PM2 (`sak-api`)
-- ❌ **Web (port 3000)**: Stopped/needs deployment (`sak-web`)
+- ✅ **API (port 4000)**: Running via PM2 (`sak-api`) - 14h uptime
+- ✅ **Web (port 3000)**: Running via PM2 (`sak-web`) - **JUST DEPLOYED & ONLINE**
 
 ### Recent Work Deployed to EC2
 1. **Items Price Import Fix**: Enhanced `normalizeNumber()` helper to strip currency symbols (₹,$,€) and commas

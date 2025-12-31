@@ -55,6 +55,23 @@ yarn-error.log*
 *.key
 *.ppk
 
+# Build Artifacts
+*.tar.gz
+*.zip
+*.tgz
+api-build/
+api-deploy/
+web-build/
+web-deploy/
+
+# Archive & Migrations
+archive/
+migrations-old/
+
+# Excel Files (large)
+*.xlsx
+*.xls
+
 # Misc
 .cache
 temp/
