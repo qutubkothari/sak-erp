@@ -257,34 +257,32 @@ export class JobOrderService {
   }
 
   async createFromBOM(tenantId: string, userId: string, itemId: string, bomId: string, quantity: number, startDate: string) {
-    // Get BOM details
+    // Get BOM details from bom_headers (new schema)
     const { data: bom } = await this.supabase
-      .from('bom')
+      .from('bom_headers')
       .select(`
         *,
-        bom_items(*, items(code, name)),
-        bom_routing(*, workstations(id, name))
+        items!bom_headers_item_id_fkey(code, name, type)
       `)
       .eq('id', bomId)
+      .eq('tenant_id', tenantId)
       .single();
 
     if (!bom) throw new NotFoundException('BOM not found');
 
-    // Create operations from routing
-    const operations = (bom.bom_routing || []).map((route: any, idx: number) => ({
-      sequenceNumber: route.operation_sequence || (idx + 1) * 10,
-      operationName: route.operation_name,
-      workstationId: route.workstation_id,
-      expectedDurationHours: route.cycle_time || 0,
-      setupTimeHours: route.setup_time || 0,
-      acceptedVariationPercent: 5, // default 5%
+    // Explode BOM recursively to get all actual leaf items needed
+    const explodedItems = await this.explodeBOMRecursively(bomId, quantity, tenantId);
+    
+    console.log('[JobOrderService] Exploded BOM items:', explodedItems);
+
+    // Create materials from exploded items (only actual items, not sub-assemblies)
+    const materials = explodedItems.map((item: any) => ({
+      itemId: item.itemId,
+      requiredQuantity: item.quantity,
     }));
 
-    // Create materials from BOM items
-    const materials = (bom.bom_items || []).map((item: any) => ({
-      itemId: item.item_id,
-      requiredQuantity: item.quantity * quantity,
-    }));
+    // TODO: Get routing/operations if they exist in the future
+    const operations: any[] = [];
 
     return this.create(tenantId, userId, {
       itemId,
@@ -294,6 +292,69 @@ export class JobOrderService {
       operations,
       materials,
     });
+  }
+
+  /**
+   * Recursively explode BOM to get all leaf items (raw materials/components)
+   * Handles multi-level BOMs with sub-assemblies
+   */
+  private async explodeBOMRecursively(
+    bomId: string,
+    quantity: number,
+    tenantId: string,
+    level: number = 0
+  ): Promise<Array<{ itemId: string; quantity: number }>> {
+    const indent = '  '.repeat(level);
+    console.log(`${indent}[BOM EXPLODE] Level ${level}: BOM ID=${bomId}, Quantity=${quantity}`);
+
+    const { data: bomItems } = await this.supabase
+      .from('bom_items')
+      .select('component_type, item_id, child_bom_id, quantity, scrap_percentage')
+      .eq('bom_id', bomId);
+
+    console.log(`${indent}[BOM EXPLODE] Found ${bomItems?.length || 0} components`);
+
+    if (!bomItems || bomItems.length === 0) return [];
+
+    const allItems: Map<string, number> = new Map();
+
+    for (const bomItem of bomItems) {
+      const scrapFactor = 1 + (bomItem.scrap_percentage || 0) / 100;
+      const adjustedQty = bomItem.quantity * quantity * scrapFactor;
+
+      console.log(`${indent}[BOM EXPLODE] Component: type=${bomItem.component_type}, qty=${bomItem.quantity}, scrap=${bomItem.scrap_percentage}%, adjustedQty=${adjustedQty}`);
+
+      if (bomItem.component_type === 'ITEM' && bomItem.item_id) {
+        // Direct item - this is a leaf node
+        console.log(`${indent}[BOM EXPLODE] → Adding ITEM ${bomItem.item_id}: ${adjustedQty} units`);
+        const existing = allItems.get(bomItem.item_id) || 0;
+        allItems.set(bomItem.item_id, existing + adjustedQty);
+      } else if (bomItem.component_type === 'BOM' && bomItem.child_bom_id) {
+        // Sub-assembly - recursively explode it
+        console.log(`${indent}[BOM EXPLODE] → Recursing into child BOM ${bomItem.child_bom_id} with qty=${adjustedQty}`);
+        const childItems = await this.explodeBOMRecursively(bomItem.child_bom_id, adjustedQty, tenantId, level + 1);
+        console.log(`${indent}[BOM EXPLODE] ← Child BOM returned ${childItems.length} items`);
+
+        childItems.forEach((childItem) => {
+          const existing = allItems.get(childItem.itemId) || 0;
+          const newQty = existing + childItem.quantity;
+          console.log(`${indent}[BOM EXPLODE]   Aggregating item ${childItem.itemId}: +${childItem.quantity} = ${newQty}`);
+          allItems.set(childItem.itemId, newQty);
+        });
+      }
+    }
+
+    const result = Array.from(allItems.entries()).map(([itemId, qty]) => ({
+      itemId,
+      quantity: qty,
+    }));
+
+    console.log(
+      `${indent}[BOM EXPLODE] Level ${level} returning ${result.length} unique items:`,
+      result.map((r) => `${r.itemId}:${r.quantity}`).join(', ')
+    );
+
+    return result;
   }
 
   private async checkMaterialAvailability(tenantId: string, materials: any[], jobQuantity: number) {
