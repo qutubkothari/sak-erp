@@ -836,7 +836,7 @@ export class JobOrderService {
         itemCode: node.itemCode,
         itemName: node.itemName,
         requiredQuantity: node.requiredQuantity,
-        availableStock: node.availableStock,
+        availableQuantity: node.availableQuantity,
         toMakeQuantity: node.toMakeQuantity,
       }));
 
