@@ -713,7 +713,7 @@ export class JobOrderService {
     
     if (!bom) {
       return {
-        item: { code: item.code, name: item.name, type: item.type },
+        finishedItem: { code: item.code, name: item.name, type: item.type },
         hasBOM: false,
         message: 'No active BOM found for this item. A manual job order can still be created.',
         materials: [],
