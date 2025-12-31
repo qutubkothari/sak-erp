@@ -43,9 +43,19 @@ export class GrnController {
     return this.grnService.submit(req.user.tenantId, id, req.user.userId);
   }
 
+  @Post(':id/status')
+  async updateStatus(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.grnService.updateStatus(req.user.tenantId, id, body.status, req.user.userId);
+  }
+
   @Delete(':id')
   async delete(@Request() req: any, @Param('id') id: string) {
     return this.grnService.delete(req.user.tenantId, id);
+  }
+
+  @Post(':id/qc-accept')
+  async qcAccept(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.grnService.qcAccept(req.user.tenantId, id, req.user.userId, body);
   }
 
   @Post('items/:itemId/generate-uids')

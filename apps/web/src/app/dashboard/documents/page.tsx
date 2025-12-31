@@ -321,7 +321,7 @@ export default function DocumentsPage() {
                   </div>
                 </div>
                 <span className={`px-2 py-1 rounded text-xs font-medium ${statusColors[doc.status]}`}>
-                  {(doc.status || 'N/A').replace('_', ' ')}
+                  {doc.status.replace('_', ' ')}
                 </span>
               </div>
 
@@ -420,7 +420,7 @@ export default function DocumentsPage() {
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 rounded text-xs font-medium ${statusColors[doc.status]}`}>
-                      {(doc.status || 'N/A').replace('_', ' ')}
+                      {doc.status.replace('_', ' ')}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900">

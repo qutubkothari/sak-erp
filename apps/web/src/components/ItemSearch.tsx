@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { apiClient } from '../../lib/api-client';
 
 interface Item {
   id: string;
@@ -48,9 +47,16 @@ export default function ItemSearch({ value, onSelect, placeholder, className }: 
 
       setLoading(true);
       try {
-        const data = await apiClient.get<Item[]>('/items/search', { q: searchQuery });
-        setItems(Array.isArray(data) ? data : []);
-        setShowDropdown(true);
+        const token = localStorage.getItem('accessToken');
+        const response = await fetch(`http://13.205.17.214:4000/api/v1/inventory/items/search?q=${encodeURIComponent(searchQuery)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setItems(data);
+          setShowDropdown(true);
+        }
       } catch (error) {
         console.error('Error searching items:', error);
       } finally {

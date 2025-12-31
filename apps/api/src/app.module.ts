@@ -8,7 +8,9 @@ import { APP_GUARD } from '@nestjs/core';
 import { join } from 'path';
 
 // Core Modules
-// import { PrismaModule } from './prisma/prisma.module'; // DISABLED: Prisma not used on EC2
+import { PrismaModule } from './prisma/prisma.module';
+import { MigrationController } from './migration.controller';
+import { MigrationService } from './migration.service';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
@@ -19,6 +21,7 @@ import { UserModule } from './user/user.module';
 import { PurchaseModule } from './purchase/purchase.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { ItemsModule } from './items/items.module';
+import { CategoriesModule } from './categories/categories.module';
 import { ProductionModule } from './production/production.module';
 import { QualityModule } from './quality/quality.module';
 import { SalesModule } from './sales/sales.module';
@@ -26,13 +29,14 @@ import { ServiceModule } from './service/service.module';
 import { BomModule } from './bom/bom.module';
 import { DocumentsModule } from './documents/documents.module';
 import { HrModule } from './hr/hr.module';
-import { MasterModule } from './master/master.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 // Support Modules
 import { WorkflowModule } from './workflow/workflow.module';
-// import { UidModule } from './uid/uid.module'; // DISABLED: Requires Prisma
+import { UidModule } from './uid/uid.module';
 import { NotificationModule } from './notification/notification.module';
 import { AuditModule } from './audit/audit.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -69,7 +73,7 @@ import { AuditModule } from './audit/audit.module';
     }),
 
     // Core
-    // PrismaModule, // DISABLED
+    PrismaModule,
     AuthModule,
     TenantModule,
     UserModule,
@@ -78,6 +82,7 @@ import { AuditModule } from './audit/audit.module';
     PurchaseModule,
     InventoryModule,
     ItemsModule,
+    CategoriesModule,
     ProductionModule,
     QualityModule,
     SalesModule,
@@ -85,15 +90,18 @@ import { AuditModule } from './audit/audit.module';
     BomModule,
     HrModule,
     DocumentsModule,
-    MasterModule,
+    DashboardModule,
 
     // Support
     WorkflowModule,
-    // UidModule, // DISABLED
+    UidModule,
     NotificationModule,
     AuditModule,
+    EmailModule,
   ],
+  controllers: [MigrationController],
   providers: [
+    MigrationService,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

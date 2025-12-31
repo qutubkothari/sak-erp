@@ -8,9 +8,6 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'SAK Solutions - Manufacturing ERP',
   description: 'Comprehensive Manufacturing ERP System with Multi-Tenant, Multi-Plant, Multi-Language Support',
-  icons: {
-    icon: '/favicon.svg',
-  },
 };
 
 export default function RootLayout({

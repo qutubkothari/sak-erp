@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import { useSelection } from '../../../../hooks/useSelection';
 
 interface Vendor {
   id: string;
@@ -29,6 +30,8 @@ export default function VendorsPage() {
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('ALL');
+
+  const selection = useSelection(vendors);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -110,6 +113,20 @@ export default function VendorsPage() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (!confirm(`Are you sure you want to delete ${selection.selectedItems.length} vendors? This action cannot be undone.`)) return;
+
+    try {
+      await Promise.all(
+        selection.selectedItems.map(vendor => apiClient.delete(`/purchase/vendors/${vendor.id}`))
+      );
+      selection.deselectAll();
+      fetchVendors();
+    } catch (error) {
+      console.error('Error deleting vendors:', error);
+    }
+  };
+
   const resetForm = () => {
     setEditingVendor(null);
     setFormData({
@@ -143,15 +160,25 @@ export default function VendorsPage() {
             <h1 className="text-4xl font-bold text-amber-900">Vendor Management</h1>
             <p className="text-amber-700">Manage supplier and vendor information</p>
           </div>
-          <button
-            onClick={() => {
-              resetForm();
-              setShowModal(true);
-            }}
-            className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold"
-          >
-            + Add Vendor
-          </button>
+          <div className="flex gap-4">
+            {selection.hasSelections && (
+              <button
+                onClick={handleDeleteAll}
+                className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold"
+              >
+                Delete Selected ({selection.selectedItems.length})
+              </button>
+            )}
+            <button
+              onClick={() => {
+                resetForm();
+                setShowModal(true);
+              }}
+              className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold"
+            >
+              + Add Vendor
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -183,6 +210,29 @@ export default function VendorsPage() {
               />
             </div>
           </div>
+          {vendors.length > 0 && (
+            <div className="mt-4 flex items-center gap-4">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={selection.isAllSelected}
+                  onChange={selection.toggleSelectAll}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  Select All ({vendors.length} vendors)
+                </span>
+              </label>
+              {selection.hasSelections && (
+                <button
+                  onClick={selection.deselectAll}
+                  className="text-sm text-amber-600 hover:text-amber-800"
+                >
+                  Deselect All
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Vendors Grid */}
@@ -197,11 +247,19 @@ export default function VendorsPage() {
             </div>
           ) : (
             vendors.map((vendor) => (
-              <div key={vendor.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+              <div key={vendor.id} className={`bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow ${selection.isSelected(vendor.id) ? 'ring-2 ring-amber-500' : ''}`}>
                 <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-900">{vendor.name}</h3>
-                    <p className="text-sm text-gray-500">{vendor.code}</p>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selection.isSelected(vendor.id)}
+                      onChange={() => selection.toggleSelection(vendor.id)}
+                      className="w-4 h-4"
+                    />
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">{vendor.name}</h3>
+                      <p className="text-sm text-gray-500">{vendor.code}</p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {vendor.rating > 0 && (

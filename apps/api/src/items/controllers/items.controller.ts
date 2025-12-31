@@ -19,8 +19,12 @@ export class ItemsController {
   constructor(private readonly itemsService: ItemsService) {}
 
   @Get()
-  async findAll(@Request() req: any, @Query('search') search?: string) {
-    return this.itemsService.findAll(req.user.tenantId, search);
+  async findAll(@Request() req: any, @Query('search') search?: string, @Query('includeInactive') includeInactive?: string) {
+    const includeInactiveBool = includeInactive === 'true';
+    console.log('[ItemsController] findAll called:', { tenantId: req.user.tenantId, search, includeInactive, includeInactiveBool });
+    const result = await this.itemsService.findAll(req.user.tenantId, search, includeInactiveBool);
+    console.log('[ItemsController] findAll result:', { count: result.length });
+    return result;
   }
 
   @Get('search')
@@ -38,6 +42,11 @@ export class ItemsController {
     return this.itemsService.create(req.user.tenantId, body);
   }
 
+  @Post('bulk')
+  async bulkCreate(@Request() req: any, @Body() body: { items: any[] }) {
+    return this.itemsService.bulkCreate(req.user.tenantId, body.items);
+  }
+
   @Put(':id')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.itemsService.update(req.user.tenantId, id, body);
@@ -46,5 +55,53 @@ export class ItemsController {
   @Delete(':id')
   async delete(@Request() req: any, @Param('id') id: string) {
     return this.itemsService.delete(req.user.tenantId, id);
+  }
+
+  // Item-Vendor Relationships
+  @Get(':id/vendors')
+  async getItemVendors(@Request() req: any, @Param('id') id: string) {
+    return this.itemsService.getItemVendors(req.user.tenantId, id);
+  }
+
+  @Get(':id/vendors/preferred')
+  async getPreferredVendor(@Request() req: any, @Param('id') id: string) {
+    return this.itemsService.getPreferredVendor(id);
+  }
+
+  @Post(':id/vendors')
+  async addVendor(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.itemsService.addItemVendor(req.user.tenantId, req.user.userId, id, body);
+  }
+
+  @Put(':id/vendors/:vendorId')
+  async updateVendor(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('vendorId') vendorId: string,
+    @Body() body: any
+  ) {
+    return this.itemsService.updateItemVendor(req.user.tenantId, req.user.userId, id, vendorId, body);
+  }
+
+  @Delete(':id/vendors/:vendorId')
+  async removeVendor(@Request() req: any, @Param('id') id: string, @Param('vendorId') vendorId: string) {
+    return this.itemsService.deleteItemVendor(req.user.tenantId, id, vendorId);
+  }
+
+  @Get(':id/vendors/:vendorId/price-history')
+  async getPriceHistory(
+    @Request() req: any,
+    @Param('id') itemId: string,
+    @Param('vendorId') vendorId: string
+  ) {
+    return this.itemsService.getPurchasePriceHistory(itemId, vendorId);
+  }
+
+  @Get(':id/stock')
+  async getItemStock(
+    @Request() req: any,
+    @Param('id') itemId: string
+  ) {
+    return this.itemsService.getItemStock(itemId, req.user.tenantId);
   }
 }

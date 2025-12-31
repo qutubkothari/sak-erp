@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
+import SearchableSelect from '../../../components/SearchableSelect';
 
 type TabType = 'customers' | 'quotations' | 'orders' | 'dispatch' | 'warranties';
 
@@ -93,6 +94,16 @@ interface Warranty {
   created_at: string;
 }
 
+interface UIDRecord {
+  id?: string;
+  uid: string;
+  entity_id: string;
+  status: string;
+  location?: string;
+  grn_id?: string;
+  created_at?: string;
+}
+
 export default function SalesPage() {
   const [activeTab, setActiveTab] = useState<TabType>('customers');
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -100,6 +111,9 @@ export default function SalesPage() {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [dispatches, setDispatches] = useState<DispatchNote[]>([]);
   const [warranties, setWarranties] = useState<Warranty[]>([]);
+  const [items, setItems] = useState<any[]>([]);
+  const [availableUIDs, setAvailableUIDs] = useState<{ [key: string]: UIDRecord[] }>({});
+  const [loadingUIDs, setLoadingUIDs] = useState<{ [key: number]: boolean }>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -125,8 +139,15 @@ export default function SalesPage() {
   });
 
   // Quotation form
-  const [showQuotationForm, setShowQuotationForm] = useState(false);
-  const [quotationForm, setQuotationForm] = useState({
+  const createDefaultQuotationForm = (): {
+    customer_id: string;
+    quotation_date: string;
+    valid_until: string;
+    payment_terms: string;
+    delivery_terms: string;
+    notes: string;
+    items: QuotationItem[];
+  } => ({
     customer_id: '',
     quotation_date: new Date().toISOString().split('T')[0],
     valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -135,10 +156,15 @@ export default function SalesPage() {
     notes: '',
     items: [] as QuotationItem[],
   });
+  const [showQuotationForm, setShowQuotationForm] = useState(false);
+  const [quotationForm, setQuotationForm] = useState(createDefaultQuotationForm);
+  const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null);
+  const [viewingQuotation, setViewingQuotation] = useState<any | null>(null);
 
   // Dispatch form
   const [showDispatchForm, setShowDispatchForm] = useState(false);
   const [selectedOrderForDispatch, setSelectedOrderForDispatch] = useState<SalesOrder | null>(null);
+  const [salesOrderItems, setSalesOrderItems] = useState<any[]>([]);
   const [dispatchForm, setDispatchForm] = useState({
     sales_order_id: '',
     dispatch_date: new Date().toISOString().split('T')[0],
@@ -151,7 +177,27 @@ export default function SalesPage() {
     items: [] as { sales_order_item_id: string; item_id: string; uid: string; quantity: number; batch_number?: string }[],
   });
 
+  // Warranty form
+  const [showWarrantyForm, setShowWarrantyForm] = useState(false);
+  const [warrantyForm, setWarrantyForm] = useState({
+    uid: '',
+    warranty_duration_months: 12,
+    warranty_type: 'STANDARD',
+    notes: '',
+  });
+
+  // Sales Order conversion
+  const [showSOConversionForm, setShowSOConversionForm] = useState(false);
+  const [selectedQuotationForSO, setSelectedQuotationForSO] = useState<Quotation | null>(null);
+  const [soConversionForm, setSOConversionForm] = useState({
+    expected_delivery_date: '',
+    advance_amount: 0,
+    payment_terms: '',
+    special_instructions: '',
+  });
+
   useEffect(() => {
+    fetchItems(); // Fetch items on mount for all forms
     if (activeTab === 'customers') {
       fetchCustomers();
     } else if (activeTab === 'quotations') {
@@ -164,6 +210,16 @@ export default function SalesPage() {
       fetchWarranties();
     }
   }, [activeTab]);
+
+  const fetchItems = async () => {
+    try {
+      const data = await apiClient.get<any[]>('/items');
+      console.log('Fetched items:', data);
+      setItems(data);
+    } catch (err: any) {
+      console.error('Failed to fetch items:', err);
+    }
+  };
 
   const fetchCustomers = async () => {
     setLoading(true);
@@ -191,6 +247,11 @@ export default function SalesPage() {
     }
   };
 
+  const resetQuotationForm = () => {
+    setQuotationForm(createDefaultQuotationForm());
+    setEditingQuotationId(null);
+  };
+
   const fetchOrders = async () => {
     setLoading(true);
     setError(null);
@@ -208,7 +269,7 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get<DispatchNote[]>('/api/v1/sales/dispatch');
+      const data = await apiClient.get<DispatchNote[]>('/sales/dispatch');
       setDispatches(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch dispatch notes');
@@ -221,7 +282,7 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get<Warranty[]>('/api/v1/sales/warranties');
+      const data = await apiClient.get<Warranty[]>('/sales/warranties');
       setWarranties(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch warranties');
@@ -235,7 +296,9 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post('/api/v1/sales/customers', customerForm);
+      console.log('Creating customer with data:', customerForm);
+      const response = await apiClient.post('/sales/customers', customerForm);
+      console.log('Customer created successfully:', response);
       setShowCustomerForm(false);
       setCustomerForm({
         customer_name: '',
@@ -257,62 +320,69 @@ export default function SalesPage() {
       });
       fetchCustomers();
     } catch (err: any) {
-      setError(err.message || 'Failed to create customer');
+      console.error('Full error object:', err);
+      console.error('Error response:', err.response?.data);
+      setError(err.response?.data?.message || err.message || 'Failed to create customer');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateQuotation = async (e: React.FormEvent) => {
+  const handleSaveQuotation = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post('/api/v1/sales/quotations', quotationForm);
+      if (editingQuotationId) {
+        await apiClient.put(`/sales/quotations/${editingQuotationId}`, quotationForm);
+        alert('Quotation updated successfully!');
+      } else {
+        await apiClient.post('/sales/quotations', quotationForm);
+        alert('Quotation created successfully!');
+      }
       setShowQuotationForm(false);
+      resetQuotationForm();
+      fetchQuotations();
+    } catch (err: any) {
+      setError(err.message || 'Failed to save quotation');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewQuotation = async (quotationId: string) => {
+    try {
+      const data = await apiClient.get(`/sales/quotations/${quotationId}`);
+      setViewingQuotation(data);
+    } catch (err: any) {
+      alert(err.message || 'Failed to load quotation');
+    }
+  };
+
+  const handleEditQuotation = async (quotationId: string) => {
+    try {
+      const data: any = await apiClient.get(`/sales/quotations/${quotationId}`);
+      setEditingQuotationId(quotationId);
       setQuotationForm({
-        customer_id: '',
-        quotation_date: new Date().toISOString().split('T')[0],
-        valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        payment_terms: '',
-        delivery_terms: '',
-        notes: '',
-        items: [],
+        customer_id: data.customer_id || '',
+        quotation_date: data.quotation_date?.split('T')[0] || '',
+        valid_until: data.valid_until?.split('T')[0] || '',
+        payment_terms: data.payment_terms || '',
+        delivery_terms: data.delivery_terms || '',
+        notes: data.notes || '',
+        items: (data.quotation_items || []).map((item: any) => ({
+          item_id: item.item_id || '',
+          item_description: item.item_description || '',
+          quantity: Number(item.quantity) || 1,
+          unit_price: Number(item.unit_price) || 0,
+          discount_percentage:
+            item.discount_percentage !== undefined ? Number(item.discount_percentage) : 0,
+          tax_percentage: item.tax_percentage !== undefined ? Number(item.tax_percentage) : 18,
+        })),
       });
-      fetchQuotations();
+      setShowQuotationForm(true);
     } catch (err: any) {
-      setError(err.message || 'Failed to create quotation');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleApproveQuotation = async (quotationId: string) => {
-    if (!confirm('Approve this quotation?')) return;
-    setLoading(true);
-    setError(null);
-    try {
-      await apiClient.put(`/api/v1/sales/quotations/${quotationId}/approve`, {});
-      fetchQuotations();
-    } catch (err: any) {
-      setError(err.message || 'Failed to approve quotation');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleConvertToSO = async (quotationId: string) => {
-    if (!confirm('Convert this quotation to Sales Order?')) return;
-    setLoading(true);
-    setError(null);
-    try {
-      await apiClient.post(`/api/v1/sales/quotations/${quotationId}/convert-to-so`, {});
-      fetchQuotations();
-      fetchOrders();
-    } catch (err: any) {
-      setError(err.message || 'Failed to convert to sales order');
-    } finally {
-      setLoading(false);
+      alert(err.message || 'Failed to load quotation for editing');
     }
   };
 
@@ -321,9 +391,11 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post('/api/v1/sales/dispatch', dispatchForm);
+      await apiClient.post('/sales/dispatch', dispatchForm);
+      alert('Dispatch note created successfully!');
       setShowDispatchForm(false);
       setSelectedOrderForDispatch(null);
+      setSalesOrderItems([]);
       setDispatchForm({
         sales_order_id: '',
         dispatch_date: new Date().toISOString().split('T')[0],
@@ -393,7 +465,25 @@ export default function SalesPage() {
 
   const updateDispatchItem = (index: number, field: string, value: any) => {
     const newItems = [...dispatchForm.items];
-    newItems[index] = { ...newItems[index], [field]: value };
+    if (field === 'sales_order_item_id') {
+      // Auto-fill item_id from selected SO item
+      const soItem = salesOrderItems.find(item => item.id === value);
+      if (soItem) {
+        newItems[index] = { 
+          ...newItems[index], 
+          sales_order_item_id: value,
+          item_id: soItem.item_id,
+          quantity: soItem.quantity - (soItem.dispatched_quantity || 0), // Remaining qty
+          uid: '' // Reset UID when item changes
+        };
+        // Fetch available UIDs for this item
+        fetchAvailableUIDs(soItem.item_id, index);
+      } else {
+        newItems[index] = { ...newItems[index], [field]: value };
+      }
+    } else {
+      newItems[index] = { ...newItems[index], [field]: value };
+    }
     setDispatchForm({ ...dispatchForm, items: newItems });
   };
 
@@ -402,6 +492,96 @@ export default function SalesPage() {
       ...dispatchForm,
       items: dispatchForm.items.filter((_, i) => i !== index),
     });
+  };
+
+  const fetchSalesOrderItems = async (orderId: string) => {
+    try {
+      console.log('Fetching SO items for order:', orderId);
+      const data = await apiClient.get(`/sales/orders/${orderId}`);
+      console.log('SO data received:', data);
+      const itemsArray = data.sales_order_items || data.items || [];
+      console.log('SO items extracted:', itemsArray);
+      setSalesOrderItems(itemsArray);
+      if (itemsArray.length === 0) {
+        alert('Warning: This sales order has no items. Please check the sales order.');
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch SO items:', err);
+      alert('Failed to fetch sales order items: ' + err.message);
+      setSalesOrderItems([]);
+    }
+  };
+
+  const fetchAvailableUIDs = async (itemId: string, rowIndex: number) => {
+    if (!itemId) return;
+    
+    setLoadingUIDs({ ...loadingUIDs, [rowIndex]: true });
+    try {
+      // Fetch UIDs with status GENERATED (newly received UIDs ready for dispatch)
+      const response = await apiClient.get(`/uid?item_id=${itemId}&status=GENERATED`);
+      // Handle paginated response structure: { data: [...], pagination: {...} }
+      const uids = response?.data || (Array.isArray(response) ? response : []);
+      setAvailableUIDs({ ...availableUIDs, [itemId]: uids });
+      
+      if (uids.length === 0) {
+        alert(`No available UIDs found for this item. Please complete a GRN first.`);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch UIDs:', err);
+      alert('Failed to fetch available UIDs: ' + err.message);
+      setAvailableUIDs({ ...availableUIDs, [itemId]: [] });
+    } finally {
+      setLoadingUIDs({ ...loadingUIDs, [rowIndex]: false });
+    }
+  };
+
+  const handleConvertToSO = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedQuotationForSO) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await apiClient.post(`/sales/quotations/${selectedQuotationForSO.id}/convert-to-so`, soConversionForm);
+      alert('Quotation converted to Sales Order successfully!');
+      setShowSOConversionForm(false);
+      setSelectedQuotationForSO(null);
+      setSOConversionForm({
+        expected_delivery_date: '',
+        advance_amount: 0,
+        payment_terms: '',
+        special_instructions: '',
+      });
+      fetchQuotations();
+      fetchOrders();
+    } catch (err: any) {
+      setError(err.message || 'Failed to convert quotation');
+      alert('Failed to convert quotation: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateWarranty = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      await apiClient.post('/sales/warranties', warrantyForm);
+      alert('Warranty registered successfully!');
+      setShowWarrantyForm(false);
+      setWarrantyForm({
+        uid: '',
+        warranty_duration_months: 12,
+        warranty_type: 'STANDARD',
+        notes: '',
+      });
+      fetchWarranties();
+    } catch (err: any) {
+      setError(err.message || 'Failed to register warranty');
+      alert('Failed to register warranty: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -693,7 +873,10 @@ export default function SalesPage() {
           <div className="mb-4 flex justify-between items-center">
             <h2 className="text-lg font-semibold">Quotations</h2>
             <button
-              onClick={() => setShowQuotationForm(true)}
+              onClick={() => {
+                resetQuotationForm();
+                setShowQuotationForm(true);
+              }}
               className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
             >
               + Create Quotation
@@ -739,18 +922,47 @@ export default function SalesPage() {
                           {quotation.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                        <button
+                          onClick={() => handleViewQuotation(quotation.id)}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          View
+                        </button>
                         {quotation.status === 'DRAFT' && (
                           <button
-                            onClick={() => handleApproveQuotation(quotation.id)}
-                            className="text-green-600 hover:text-green-900 mr-2"
+                            onClick={() => handleEditQuotation(quotation.id)}
+                            className="text-amber-600 hover:text-amber-900"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {quotation.status === 'DRAFT' && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await apiClient.put(`/sales/quotations/${quotation.id}/approve`);
+                                alert('Quotation approved!');
+                                fetchQuotations();
+                              } catch (err: any) {
+                                alert('Failed to approve: ' + err.message);
+                              }
+                            }}
+                            className="text-green-600 hover:text-green-900"
                           >
                             Approve
                           </button>
                         )}
                         {quotation.status === 'APPROVED' && (
                           <button
-                            onClick={() => handleConvertToSO(quotation.id)}
+                            onClick={() => {
+                              setSelectedQuotationForSO(quotation);
+                              setSOConversionForm({
+                                ...soConversionForm,
+                                payment_terms: quotation.payment_terms || '',
+                              });
+                              setShowSOConversionForm(true);
+                            }}
                             className="text-amber-600 hover:text-amber-900"
                           >
                             Convert to SO
@@ -764,12 +976,184 @@ export default function SalesPage() {
             </div>
           )}
 
+          {/* SO Conversion Form Modal */}
+          {showSOConversionForm && selectedQuotationForSO && (
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 max-w-lg w-full">
+                <h3 className="text-lg font-semibold mb-4">
+                  Convert Quotation {selectedQuotationForSO.quotation_number} to Sales Order
+                </h3>
+                <form onSubmit={handleConvertToSO}>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+                      <p className="text-sm text-gray-900">{selectedQuotationForSO.customer_name}</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount</label>
+                      <p className="text-sm text-gray-900">₹{selectedQuotationForSO.net_amount.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Expected Delivery Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={soConversionForm.expected_delivery_date}
+                        onChange={(e) => setSOConversionForm({ ...soConversionForm, expected_delivery_date: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Advance Amount (₹) *</label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        max={selectedQuotationForSO.net_amount}
+                        value={soConversionForm.advance_amount}
+                        onChange={(e) => setSOConversionForm({ ...soConversionForm, advance_amount: parseFloat(e.target.value) })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
+                      <input
+                        type="text"
+                        value={soConversionForm.payment_terms}
+                        onChange={(e) => setSOConversionForm({ ...soConversionForm, payment_terms: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Special Instructions</label>
+                      <textarea
+                        rows={3}
+                        value={soConversionForm.special_instructions}
+                        onChange={(e) => setSOConversionForm({ ...soConversionForm, special_instructions: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSOConversionForm(false);
+                        setSelectedQuotationForSO(null);
+                      }}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      {loading ? 'Converting...' : 'Create Sales Order'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {viewingQuotation && (
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">Quotation {viewingQuotation.quotation_number}</h3>
+                    <p className="text-sm text-gray-500">Status: {viewingQuotation.status}</p>
+                  </div>
+                  <button
+                    onClick={() => setViewingQuotation(null)}
+                    className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                    aria-label="Close quotation details"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 border rounded-lg p-4 bg-gray-50 mb-6">
+                  <div>
+                    <p className="text-xs uppercase text-gray-500">Customer</p>
+                    <p className="text-sm text-gray-900">{viewingQuotation.customer_name || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-gray-500">Quotation Date</p>
+                    <p className="text-sm text-gray-900">
+                      {new Date(viewingQuotation.quotation_date).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-gray-500">Valid Until</p>
+                    <p className="text-sm text-gray-900">
+                      {new Date(viewingQuotation.valid_until).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-gray-500">Net Amount</p>
+                    <p className="text-sm text-gray-900">₹{viewingQuotation.net_amount?.toLocaleString()}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Items</h4>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Discount %</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Line Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 bg-white">
+                        {(viewingQuotation.quotation_items || []).map((item: any) => (
+                          <tr key={item.id}>
+                            <td className="px-4 py-2 text-sm text-gray-900">{item.item_description || '—'}</td>
+                            <td className="px-4 py-2 text-sm text-gray-600">{item.quantity}</td>
+                            <td className="px-4 py-2 text-sm text-gray-600">₹{Number(item.unit_price).toLocaleString()}</td>
+                            <td className="px-4 py-2 text-sm text-gray-600">{item.discount_percentage ?? 0}%</td>
+                            <td className="px-4 py-2 text-sm text-gray-900">₹{Number(item.line_total).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                        {(viewingQuotation.quotation_items || []).length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
+                              No items available for this quotation.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="mt-6 text-right">
+                  <button
+                    onClick={() => setViewingQuotation(null)}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Quotation Form Modal */}
           {showQuotationForm && (
             <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
               <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-                <h3 className="text-lg font-semibold mb-4">Create Quotation</h3>
-                <form onSubmit={handleCreateQuotation}>
+                <h3 className="text-lg font-semibold mb-4">
+                  {editingQuotationId ? 'Edit Quotation' : 'Create Quotation'}
+                </h3>
+                <form onSubmit={handleSaveQuotation}>
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
@@ -819,72 +1203,131 @@ export default function SalesPage() {
                   </div>
 
                   <div className="mb-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="block text-sm font-medium text-gray-700">Items *</label>
+                    <div className="flex justify-between items-center mb-3">
+                      <label className="block text-sm font-medium text-gray-700">Quotation Items *</label>
                       <button
                         type="button"
                         onClick={addQuotationItem}
-                        className="text-sm text-amber-600 hover:text-amber-700"
+                        className="px-3 py-1.5 text-sm text-white bg-amber-600 hover:bg-amber-700 rounded-md transition-colors"
                       >
                         + Add Item
                       </button>
                     </div>
-                    {quotationForm.items.map((item, index) => (
-                      <div key={index} className="grid grid-cols-6 gap-2 mb-2 p-3 border border-gray-200 rounded-lg">
-                        <input
-                          type="text"
-                          placeholder="Item ID"
-                          required
-                          value={item.item_id}
-                          onChange={(e) => updateQuotationItem(index, 'item_id', e.target.value)}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Description"
-                          required
-                          value={item.item_description}
-                          onChange={(e) => updateQuotationItem(index, 'item_description', e.target.value)}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Qty"
-                          required
-                          value={item.quantity}
-                          onChange={(e) => updateQuotationItem(index, 'quantity', parseFloat(e.target.value))}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Price"
-                          required
-                          value={item.unit_price}
-                          onChange={(e) => updateQuotationItem(index, 'unit_price', parseFloat(e.target.value))}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Disc%"
-                          value={item.discount_percentage}
-                          onChange={(e) => updateQuotationItem(index, 'discount_percentage', parseFloat(e.target.value))}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeQuotationItem(index)}
-                          className="text-red-600 hover:text-red-800 text-sm"
-                        >
-                          Remove
-                        </button>
+
+                    {/* Column Headers */}
+                    <div className="grid grid-cols-12 gap-2 mb-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="col-span-3 text-xs font-semibold text-gray-700 uppercase">Item</div>
+                      <div className="col-span-3 text-xs font-semibold text-gray-700 uppercase">Description</div>
+                      <div className="col-span-2 text-xs font-semibold text-gray-700 uppercase">Quantity</div>
+                      <div className="col-span-2 text-xs font-semibold text-gray-700 uppercase">Unit Price (₹)</div>
+                      <div className="col-span-1 text-xs font-semibold text-gray-700 uppercase">Disc %</div>
+                      <div className="col-span-1 text-xs font-semibold text-gray-700 uppercase text-center">Action</div>
+                    </div>
+
+                    {quotationForm.items.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500 border-2 border-dashed border-gray-300 rounded-lg">
+                        <p className="text-sm">No items added yet. Click &quot;+ Add Item&quot; to start.</p>
                       </div>
-                    ))}
+                    ) : (
+                      quotationForm.items.map((item, index) => (
+                        <div key={index} className="grid grid-cols-12 gap-2 mb-3 p-3 border border-gray-200 rounded-lg hover:border-amber-300 transition-colors bg-white shadow-sm">
+                          <div className="col-span-3">
+                            <SearchableSelect
+                              options={items.map(i => ({
+                                value: i.id,
+                                label: i.code,
+                                subtitle: i.name,
+                              }))}
+                              value={item.item_id}
+                              onChange={(value, option) => {
+                                const selectedItem = items.find(i => i.id === value);
+                                if (selectedItem) {
+                                  const newItems = [...quotationForm.items];
+                                  newItems[index] = {
+                                    ...newItems[index],
+                                    item_id: value,
+                                    item_description: selectedItem.name || selectedItem.description || '',
+                                    unit_price: selectedItem.selling_price || selectedItem.standard_cost || 0,
+                                  };
+                                  setQuotationForm({ ...quotationForm, items: newItems });
+                                } else {
+                                  updateQuotationItem(index, 'item_id', value);
+                                }
+                              }}
+                              placeholder="Search item..."
+                              required
+                            />
+                          </div>
+                          <div className="col-span-3">
+                            <input
+                              type="text"
+                              placeholder="Item description"
+                              required
+                              value={item.item_description}
+                              onChange={(e) => updateQuotationItem(index, 'item_description', e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <input
+                              type="number"
+                              placeholder="0"
+                              required
+                              min="0.01"
+                              step="0.01"
+                              value={item.quantity}
+                              onChange={(e) => updateQuotationItem(index, 'quantity', parseFloat(e.target.value))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <input
+                              type="number"
+                              placeholder="0.00"
+                              required
+                              min="0"
+                              step="0.01"
+                              value={item.unit_price}
+                              onChange={(e) => updateQuotationItem(index, 'unit_price', parseFloat(e.target.value))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                            />
+                          </div>
+                          <div className="col-span-1">
+                            <input
+                              type="number"
+                              placeholder="0"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={item.discount_percentage}
+                              onChange={(e) => updateQuotationItem(index, 'discount_percentage', parseFloat(e.target.value))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                            />
+                          </div>
+                          <div className="col-span-1 flex items-center justify-center">
+                            <button
+                              type="button"
+                              onClick={() => removeQuotationItem(index)}
+                              className="px-2 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors"
+                              title="Remove item"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
 
                   <div className="mt-6 flex justify-end space-x-3">
                     <button
                       type="button"
-                      onClick={() => setShowQuotationForm(false)}
+                      onClick={() => {
+                        resetQuotationForm();
+                        setShowQuotationForm(false);
+                      }}
                       className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
                     >
                       Cancel
@@ -894,7 +1337,13 @@ export default function SalesPage() {
                       disabled={loading || quotationForm.items.length === 0}
                       className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
                     >
-                      {loading ? 'Creating...' : 'Create Quotation'}
+                      {loading
+                        ? editingQuotationId
+                          ? 'Updating...'
+                          : 'Creating...'
+                        : editingQuotationId
+                          ? 'Update Quotation'
+                          : 'Create Quotation'}
                     </button>
                   </div>
                 </form>
@@ -954,9 +1403,10 @@ export default function SalesPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         {(order.status === 'READY_TO_DISPATCH' || order.status === 'CONFIRMED') && (
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               setSelectedOrderForDispatch(order);
                               setDispatchForm({ ...dispatchForm, sales_order_id: order.id });
+                              await fetchSalesOrderItems(order.id);
                               setShowDispatchForm(true);
                             }}
                             className="text-amber-600 hover:text-amber-900"
@@ -1031,54 +1481,95 @@ export default function SalesPage() {
                         + Add Item
                       </button>
                     </div>
+
+                    {salesOrderItems.length === 0 && (
+                      <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <p className="text-sm text-yellow-800">
+                          ⚠️ No items found in this sales order. The sales order may not have any items yet.
+                        </p>
+                      </div>
+                    )}
+
                     {dispatchForm.items.map((item, index) => (
-                      <div key={index} className="grid grid-cols-6 gap-2 mb-2 p-3 border border-gray-200 rounded-lg">
-                        <input
-                          type="text"
-                          placeholder="SO Item ID"
-                          required
-                          value={item.sales_order_item_id}
-                          onChange={(e) => updateDispatchItem(index, 'sales_order_item_id', e.target.value)}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Item ID"
-                          required
-                          value={item.item_id}
-                          onChange={(e) => updateDispatchItem(index, 'item_id', e.target.value)}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <input
-                          type="text"
-                          placeholder="UID *"
-                          required
-                          value={item.uid}
-                          onChange={(e) => updateDispatchItem(index, 'uid', e.target.value)}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Qty"
-                          required
-                          value={item.quantity}
-                          onChange={(e) => updateDispatchItem(index, 'quantity', parseFloat(e.target.value))}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Batch"
-                          value={item.batch_number}
-                          onChange={(e) => updateDispatchItem(index, 'batch_number', e.target.value)}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeDispatchItem(index)}
-                          className="text-red-600 hover:text-red-800 text-sm"
-                        >
-                          Remove
-                        </button>
+                      <div key={index} className="grid grid-cols-5 gap-2 mb-2 p-3 border border-gray-200 rounded-lg">
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">SO Item *</label>
+                          <select
+                            required
+                            value={item.sales_order_item_id}
+                            onChange={(e) => updateDispatchItem(index, 'sales_order_item_id', e.target.value)}
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                          >
+                            <option value="">
+                              {salesOrderItems.length === 0 ? 'No items available' : 'Select Item'}
+                            </option>
+                            {salesOrderItems.map((soItem) => (
+                              <option key={soItem.id} value={soItem.id}>
+                                {items.find(i => i.id === soItem.item_id)?.code || soItem.item_id} - Qty: {soItem.quantity - (soItem.dispatched_quantity || 0)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">UID *</label>
+                          {loadingUIDs[index] ? (
+                            <div className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-gray-50 text-gray-500">
+                              Loading UIDs...
+                            </div>
+                          ) : item.item_id && availableUIDs[item.item_id] ? (
+                            <select
+                              required
+                              value={item.uid}
+                              onChange={(e) => updateDispatchItem(index, 'uid', e.target.value)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                            >
+                              <option value="">
+                                {availableUIDs[item.item_id].length === 0 ? 'No UIDs available' : 'Select UID'}
+                              </option>
+                              {availableUIDs[item.item_id].map((uid) => (
+                                <option key={uid.id} value={uid.uid}>
+                                  {uid.uid} - {uid.status} {uid.location ? `(${uid.location})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-gray-50 text-gray-500">
+                              Select item first
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Quantity *</label>
+                          <input
+                            type="number"
+                            placeholder="Qty"
+                            required
+                            min="0.01"
+                            step="0.01"
+                            value={item.quantity}
+                            onChange={(e) => updateDispatchItem(index, 'quantity', parseFloat(e.target.value))}
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Batch</label>
+                          <input
+                            type="text"
+                            placeholder="Batch"
+                            value={item.batch_number}
+                            onChange={(e) => updateDispatchItem(index, 'batch_number', e.target.value)}
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <button
+                            type="button"
+                            onClick={() => removeDispatchItem(index)}
+                            className="w-full px-2 py-1 text-red-600 hover:text-red-800 text-sm border border-red-300 rounded hover:bg-red-50"
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1089,6 +1580,7 @@ export default function SalesPage() {
                       onClick={() => {
                         setShowDispatchForm(false);
                         setSelectedOrderForDispatch(null);
+                        setSalesOrderItems([]);
                       }}
                       className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
                     >
@@ -1161,7 +1653,15 @@ export default function SalesPage() {
       {/* Warranties Tab */}
       {activeTab === 'warranties' && (
         <div>
-          <h2 className="text-lg font-semibold mb-4">Warranties</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold">Warranties</h2>
+            <button
+              onClick={() => setShowWarrantyForm(true)}
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+            >
+              + Register Warranty
+            </button>
+          </div>
           {loading ? (
             <p className="text-gray-600">Loading warranties...</p>
           ) : (
@@ -1212,6 +1712,84 @@ export default function SalesPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Warranty Form Modal */}
+          {showWarrantyForm && (
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 max-w-lg w-full">
+                <h3 className="text-lg font-semibold mb-4">Register Warranty</h3>
+                <form onSubmit={handleCreateWarranty}>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">UID (Unique Identification) *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Enter UID from dispatch"
+                        value={warrantyForm.uid}
+                        onChange={(e) => setWarrantyForm({ ...warrantyForm, uid: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">UID must be from a dispatched item</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Warranty Duration (Months) *</label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        max="120"
+                        value={warrantyForm.warranty_duration_months}
+                        onChange={(e) => setWarrantyForm({ ...warrantyForm, warranty_duration_months: parseInt(e.target.value) })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Warranty Type *</label>
+                      <select
+                        required
+                        value={warrantyForm.warranty_type}
+                        onChange={(e) => setWarrantyForm({ ...warrantyForm, warranty_type: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      >
+                        <option value="STANDARD">Standard Warranty</option>
+                        <option value="EXTENDED">Extended Warranty</option>
+                        <option value="COMPREHENSIVE">Comprehensive</option>
+                        <option value="LIMITED">Limited Warranty</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                      <textarea
+                        rows={3}
+                        value={warrantyForm.notes}
+                        onChange={(e) => setWarrantyForm({ ...warrantyForm, notes: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        placeholder="Additional warranty terms or conditions..."
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowWarrantyForm(false)}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      {loading ? 'Registering...' : 'Register Warranty'}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           )}
         </div>

@@ -1,11 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { EmailService } from '../../email/email.service';
 
 @Injectable()
 export class PurchaseOrdersService {
   private supabase: SupabaseClient;
 
-  constructor() {
+  constructor(private emailService: EmailService) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_KEY!,
@@ -13,6 +14,42 @@ export class PurchaseOrdersService {
   }
 
   async create(tenantId: string, userId: string, data: any) {
+    console.log('=== PO CREATE - Payment data received:', {
+      paymentStatus: data.paymentStatus,
+      paymentNotes: data.paymentNotes,
+      paymentTerms: data.paymentTerms
+    });
+    
+    // Check if PO already exists for this PR + vendor combination to prevent duplicates
+    if (data.prId && data.vendorId) {
+      const { data: existingPOs, error: checkError } = await this.supabase
+        .from('purchase_orders')
+        .select('id, po_number, vendor_id')
+        .eq('tenant_id', tenantId)
+        .eq('pr_id', data.prId)
+        .eq('vendor_id', data.vendorId)
+        .limit(1);
+
+      if (checkError) {
+        console.error('Duplicate check error:', checkError);
+        throw new BadRequestException(checkError.message);
+      }
+      
+      if (existingPOs && existingPOs.length > 0) {
+        // Fetch vendor name separately to avoid relation issues
+        const { data: vendorData } = await this.supabase
+          .from('vendors')
+          .select('name')
+          .eq('id', existingPOs[0].vendor_id)
+          .single();
+        
+        const vendorName = vendorData?.name || 'this vendor';
+        throw new BadRequestException(
+          `A Purchase Order (${existingPOs[0].po_number}) already exists for this PR and ${vendorName}. Cannot create duplicate PO.`
+        );
+      }
+    }
+
     // Generate PO number
     const poNumber = await this.generatePONumber(tenantId);
 
@@ -26,6 +63,8 @@ export class PurchaseOrdersService {
         po_date: data.poDate || new Date().toISOString().split('T')[0],
         delivery_date: data.deliveryDate,
         payment_terms: data.paymentTerms || 'NET_30',
+        payment_status: data.paymentStatus || 'UNPAID',
+        payment_notes: data.paymentNotes,
         delivery_address: data.deliveryAddress,
         terms_and_conditions: data.termsAndConditions,
         status: data.status || 'DRAFT',
@@ -82,10 +121,9 @@ export class PurchaseOrdersService {
       .select(`
         *,
         vendor:vendors(id, code, name, contact_person, email),
-        purchase_order_items(*)
+        purchase_order_items(id, item_id, item_code, item_name, ordered_qty, rate, item:items(hsn_code))
       `)
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false});
+      .eq('tenant_id', tenantId);
 
     if (filters?.status) {
       query = query.eq('status', filters.status);
@@ -95,9 +133,15 @@ export class PurchaseOrdersService {
       query = query.eq('vendor_id', filters.vendorId);
     }
 
-    if (filters?.search) {
-      query = query.or(`po_number.ilike.%${filters.search}%,notes.ilike.%${filters.search}%`);
+    if (filters?.prId) {
+      query = query.eq('pr_id', filters.prId);
     }
+
+    if (filters?.search) {
+      query = query.or(`po_number.ilike.%${filters.search}%,remarks.ilike.%${filters.search}%`);
+    }
+
+    query = query.order('created_at', { ascending: false });
 
     const { data, error } = await query;
 
@@ -122,20 +166,34 @@ export class PurchaseOrdersService {
   }
 
   async update(tenantId: string, id: string, data: any) {
+    console.log('=== PO UPDATE - Payment data received:', {
+      paymentStatus: data.paymentStatus,
+      paymentNotes: data.paymentNotes,
+      paymentTerms: data.paymentTerms
+    });
+    
     const { error } = await this.supabase
       .from('purchase_orders')
       .update({
         vendor_id: data.vendorId,
-        order_date: data.orderDate,
-        expected_delivery: data.expectedDelivery,
+        po_date: data.poDate || data.orderDate,
+        delivery_date: data.deliveryDate || data.expectedDelivery,
         payment_terms: data.paymentTerms,
+        payment_status: data.paymentStatus,
+        payment_notes: data.paymentNotes,
         delivery_address: data.deliveryAddress,
-        notes: data.notes,
+        remarks: data.remarks || data.notes,
         total_amount: data.totalAmount,
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
       .eq('id', id);
+    
+    console.log('=== PO UPDATE - After update:', {
+      id,
+      paymentStatus: data.paymentStatus,
+      error: error
+    });
 
     if (error) throw new BadRequestException(error.message);
 
@@ -149,12 +207,17 @@ export class PurchaseOrdersService {
       if (data.items.length > 0) {
         const items = data.items.map((item: any) => ({
           po_id: id,
-          item_id: item.itemId,
-          quantity: item.quantity,
-          unit_price: item.unitPrice,
-          tax_rate: item.taxRate || 0,
-          total_price: item.totalPrice,
-          specifications: item.specifications,
+          item_code: item.itemCode,
+          item_name: item.itemName,
+          description: item.description,
+          uom: item.uom,
+          ordered_qty: item.orderedQty || item.quantity,
+          rate: item.rate || item.unitPrice,
+          tax_percent: item.taxPercent || item.taxRate || 0,
+          discount_percent: item.discountPercent || 0,
+          amount: item.amount || item.totalPrice,
+          delivery_date: item.deliveryDate,
+          remarks: item.remarks || item.specifications,
         }));
 
         await this.supabase
@@ -167,16 +230,71 @@ export class PurchaseOrdersService {
   }
 
   async updateStatus(tenantId: string, id: string, status: string) {
-    const { error } = await this.supabase
+    console.log('Updating PO status:', { tenantId, id, status });
+    
+    const { data, error } = await this.supabase
       .from('purchase_orders')
       .update({
         status,
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) throw new BadRequestException(error.message);
+    if (error) {
+      console.error('Status update error:', error);
+      throw new BadRequestException(error.message);
+    }
+    
+    console.log('Status updated successfully:', data);
+    return this.findOne(tenantId, id);
+  }
+
+  async updateTracking(tenantId: string, id: string, trackingData: any) {
+    console.log('Updating PO tracking:', { tenantId, id, trackingData });
+    
+    const updateData: any = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (trackingData.tracking_number !== undefined) {
+      updateData.tracking_number = trackingData.tracking_number;
+    }
+    if (trackingData.shipped_date !== undefined) {
+      updateData.shipped_date = trackingData.shipped_date;
+    }
+    if (trackingData.estimated_delivery_date !== undefined) {
+      updateData.estimated_delivery_date = trackingData.estimated_delivery_date;
+    }
+    if (trackingData.actual_delivery_date !== undefined) {
+      updateData.actual_delivery_date = trackingData.actual_delivery_date;
+    }
+    if (trackingData.carrier_name !== undefined) {
+      updateData.carrier_name = trackingData.carrier_name;
+    }
+    if (trackingData.tracking_url !== undefined) {
+      updateData.tracking_url = trackingData.tracking_url;
+    }
+    if (trackingData.delivery_status !== undefined) {
+      updateData.delivery_status = trackingData.delivery_status;
+    }
+
+    const { data, error } = await this.supabase
+      .from('purchase_orders')
+      .update(updateData)
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Tracking update error:', error);
+      throw new BadRequestException(error.message);
+    }
+    
+    console.log('Tracking updated successfully:', data);
     return this.findOne(tenantId, id);
   }
 
@@ -213,4 +331,57 @@ export class PurchaseOrdersService {
     const lastNumber = parseInt(data.po_number.split('-').pop() || '0');
     return `${prefix}-${String(lastNumber + 1).padStart(3, '0')}`;
   }
+
+  async sendPOEmail(tenantId: string, poId: string) {
+    const po = await this.findOne(tenantId, poId);
+    
+    if (!po.vendor?.email) {
+      throw new BadRequestException('Vendor email not found');
+    }
+
+    const emailData = {
+      po_number: po.po_number,
+      po_date: po.po_date,
+      delivery_date: po.delivery_date,
+      payment_terms: po.payment_terms,
+      vendor_name: po.vendor.name,
+      items: po.purchase_order_items.map((item: any) => ({
+        item_name: item.item_name,
+        quantity: item.ordered_qty,
+        unit_price: item.rate,
+        tax_percent: item.tax_percent,
+        amount: item.amount,
+      })),
+      customs_duty: po.customs_duty,
+      other_charges: po.other_charges,
+      total_amount: po.total_amount,
+      delivery_address: po.delivery_address,
+      remarks: po.remarks,
+    };
+
+    await this.emailService.sendPO(po.vendor.email, emailData);
+
+    return { message: 'PO email sent successfully', recipient: po.vendor.email };
+  }
+
+  async sendTrackingReminder(tenantId: string, poId: string) {
+    const po = await this.findOne(tenantId, poId);
+    
+    if (!po.vendor?.email) {
+      throw new BadRequestException('Vendor email not found');
+    }
+
+    const emailData = {
+      po_number: po.po_number,
+      po_date: po.po_date,
+      delivery_date: po.delivery_date,
+      vendor_name: po.vendor.name,
+      items: po.purchase_order_items,
+    };
+
+    await this.emailService.sendPOTrackingReminder(po.vendor.email, emailData);
+
+    return { message: 'Tracking reminder sent successfully', recipient: po.vendor.email };
+  }
 }
+

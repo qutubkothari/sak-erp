@@ -3,27 +3,40 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ItemSearch from '../../../components/ItemSearch';
-import { apiClient } from '../../../../lib/api-client';
 
 interface BOM {
   id: string;
   version: number;
   is_active: boolean;
-  item: {
+  effective_from?: string;
+  effective_to?: string;
+  notes?: string;
+  item?: {
     code: string;
     name: string;
     type: string;
   };
-  bom_items: Array<{
+  bom_items?: Array<{
     id: string;
+    component_type: 'ITEM' | 'BOM';
     quantity: number;
     scrap_percentage: number;
     sequence: number;
-    drawing_url: string;
-    item: {
+    drawing_url?: string;
+    notes?: string;
+    item?: {
       code: string;
       name: string;
       uom: string;
+    };
+    child_bom?: {
+      id: string;
+      version: number;
+      item?: {
+        code: string;
+        name: string;
+        uom?: string;
+      };
     };
   }>;
   created_at: string;
@@ -65,6 +78,10 @@ export default function BOMPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [selectedBom, setSelectedBom] = useState<BOM | null>(null);
+  const [showPRModal, setShowPRModal] = useState(false);
+  const [prBomId, setPrBomId] = useState<string>('');
+  const [prQuantity, setPrQuantity] = useState<number>(1);
+  const [prStockStatus, setPrStockStatus] = useState<any[]>([]);
   const [showTrailModal, setShowTrailModal] = useState(false);
   const [purchaseTrail, setPurchaseTrail] = useState<PurchaseTrail | null>(null);
   const [loadingTrail, setLoadingTrail] = useState(false);
@@ -76,23 +93,85 @@ export default function BOMPage() {
     effectiveTo: '',
     notes: '',
     items: [] as Array<{
+      componentType: 'ITEM' | 'BOM';
       itemId: string;
+      childBomId: string;
       quantity: number;
       scrapPercentage: number;
       sequence: number;
       notes: string;
-      drawingUrl: string;
     }>,
   });
+  const [availableBOMs, setAvailableBOMs] = useState<BOM[]>([]);
 
   useEffect(() => {
     fetchBOMs();
-  }, []);
+    if (showModal) {
+      fetchAvailableBOMs();
+    }
+  }, [showModal]);
+
+  useEffect(() => {
+    if (!loading) {
+      console.log('[BOM] Loaded BOM count:', boms.length);
+      boms.forEach((bom) => {
+        console.log('[BOM] Summary data', {
+          bomId: bom.id,
+          itemName: bom.item?.name,
+          components: bom.bom_items?.map((item) => ({
+            id: item.id,
+            type: item.component_type,
+            hasItem: Boolean(item.item?.name),
+            hasChildBom: Boolean(item.child_bom?.item?.name),
+            childBomVersion: item.child_bom?.version,
+          })),
+        });
+      });
+    }
+  }, [boms, loading]);
+
+  const fetchAvailableBOMs = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://13.205.17.214:4000/api/v1/bom', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableBOMs(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error('Error fetching BOMs:', error);
+    }
+  };
 
   const fetchBOMs = async () => {
     try {
       setLoading(true);
-      const data = await apiClient.get('/bom');
+      const token = localStorage.getItem('accessToken');
+      
+      if (!token) {
+        console.error('No token found - user not logged in');
+        router.push('/login');
+        return;
+      }
+      
+      const response = await fetch('http://13.205.17.214:4000/api/v1/bom', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.error('Unauthorized - redirecting to login');
+          localStorage.removeItem('accessToken');
+          router.push('/login');
+          return;
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      // Ensure data is an array
       setBoms(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching BOMs:', error);
@@ -103,35 +182,162 @@ export default function BOMPage() {
   };
 
   const handleCreateBOM = async () => {
+    console.log('[BOM] Create BOM clicked - Form data:', formData);
+    
+    // Validation
+    if (!formData.itemId) {
+      alert('Please select an item for the BOM');
+      return;
+    }
+    
+    if (formData.items.length === 0) {
+      alert('Please add at least one component to the BOM');
+      return;
+    }
+    
     try {
-      await apiClient.post('/bom', formData);
+      const token = localStorage.getItem('accessToken');
+      console.log('[BOM] Sending create request...');
+      
+      // Clean up empty date fields - send null instead of empty string
+      const cleanedData = {
+        ...formData,
+        effectiveTo: formData.effectiveTo || null,
+      };
+      
+      const response = await fetch('http://13.205.17.214:4000/api/v1/bom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(cleanedData),
+      });
 
-      setShowModal(false);
-      fetchBOMs();
-      resetForm();
+      console.log('[BOM] Create response status:', response.status);
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('[BOM] Create successful:', result);
+        alert('BOM created successfully!');
+        setShowModal(false);
+        fetchBOMs();
+        resetForm();
+      } else {
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+        console.error('[BOM] Create failed:', response.status, errorData);
+        alert(`Failed to create BOM: ${errorData.message || response.statusText}`);
+      }
     } catch (error) {
-      console.error('Error creating BOM:', error);
+      console.error('[BOM] Create error:', error);
+      alert(`Error creating BOM: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
   const handleGeneratePR = async (bomId: string) => {
-    const quantity = prompt('Enter production quantity:');
-    if (!quantity || isNaN(Number(quantity))) return;
+    console.log('[BOM] Opening PR modal for BOM:', bomId);
+    setPrBomId(bomId);
+    setPrQuantity(1);
+    setShowPRModal(true);
+  };
+
+  const handleConfirmGeneratePR = async () => {
+    console.log('[BOM] Generating PR - BOM:', prBomId, 'Quantity:', prQuantity);
+    
+    if (!prQuantity || prQuantity <= 0) {
+      alert('Please enter a valid quantity greater than 0');
+      return;
+    }
 
     try {
-      const data = await apiClient.post(`/bom/${bomId}/generate-pr`, { quantity: Number(quantity) });
-      alert(`Purchase Requisition ${data.prNumber} generated successfully!\n\nItems to order: ${data.itemsToOrder.length}`);
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/bom/${prBomId}/generate-pr`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ quantity: Number(prQuantity) }),
+      });
+
+      console.log('[BOM] PR response status:', response.status);
+      const data = await response.json();
+      console.log('[BOM] PR response data:', data);
+      
+      // Store stock status for display
+      if (data.stockStatus && data.stockStatus.length > 0) {
+        setPrStockStatus(data.stockStatus);
+      }
+      
+      if (response.ok) {
+        if (data.itemsToOrder && data.itemsToOrder.length > 0) {
+          // Show success with stock details - don't close modal yet
+          alert(
+            `✅ Purchase Requisition ${data.prNumber} generated!\n\n` +
+            `Items to order (${data.itemsToOrder.length}):\n${data.itemsToOrder.map((item: any) => 
+              `  • ${item.itemCode} - ${item.itemName}: ${item.quantity} units`
+            ).join('\n')}\n\n` +
+            `Check the detailed stock status below.`
+          );
+          // Keep modal open to show stock status
+        } else {
+          alert('✅ All items are in stock! No PR needed.\n\nCheck the detailed stock status below.');
+          // Keep modal open to show stock status
+        }
+      } else {
+        alert(`❌ Error: ${data.message || response.statusText}`);
+        setShowPRModal(false);
+      }
     } catch (error) {
-      console.error('Error generating PR:', error);
+      console.error('[BOM] Error generating PR:', error);
+      alert('❌ Failed to generate PR. Please try again.');
+    }
+  };
+
+  const handleDeleteBOM = async (bomId: string) => {
+    console.log('[BOM] Delete clicked for BOM:', bomId);
+    
+    if (!confirm('Are you sure you want to delete this BOM? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/bom/${bomId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        alert('✅ BOM deleted successfully!');
+        setSelectedBom(null);
+        fetchBOMs();
+      } else {
+        const data = await response.json();
+        alert(`❌ Error: ${data.message || response.statusText}`);
+      }
+    } catch (error) {
+      console.error('[BOM] Error deleting:', error);
+      alert('❌ Failed to delete BOM.');
     }
   };
 
   const fetchPurchaseTrail = async (uid: string) => {
     try {
       setLoadingTrail(true);
-      const data = await apiClient.get(`/uid/${uid}/purchase-trail`);
-      setPurchaseTrail(data);
-      setShowTrailModal(true);
+      const token = localStorage.getItem('accessToken');
+      
+      const response = await fetch(`http://13.205.17.214:4000/api/v1/uid/${uid}/purchase-trail`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPurchaseTrail(data);
+        setShowTrailModal(true);
+      } else {
+        alert('Purchase trail not found for this UID');
+      }
     } catch (error) {
       console.error('Error fetching purchase trail:', error);
       alert('Failed to fetch purchase trail');
@@ -156,12 +362,13 @@ export default function BOMPage() {
       items: [
         ...formData.items,
         {
+          componentType: 'ITEM',
           itemId: '',
+          childBomId: '',
           quantity: 1,
           scrapPercentage: 0,
           sequence: formData.items.length + 1,
           notes: '',
-          drawingUrl: '',
         },
       ],
     });
@@ -229,7 +436,7 @@ export default function BOMPage() {
               <div key={bom.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900">{bom.item?.name || 'N/A'}</h3>
+                    <h3 className="text-lg font-bold text-gray-900">{bom.item?.name || 'Unknown Item'}</h3>
                     <p className="text-sm text-gray-500">{bom.item?.code || 'N/A'} - Version {bom.version}</p>
                   </div>
                   <span
@@ -242,37 +449,64 @@ export default function BOMPage() {
                 </div>
 
                 <div className="mb-4">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Components ({(bom.bom_items || []).length})</h4>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Components ({bom.bom_items?.length || 0})</h4>
                   <div className="space-y-2">
-                    {(bom.bom_items || []).slice(0, 3).map((item) => (
-                      <div key={item.id} className="flex justify-between text-sm">
-                        <span className="text-gray-600">
-                          {item.item?.code || 'N/A'} - {item.item?.name || 'N/A'}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{item.quantity} {item.item?.uom || ''}</span>
-                          {item.drawing_url && (
-                            <span className="text-blue-600" title="Drawing attached">📎</span>
-                          )}
+                    {bom.bom_items?.slice(0, 3).map((item) => {
+                      const isChildBom = item.component_type === 'BOM';
+                      const componentCode = isChildBom
+                        ? item.child_bom?.item?.code || 'BOM'
+                        : item.item?.code || 'N/A';
+                      const componentName = isChildBom
+                        ? `${item.child_bom?.item?.name || 'Unknown'} (v${item.child_bom?.version ?? '?'})`
+                        : item.item?.name || 'Unknown';
+                      const componentUom = isChildBom
+                        ? item.child_bom?.item?.uom || 'set'
+                        : item.item?.uom || 'units';
+
+                      return (
+                        <div key={item.id} className="flex justify-between text-sm">
+                          <span className="text-gray-600">
+                            {componentCode} - {componentName}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">
+                              {item.quantity} {componentUom}
+                            </span>
+                            {item.drawing_url && (
+                              <span className="text-blue-600" title="Drawing attached">📎</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                    {(bom.bom_items || []).length > 3 && (
-                      <p className="text-xs text-gray-500">+ {(bom.bom_items || []).length - 3} more items</p>
+                      );
+                    })}
+                    {(bom.bom_items?.length || 0) > 3 && (
+                      <p className="text-xs text-gray-500">+ {(bom.bom_items?.length || 0) - 3} more items</p>
                     )}
                   </div>
                 </div>
 
                 <div className="flex gap-2 pt-4 border-t">
                   <button
-                    onClick={() => setSelectedBom(bom)}
-                    className="flex-1 bg-amber-100 text-amber-700 px-4 py-2 rounded hover:bg-amber-200"
+                    onClick={() => {
+                      console.log('[BOM] View Details clicked:', bom.id);
+                      setSelectedBom(bom);
+                    }}
+                    className="flex-1 bg-amber-100 text-amber-700 px-4 py-2 rounded hover:bg-amber-200 text-sm"
                   >
                     View Details
                   </button>
                   <button
-                    onClick={() => handleGeneratePR(bom.id)}
-                    className="flex-1 bg-green-100 text-green-700 px-4 py-2 rounded hover:bg-green-200"
+                    onClick={() => router.push(`/dashboard/bom/${bom.id}/routing`)}
+                    className="flex-1 bg-blue-100 text-blue-700 px-4 py-2 rounded hover:bg-blue-200 text-sm"
+                  >
+                    Routing
+                  </button>
+                  <button
+                    onClick={() => {
+                      console.log('[BOM] Generate PR clicked:', bom.id);
+                      handleGeneratePR(bom.id);
+                    }}
+                    className="flex-1 bg-green-100 text-green-700 px-4 py-2 rounded hover:bg-green-200 text-sm"
                   >
                     Generate PR
                   </button>
@@ -361,18 +595,62 @@ export default function BOMPage() {
                 ) : (
                   <div className="space-y-4">
                     {formData.items.map((item, index) => (
-                      <div key={index} className="border border-gray-300 rounded-lg p-4">
+                      <div key={index} className="border border-gray-300 rounded-lg p-4 bg-white">
+                        {/* Component Type Selector */}
+                        <div className="mb-3">
+                          <label className="text-xs text-gray-600 font-medium block mb-2">Component Type *</label>
+                          <div className="flex gap-4">
+                            <label className="flex items-center cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`componentType-${index}`}
+                                value="ITEM"
+                                checked={item.componentType === 'ITEM'}
+                                onChange={(e) => handleUpdateItem(index, 'componentType', e.target.value)}
+                                className="mr-2"
+                              />
+                              <span className="text-sm">📦 Item (Raw Material)</span>
+                            </label>
+                            <label className="flex items-center cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`componentType-${index}`}
+                                value="BOM"
+                                checked={item.componentType === 'BOM'}
+                                onChange={(e) => handleUpdateItem(index, 'componentType', e.target.value)}
+                                className="mr-2"
+                              />
+                              <span className="text-sm">🔧 BOM (Sub-Assembly)</span>
+                            </label>
+                          </div>
+                        </div>
+
                         <div className="grid grid-cols-12 gap-3">
                           <div className="col-span-4">
                             <label className="text-xs text-gray-600 font-medium">
-                              Component *
+                              {item.componentType === 'ITEM' ? 'Item *' : 'BOM *'}
                             </label>
-                            <ItemSearch
-                              value={item.itemId}
-                              onSelect={(selectedItem) => handleUpdateItem(index, 'itemId', selectedItem.id)}
-                              placeholder="Search item..."
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
-                            />
+                            {item.componentType === 'ITEM' ? (
+                              <ItemSearch
+                                value={item.itemId}
+                                onSelect={(selectedItem) => handleUpdateItem(index, 'itemId', selectedItem.id)}
+                                placeholder="Search item..."
+                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+                              />
+                            ) : (
+                              <select
+                                value={item.childBomId}
+                                onChange={(e) => handleUpdateItem(index, 'childBomId', e.target.value)}
+                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+                              >
+                                <option value="">Select BOM...</option>
+                                {availableBOMs.map((bom) => (
+                                  <option key={bom.id} value={bom.id}>
+                                    {bom.item?.code} - {bom.item?.name} (v{bom.version})
+                                  </option>
+                                ))}
+                              </select>
+                            )}
                           </div>
                           <div className="col-span-2">
                             <label className="text-xs text-gray-600">Quantity *</label>
@@ -392,20 +670,11 @@ export default function BOMPage() {
                               className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                             />
                           </div>
-                          <div className="col-span-3">
-                            <label className="text-xs text-gray-600">Drawing URL *</label>
-                            <input
-                              type="text"
-                              value={item.drawingUrl}
-                              onChange={(e) => handleUpdateItem(index, 'drawingUrl', e.target.value)}
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                              placeholder="Drawing link..."
-                            />
-                          </div>
                           <div className="col-span-1 flex items-end">
                             <button
                               onClick={() => handleRemoveItem(index)}
                               className="text-red-600 hover:text-red-900 text-xl"
+                              title="Remove component"
                             >
                               ×
                             </button>
@@ -608,6 +877,273 @@ export default function BOMPage() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BOM Details Modal */}
+      {selectedBom && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">BOM Details</h2>
+                  <p className="text-gray-600 mt-1">
+                    {selectedBom.item?.code || 'N/A'} - {selectedBom.item?.name || 'Unknown'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedBom(null)}
+                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Version</label>
+                  <p className="text-gray-900">{selectedBom.version}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Status</label>
+                  <p className={`inline-block px-2 py-1 text-xs rounded-full ${
+                    selectedBom.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {selectedBom.is_active ? 'Active' : 'Inactive'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Effective From</label>
+                  <p className="text-gray-900">{selectedBom.effective_from ? formatDate(selectedBom.effective_from) : 'N/A'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Effective To</label>
+                  <p className="text-gray-900">{selectedBom.effective_to ? formatDate(selectedBom.effective_to) : 'N/A'}</p>
+                </div>
+                {selectedBom.notes && (
+                  <div className="col-span-2">
+                    <label className="text-sm font-medium text-gray-600">Notes</label>
+                    <p className="text-gray-900">{selectedBom.notes}</p>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  Components ({selectedBom.bom_items?.length || 0})
+                </h3>
+                
+                {selectedBom.bom_items && selectedBom.bom_items.length > 0 ? (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Type</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Code</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Name</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Quantity</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Scrap %</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Notes</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Drawing</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {selectedBom.bom_items.map((item) => (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 text-xs rounded ${
+                                item.component_type === 'BOM' 
+                                  ? 'bg-blue-100 text-blue-800' 
+                                  : 'bg-green-100 text-green-800'
+                              }`}>
+                                {item.component_type === 'BOM' ? '🔧 BOM' : '📦 Item'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {item.component_type === 'BOM' 
+                                ? item.child_bom?.item?.code || 'N/A'
+                                : item.item?.code || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {item.component_type === 'BOM' 
+                                ? `${item.child_bom?.item?.name || 'Unknown'} (v${item.child_bom?.version || '?'})`
+                                : item.item?.name || 'Unknown'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                              {item.quantity} {item.component_type === 'ITEM' ? item.item?.uom || 'units' : 'units'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                              {item.scrap_percentage || 0}%
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{item.notes || '-'}</td>
+                            <td className="px-4 py-3 text-center">
+                              {item.drawing_url ? (
+                                <a 
+                                  href={item.drawing_url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800"
+                                >
+                                  📎 View
+                                </a>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-center py-8 bg-gray-50 rounded-lg">No components</p>
+                )}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-between">
+              <button
+                onClick={() => handleDeleteBOM(selectedBom.id)}
+                className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+              >
+                Delete BOM
+              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setSelectedBom(null)}
+                  className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    handleGeneratePR(selectedBom.id);
+                    setSelectedBom(null);
+                  }}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                >
+                  Generate PR
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Generate PR Modal */}
+      {showPRModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto my-8">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900">Generate Purchase Requisition</h2>
+              <p className="text-gray-600 text-sm mt-1">Enter production quantity to calculate material requirements</p>
+            </div>
+
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Production Quantity *
+              </label>
+              <input
+                type="number"
+                value={prQuantity}
+                onChange={(e) => {
+                  setPrQuantity(Number(e.target.value));
+                  setPrStockStatus([]); // Clear previous status when quantity changes
+                }}
+                min="1"
+                step="1"
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-lg focus:ring-2 focus:ring-green-500"
+                placeholder="Enter quantity"
+                autoFocus
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                Number of finished goods you want to produce
+              </p>
+            </div>
+
+            {/* Stock Status Table */}
+            {prStockStatus.length > 0 && (
+              <div className="px-6 pb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Material Stock Status</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 border">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Required</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Available</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Reserved</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Usable</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Shortfall</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">PR Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {prStockStatus.map((item: any, index: number) => (
+                        <tr key={index} className={item.needsPR ? 'bg-red-50' : 'bg-green-50'}>
+                          <td className="px-4 py-3 text-sm">
+                            <div className="font-medium text-gray-900">{item.itemCode}</div>
+                            <div className="text-gray-500 text-xs">{item.itemName}</div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-medium">{item.required}</td>
+                          <td className="px-4 py-3 text-sm text-right">{item.availableStock}</td>
+                          <td className="px-4 py-3 text-sm text-right text-yellow-600">{item.reservedStock}</td>
+                          <td className="px-4 py-3 text-sm text-right font-medium">{item.usableStock}</td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            {item.shortfall > 0 ? (
+                              <span className="text-red-600 font-semibold">{item.shortfall}</span>
+                            ) : (
+                              <span className="text-green-600">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {item.needsPR ? (
+                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                                PR Created
+                              </span>
+                            ) : (
+                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                In Stock
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <strong>Note:</strong> Usable Stock = Available Stock - Reorder Level (safety stock). 
+                    PR will be generated only for items with shortfall.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowPRModal(false);
+                  setPrStockStatus([]);
+                }}
+                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Close
+              </button>
+              {prStockStatus.length === 0 && (
+                <button
+                  onClick={handleConfirmGeneratePR}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                >
+                  Generate PR
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -15,10 +15,31 @@ interface UIDRecord {
   status: string;
   location: string;
   supplier_id: string;
+  supplier?: {
+    name: string;
+    vendor_code: string;
+  };
+  vendorName?: string;
+  vendorCode?: string;
   purchase_order_id: string;
+  purchase_order?: {
+    po_number: string;
+  };
   grn_id: string;
+  grn?: {
+    grn_number: string;
+  };
+  grnNumber?: string;
   batch_number: string;
+  items?: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  itemName?: string;
+  itemCode?: string;
   quality_status: string;
+  client_part_number?: string;
   lifecycle: Array<{
     stage: string;
     timestamp: string;
@@ -47,6 +68,9 @@ export default function UIDTrackingPage() {
   const [selectedUID, setSelectedUID] = useState<UIDRecord | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showTraceModal, setShowTraceModal] = useState(false);
+  const [showPartNumberModal, setShowPartNumberModal] = useState(false);
+  const [editingUID, setEditingUID] = useState<UIDRecord | null>(null);
+  const [partNumberInput, setPartNumberInput] = useState('');
 
   // Filters
   const [filters, setFilters] = useState({
@@ -67,7 +91,9 @@ export default function UIDTrackingPage() {
       if (filters.entity_type) queryParams.append('entity_type', filters.entity_type);
       if (filters.location) queryParams.append('location', filters.location);
 
-      const data = await apiClient.get<UIDRecord[]>(`/uid?${queryParams}`);
+      const response = await apiClient.get<any>(`/uid?${queryParams}`);
+      // Handle both old array format and new paginated format
+      const data = Array.isArray(response) ? response : response.data || [];
       setUids(data);
     } catch (error) {
       console.error('Error fetching UIDs:', error);
@@ -81,11 +107,49 @@ export default function UIDTrackingPage() {
 
     try {
       const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(searchUID)}`);
-      setSelectedUID(data);
+      // Parse JSON strings to objects and add vendor/GRN names
+      const parsedData: any = {
+        ...data,
+        lifecycle: typeof data.lifecycle === 'string' ? JSON.parse(data.lifecycle) : data.lifecycle,
+        parent_uids: typeof data.parent_uids === 'string' ? JSON.parse(data.parent_uids) : data.parent_uids,
+        child_uids: typeof data.child_uids === 'string' ? JSON.parse(data.child_uids) : data.child_uids,
+        vendorName: data.supplier?.name || '',
+        vendorCode: data.supplier?.vendor_code || '',
+        grnNumber: data.grn?.grn_number || '',
+      };
+      setSelectedUID(parsedData);
       setShowTraceModal(true);
     } catch (error) {
       console.error('Error searching UID:', error);
       alert('Error searching for UID');
+    }
+  };
+
+  const openPartNumberModal = (uid: UIDRecord) => {
+    setEditingUID(uid);
+    setPartNumberInput(uid.client_part_number || '');
+    setShowPartNumberModal(true);
+  };
+
+  const updatePartNumber = async () => {
+    if (!editingUID) return;
+
+    try {
+      await apiClient.put(`/uid/${editingUID.uid}/part-number`, {
+        client_part_number: partNumberInput.trim() || null,
+      });
+      
+      // Refresh UIDs list
+      await fetchUIDs();
+      
+      setShowPartNumberModal(false);
+      setEditingUID(null);
+      setPartNumberInput('');
+      
+      alert('Part number updated successfully!');
+    } catch (error) {
+      console.error('Error updating part number:', error);
+      alert('Failed to update part number');
     }
   };
 
@@ -123,13 +187,21 @@ export default function UIDTrackingPage() {
       </button>
 
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          🔍 UID Tracking System
-        </h1>
-        <p className="text-gray-600">
-          Complete traceability from procurement to service - Every part has a story
-        </p>
+      <div className="mb-6 flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            🔍 UID Tracking System
+          </h1>
+          <p className="text-gray-600">
+            Complete traceability from procurement to service - Every part has a story
+          </p>
+        </div>
+        <button
+          onClick={() => router.push('/dashboard/uid/trace')}
+          className="bg-gradient-to-r from-orange-500 to-amber-500 text-white px-6 py-3 rounded-lg hover:from-orange-600 hover:to-amber-600 transition-colors font-semibold shadow-lg flex items-center gap-2"
+        >
+          🔍 Trace Product
+        </button>
       </div>
 
       {/* Search Bar */}
@@ -219,6 +291,8 @@ export default function UIDTrackingPage() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">UID</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Part No</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
@@ -234,6 +308,34 @@ export default function UIDTrackingPage() {
                   <div className="font-mono text-sm font-medium text-amber-600">{uid.uid}</div>
                   {uid.batch_number && (
                     <div className="text-xs text-gray-500">Batch: {uid.batch_number}</div>
+                  )}
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    {uid.client_part_number ? (
+                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
+                        {uid.client_part_number}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 text-xs">Not assigned</span>
+                    )}
+                    <button
+                      onClick={() => openPartNumberModal(uid)}
+                      className="text-blue-600 hover:text-blue-800 text-xs"
+                      title="Edit Part Number"
+                    >
+                      ✏️
+                    </button>
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                  {uid.items ? (
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{uid.items.code}</div>
+                      <div className="text-xs text-gray-500">{uid.items.name}</div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-400">-</div>
                   )}
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-900">{uid.entity_type}</td>
@@ -259,9 +361,24 @@ export default function UIDTrackingPage() {
                 </td>
                 <td className="px-6 py-4 text-sm space-x-2">
                   <button
-                    onClick={() => {
-                      setSelectedUID(uid);
-                      setShowTraceModal(true);
+                    onClick={async () => {
+                      try {
+                        const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(uid.uid)}`);
+                        const parsedUID: any = {
+                          ...data,
+                          lifecycle: typeof data.lifecycle === 'string' ? JSON.parse(data.lifecycle) : data.lifecycle,
+                          parent_uids: typeof data.parent_uids === 'string' ? JSON.parse(data.parent_uids) : data.parent_uids,
+                          child_uids: typeof data.child_uids === 'string' ? JSON.parse(data.child_uids) : data.child_uids,
+                          vendorName: data.supplier?.name || '',
+                          vendorCode: data.supplier?.vendor_code || '',
+                          grnNumber: data.grn?.grn_number || '',
+                        };
+                        setSelectedUID(parsedUID);
+                        setShowTraceModal(true);
+                      } catch (error) {
+                        console.error('Error loading trace data:', error);
+                        alert('Error loading trace information');
+                      }
                     }}
                     className="text-amber-600 hover:text-amber-900 font-medium"
                   >
@@ -269,7 +386,13 @@ export default function UIDTrackingPage() {
                   </button>
                   <button
                     onClick={() => {
-                      setSelectedUID(uid);
+                      const parsedUID: any = {
+                        ...uid,
+                        lifecycle: typeof uid.lifecycle === 'string' ? JSON.parse(uid.lifecycle) : uid.lifecycle,
+                        parent_uids: typeof uid.parent_uids === 'string' ? JSON.parse(uid.parent_uids) : uid.parent_uids,
+                        child_uids: typeof uid.child_uids === 'string' ? JSON.parse(uid.child_uids) : uid.child_uids,
+                      };
+                      setSelectedUID(parsedUID);
                       setShowModal(true);
                     }}
                     className="text-purple-600 hover:text-purple-900 font-medium"
@@ -393,41 +516,23 @@ export default function UIDTrackingPage() {
               </div>
             )}
 
-            {/* Lifecycle Timeline */}
-            {selectedUID.lifecycle && selectedUID.lifecycle.length > 0 && (
-              <div className="mb-6">
-                <h3 className="font-semibold text-lg mb-3">🕐 Lifecycle Timeline</h3>
-                <div className="space-y-3">
-                  {selectedUID.lifecycle.map((event, idx) => (
-                    <div key={idx} className="flex gap-4 border-l-2 border-amber-300 pl-4 pb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-amber-600">{event.stage}</span>
-                          <span className="text-xs text-gray-500">{formatDate(event.timestamp)}</span>
-                        </div>
-                        <p className="text-sm text-gray-600 mt-1">
-                          Location: {event.location} | Ref: {event.reference}
-                        </p>
-                        {event.user && (
-                          <p className="text-xs text-gray-500">By: {event.user}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Source Traceability */}
             {selectedUID.supplier_id && (
               <div className="bg-yellow-50 p-4 rounded-lg mb-4">
                 <h3 className="font-semibold mb-2">📦 Source Traceability</h3>
-                <p className="text-sm">Supplier ID: {selectedUID.supplier_id}</p>
+                <p className="text-sm">
+                  Supplier: {selectedUID.vendorName || 'Unknown'}
+                  {selectedUID.vendorCode && <span className="text-gray-500 ml-2">({selectedUID.vendorCode})</span>}
+                </p>
                 {selectedUID.purchase_order_id && (
-                  <p className="text-sm">PO ID: {selectedUID.purchase_order_id}</p>
+                  <p className="text-sm">
+                    PO: {selectedUID.purchase_order?.po_number || selectedUID.purchase_order_id}
+                  </p>
                 )}
                 {selectedUID.grn_id && (
-                  <p className="text-sm">GRN ID: {selectedUID.grn_id}</p>
+                  <p className="text-sm">
+                    GRN: {selectedUID.grnNumber || selectedUID.grn_id}
+                  </p>
                 )}
                 {selectedUID.batch_number && (
                   <p className="text-sm">Batch: {selectedUID.batch_number}</p>
@@ -437,9 +542,32 @@ export default function UIDTrackingPage() {
 
             {/* Quality Status */}
             {selectedUID.quality_status && (
-              <div className="bg-green-50 p-4 rounded-lg">
+              <div className="bg-green-50 p-4 rounded-lg mb-4">
                 <h3 className="font-semibold mb-2">✅ Quality Status</h3>
                 <p className="text-sm">{selectedUID.quality_status}</p>
+              </div>
+            )}
+
+            {/* Lifecycle Timeline */}
+            {selectedUID.lifecycle && selectedUID.lifecycle.length > 0 && (
+              <div className="bg-blue-50 p-4 rounded-lg mb-4">
+                <h3 className="font-semibold mb-3">📅 Lifecycle Timeline</h3>
+                <div className="space-y-3">
+                  {selectedUID.lifecycle.map((event: any, idx: number) => (
+                    <div key={idx} className="flex items-start">
+                      <div className="flex-shrink-0 w-24 text-xs text-gray-500">
+                        {new Date(event.timestamp).toLocaleDateString()}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">{event.stage}</p>
+                        <p className="text-xs text-gray-600">
+                          Location: {event.location}
+                          {event.reference && ` | Ref: ${event.reference}`}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -455,6 +583,53 @@ export default function UIDTrackingPage() {
                 className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Part Number Edit Modal */}
+      {showPartNumberModal && editingUID && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h2 className="text-xl font-bold mb-4">Edit Part Number</h2>
+            
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">UID: <span className="font-mono font-semibold">{editingUID.uid}</span></p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Client Part Number
+              </label>
+              <input
+                type="text"
+                value={partNumberInput}
+                onChange={(e) => setPartNumberInput(e.target.value)}
+                placeholder="Enter part number (e.g., 53022)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                autoFocus
+              />
+              <p className="text-xs text-gray-500 mt-1">Leave empty to remove part number</p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={updatePartNumber}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => {
+                  setShowPartNumberModal(false);
+                  setEditingUID(null);
+                  setPartNumberInput('');
+                }}
+                className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
+              >
+                Cancel
               </button>
             </div>
           </div>

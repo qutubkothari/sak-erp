@@ -26,9 +26,23 @@ export class SalesController {
     return this.salesService.getQuotations(req, filters);
   }
 
+  @Get('quotations/:id')
+  async getQuotationById(@Request() req: any, @Param('id') quotationId: string) {
+    return this.salesService.getQuotationById(req, quotationId);
+  }
+
   @Post('quotations')
   async createQuotation(@Request() req: any, @Body() quotationData: any) {
     return this.salesService.createQuotation(req, quotationData);
+  }
+
+  @Put('quotations/:id')
+  async updateQuotation(
+    @Request() req: any,
+    @Param('id') quotationId: string,
+    @Body() quotationData: any,
+  ) {
+    return this.salesService.updateQuotation(req, quotationId, quotationData);
   }
 
   @Put('quotations/:id/approve')

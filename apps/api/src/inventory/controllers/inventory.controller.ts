@@ -1,16 +1,57 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
 import { InventoryService } from '../services/inventory.service';
+import { ItemsService } from '../../items/services/items.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 @Controller('inventory')
 @UseGuards(JwtAuthGuard)
 export class InventoryController {
-  constructor(private readonly inventoryService: InventoryService) {}
+  constructor(
+    private readonly inventoryService: InventoryService,
+    private readonly itemsService: ItemsService,
+  ) {}
+
+  // Items Master
+  @Get('items')
+  async getItems(@Request() req: any, @Query('search') search?: string, @Query('includeInactive') includeInactive?: string) {
+    const includeInactiveBool = includeInactive === 'true';
+    return this.itemsService.findAll(req.user.tenantId, search, includeInactiveBool);
+  }
+
+  @Get('items/search')
+  async searchItems(@Request() req: any, @Query('q') query: string) {
+    return this.itemsService.search(req.user.tenantId, query);
+  }
+
+  @Get('items/:id')
+  async getItem(@Request() req: any, @Param('id') id: string) {
+    return this.itemsService.findOne(req.user.tenantId, id);
+  }
+
+  @Post('items')
+  async createItem(@Request() req: any, @Body() body: any) {
+    return this.itemsService.create(req.user.tenantId, body);
+  }
+
+  @Put('items/:id')
+  async updateItem(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.itemsService.update(req.user.tenantId, id, body);
+  }
+
+  @Delete('items/:id')
+  async deleteItem(@Request() req: any, @Param('id') id: string) {
+    return this.itemsService.delete(req.user.tenantId, id);
+  }
 
   // Stock levels
   @Get('stock')
   async getStockLevels(@Request() req: any, @Query() filters: any) {
     return this.inventoryService.getStockLevels(req, filters);
+  }
+
+  @Delete('stock/:id')
+  async deleteStockEntry(@Request() req: any, @Param('id') id: string) {
+    return this.inventoryService.deleteStockEntry(req, id);
   }
 
   // Stock movements
@@ -22,6 +63,11 @@ export class InventoryController {
   @Post('movements')
   async createStockMovement(@Request() req: any, @Body() movementData: any) {
     return this.inventoryService.createStockMovement(req, movementData);
+  }
+
+  @Delete('movements/:id')
+  async deleteStockMovement(@Request() req: any, @Param('id') id: string) {
+    return this.inventoryService.deleteStockMovement(req, id);
   }
 
   // Reservations
@@ -45,6 +91,11 @@ export class InventoryController {
   @Put('alerts/:id/acknowledge')
   async acknowledgeAlert(@Request() req: any, @Param('id') alertId: string) {
     return this.inventoryService.acknowledgeAlert(req, alertId);
+  }
+
+  @Delete('alerts/:id')
+  async deleteAlert(@Request() req: any, @Param('id') alertId: string) {
+    return this.inventoryService.deleteAlert(req, alertId);
   }
 
   // Demo inventory
@@ -72,6 +123,11 @@ export class InventoryController {
     return this.inventoryService.convertDemoToSale(req, demoId, body.sales_order_id);
   }
 
+  @Delete('demo/:id')
+  async deleteDemoItem(@Request() req: any, @Param('id') id: string) {
+    return this.inventoryService.deleteDemoItem(req, id);
+  }
+
   // Warehouses
   @Get('warehouses')
   async getWarehouses(@Request() req: any) {
@@ -83,29 +139,63 @@ export class InventoryController {
     return this.inventoryService.createWarehouse(req, warehouseData);
   }
 
-  // Items CRUD
-  @Get('items')
-  async getItems(@Request() req: any) {
-    return this.inventoryService.getItems(req);
+  // Item Drawings/Documents
+  @Get('items/:id/drawings')
+  async getItemDrawings(@Request() req: any, @Param('id') itemId: string) {
+    return this.itemsService.getDrawings(req.user.tenantId, itemId);
   }
 
-  @Get('items/:id')
-  async getItem(@Request() req: any, @Param('id') id: string) {
-    return this.inventoryService.getItem(req, id);
+  @Post('items/:id/drawings')
+  async uploadItemDrawing(
+    @Request() req: any,
+    @Param('id') itemId: string,
+    @Body() drawingData: any
+  ) {
+    return this.itemsService.uploadDrawing(req.user.tenantId, req.user.sub, itemId, drawingData);
   }
 
-  @Post('items')
-  async createItem(@Request() req: any, @Body() itemData: any) {
-    return this.inventoryService.createItem(req, itemData);
+  @Put('items/:id/drawings/:drawingId')
+  async updateItemDrawing(
+    @Request() req: any,
+    @Param('id') itemId: string,
+    @Param('drawingId') drawingId: string,
+    @Body() drawingData: any
+  ) {
+    return this.itemsService.updateDrawing(req.user.tenantId, itemId, drawingId, drawingData);
   }
 
-  @Put('items/:id')
-  async updateItem(@Request() req: any, @Param('id') id: string, @Body() itemData: any) {
-    return this.inventoryService.updateItem(req, id, itemData);
+  @Delete('items/:id/drawings/:drawingId')
+  async deleteItemDrawing(
+    @Request() req: any,
+    @Param('id') itemId: string,
+    @Param('drawingId') drawingId: string
+  ) {
+    return this.itemsService.deleteDrawing(req.user.tenantId, itemId, drawingId);
   }
 
-  @Delete('items/:id')
-  async deleteItem(@Request() req: any, @Param('id') id: string) {
-    return this.inventoryService.deleteItem(req, id);
+  // Item-Vendor Relationships
+  @Get('items/:id/vendors')
+  async getItemVendors(@Request() req: any, @Param('id') itemId: string) {
+    return this.itemsService.getItemVendors(req.user.tenantId, itemId);
+  }
+
+  @Post('items/:id/vendors')
+  async addItemVendor(@Request() req: any, @Param('id') itemId: string, @Body() body: any) {
+    return this.itemsService.addItemVendor(req.user.tenantId, req.user.userId, itemId, body);
+  }
+
+  @Put('items/:id/vendors/:vendorId')
+  async updateItemVendor(
+    @Request() req: any,
+    @Param('id') itemId: string,
+    @Param('vendorId') vendorId: string,
+    @Body() body: any
+  ) {
+    return this.itemsService.updateItemVendor(req.user.tenantId, req.user.userId, itemId, vendorId, body);
+  }
+
+  @Delete('items/:id/vendors/:vendorId')
+  async deleteItemVendor(@Request() req: any, @Param('id') itemId: string, @Param('vendorId') vendorId: string) {
+    return this.itemsService.deleteItemVendor(req.user.tenantId, itemId, vendorId);
   }
 }

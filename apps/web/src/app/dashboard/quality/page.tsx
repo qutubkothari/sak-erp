@@ -8,25 +8,35 @@ interface Inspection {
   id: string;
   inspection_number: string;
   inspection_type: 'INCOMING' | 'IN_PROCESS' | 'FINAL';
-  inspection_status: 'PENDING' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'ON_HOLD';
+  status: 'PENDING' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'ON_HOLD';
   inspection_date: string;
   item_name: string;
-  quantity_inspected: number;
-  quantity_accepted: number;
-  quantity_rejected: number;
+  inspected_quantity: number;
+  accepted_quantity: number;
+  rejected_quantity: number;
+  on_hold_quantity: number;
   defect_rate: number;
   inspector_name: string;
+  grn_id?: string;
+  uid?: string;
+  completion_date?: string;
+  inspector_remarks?: string;
 }
 
 interface NCR {
   id: string;
   ncr_number: string;
-  ncr_status: 'OPEN' | 'UNDER_REVIEW' | 'ACTION_PLANNED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
-  raised_date: string;
-  issue_description: string;
+  status: 'OPEN' | 'UNDER_REVIEW' | 'ACTION_PLANNED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+  ncr_date: string;
+  description: string;
   root_cause: string;
   corrective_action: string;
-  raised_by_name: string;
+  containment_action: string;
+  preventive_action: string;
+  raised_by: string;
+  nonconformance_type: string;
+  item_name?: string;
+  quantity_affected?: number;
 }
 
 interface VendorRating {
@@ -58,7 +68,12 @@ export default function QualityPage() {
   const [ncrs, setNcrs] = useState<NCR[]>([]);
   const [vendorRatings, setVendorRatings] = useState<VendorRating[]>([]);
   const [dashboard, setDashboard] = useState<QualityDashboard | null>(null);
-  const [loading, setLoading] = useState(false);
+  
+  // Dropdown data
+  const [grns, setGrns] = useState<any[]>([]);
+  const [uids, setUids] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [selectedGRN, setSelectedGRN] = useState<any>(null);
   
   // Inspection form state
   const [showInspectionForm, setShowInspectionForm] = useState(false);
@@ -100,12 +115,81 @@ export default function QualityPage() {
     ncr_description: ''
   });
 
+  // Edit/Delete state
+  const [editingInspection, setEditingInspection] = useState<any>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [viewingInspection, setViewingInspection] = useState<any>(null);
+  const [viewingNCR, setViewingNCR] = useState<any>(null);
+  const [editingNCR, setEditingNCR] = useState<any>(null);
+
   useEffect(() => {
     fetchData();
   }, [activeTab]);
 
+  useEffect(() => {
+    if (showInspectionForm) {
+      fetchFormData();
+    }
+  }, [showInspectionForm]);
+
+  const fetchFormData = async () => {
+    try {
+      // Fetch all UIDs for inspection (with forInspection flag)
+      const uidsData = await apiClient.get('/uid?forInspection=true');
+      setUids(uidsData || []);
+      
+      // Fetch users (for inspectors)
+      const usersData = await apiClient.get('/users');
+      setUsers(usersData);
+    } catch (error) {
+      console.error('Error fetching form data:', error);
+    }
+  };
+
+  const handleUIDChange = async (uid: string) => {
+    if (!uid) {
+      setSelectedGRN(null);
+      return;
+    }
+    
+    try {
+      // Fetch UID details which contains vendor, item, GRN info
+      const uidDetails = await apiClient.get(`/uid/details/${uid}`);
+      console.log('UID Details:', uidDetails);
+      
+      // Create a mock GRN object with vendor and item info from UID for display
+      const mockGRN = {
+        id: uidDetails.grnId,
+        grn_number: `GRN-${uidDetails.grnId?.substring(0, 8) || 'UNKNOWN'}`,
+        vendor_id: uidDetails.vendorId,
+        vendor_name: uidDetails.vendorName,
+        batch_number: uidDetails.batchNumber,
+        lot_number: uidDetails.lotNumber,
+        grn_items: [{
+          item_id: uidDetails.itemId,
+          item_name: uidDetails.itemName,
+          item_code: uidDetails.itemCode,
+        }]
+      };
+      
+      console.log('Mock GRN for display:', mockGRN);
+      setSelectedGRN(mockGRN);
+      
+      // Auto-fill form with UID data
+      setInspectionForm({
+        ...inspectionForm,
+        uid: uid,
+        reference_id: uidDetails.grnId || '',
+        item_id: uidDetails.itemId || '',
+        quantity_inspected: 1, // UID represents 1 unit
+      });
+    } catch (error) {
+      console.error('Error fetching UID details:', error);
+      alert('Failed to fetch UID information. Please check if the UID exists.');
+    }
+  };
+
   const fetchData = async () => {
-    setLoading(true);
     try {
       if (activeTab === 'inspections') {
         const data = await apiClient.get('/quality/inspections');
@@ -122,15 +206,49 @@ export default function QualityPage() {
       }
     } catch (error) {
       console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleCreateInspection = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate UID is selected
+    if (!inspectionForm.uid) {
+      alert('UID is required for quality inspection. UID enables complete traceability.');
+      return;
+    }
+    
     try {
-      await apiClient.post('/quality/inspections', inspectionForm);
+      // Find selected inspector details
+      const selectedInspector = users.find((user: any) => user.id === inspectionForm.inspector_id);
+      
+      // Get vendor and item details from selectedGRN (populated by handleUIDChange)
+      const itemName = selectedGRN?.grn_items?.[0]?.item_name || '';
+      const itemCode = selectedGRN?.grn_items?.[0]?.item_code || '';
+      const vendorId = selectedGRN?.vendor_id || null;
+      const vendorName = selectedGRN?.vendor_name || '';
+      
+      // Prepare data with all required fields
+      const inspectionData = {
+        inspection_type: inspectionForm.inspection_type,
+        inspection_date: inspectionForm.inspection_date,
+        grn_id: inspectionForm.reference_id || null,
+        uid: inspectionForm.uid, // UID is now mandatory
+        item_id: inspectionForm.item_id,
+        item_name: itemName,
+        item_code: itemCode,
+        vendor_id: vendorId,
+        vendor_name: vendorName,
+        batch_number: selectedGRN?.batch_number || '',
+        lot_number: selectedGRN?.lot_number || '',
+        inspected_quantity: inspectionForm.quantity_inspected || 1,
+        inspector_name: selectedInspector?.full_name || selectedInspector?.email || '',
+        inspection_checklist: inspectionForm.remarks || '',
+      };
+      
+      console.log('Creating inspection with UID:', inspectionForm.uid);
+      console.log('Inspection data:', inspectionData);
+      await apiClient.post('/quality/inspections', inspectionData);
       setShowInspectionForm(false);
       setInspectionForm({
         inspection_type: 'INCOMING',
@@ -143,6 +261,7 @@ export default function QualityPage() {
         inspection_date: new Date().toISOString().split('T')[0],
         remarks: ''
       });
+      setSelectedGRN(null);
       fetchData();
       alert('Inspection created successfully');
     } catch (error) {
@@ -194,6 +313,96 @@ export default function QualityPage() {
     } catch (error) {
       console.error('Error creating NCR:', error);
       alert('Failed to create NCR');
+    }
+  };
+
+  const handleEditInspection = (inspection: any) => {
+    setEditingInspection(inspection);
+    setInspectionForm({
+      inspection_type: inspection.inspection_type,
+      reference_type: 'GRN', // Assuming GRN for now
+      reference_id: inspection.grn_id || '',
+      item_id: inspection.item_id || '',
+      uid: inspection.uid || '',
+      quantity_inspected: inspection.quantity_inspected || 0,
+      inspector_id: inspection.inspector_id || '',
+      inspection_date: inspection.inspection_date ? new Date(inspection.inspection_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      remarks: inspection.remarks || ''
+    });
+    setShowInspectionForm(true);
+  };
+
+  const handleUpdateInspection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingInspection) return;
+
+    try {
+      // Defensive: Ensure item_id is always UUID
+      let itemId = inspectionForm.item_id;
+      if (selectedGRN?.grn_items) {
+        const found = selectedGRN.grn_items.find((item: any) => item.item_id === itemId);
+        if (!found) {
+          const fallback = selectedGRN.grn_items.find((item: any) => item.item_name === itemId || item.item_code === itemId);
+          if (fallback) {
+            itemId = fallback.item_id;
+          }
+        }
+      }
+
+      const selectedItem = selectedGRN?.grn_items?.find((item: any) => item.item_id === itemId);
+      const selectedInspector = users.find((user: any) => user.id === inspectionForm.inspector_id);
+
+      const updateData = {
+        inspection_type: inspectionForm.inspection_type,
+        inspection_date: inspectionForm.inspection_date,
+        grn_id: inspectionForm.reference_id,
+        uid: inspectionForm.uid || null,
+        item_id: itemId,
+        item_name: selectedItem?.item_name || '',
+        item_code: selectedItem?.item_code || '',
+        vendor_id: selectedGRN?.vendor_id || null,
+        vendor_name: selectedGRN?.vendor_name || '',
+        batch_number: selectedGRN?.batch_number || '',
+        lot_number: selectedGRN?.lot_number || '',
+        inspected_quantity: inspectionForm.quantity_inspected || 0,
+        inspector_id: inspectionForm.inspector_id,
+        inspector_name: selectedInspector?.full_name || selectedInspector?.email || '',
+        inspection_checklist: inspectionForm.remarks || '',
+        remarks: inspectionForm.remarks
+      };
+
+      await apiClient.put(`/quality/inspections/${editingInspection.id}`, updateData);
+      setShowInspectionForm(false);
+      setEditingInspection(null);
+      setInspectionForm({
+        inspection_type: 'INCOMING',
+        reference_type: 'GRN',
+        reference_id: '',
+        item_id: '',
+        uid: '',
+        quantity_inspected: 0,
+        inspector_id: '',
+        inspection_date: new Date().toISOString().split('T')[0],
+        remarks: ''
+      });
+      setSelectedGRN(null);
+      fetchData();
+      alert('Inspection updated successfully');
+    } catch (error) {
+      console.error('Error updating inspection:', error);
+      alert('Failed to update inspection');
+    }
+  };
+
+  const handleDeleteInspection = async (inspectionId: string) => {
+    try {
+      await apiClient.delete(`/quality/inspections/${inspectionId}`);
+      setShowDeleteConfirm(null);
+      fetchData();
+      alert('Inspection deleted successfully');
+    } catch (error) {
+      console.error('Error deleting inspection:', error);
+      alert('Failed to delete inspection');
     }
   };
 
@@ -318,34 +527,58 @@ export default function QualityPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(inspection.inspection_date).toLocaleDateString()}</td>
                     <td className="px-6 py-4 text-sm">{inspection.item_name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">{inspection.quantity_inspected}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600">{inspection.quantity_accepted}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600">{inspection.quantity_rejected}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">{inspection.inspected_quantity}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600">{inspection.accepted_quantity || 0}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600">{inspection.rejected_quantity || 0}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                       {inspection.defect_rate ? `${inspection.defect_rate.toFixed(2)}%` : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(inspection.inspection_status)}`}>
-                        {inspection.inspection_status}
+                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(inspection.status)}`}>
+                        {inspection.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{inspection.inspector_name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {(inspection.inspection_status === 'PENDING' || inspection.inspection_status === 'IN_PROGRESS') && (
+                      <div className="flex space-x-2">
                         <button
-                          onClick={() => {
-                            setCompleteInspectionId(inspection.id);
-                            setCompleteForm({
-                              ...completeForm,
-                              quantity_accepted: inspection.quantity_inspected
-                            });
-                            setShowCompleteForm(true);
-                          }}
-                          className="text-amber-600 hover:text-amber-800"
+                          onClick={() => setViewingInspection(inspection)}
+                          className="text-gray-600 hover:text-gray-800"
                         >
-                          Complete
+                          View
                         </button>
-                      )}
+                        {inspection.status === 'PENDING' && (
+                          <>
+                            <button
+                              onClick={() => handleEditInspection(inspection)}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => setShowDeleteConfirm(inspection.id)}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                        {(inspection.status === 'PENDING' || inspection.status === 'IN_PROGRESS') && (
+                          <button
+                            onClick={() => {
+                              setCompleteInspectionId(inspection.id);
+                              setCompleteForm({
+                                ...completeForm,
+                                quantity_accepted: inspection.inspected_quantity
+                              });
+                              setShowCompleteForm(true);
+                            }}
+                            className="text-amber-600 hover:text-amber-800"
+                          >
+                            Complete
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -364,27 +597,55 @@ export default function QualityPage() {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">NCR #</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Raised Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item/Part</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Issue Description</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Root Cause</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Corrective Action</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Raised By</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Root Cause</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {ncrs.map((ncr) => (
                   <tr key={ncr.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">{ncr.ncr_number}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(ncr.raised_date).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.issue_description}</td>
-                    <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.root_cause || '-'}</td>
-                    <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.corrective_action || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(ncr.ncr_date).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-sm">
+                      {ncr.item_name ? (
+                        <div>
+                          <div className="font-medium">{ncr.item_name}</div>
+                          {ncr.quantity_affected && (
+                            <div className="text-xs text-gray-500">Qty: {ncr.quantity_affected}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.description}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(ncr.ncr_status)}`}>
-                        {ncr.ncr_status}
+                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(ncr.status)}`}>
+                        {ncr.status.replace(/_/g, ' ')}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{ncr.raised_by_name}</td>
+                    <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.root_cause || <span className="text-gray-400">Pending investigation</span>}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => setViewingNCR(ncr)}
+                          className="text-gray-600 hover:text-gray-800"
+                        >
+                          View
+                        </button>
+                        {ncr.status !== 'CLOSED' && (
+                          <button
+                            onClick={() => setEditingNCR(ncr)}
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            Update
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -505,8 +766,10 @@ export default function QualityPage() {
       {showInspectionForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">Create New Inspection</h2>
-            <form onSubmit={handleCreateInspection} className="space-y-4">
+            <h2 className="text-xl font-bold mb-4">
+              {editingInspection ? 'Edit Inspection' : 'Create New Inspection'}
+            </h2>
+            <form onSubmit={editingInspection ? handleUpdateInspection : handleCreateInspection} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Inspection Type</label>
@@ -522,52 +785,93 @@ export default function QualityPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Reference Type</label>
-                  <select
-                    value={inspectionForm.reference_type}
-                    onChange={(e) => setInspectionForm({ ...inspectionForm, reference_type: e.target.value })}
+                  <label className="block text-sm font-medium mb-1">Inspection Date</label>
+                  <input
+                    type="date"
+                    value={inspectionForm.inspection_date}
+                    onChange={(e) => setInspectionForm({ ...inspectionForm, inspection_date: e.target.value })}
                     className="w-full border rounded px-3 py-2"
                     required
-                  >
-                    <option value="GRN">GRN</option>
-                    <option value="PRODUCTION">Production Order</option>
-                    <option value="SALES_ORDER">Sales Order</option>
-                  </select>
+                  />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">Reference ID (UUID)</label>
-                <input
-                  type="text"
-                  value={inspectionForm.reference_id}
-                  onChange={(e) => setInspectionForm({ ...inspectionForm, reference_id: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
+              {/* UID Selection - PRIMARY FIELD - MANDATORY FOR TRACEABILITY */}
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-4">
+                <label className="block text-sm font-semibold mb-2 text-amber-900">
+                  🔍 Select UID (Required for Traceability) *
+                </label>
+                <select
+                  value={inspectionForm.uid}
+                  onChange={(e) => handleUIDChange(e.target.value)}
+                  className="w-full border-2 border-amber-400 rounded px-3 py-2 focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
                   required
-                />
+                >
+                  <option value="">Search and select UID...</option>
+                  {uids.map((uid: any) => (
+                    <option key={uid.uid} value={uid.uid}>
+                      {uid.uid} - {uid.entityType} ({uid.status})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-amber-700 mt-1">
+                  ℹ️ UID is mandatory as it enables complete product traceability from receipt through warranty to repairs
+                </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Item ID (UUID)</label>
-                  <input
-                    type="text"
-                    value={inspectionForm.item_id}
-                    onChange={(e) => setInspectionForm({ ...inspectionForm, item_id: e.target.value })}
-                    className="w-full border rounded px-3 py-2"
-                    required
-                  />
+              {/* Auto-populated Vendor Information (read-only) */}
+              {selectedGRN && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="text-sm font-semibold mb-2 text-blue-900">📦 Auto-populated from UID</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-blue-700 mb-1">Vendor</label>
+                      <input
+                        type="text"
+                        value={selectedGRN.vendor_name || 'Loading...'}
+                        className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-700"
+                        readOnly
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-blue-700 mb-1">Item Code</label>
+                      <input
+                        type="text"
+                        value={selectedGRN.grn_items?.[0]?.item_code || 'Loading...'}
+                        className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-700"
+                        readOnly
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-blue-700 mb-1">Item Name</label>
+                      <input
+                        type="text"
+                        value={selectedGRN.grn_items?.[0]?.item_name || 'Loading...'}
+                        className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-700"
+                        readOnly
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-blue-700 mb-1">Batch Number</label>
+                      <input
+                        type="text"
+                        value={selectedGRN.batch_number || '-'}
+                        className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-700"
+                        readOnly
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-blue-700 mb-1">GRN Number</label>
+                      <input
+                        type="text"
+                        value={selectedGRN.grn_number || '-'}
+                        className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-700"
+                        readOnly
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">UID (Optional)</label>
-                  <input
-                    type="text"
-                    value={inspectionForm.uid}
-                    onChange={(e) => setInspectionForm({ ...inspectionForm, uid: e.target.value })}
-                    className="w-full border rounded px-3 py-2"
-                  />
-                </div>
-              </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -581,28 +885,24 @@ export default function QualityPage() {
                     step="0.01"
                     required
                   />
+                  <p className="text-xs text-gray-500 mt-1">Usually 1 for UID-based inspection</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Inspector ID (UUID)</label>
-                  <input
-                    type="text"
+                  <label className="block text-sm font-medium mb-1">Inspector</label>
+                  <select
                     value={inspectionForm.inspector_id}
                     onChange={(e) => setInspectionForm({ ...inspectionForm, inspector_id: e.target.value })}
                     className="w-full border rounded px-3 py-2"
                     required
-                  />
+                  >
+                    <option value="">Select Inspector...</option>
+                    {users.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.full_name || user.email}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Inspection Date</label>
-                <input
-                  type="date"
-                  value={inspectionForm.inspection_date}
-                  onChange={(e) => setInspectionForm({ ...inspectionForm, inspection_date: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
-                  required
-                />
               </div>
 
               <div>
@@ -612,13 +912,29 @@ export default function QualityPage() {
                   onChange={(e) => setInspectionForm({ ...inspectionForm, remarks: e.target.value })}
                   className="w-full border rounded px-3 py-2"
                   rows={3}
+                  placeholder="Visual inspection notes, dimensional checks, functional tests..."
                 />
               </div>
 
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowInspectionForm(false)}
+                  onClick={() => {
+                    setShowInspectionForm(false);
+                    setEditingInspection(null);
+                    setInspectionForm({
+                      inspection_type: 'INCOMING',
+                      reference_type: 'GRN',
+                      reference_id: '',
+                      item_id: '',
+                      uid: '',
+                      quantity_inspected: 0,
+                      inspector_id: '',
+                      inspection_date: new Date().toISOString().split('T')[0],
+                      remarks: ''
+                    });
+                    setSelectedGRN(null);
+                  }}
                   className="px-4 py-2 border rounded hover:bg-gray-50"
                 >
                   Cancel
@@ -626,8 +942,9 @@ export default function QualityPage() {
                 <button
                   type="submit"
                   className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700"
+                  disabled={!inspectionForm.uid}
                 >
-                  Create Inspection
+                  {editingInspection ? 'Update Inspection' : 'Create Inspection'}
                 </button>
               </div>
             </form>
@@ -862,6 +1179,400 @@ export default function QualityPage() {
                   className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
                 >
                   Create NCR
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4">Confirm Delete</h2>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete this inspection? This action cannot be undone.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="px-4 py-2 border rounded hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteInspection(showDeleteConfirm)}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Inspection Details Modal */}
+      {viewingInspection && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-xl font-bold">Inspection Details</h2>
+              <button
+                onClick={() => setViewingInspection(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="text-sm font-medium text-gray-600">Inspection Number</label>
+                <p className="text-lg font-semibold text-amber-600">{viewingInspection.inspection_number}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Status</label>
+                <p>
+                  <span className={`px-3 py-1 text-sm rounded ${getStatusColor(viewingInspection.status)}`}>
+                    {viewingInspection.status}
+                  </span>
+                </p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Type</label>
+                <p className="font-medium">{viewingInspection.inspection_type}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Date</label>
+                <p className="font-medium">{new Date(viewingInspection.inspection_date).toLocaleDateString()}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Item</label>
+                <p className="font-medium">{viewingInspection.item_name}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Inspector</label>
+                <p className="font-medium">{viewingInspection.inspector_name}</p>
+              </div>
+            </div>
+
+            <div className="border-t pt-4 mb-4">
+              <h3 className="font-semibold mb-3">Inspection Results</h3>
+              <div className="grid grid-cols-4 gap-4">
+                <div className="bg-blue-50 p-3 rounded">
+                  <div className="text-sm text-gray-600">Inspected</div>
+                  <div className="text-xl font-bold text-blue-600">{viewingInspection.inspected_quantity}</div>
+                </div>
+                <div className="bg-green-50 p-3 rounded">
+                  <div className="text-sm text-gray-600">Accepted</div>
+                  <div className="text-xl font-bold text-green-600">{viewingInspection.accepted_quantity || 0}</div>
+                </div>
+                <div className="bg-red-50 p-3 rounded">
+                  <div className="text-sm text-gray-600">Rejected</div>
+                  <div className="text-xl font-bold text-red-600">{viewingInspection.rejected_quantity || 0}</div>
+                </div>
+                <div className="bg-yellow-50 p-3 rounded">
+                  <div className="text-sm text-gray-600">On Hold</div>
+                  <div className="text-xl font-bold text-yellow-600">{viewingInspection.on_hold_quantity || 0}</div>
+                </div>
+              </div>
+            </div>
+
+            {viewingInspection.defect_rate && (
+              <div className="border-t pt-4 mb-4">
+                <label className="text-sm font-medium text-gray-600">Defect Rate</label>
+                <p className="text-2xl font-bold text-red-600">{viewingInspection.defect_rate.toFixed(2)}%</p>
+              </div>
+            )}
+
+            {viewingInspection.inspector_remarks && (
+              <div className="border-t pt-4 mb-4">
+                <label className="text-sm font-medium text-gray-600">Inspector Remarks</label>
+                <p className="mt-1 text-gray-800">{viewingInspection.inspector_remarks}</p>
+              </div>
+            )}
+
+            {viewingInspection.uid && (
+              <div className="border-t pt-4 mb-4">
+                <label className="text-sm font-medium text-gray-600">UID</label>
+                <p className="font-mono text-sm bg-gray-100 p-2 rounded">{viewingInspection.uid}</p>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-4">
+              <button
+                onClick={() => setViewingInspection(null)}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View NCR Details Modal */}
+      {viewingNCR && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-xl font-bold">NCR Details</h2>
+              <button
+                onClick={() => setViewingNCR(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="text-sm font-medium text-gray-600">NCR Number</label>
+                <p className="text-lg font-semibold text-red-600">{viewingNCR.ncr_number}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Status</label>
+                <p>
+                  <span className={`px-3 py-1 text-sm rounded ${getStatusColor(viewingNCR.status)}`}>
+                    {viewingNCR.status}
+                  </span>
+                </p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Type</label>
+                <p className="font-medium">{viewingNCR.nonconformance_type}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-600">Date Raised</label>
+                <p className="font-medium">{new Date(viewingNCR.ncr_date).toLocaleDateString()}</p>
+              </div>
+              {viewingNCR.item_name && (
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Item</label>
+                  <p className="font-medium">{viewingNCR.item_name}</p>
+                </div>
+              )}
+              {viewingNCR.quantity_affected && (
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Quantity Affected</label>
+                  <p className="font-medium">{viewingNCR.quantity_affected}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <div className="border-t pt-4">
+                <label className="text-sm font-medium text-gray-600 block mb-2">Issue Description</label>
+                <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.description}</p>
+              </div>
+
+              {/* NCR Workflow Status */}
+              <div className="border-t pt-4">
+                <label className="text-sm font-medium text-gray-600 block mb-2">NCR Workflow</label>
+                <div className="bg-blue-50 border border-blue-200 rounded p-4">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <span className={`px-3 py-1 text-sm rounded ${getStatusColor(viewingNCR.status)}`}>
+                      {viewingNCR.status.replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-sm text-gray-600">
+                      {viewingNCR.status === 'OPEN' && '→ Issue identified, awaiting review'}
+                      {viewingNCR.status === 'UNDER_REVIEW' && '→ Being investigated by quality team'}
+                      {viewingNCR.status === 'ACTION_PLANNED' && '→ Corrective actions planned, awaiting execution'}
+                      {viewingNCR.status === 'IN_PROGRESS' && '→ Corrective actions being implemented'}
+                      {viewingNCR.status === 'RESOLVED' && '→ Actions completed, awaiting verification'}
+                      {viewingNCR.status === 'CLOSED' && '→ Verified and closed'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-600 mt-2">
+                    <p className="font-medium mb-1">Next Steps:</p>
+                    {viewingNCR.status === 'OPEN' && (
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Conduct root cause analysis</li>
+                        <li>Update status to &quot;Under Review&quot;</li>
+                      </ul>
+                    )}
+                    {viewingNCR.status === 'UNDER_REVIEW' && (
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Complete root cause investigation</li>
+                        <li>Plan corrective and preventive actions</li>
+                        <li>Update status to &quot;Action Planned&quot;</li>
+                      </ul>
+                    )}
+                    {viewingNCR.status === 'ACTION_PLANNED' && (
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Begin implementing corrective actions</li>
+                        <li>Update status to &quot;In Progress&quot;</li>
+                      </ul>
+                    )}
+                    {viewingNCR.status === 'IN_PROGRESS' && (
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Complete all corrective actions</li>
+                        <li>Verify effectiveness</li>
+                        <li>Update status to &quot;Resolved&quot;</li>
+                      </ul>
+                    )}
+                    {viewingNCR.status === 'RESOLVED' && (
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Final verification by quality manager</li>
+                        <li>Close NCR if satisfactory</li>
+                      </ul>
+                    )}
+                    {viewingNCR.status === 'CLOSED' && (
+                      <p className="text-green-700">✓ NCR completed and verified</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {viewingNCR.root_cause && (
+                <div className="border-t pt-4">
+                  <label className="text-sm font-medium text-gray-600 block mb-2">Root Cause Analysis</label>
+                  <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.root_cause}</p>
+                </div>
+              )}
+
+              {viewingNCR.containment_action && (
+                <div className="border-t pt-4">
+                  <label className="text-sm font-medium text-gray-600 block mb-2">Containment Action (Immediate)</label>
+                  <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.containment_action}</p>
+                </div>
+              )}
+
+              {viewingNCR.corrective_action && (
+                <div className="border-t pt-4">
+                  <label className="text-sm font-medium text-gray-600 block mb-2">Corrective Action (Eliminate Root Cause)</label>
+                  <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.corrective_action}</p>
+                </div>
+              )}
+
+              {viewingNCR.preventive_action && (
+                <div className="border-t pt-4">
+                  <label className="text-sm font-medium text-gray-600 block mb-2">Preventive Action (Prevent Recurrence)</label>
+                  <p className="text-gray-800 bg-gray-50 p-3 rounded">{viewingNCR.preventive_action}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-6 border-t mt-6">
+              {viewingNCR.status !== 'CLOSED' && (
+                <button
+                  onClick={() => {
+                    setEditingNCR(viewingNCR);
+                    setViewingNCR(null);
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Update NCR
+                </button>
+              )}
+              <button
+                onClick={() => setViewingNCR(null)}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit NCR Modal */}
+      {editingNCR && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4">Update NCR - {editingNCR.ncr_number}</h2>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await apiClient.put(`/quality/ncr/${editingNCR.id}`, {
+                    status: editingNCR.status,
+                    root_cause: editingNCR.root_cause,
+                    containment_action: editingNCR.containment_action,
+                    corrective_action: editingNCR.corrective_action,
+                    preventive_action: editingNCR.preventive_action,
+                  });
+                  setEditingNCR(null);
+                  fetchData();
+                  alert('NCR updated successfully');
+                } catch (error) {
+                  console.error('Error updating NCR:', error);
+                  alert('Failed to update NCR');
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-medium mb-1">Status</label>
+                <select
+                  value={editingNCR.status}
+                  onChange={(e) => setEditingNCR({ ...editingNCR, status: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  required
+                >
+                  <option value="OPEN">Open</option>
+                  <option value="UNDER_REVIEW">Under Review</option>
+                  <option value="ACTION_PLANNED">Action Planned</option>
+                  <option value="IN_PROGRESS">In Progress</option>
+                  <option value="RESOLVED">Resolved</option>
+                  <option value="CLOSED">Closed</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Root Cause Analysis</label>
+                <textarea
+                  value={editingNCR.root_cause || ''}
+                  onChange={(e) => setEditingNCR({ ...editingNCR, root_cause: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Containment Action</label>
+                <textarea
+                  value={editingNCR.containment_action || ''}
+                  onChange={(e) => setEditingNCR({ ...editingNCR, containment_action: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  rows={2}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Corrective Action</label>
+                <textarea
+                  value={editingNCR.corrective_action || ''}
+                  onChange={(e) => setEditingNCR({ ...editingNCR, corrective_action: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  rows={2}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Preventive Action</label>
+                <textarea
+                  value={editingNCR.preventive_action || ''}
+                  onChange={(e) => setEditingNCR({ ...editingNCR, preventive_action: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  rows={2}
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setEditingNCR(null)}
+                  className="px-4 py-2 border rounded hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Update NCR
                 </button>
               </div>
             </form>

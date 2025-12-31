@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
@@ -19,8 +19,9 @@ interface Workstation {
 
 interface User {
   id: string;
-  full_name: string;
-  email: string;
+  employee_name: string;
+  employee_code: string;
+  designation?: string;
 }
 
 interface Operation {
@@ -79,10 +80,13 @@ export default function JobOrdersPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedJobOrder, setSelectedJobOrder] = useState<JobOrder | null>(null);
   const [loading, setLoading] = useState(false);
+  const [completionPreview, setCompletionPreview] = useState<any>(null);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
     itemId: '',
+    bomId: '',
     quantity: 1,
     startDate: new Date().toISOString().split('T')[0],
     endDate: '',
@@ -98,12 +102,27 @@ export default function JobOrdersPage() {
     fetchItems();
     fetchWorkstations();
     fetchUsers();
+    console.log('Initial data fetch triggered');
   }, []);
 
   const fetchJobOrders = async () => {
     try {
-      const data = await apiClient.get('/production/job-orders');
-      setJobOrders(data);
+      const data = await apiClient.get('/job-orders');
+      // Map snake_case to camelCase
+      const mapped = data.map((jo: any) => ({
+        ...jo,
+        jobOrderNumber: jo.job_order_number,
+        itemId: jo.item_id,
+        itemCode: jo.item_code,
+        itemName: jo.item_name,
+        bomId: jo.bom_id,
+        startDate: jo.start_date,
+        endDate: jo.end_date,
+        createdBy: jo.created_by,
+        createdAt: jo.created_at,
+        updatedAt: jo.updated_at,
+      }));
+      setJobOrders(mapped);
     } catch (error) {
       console.error('Error fetching job orders:', error);
     }
@@ -112,16 +131,24 @@ export default function JobOrdersPage() {
   const fetchItems = async () => {
     try {
       const data = await apiClient.get('/items');
-      setItems(data);
+      console.log('Fetched items:', data?.length || 0, 'items');
+      setItems(data || []);
     } catch (error) {
       console.error('Error fetching items:', error);
+      setItems([]);
     }
   };
 
   const fetchWorkstations = async () => {
     try {
-      const data = await apiClient.get('/workstations');
-      setWorkstations(data);
+      const data = await apiClient.get('/production/work-stations');
+      // Map station_code and station_name to code and name for dropdown compatibility
+      const mapped = data.map((ws: any) => ({
+        id: ws.id,
+        code: ws.station_code,
+        name: ws.station_name,
+      }));
+      setWorkstations(mapped);
     } catch (error) {
       console.error('Error fetching workstations:', error);
     }
@@ -129,10 +156,83 @@ export default function JobOrdersPage() {
 
   const fetchUsers = async () => {
     try {
-      const data = await apiClient.get('/users');
+      const data = await apiClient.get('/hr/employees');
       setUsers(data);
     } catch (error) {
       console.error('Error fetching users:', error);
+    }
+  };
+
+  // Store base BOM quantities for recalculation
+  const [baseMaterialQuantities, setBaseMaterialQuantities] = useState<{ [key: string]: number }>({});
+
+  const fetchBOMData = async (itemId: string) => {
+    console.log('fetchBOMData called with itemId:', itemId);
+    try {
+      // Get BOM header for this item
+      console.log('Fetching BOM for itemId:', itemId);
+      const boms = await apiClient.get(`/bom?itemId=${itemId}`);
+      console.log('BOM response:', boms);
+      
+      if (boms && boms.length > 0) {
+        const bom = boms[0];
+        console.log('Found BOM:', bom);
+        setFormData(prev => ({ ...prev, bomId: bom.id }));
+
+        // Fetch BOM items (materials)
+        console.log('Fetching BOM items for bomId:', bom.id);
+        const bomItems = await apiClient.get(`/bom/${bom.id}/items`);
+        console.log('BOM items response:', bomItems);
+        console.log('First BOM item structure:', bomItems[0]);
+        
+        // Store base quantities from BOM (per 1 unit)
+        const baseQuantities: { [key: string]: number } = {};
+        const materials = bomItems.map((item: any) => {
+          console.log('Processing BOM item:', {
+            component_id: item.component_id,
+            item_id: item.item_id,
+            component_code: item.component_code,
+            component_name: item.component_name,
+            quantity: item.quantity
+          });
+          const itemId = item.component_id || item.item_id;
+          baseQuantities[itemId] = item.quantity;
+          return {
+            itemId: itemId,
+            itemCode: item.component_code,
+            itemName: item.component_name,
+            requiredQuantity: item.quantity * formData.quantity, // Multiply by current quantity
+          };
+        });
+        setBaseMaterialQuantities(baseQuantities);
+        setMaterials(materials);
+        console.log('Materials set:', materials);
+        console.log('Base quantities:', baseQuantities);
+
+        // Fetch routing (operations)
+        console.log('Fetching routing for bomId:', bom.id);
+        const routing = await apiClient.get(`/production/routing/bom/${bom.id}?withStations=true`);
+        console.log('Routing response:', routing);
+        
+        if (routing && routing.length > 0) {
+          const operations = routing.map((route: any) => ({
+            sequenceNumber: route.sequence_no,
+            operationName: route.operation_name,
+            workstationId: route.work_station_id,
+            acceptedVariationPercent: 5,
+          }));
+          setOperations(operations);
+          console.log('Operations set:', operations);
+        }
+        
+        alert('BOM data loaded! Materials and operations have been added.');
+      } else {
+        console.log('No BOM found for this item');
+        alert('No BOM found for this item');
+      }
+    } catch (error) {
+      console.error('Error fetching BOM data:', error);
+      alert('Error loading BOM data. Check console for details.');
     }
   };
 
@@ -177,18 +277,61 @@ export default function JobOrdersPage() {
   };
 
   const handleCreateJobOrder = async () => {
+    console.log('Create button clicked', { formData, operations, materials });
+    
     if (!formData.itemId || !formData.quantity || !formData.startDate) {
+      console.log('Validation failed', { 
+        itemId: formData.itemId, 
+        quantity: formData.quantity, 
+        startDate: formData.startDate 
+      });
       alert('Please fill in all required fields');
       return;
     }
 
     setLoading(true);
     try {
-      await apiClient.post('/production/job-orders', {
-        ...formData,
-        operations: operations.length > 0 ? operations : undefined,
-        materials: materials.length > 0 ? materials : undefined,
-      });
+      console.log('Sending request to /job-orders');
+      
+      // Clean up the payload - remove empty endDate and extra fields from materials
+      const payload: any = {
+        itemId: formData.itemId,
+        bomId: formData.bomId || undefined,
+        quantity: formData.quantity,
+        startDate: formData.startDate,
+        priority: formData.priority,
+        notes: formData.notes,
+      };
+      
+      // Only include endDate if it's not empty
+      if (formData.endDate) {
+        payload.endDate = formData.endDate;
+      }
+      
+      // Clean materials - only send itemId and requiredQuantity
+      if (materials.length > 0) {
+        payload.materials = materials.map(m => ({
+          itemId: m.itemId,
+          requiredQuantity: m.requiredQuantity,
+          warehouseId: m.warehouseId || undefined,
+        }));
+      }
+      
+      // Clean operations - only send required fields
+      if (operations.length > 0) {
+        payload.operations = operations.map(op => ({
+          sequenceNumber: op.sequenceNumber,
+          operationName: op.operationName,
+          workstationId: op.workstationId,
+          assignedUserId: op.assignedUserId || undefined,
+          acceptedVariationPercent: op.acceptedVariationPercent || 0,
+          notes: op.notes || undefined,
+        }));
+      }
+      
+      console.log('Cleaned payload:', payload);
+      const response = await apiClient.post('/job-orders', payload);
+      console.log('Job order created successfully', response);
 
       setShowCreateModal(false);
       resetForm();
@@ -204,7 +347,7 @@ export default function JobOrdersPage() {
 
   const handleUpdateStatus = async (id: string, status: string) => {
     try {
-      await apiClient.put(`/production/job-orders/${id}/status`, { status });
+      await apiClient.put(`/job-orders/${id}/status`, { status });
       fetchJobOrders();
       alert(`Job Order status updated to ${status}`);
     } catch (error) {
@@ -213,9 +356,46 @@ export default function JobOrdersPage() {
     }
   };
 
+  const handleCompleteJobOrder = async (id: string) => {
+    // First, fetch completion preview
+    setLoading(true);
+    try {
+      const preview = await apiClient.get(`/job-orders/${id}/completion-preview`);
+      setCompletionPreview(preview);
+      setShowCompletionModal(true);
+    } catch (error: any) {
+      console.error('Error fetching completion preview:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to load completion preview';
+      alert(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmCompletion = async () => {
+    if (!completionPreview) return;
+    
+    setLoading(true);
+    try {
+      const jobOrderId = jobOrders.find(jo => jo.jobOrderNumber === completionPreview.jobOrderNumber)?.id;
+      await apiClient.post(`/job-orders/${jobOrderId}/complete`, {});
+      setShowCompletionModal(false);
+      setCompletionPreview(null);
+      fetchJobOrders();
+      alert('✅ Job Order completed successfully!\n\nInventory has been updated.');
+    } catch (error: any) {
+      console.error('Error completing job order:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to complete job order';
+      alert(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       itemId: '',
+      bomId: '',
       quantity: 1,
       startDate: new Date().toISOString().split('T')[0],
       endDate: '',
@@ -306,9 +486,18 @@ export default function JobOrdersPage() {
                   {jo.status === 'SCHEDULED' && (
                     <button
                       onClick={() => handleUpdateStatus(jo.id, 'IN_PROGRESS')}
-                      className="text-yellow-600 hover:text-yellow-800"
+                      className="text-yellow-600 hover:text-yellow-800 mr-3"
                     >
                       Start
+                    </button>
+                  )}
+                  {jo.status === 'IN_PROGRESS' && (
+                    <button
+                      onClick={() => handleCompleteJobOrder(jo.id)}
+                      className="text-green-600 hover:text-green-800"
+                      disabled={loading}
+                    >
+                      Complete
                     </button>
                   )}
                 </td>
@@ -325,7 +514,7 @@ export default function JobOrdersPage() {
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold">Create Job Order</h2>
               <button onClick={() => { setShowCreateModal(false); resetForm(); }} className="text-gray-500 hover:text-gray-700">
-                Γ£ò
+                ✕
               </button>
             </div>
 
@@ -335,7 +524,16 @@ export default function JobOrdersPage() {
                 <label className="block text-sm font-medium mb-1">Item *</label>
                 <select
                   value={formData.itemId}
-                  onChange={(e) => setFormData({...formData, itemId: e.target.value})}
+                  onChange={(e) => {
+                    console.log('Item dropdown changed, value:', e.target.value);
+                    setFormData({...formData, itemId: e.target.value});
+                    if (e.target.value) {
+                      console.log('Calling fetchBOMData...');
+                      fetchBOMData(e.target.value);
+                    } else {
+                      console.log('No item selected, skipping BOM fetch');
+                    }
+                  }}
                   className="w-full border rounded px-3 py-2 text-sm"
                   required
                 >
@@ -353,7 +551,20 @@ export default function JobOrdersPage() {
                 <input
                   type="number"
                   value={formData.quantity}
-                  onChange={(e) => setFormData({...formData, quantity: Number(e.target.value)})}
+                  onChange={(e) => {
+                    const newQuantity = Number(e.target.value);
+                    setFormData({...formData, quantity: newQuantity});
+                    
+                    // Update material quantities based on new job order quantity
+                    if (Object.keys(baseMaterialQuantities).length > 0) {
+                      const updatedMaterials = materials.map(mat => ({
+                        ...mat,
+                        requiredQuantity: baseMaterialQuantities[mat.itemId] * newQuantity
+                      }));
+                      setMaterials(updatedMaterials);
+                      console.log('Materials updated for quantity:', newQuantity, updatedMaterials);
+                    }
+                  }}
                   className="w-full border rounded px-3 py-2"
                   min="1"
                   required
@@ -468,7 +679,9 @@ export default function JobOrdersPage() {
                         >
                           <option value="">Unassigned</option>
                           {users.map(user => (
-                            <option key={user.id} value={user.id}>{user.full_name}</option>
+                            <option key={user.id} value={user.id}>
+                              {user.employee_name} {user.designation && `(${user.designation})`}
+                            </option>
                           ))}
                         </select>
                       </div>
@@ -534,15 +747,21 @@ export default function JobOrdersPage() {
               </div>
 
               <div className="space-y-2">
+                {materials.length === 0 && (
+                  <p className="text-sm text-gray-500 italic">No materials added. Click &quot;+ Add Material&quot; or select an item with BOM to auto-load materials.</p>
+                )}
                 {materials.map((mat, idx) => (
                   <div key={idx} className="flex gap-3 items-center border rounded p-3 bg-gray-50">
                     <div className="flex-1">
                       <select
                         value={mat.itemId}
-                        onChange={(e) => updateMaterial(idx, 'itemId', e.target.value)}
+                        onChange={(e) => {
+                          console.log('Material changed to:', e.target.value);
+                          updateMaterial(idx, 'itemId', e.target.value);
+                        }}
                         className="w-full border rounded px-2 py-1 text-sm"
                       >
-                        <option value="">Select Item...</option>
+                        <option value="">Select Item... ({items.length} available)</option>
                         {items.map(item => (
                           <option key={item.id} value={item.id}>
                             {item.code} - {item.name} {item.type && `(${item.type})`}
@@ -601,7 +820,7 @@ export default function JobOrdersPage() {
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold">Job Order: {selectedJobOrder.jobOrderNumber}</h2>
               <button onClick={() => setSelectedJobOrder(null)} className="text-gray-500 hover:text-gray-700">
-                Γ£ò
+                ✕
               </button>
             </div>
 
@@ -639,6 +858,7 @@ export default function JobOrdersPage() {
                       <th className="border px-3 py-2 text-left text-sm">Assigned To</th>
                       <th className="border px-3 py-2 text-left text-sm">Duration</th>
                       <th className="border px-3 py-2 text-left text-sm">Status</th>
+                      <th className="border px-3 py-2 text-left text-sm">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -653,6 +873,55 @@ export default function JobOrdersPage() {
                           <span className={`px-2 py-1 text-xs rounded ${getStatusColor(op.status || 'NOT_STARTED')}`}>
                             {op.status || 'NOT_STARTED'}
                           </span>
+                        </td>
+                        <td className="border px-3 py-2 text-sm">
+                          {selectedJobOrder.status === 'IN_PROGRESS' && (
+                            <>
+                              {(!op.status || op.status === 'NOT_STARTED') && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      await apiClient.put(`/job-orders/${selectedJobOrder.id}/operations/${op.id}`, {
+                                        status: 'IN_PROGRESS',
+                                        actualStartDatetime: new Date().toISOString()
+                                      });
+                                      alert('Operation started');
+                                      setSelectedJobOrder(null);
+                                      fetchJobOrders();
+                                    } catch (error) {
+                                      console.error('Error starting operation:', error);
+                                      alert('Failed to start operation');
+                                    }
+                                  }}
+                                  className="text-blue-600 hover:text-blue-800 text-xs mr-2"
+                                >
+                                  Start
+                                </button>
+                              )}
+                              {op.status === 'IN_PROGRESS' && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      await apiClient.put(`/job-orders/${selectedJobOrder.id}/operations/${op.id}`, {
+                                        status: 'COMPLETED',
+                                        actualEndDatetime: new Date().toISOString(),
+                                        completedQuantity: selectedJobOrder.quantity
+                                      });
+                                      alert('Operation completed');
+                                      setSelectedJobOrder(null);
+                                      fetchJobOrders();
+                                    } catch (error) {
+                                      console.error('Error completing operation:', error);
+                                      alert('Failed to complete operation');
+                                    }
+                                  }}
+                                  className="text-green-600 hover:text-green-800 text-xs"
+                                >
+                                  Complete
+                                </button>
+                              )}
+                            </>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -694,6 +963,143 @@ export default function JobOrdersPage() {
                 className="px-4 py-2 border rounded hover:bg-gray-100"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Completion Preview Modal */}
+      {showCompletionModal && completionPreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b">
+              <h2 className="text-2xl font-bold text-gray-900">Complete Job Order - Stock Impact Preview</h2>
+              <p className="text-gray-600 mt-1">Job Order: {completionPreview.jobOrderNumber}</p>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Finished Product Section */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-green-900 mb-3">✅ Finished Product to Add</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Product</p>
+                    <p className="text-base font-semibold text-gray-900">
+                      {completionPreview.finishedProduct.itemCode} - {completionPreview.finishedProduct.itemName}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Quantity to Add</p>
+                    <p className="text-2xl font-bold text-green-600">+{completionPreview.finishedProduct.quantityToAdd}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Current Stock</p>
+                    <p className="text-lg font-medium text-gray-700">{completionPreview.finishedProduct.currentStock}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">New Stock</p>
+                    <p className="text-lg font-bold text-green-700">{completionPreview.finishedProduct.newStock}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Materials to Consume Section */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">📦 Materials to Consume</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 border">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">To Consume</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Current Stock</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Reserved</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">New Stock</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {completionPreview.materialsToConsume.map((material: any, index: number) => (
+                        <tr key={index} className={material.sufficient ? '' : 'bg-red-50'}>
+                          <td className="px-4 py-3 text-sm">
+                            <div className="font-medium text-gray-900">{material.itemCode}</div>
+                            <div className="text-gray-500 text-xs">{material.itemName}</div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">-{material.toConsume}</td>
+                          <td className="px-4 py-3 text-sm text-right">{material.currentStock}</td>
+                          <td className="px-4 py-3 text-sm text-right text-yellow-600">{material.reservedStock}</td>
+                          <td className="px-4 py-3 text-sm text-right font-medium">
+                            {material.newStock >= 0 ? (
+                              <span className="text-gray-900">{material.newStock}</span>
+                            ) : (
+                              <span className="text-red-600 font-bold">{material.newStock}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {material.sufficient ? (
+                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                ✓ OK
+                              </span>
+                            ) : (
+                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                                ⚠ Insufficient
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Warning for insufficient materials */}
+              {!completionPreview.canComplete && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold text-red-900 mb-2">⚠️ Cannot Complete Job Order</h3>
+                  <p className="text-sm text-red-700 mb-3">
+                    The following materials have insufficient stock:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
+                    {completionPreview.insufficientMaterials.map((mat: any, idx: number) => (
+                      <li key={idx}>
+                        {mat.itemCode} - {mat.itemName}: Need {mat.toConsume}, Have {mat.currentStock}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Summary */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> Completing this job order will automatically update inventory. 
+                  Materials will be consumed and finished goods will be added. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 border-t flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowCompletionModal(false);
+                  setCompletionPreview(null);
+                }}
+                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmCompletion}
+                disabled={!completionPreview.canComplete || loading}
+                className={`px-6 py-2 rounded-lg font-semibold ${
+                  completionPreview.canComplete && !loading
+                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                {loading ? 'Completing...' : 'Confirm & Complete'}
               </button>
             </div>
           </div>

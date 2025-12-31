@@ -3,7 +3,7 @@
  * Handles all HTTP requests to the backend API
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://13.205.17.214:4000/api/v1';
 
 interface ApiResponse<T = any> {
   success: boolean;
@@ -42,7 +42,6 @@ interface ResetPasswordRequestData {
 
 class ApiClient {
   private baseUrl: string;
-  private refreshInFlight: Promise<boolean> | null = null;
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
@@ -68,56 +67,25 @@ class ApiClient {
         Object.assign(headers, existingHeaders);
       }
 
-      const makeRequest = async () => {
-        const token = this.getToken();
-        const requestHeaders = { ...headers };
-        if (token) {
-          requestHeaders['Authorization'] = `Bearer ${token}`;
-        }
-
-        return fetch(url, {
-          ...options,
-          headers: requestHeaders,
-        });
-      };
-
-      let response = await makeRequest();
-
-      // Auto-refresh token on 401 for non-auth endpoints
-      if (response.status === 401 && !endpoint.startsWith('/auth/')) {
-        const refreshed = await this.refreshAccessToken();
-        if (refreshed) {
-          response = await makeRequest();
-        }
+      // Add auth token if available
+      const token = this.getToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const contentType = response.headers.get('content-type') || '';
-      let data: any = null;
-      if (response.status === 204) {
-        data = null;
-      } else if (contentType.includes('application/json')) {
-        data = await response.json().catch(() => null);
-      } else {
-        data = await response.text().catch(() => null);
-      }
+      const response = await fetch(url, {
+        ...options,
+        headers,
+      });
+
+      // Some endpoints return 204/empty body; guard JSON parsing
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : null;
 
       if (!response.ok) {
-        if (response.status === 401) {
-          // If refresh failed (or no refresh token), clear auth state
-          this.clearTokens();
-          if (typeof window !== 'undefined') {
-            // Avoid infinite redirect loops on auth pages
-            if (!window.location.pathname.startsWith('/login')) {
-              window.location.href = '/login';
-            }
-          }
-        }
         return {
           success: false,
-          error:
-            (data && (data.message || data.error)) ||
-            (typeof data === 'string' && data) ||
-            `HTTP ${response.status}: ${response.statusText}`,
+          error: (data as any)?.message || `HTTP ${response.status}: ${response.statusText}`,
         };
       }
 
@@ -142,11 +110,6 @@ class ApiClient {
     return localStorage.getItem('accessToken');
   }
 
-  private getRefreshToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('refreshToken');
-  }
-
   /**
    * Save JWT tokens to localStorage
    */
@@ -156,50 +119,6 @@ class ApiClient {
     localStorage.setItem('refreshToken', refreshToken);
   }
 
-  private async refreshAccessToken(): Promise<boolean> {
-    if (typeof window === 'undefined') return false;
-
-    if (this.refreshInFlight) {
-      return this.refreshInFlight;
-    }
-
-    const refreshToken = this.getRefreshToken();
-    if (!refreshToken) return false;
-
-    this.refreshInFlight = (async () => {
-      try {
-        const response = await fetch(`${this.baseUrl}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
-
-        const contentType = response.headers.get('content-type') || '';
-        const data = contentType.includes('application/json')
-          ? await response.json().catch(() => null)
-          : await response.text().catch(() => null);
-
-        if (!response.ok || !data) {
-          return false;
-        }
-
-        const authData = data as any;
-        if (authData.accessToken && authData.refreshToken) {
-          this.saveTokens(authData.accessToken, authData.refreshToken);
-          return true;
-        }
-
-        return false;
-      } catch {
-        return false;
-      } finally {
-        this.refreshInFlight = null;
-      }
-    })();
-
-    return this.refreshInFlight;
-  }
-
   /**
    * Remove tokens from localStorage
    */
@@ -207,6 +126,10 @@ class ApiClient {
     if (typeof window === 'undefined') return;
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+    // Clear any cached user data to prevent tenant data leakage
+    localStorage.removeItem('user');
+    localStorage.removeItem('tenant');
+    localStorage.removeItem('tenantId');
   }
 
   /**
@@ -233,6 +156,9 @@ class ApiClient {
    * Login user
    */
   async login(data: LoginData): Promise<ApiResponse<LoginResponse>> {
+    // Clear any existing session data before login to prevent tenant mixing
+    this.clearTokens();
+    
     const response = await this.request<LoginResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -285,12 +211,22 @@ class ApiClient {
       return { success: false, error: 'Cannot refresh token on server side' };
     }
 
-    const refreshed = await this.refreshAccessToken();
-    if (!refreshed) {
-      return { success: false, error: 'Token refresh failed' };
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) {
+      return { success: false, error: 'No refresh token available' };
     }
 
-    return { success: true };
+    const response = await this.request('/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (response.success && response.data) {
+      const authData = response.data as any;
+      this.saveTokens(authData.accessToken, authData.refreshToken);
+    }
+
+    return response;
   }
 
   /**

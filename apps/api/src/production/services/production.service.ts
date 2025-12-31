@@ -35,14 +35,14 @@ export class ProductionService {
   async create(tenantId: string, userId: string, data: any) {
     const orderNumber = await this.generateOrderNumber(tenantId);
 
-    // Create production order
+    // Create production order with BOM reference
     const { data: order, error } = await this.supabase
       .from('production_orders')
       .insert({
         tenant_id: tenantId,
         order_number: orderNumber,
         item_id: data.itemId,
-        bom_id: data.bomId,
+        bom_id: data.bomId || null, // Save BOM reference for routing integration
         quantity: data.quantity,
         plant_code: data.plantCode || 'KOL',
         start_date: data.startDate,
@@ -55,7 +55,16 @@ export class ProductionService {
       .select()
       .single();
 
-    if (error) throw new BadRequestException(error.message);
+    if (error) {
+      console.error('[Production] Failed to create order', {
+        tenantId,
+        userId,
+        orderNumber,
+        payload: data,
+        error,
+      });
+      throw new BadRequestException(error.message);
+    }
 
     // If BOM provided, explode BOM and create component requirements
     if (data.bomId) {
@@ -69,31 +78,117 @@ export class ProductionService {
   }
 
   /**
-   * Explode BOM to get component requirements
+   * Explode BOM to get component requirements (with recursive multi-level BOM support)
    */
   async explodeBOM(productionOrderId: string, bomId: string, quantity: number) {
-    // Get BOM items
+    // Get BOM items with component type
     const { data: bomItems } = await this.supabase
       .from('bom_items')
-      .select('item_id, quantity, scrap_percentage')
+      .select('component_type, item_id, child_bom_id, quantity, scrap_percentage')
       .eq('bom_id', bomId);
 
     if (!bomItems || bomItems.length === 0) return;
 
-    // Calculate required quantities with scrap
-    const components = bomItems.map((item) => {
-      const scrapFactor = 1 + (item.scrap_percentage || 0) / 100;
-      const requiredQty = item.quantity * quantity * scrapFactor;
+    const allComponents: Array<{
+      production_order_id: string;
+      item_id: string;
+      required_quantity: number;
+      consumed_quantity: number;
+    }> = [];
 
-      return {
+    // Process each component
+    for (const bomItem of bomItems) {
+      const scrapFactor = 1 + (bomItem.scrap_percentage || 0) / 100;
+      const adjustedQty = bomItem.quantity * quantity * scrapFactor;
+
+      if (bomItem.component_type === 'ITEM' && bomItem.item_id) {
+        // Direct item - add to requirements
+        allComponents.push({
+          production_order_id: productionOrderId,
+          item_id: bomItem.item_id,
+          required_quantity: adjustedQty,
+          consumed_quantity: 0,
+        });
+      } else if (bomItem.component_type === 'BOM' && bomItem.child_bom_id) {
+        // Nested BOM - recursively explode
+        console.log(`[Production] Exploding child BOM: ${bomItem.child_bom_id} with qty: ${adjustedQty}`);
+        
+        // Get child BOM items
+        const { data: childBomItems } = await this.supabase
+          .from('bom_items')
+          .select('component_type, item_id, child_bom_id, quantity, scrap_percentage')
+          .eq('bom_id', bomItem.child_bom_id);
+
+        if (childBomItems) {
+          // Recursively process child BOM
+          await this.explodeChildBOM(
+            productionOrderId,
+            childBomItems,
+            adjustedQty,
+            allComponents
+          );
+        }
+      }
+    }
+
+    // Insert all components in one batch
+    if (allComponents.length > 0) {
+      // Aggregate quantities for duplicate items
+      const aggregatedComponents = new Map<string, number>();
+      allComponents.forEach(comp => {
+        const existing = aggregatedComponents.get(comp.item_id) || 0;
+        aggregatedComponents.set(comp.item_id, existing + comp.required_quantity);
+      });
+
+      const finalComponents = Array.from(aggregatedComponents.entries()).map(([itemId, qty]) => ({
         production_order_id: productionOrderId,
-        item_id: item.item_id,
-        required_quantity: requiredQty,
+        item_id: itemId,
+        required_quantity: qty,
         consumed_quantity: 0,
-      };
-    });
+      }));
 
-    await this.supabase.from('production_order_components').insert(components);
+      await this.supabase.from('production_order_components').insert(finalComponents);
+      console.log(`[Production] Inserted ${finalComponents.length} component requirements`);
+    }
+  }
+
+  /**
+   * Helper: Recursively explode child BOMs
+   */
+  private async explodeChildBOM(
+    productionOrderId: string,
+    bomItems: any[],
+    quantity: number,
+    accumulator: Array<any>
+  ) {
+    for (const bomItem of bomItems) {
+      const scrapFactor = 1 + (bomItem.scrap_percentage || 0) / 100;
+      const adjustedQty = bomItem.quantity * quantity * scrapFactor;
+
+      if (bomItem.component_type === 'ITEM' && bomItem.item_id) {
+        accumulator.push({
+          production_order_id: productionOrderId,
+          item_id: bomItem.item_id,
+          required_quantity: adjustedQty,
+          consumed_quantity: 0,
+        });
+      } else if (bomItem.component_type === 'BOM' && bomItem.child_bom_id) {
+        // Continue recursion
+        const { data: childBomItems } = await this.supabase
+          .from('bom_items')
+          .select('component_type, item_id, child_bom_id, quantity, scrap_percentage')
+          .eq('bom_id', bomItem.child_bom_id);
+
+        if (childBomItems) {
+          await this.explodeChildBOM(
+            productionOrderId,
+            childBomItems,
+            adjustedQty,
+            accumulator
+          );
+        }
+      }
+    }
   }
 
   /**
@@ -123,15 +218,37 @@ export class ProductionService {
   async completeAssembly(tenantId: string, data: any) {
     const { productionOrderId, componentUids, assembledBy } = data;
 
-    // Get production order
+    // Get production order with BOM details
     const { data: order } = await this.supabase
       .from('production_orders')
-      .select('*, item:items(code, name, type)')
+      .select('*, item:items(code, name, type, uom), bom:boms(id, items:bom_items(item_id, quantity))')
       .eq('tenant_id', tenantId)
       .eq('id', productionOrderId)
       .single();
 
     if (!order) throw new NotFoundException('Production order not found');
+
+    // Validate component UIDs exist and are available
+    if (!componentUids || componentUids.length === 0) {
+      throw new BadRequestException('No component UIDs provided');
+    }
+
+    // Get all component UID details
+    const { data: uidDetails } = await this.supabase
+      .from('uid_registry')
+      .select('uid, entity_id, entity_type, status')
+      .eq('tenant_id', tenantId)
+      .in('uid', componentUids);
+
+    if (!uidDetails || uidDetails.length !== componentUids.length) {
+      throw new BadRequestException('Some component UIDs not found or invalid');
+    }
+
+    // Verify all UIDs are AVAILABLE
+    const unavailableUids = uidDetails.filter(u => u.status !== 'AVAILABLE');
+    if (unavailableUids.length > 0) {
+      throw new BadRequestException(`UIDs not available: ${unavailableUids.map(u => u.uid).join(', ')}`);
+    }
 
     // Generate UID for finished product
     const mockReq = {
@@ -151,8 +268,8 @@ export class ProductionService {
       entityType: 'FG',
       entity_type: 'FG',
       entity_id: order.item_id,
-      location: `Production-${order.plant_code}`,
-      status: 'ACTIVE',
+      location: `FG-Warehouse-${order.plant_code}`,
+      status: 'AVAILABLE',
       reference: `PO-${order.order_number}`,
       description: order.item?.name,
       metadata: {
@@ -162,10 +279,125 @@ export class ProductionService {
       },
     });
 
-    // Link component UIDs to finished product UID using UID service
+    // Link component UIDs to finished product UID and mark as CONSUMED
     for (const componentUid of componentUids) {
+      // Link UIDs
       await this.uidService.linkUIDs(mockReq, finishedUid, componentUid);
+      
+      // Mark component UID as CONSUMED
+      await this.supabase
+        .from('uid_registry')
+        .update({
+          status: 'CONSUMED',
+          consumed_at: new Date().toISOString(),
+          consumed_in_uid: finishedUid,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('uid', componentUid)
+        .eq('tenant_id', tenantId);
     }
+
+    // Reduce inventory for each component
+    for (const uid of uidDetails) {
+      // Check if stock entry exists
+      const { data: stockData } = await this.supabase
+        .from('stock_entries')
+        .select('quantity, available_quantity, warehouse_id')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', uid.entity_id)
+        .maybeSingle();
+
+      if (stockData && stockData.available_quantity > 0) {
+        // Reduce stock by 1 unit (each UID = 1 unit)
+        await this.supabase
+          .from('stock_entries')
+          .update({
+            quantity: stockData.quantity - 1,
+            available_quantity: stockData.available_quantity - 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('tenant_id', tenantId)
+          .eq('item_id', uid.entity_id)
+          .eq('warehouse_id', stockData.warehouse_id);
+
+        // Log inventory movement
+        await this.supabase
+          .from('inventory_movements')
+          .insert({
+            tenant_id: tenantId,
+            item_id: uid.entity_id,
+            movement_type: 'CONSUMPTION',
+            quantity: -1,
+            reference_type: 'PRODUCTION',
+            reference_id: productionOrderId,
+            reference_number: order.order_number,
+            uid: uid.uid,
+            moved_by: assembledBy,
+            notes: `Consumed in production assembly ${finishedUid}`,
+          });
+      }
+    }
+
+    // Add finished goods to stock
+    const { data: fgStock } = await this.supabase
+      .from('stock_entries')
+      .select('quantity, available_quantity, warehouse_id')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', order.item_id)
+      .maybeSingle();
+
+    if (fgStock) {
+      // Update existing stock
+      await this.supabase
+        .from('stock_entries')
+        .update({
+          quantity: fgStock.quantity + 1,
+          available_quantity: fgStock.available_quantity + 1,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('tenant_id', tenantId)
+        .eq('item_id', order.item_id)
+        .eq('warehouse_id', fgStock.warehouse_id);
+    } else {
+      // Create new stock entry (use first available warehouse)
+      const { data: warehouse } = await this.supabase
+        .from('warehouses')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .limit(1)
+        .single();
+
+      await this.supabase
+        .from('stock_entries')
+        .insert({
+          tenant_id: tenantId,
+          item_id: order.item_id,
+          warehouse_id: warehouse?.id,
+          quantity: 1,
+          available_quantity: 1,
+          allocated_quantity: 0,
+          metadata: {
+            created_from: 'PRODUCTION',
+            production_order: order.order_number
+          }
+        });
+    }
+
+    // Log inventory movement for finished goods
+    await this.supabase
+      .from('inventory_movements')
+      .insert({
+        tenant_id: tenantId,
+        item_id: order.item_id,
+        movement_type: 'PRODUCTION',
+        quantity: 1,
+        reference_type: 'PRODUCTION',
+        reference_id: productionOrderId,
+        reference_number: order.order_number,
+        uid: finishedUid,
+        moved_by: assembledBy,
+        notes: `Finished goods produced from production order ${order.order_number}`,
+      });
 
     // Create assembly record
     const { data: assembly } = await this.supabase
@@ -191,7 +423,7 @@ export class ProductionService {
       })
       .eq('id', productionOrderId);
 
-    await this.logStage(productionOrderId, 'IN_PROGRESS', assembledBy, 'Assembly completed');
+    await this.logStage(productionOrderId, 'IN_PROGRESS', assembledBy, `Assembly completed - FG UID: ${finishedUid}`);
 
     return { assembly, finishedUid };
   }
@@ -261,6 +493,61 @@ export class ProductionService {
   }
 
   /**
+   * Get available UIDs for BOM components (FIFO sorted)
+   */
+  async getAvailableUIDs(tenantId: string, bomId: string) {
+    // Get BOM items
+    const { data: bomItems, error: bomError } = await this.supabase
+      .from('bom_items')
+      .select(`
+        item_id,
+        quantity,
+        item:items!inner(id, code, name, uom, category)
+      `)
+      .eq('bom_id', bomId);
+
+    if (bomError || !bomItems) {
+      throw new BadRequestException('Failed to fetch BOM items');
+    }
+
+    // For each BOM item, get available UIDs sorted FIFO
+    const result: Record<string, any[]> = {};
+
+    for (const bomItem of bomItems) {
+      const item = Array.isArray(bomItem.item) ? bomItem.item[0] : bomItem.item;
+      
+      const { data: uids, error: uidError } = await this.supabase
+        .from('uid_registry')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('entity_id', bomItem.item_id)
+        .eq('entity_type', 'RM') // Raw Material
+        .eq('status', 'AVAILABLE')
+        .order('received_date', { ascending: true }) // FIFO: oldest first
+        .order('expiry_date', { ascending: true, nullsFirst: false })
+        .order('batch_number', { ascending: true });
+
+      if (!uidError && uids) {
+        result[bomItem.item_id] = uids.map(uid => ({
+          uid: uid.uid,
+          item_id: uid.entity_id,
+          item_code: item.code,
+          item_name: item.name,
+          batch_number: uid.batch_number,
+          received_date: uid.received_date,
+          expiry_date: uid.expiry_date,
+          location: uid.location,
+          status: uid.status,
+        }));
+      } else {
+        result[bomItem.item_id] = [];
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * Get all production orders
    */
   async findAll(tenantId: string, filters?: any) {
@@ -278,10 +565,74 @@ export class ProductionService {
       query = query.or(`order_number.ilike.%${filters.search}%`);
     }
 
-    const { data, error } = await query;
+    const { data: orders, error } = await query;
 
-    if (error) throw new BadRequestException(error.message);
-    return data;
+    if (error) {
+      console.error('[Production] Failed to fetch orders', {
+        tenantId,
+        filters,
+        error,
+      });
+      throw new BadRequestException(error.message);
+    }
+
+    if (!orders || orders.length === 0) {
+      return [];
+    }
+
+    const itemIds = Array.from(
+      new Set(orders.map(order => order.item_id).filter(Boolean)),
+    );
+    const orderIds = orders.map(order => order.id);
+
+    const itemsById: Record<string, any> = {};
+    if (itemIds.length > 0) {
+      const { data: items, error: itemsError } = await this.supabase
+        .from('items')
+        .select('id, code, name, uom')
+        .in('id', itemIds);
+
+      if (itemsError) {
+        console.error('[Production] Failed to fetch linked items', {
+          tenantId,
+          itemIds,
+          itemsError,
+        });
+      } else if (items) {
+        items.forEach(item => {
+          itemsById[item.id] = item;
+        });
+      }
+    }
+
+    const assembliesByOrderId: Record<string, any[]> = {};
+    if (orderIds.length > 0) {
+      const { data: assemblies, error: assembliesError } = await this.supabase
+        .from('production_assemblies')
+        .select('id, production_order_id, finished_product_uid, qc_status')
+        .in('production_order_id', orderIds);
+
+      if (assembliesError) {
+        console.error('[Production] Failed to fetch assemblies', {
+          tenantId,
+          orderIds,
+          assembliesError,
+        });
+      } else if (assemblies) {
+        assemblies.forEach(assembly => {
+          if (!assembliesByOrderId[assembly.production_order_id]) {
+            assembliesByOrderId[assembly.production_order_id] = [];
+          }
+          assembliesByOrderId[assembly.production_order_id].push(assembly);
+        });
+      }
+    }
+
+    return orders.map(order => ({
+      ...order,
+      item: order.item_id ? itemsById[order.item_id] || null : null,
+      production_assemblies: assembliesByOrderId[order.id] || [],
+    }));
   }
 
   /**
@@ -290,12 +641,22 @@ export class ProductionService {
   async findOne(tenantId: string, id: string) {
     const { data, error } = await this.supabase
       .from('production_orders')
-      .select('*')
+      .select(`
+        *,
+        item:items(id, code, name, description, uom)
+      `)
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
 
-    if (error) throw new NotFoundException('Production order not found');
+    if (error) {
+      console.error('[Production] Failed to fetch order', {
+        tenantId,
+        orderId: id,
+        error,
+      });
+      throw new NotFoundException('Production order not found');
+    }
     return data;
   }
 

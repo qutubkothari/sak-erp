@@ -64,11 +64,7 @@ export class ServiceService {
   async getServiceTickets(tenantId: string, filters?: any) {
     let query = this.supabase
       .from('service_tickets')
-      .select(`
-        *,
-        customer:customers(customer_name, customer_code),
-        warranty:warranties(warranty_number, warranty_end_date)
-      `)
+      .select('*')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false });
 
@@ -88,11 +84,50 @@ export class ServiceService {
       query = query.eq('uid', filters.uid);
     }
 
-    const { data, error } = await query;
+    const { data: tickets, error } = await query;
 
     if (error) throw new BadRequestException(error.message);
 
-    return data;
+    // Fetch related data separately
+    if (tickets && tickets.length > 0) {
+      const customerIds = [...new Set(tickets.map(t => t.customer_id).filter(Boolean))];
+      const warrantyIds = [...new Set(tickets.map(t => t.warranty_id).filter(Boolean))];
+
+      // Fetch customers
+      let customersMap: Record<string, any> = {};
+      if (customerIds.length > 0) {
+        const { data: customers } = await this.supabase
+          .from('customers')
+          .select('id, customer_name, customer_code')
+          .in('id', customerIds);
+        
+        if (customers) {
+          customersMap = Object.fromEntries(customers.map(c => [c.id, c]));
+        }
+      }
+
+      // Fetch warranties
+      let warrantiesMap: Record<string, any> = {};
+      if (warrantyIds.length > 0) {
+        const { data: warranties } = await this.supabase
+          .from('warranties')
+          .select('id, warranty_number, warranty_end_date')
+          .in('id', warrantyIds);
+        
+        if (warranties) {
+          warrantiesMap = Object.fromEntries(warranties.map(w => [w.id, w]));
+        }
+      }
+
+      // Attach related data to tickets
+      return tickets.map(ticket => ({
+        ...ticket,
+        customer: customersMap[ticket.customer_id] || null,
+        warranty: ticket.warranty_id ? warrantiesMap[ticket.warranty_id] || null : null,
+      }));
+    }
+
+    return tickets || [];
   }
 
   async getServiceTicketById(tenantId: string, ticketId: string) {

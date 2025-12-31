@@ -17,10 +17,9 @@ export class InventoryService {
   async getStockLevels(req: Request, filters?: any) {
     const { tenantId } = req.user as any;
 
-    const lowStockOnly = Boolean(filters?.low_stock);
-
+    // Get stock entries first
     let query = this.supabase
-      .from('inventory_stock')
+      .from('stock_entries')
       .select('*')
       .eq('tenant_id', tenantId);
 
@@ -28,68 +27,57 @@ export class InventoryService {
       query = query.eq('warehouse_id', filters.warehouse_id);
     }
 
-    if (filters?.category) {
-      query = query.eq('category', filters.category);
-    }
-
     if (filters?.item_id) {
       query = query.eq('item_id', filters.item_id);
     }
 
-    const { data: stockDataRaw, error } = await query.order('updated_at', { ascending: false });
+    if (filters?.low_stock) {
+      query = query.lt('available_quantity', 10); // Low stock threshold
+    }
 
-    if (error) throw new BadRequestException(error.message);
-    
-    if (!stockDataRaw || stockDataRaw.length === 0) {
+    const { data: stockEntries, error: stockError } = await query;
+    if (stockError) throw new BadRequestException(stockError.message);
+
+    if (!stockEntries || stockEntries.length === 0) {
       return [];
     }
 
-    const toNumber = (value: any) => {
-      const parsed = typeof value === 'number' ? value : parseFloat(String(value ?? ''));
-      return Number.isFinite(parsed) ? parsed : 0;
-    };
-
-    const stockData = lowStockOnly
-      ? stockDataRaw.filter((row) => {
-          if (row.reorder_point === null || row.reorder_point === undefined) return false;
-          return toNumber(row.available_quantity) <= toNumber(row.reorder_point);
-        })
-      : stockDataRaw;
-
-    if (stockData.length === 0) {
-      return [];
-    }
-
-    // Fetch related items
-    const itemIds = [...new Set(stockData.map(s => s.item_id).filter(Boolean))];
-    const { data: items } = await this.supabase
+    // Get item details separately
+    const itemIds = [...new Set(stockEntries.map(entry => entry.item_id))];
+    const { data: items, error: itemError } = await this.supabase
       .from('items')
-      .select('id, item_code, item_name, uom')
+      .select('id, code, name, uom, category, standard_cost, selling_price')
       .in('id', itemIds);
 
-    // Fetch related warehouses
-    const warehouseIds = [...new Set(stockData.map(s => s.warehouse_id).filter(Boolean))];
-    const { data: warehouses } = await this.supabase
+    if (itemError) throw new BadRequestException(itemError.message);
+
+    // Get warehouse details separately
+    const warehouseIds = [...new Set(stockEntries.map(entry => entry.warehouse_id))];
+    const { data: warehouses, error: warehouseError } = await this.supabase
       .from('warehouses')
-      .select('id, warehouse_code, warehouse_name')
+      .select('id, code, name')
       .in('id', warehouseIds);
 
-    // Map items and warehouses to stock data
-    const itemsMap = (items || []).reduce((acc, item) => {
-      acc[item.id] = item;
-      return acc;
-    }, {});
+    if (warehouseError) throw new BadRequestException(warehouseError.message);
 
-    const warehousesMap = (warehouses || []).reduce((acc, wh) => {
-      acc[wh.id] = wh;
-      return acc;
-    }, {});
+    // Combine the data manually
+    const result = stockEntries.map(entry => {
+      const item = items?.find(i => i.id === entry.item_id);
+      const warehouse = warehouses?.find(w => w.id === entry.warehouse_id);
+      
+      return {
+        ...entry,
+        items: item || { code: 'N/A', name: 'Unknown Item', uom: '', category: '', standard_cost: 0, selling_price: 0 },
+        warehouses: warehouse || { code: 'N/A', name: 'Unknown Warehouse' }
+      };
+    });
 
-    return stockData.map(stock => ({
-      ...stock,
-      items: itemsMap[stock.item_id] || null,
-      warehouses: warehousesMap[stock.warehouse_id] || null
-    }));
+    // Apply category filter if needed
+    if (filters?.category) {
+      return result.filter(entry => entry.items.category === filters.category);
+    }
+
+    return result;
   }
 
   // Get stock movements history
@@ -122,50 +110,53 @@ export class InventoryService {
       query = query.lte('movement_date', filters.to_date);
     }
 
-    const { data: movements, error } = await query
+    const { data: movements, error: movementError } = await query
       .order('movement_date', { ascending: false })
       .limit(filters?.limit || 100);
 
-    if (error) throw new BadRequestException(error.message);
-    
+    if (movementError) throw new BadRequestException(movementError.message);
+
     if (!movements || movements.length === 0) {
       return [];
     }
 
-    // Fetch related items
+    // Get item details separately
     const itemIds = [...new Set(movements.map(m => m.item_id))];
-    const { data: items } = await this.supabase
+    const { data: items, error: itemError } = await this.supabase
       .from('items')
-      .select('id, item_code, item_name')
+      .select('id, code, name')
       .in('id', itemIds);
 
-    // Fetch related warehouses
-    const fromWarehouseIds = [...new Set(movements.map(m => m.from_warehouse_id).filter(Boolean))];
-    const toWarehouseIds = [...new Set(movements.map(m => m.to_warehouse_id).filter(Boolean))];
-    const allWarehouseIds = [...new Set([...fromWarehouseIds, ...toWarehouseIds])];
+    if (itemError) throw new BadRequestException(itemError.message);
+
+    // Get warehouse details separately
+    const warehouseIds = [...new Set([
+      ...movements.filter(m => m.from_warehouse_id).map(m => m.from_warehouse_id),
+      ...movements.filter(m => m.to_warehouse_id).map(m => m.to_warehouse_id)
+    ])];
     
-    const { data: warehouses } = await this.supabase
+    const { data: warehouses, error: warehouseError } = await this.supabase
       .from('warehouses')
-      .select('id, warehouse_code, warehouse_name')
-      .in('id', allWarehouseIds);
+      .select('id, code, name')
+      .in('id', warehouseIds);
 
-    // Create lookup maps
-    const itemsMap = (items || []).reduce((acc, item) => {
-      acc[item.id] = item;
-      return acc;
-    }, {});
+    if (warehouseError) throw new BadRequestException(warehouseError.message);
 
-    const warehousesMap = (warehouses || []).reduce((acc, wh) => {
-      acc[wh.id] = wh;
-      return acc;
-    }, {});
+    // Combine the data manually
+    const result = movements.map(movement => {
+      const item = items?.find(i => i.id === movement.item_id);
+      const fromWarehouse = warehouses?.find(w => w.id === movement.from_warehouse_id);
+      const toWarehouse = warehouses?.find(w => w.id === movement.to_warehouse_id);
+      
+      return {
+        ...movement,
+        items: item || { code: 'N/A', name: 'Unknown Item' },
+        from_warehouse: fromWarehouse || null,
+        to_warehouse: toWarehouse || null
+      };
+    });
 
-    return movements.map(movement => ({
-      ...movement,
-      items: itemsMap[movement.item_id] || null,
-      from_warehouse: warehousesMap[movement.from_warehouse_id] || null,
-      to_warehouse: warehousesMap[movement.to_warehouse_id] || null
-    }));
+    return result;
   }
 
   // Create stock movement (generic)
@@ -257,36 +248,39 @@ export class InventoryService {
 
     // Get current stock
     const { data: currentStock } = await this.supabase
-      .from('inventory_stock')
+      .from('stock_entries')
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('item_id', itemId)
       .eq('warehouse_id', warehouseId)
-      .eq('location_id', locationId || 'null')
       .maybeSingle();
 
     if (currentStock) {
       // Update existing stock
       const newQuantity = parseFloat(currentStock.quantity) + quantityChange;
+      const newAvailable = parseFloat(currentStock.available_quantity) + quantityChange;
       await this.supabase
-        .from('inventory_stock')
+        .from('stock_entries')
         .update({
           quantity: newQuantity,
-          last_movement_date: new Date().toISOString(),
+          available_quantity: newAvailable,
           updated_at: new Date().toISOString(),
         })
         .eq('id', currentStock.id);
     } else {
       // Create new stock record (for receipts)
       if (quantityChange > 0) {
-        await this.supabase.from('inventory_stock').insert({
+        await this.supabase.from('stock_entries').insert({
           tenant_id: tenantId,
           item_id: itemId,
           warehouse_id: warehouseId,
-          location_id: locationId,
-          category: category || 'RAW_MATERIAL',
           quantity: quantityChange,
-          last_movement_date: new Date().toISOString(),
+          available_quantity: quantityChange,
+          allocated_quantity: 0,
+          metadata: {
+            category: category || 'RAW_MATERIAL',
+            created_from: 'STOCK_MOVEMENT'
+          }
         });
       }
     }
@@ -460,44 +454,52 @@ export class InventoryService {
       query = query.eq('acknowledged', acknowledged);
     }
 
-    const { data: alerts, error } = await query.order('created_at', { ascending: false });
+    const { data: alerts, error: alertError } = await query
+      .order('created_at', { ascending: false });
 
-    if (error) throw new BadRequestException(error.message);
-    
+    if (alertError) throw new BadRequestException(alertError.message);
+
     if (!alerts || alerts.length === 0) {
       return [];
     }
 
-    // Fetch related items
-    const itemIds = [...new Set(alerts.map(a => a.item_id).filter(Boolean))];
-    const { data: items } = itemIds.length > 0 ? await this.supabase
+    // Get item details separately
+    const itemIds = [...new Set(alerts.map(a => a.item_id))];
+    const { data: items, error: itemError } = await this.supabase
       .from('items')
-      .select('id, item_code, item_name')
-      .in('id', itemIds) : { data: [] };
+      .select('id, code, name')
+      .in('id', itemIds);
 
-    // Fetch related warehouses
-    const warehouseIds = [...new Set(alerts.map(a => a.warehouse_id).filter(Boolean))];
-    const { data: warehouses } = warehouseIds.length > 0 ? await this.supabase
+    if (itemError) throw new BadRequestException(itemError.message);
+
+    // Get warehouse details separately
+    const warehouseIds = [...new Set(alerts.map(a => a.warehouse_id))];
+    const { data: warehouses, error: warehouseError } = await this.supabase
       .from('warehouses')
-      .select('id, warehouse_code, warehouse_name')
-      .in('id', warehouseIds) : { data: [] };
+      .select('id, code, name')
+      .in('id', warehouseIds);
 
-    // Create lookup maps
-    const itemsMap = (items || []).reduce((acc, item) => {
-      acc[item.id] = item;
-      return acc;
-    }, {});
+    if (warehouseError) throw new BadRequestException(warehouseError.message);
 
-    const warehousesMap = (warehouses || []).reduce((acc, wh) => {
-      acc[wh.id] = wh;
-      return acc;
-    }, {});
+    // Combine the data manually
+    const result = alerts.map(alert => {
+      const item = items?.find(i => i.id === alert.item_id);
+      const warehouse = warehouses?.find(w => w.id === alert.warehouse_id);
+      
+      return {
+        ...alert,
+        items: item ? {
+          item_code: item.code,
+          item_name: item.name
+        } : null,
+        warehouses: warehouse ? {
+          warehouse_code: warehouse.code,
+          warehouse_name: warehouse.name
+        } : null
+      };
+    });
 
-    return alerts.map(alert => ({
-      ...alert,
-      items: itemsMap[alert.item_id] || null,
-      warehouses: warehousesMap[alert.warehouse_id] || null
-    }));
+    return result;
   }
 
   // Acknowledge alert
@@ -671,31 +673,38 @@ export class InventoryService {
       query = query.eq('issued_to_staff_id', filters.staff_id);
     }
 
-    const { data: demos, error } = await query.order('issue_date', { ascending: false });
+    const { data: demos, error: demoError } = await query
+      .order('issue_date', { ascending: false });
 
-    if (error) throw new BadRequestException(error.message);
-    
+    if (demoError) throw new BadRequestException(demoError.message);
+
     if (!demos || demos.length === 0) {
       return [];
     }
 
-    // Fetch related items
-    const itemIds = [...new Set(demos.map(d => d.item_id).filter(Boolean))];
-    const { data: items } = itemIds.length > 0 ? await this.supabase
+    // Get item details separately
+    const itemIds = [...new Set(demos.map(d => d.item_id))];
+    const { data: items, error: itemError } = await this.supabase
       .from('items')
-      .select('id, item_code, item_name')
-      .in('id', itemIds) : { data: [] };
+      .select('id, code, name')
+      .in('id', itemIds);
 
-    // Create lookup map
-    const itemsMap = (items || []).reduce((acc, item) => {
-      acc[item.id] = item;
-      return acc;
-    }, {});
+    if (itemError) throw new BadRequestException(itemError.message);
 
-    return demos.map(demo => ({
-      ...demo,
-      items: itemsMap[demo.item_id] || null
-    }));
+    // Combine the data manually
+    const result = demos.map(demo => {
+      const item = items?.find(i => i.id === demo.item_id);
+      
+      return {
+        ...demo,
+        items: item ? {
+          item_code: item.code,
+          item_name: item.name
+        } : null
+      };
+    });
+
+    return result;
   }
 
   private async generateDemoId(req: Request): Promise<string> {
@@ -720,7 +729,7 @@ export class InventoryService {
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
-      .order('warehouse_name');
+      .order('name');
 
     if (error) throw new BadRequestException(error.message);
     return data;
@@ -733,12 +742,12 @@ export class InventoryService {
 
     const warehouse = {
       tenant_id: tenantId,
-      warehouse_code: warehouseData.warehouse_code,
-      warehouse_name: warehouseData.warehouse_name,
-      location: warehouseData.location,
-      plant_code: warehouseData.plant_code,
-      manager_id: warehouseData.manager_id,
+      code: warehouseData.code || warehouseData.warehouse_code,
+      name: warehouseData.name || warehouseData.warehouse_name,
+      type: warehouseData.type,
+      plant_id: warehouseData.plant_id,
       is_active: true,
+      metadata: warehouseData.metadata || {},
     };
 
     const { data, error } = await this.supabase
@@ -751,110 +760,71 @@ export class InventoryService {
     return data;
   }
 
-  // Get all items
-  async getItems(req: Request) {
+  // Delete stock entry
+  async deleteStockEntry(req: Request, id: string) {
     const { tenantId } = req.user as any;
 
     const { data, error } = await this.supabase
-      .from('items')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .order('code', { ascending: true });
-
-    if (error) throw new BadRequestException(error.message);
-    return data;
-  }
-
-  // Get single item
-  async getItem(req: Request, id: string) {
-    const { tenantId } = req.user as any;
-
-    const { data, error } = await this.supabase
-      .from('items')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .eq('id', id)
-      .single();
-
-    if (error) throw new NotFoundException('Item not found');
-    return data;
-  }
-
-  // Create item
-  async createItem(req: Request, itemData: any) {
-    const { tenantId } = req.user as any;
-
-    const item = {
-      tenant_id: tenantId,
-      code: itemData.code || itemData.item_code,
-      name: itemData.name || itemData.item_name,
-      description: itemData.description,
-      category: itemData.category,
-      uom: itemData.uom,
-      standard_cost: itemData.standard_cost,
-      selling_price: itemData.selling_price,
-      reorder_level: itemData.reorder_level || itemData.reorder_point,
-      reorder_quantity: itemData.reorder_quantity || itemData.max_stock_level,
-      lead_time_days: itemData.lead_time_days,
-      is_active: true,
-    };
-
-    const { data, error } = await this.supabase
-      .from('items')
-      .insert(item)
-      .select()
-      .single();
-
-    if (error) throw new BadRequestException(error.message);
-    return data;
-  }
-
-  // Update item
-  async updateItem(req: Request, id: string, itemData: any) {
-    const { tenantId } = req.user as any;
-
-    const updates = {
-      code: itemData.code || itemData.item_code,
-      name: itemData.name || itemData.item_name,
-      description: itemData.description,
-      category: itemData.category,
-      uom: itemData.uom,
-      standard_cost: itemData.standard_cost,
-      selling_price: itemData.selling_price,
-      reorder_level: itemData.reorder_level || itemData.reorder_point,
-      reorder_quantity: itemData.reorder_quantity || itemData.max_stock_level,
-      lead_time_days: itemData.lead_time_days,
-      is_active: itemData.is_active,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { data, error } = await this.supabase
-      .from('items')
-      .update(updates)
-      .eq('tenant_id', tenantId)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw new BadRequestException(error.message);
-    if (!data) throw new NotFoundException('Item not found');
-    return data;
-  }
-
-  // Delete item
-  async deleteItem(req: Request, id: string) {
-    const { tenantId } = req.user as any;
-
-    const { data, error } = await this.supabase
-      .from('items')
+      .from('stock_entries')
       .delete()
-      .eq('tenant_id', tenantId)
       .eq('id', id)
+      .eq('tenant_id', tenantId)
       .select()
       .single();
 
     if (error) throw new BadRequestException(error.message);
-    if (!data) throw new NotFoundException('Item not found');
-    return { message: 'Item deleted successfully', data };
+    if (!data) throw new NotFoundException('Stock entry not found');
+    return data;
+  }
+
+  // Delete stock movement
+  async deleteStockMovement(req: Request, id: string) {
+    const { tenantId } = req.user as any;
+
+    const { data, error } = await this.supabase
+      .from('stock_movements')
+      .delete()
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Stock movement not found');
+    return data;
+  }
+
+  // Delete alert
+  async deleteAlert(req: Request, id: string) {
+    const { tenantId } = req.user as any;
+
+    const { data, error } = await this.supabase
+      .from('inventory_alerts')
+      .delete()
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Alert not found');
+    return data;
+  }
+
+  // Delete demo item
+  async deleteDemoItem(req: Request, id: string) {
+    const { tenantId } = req.user as any;
+
+    const { data, error } = await this.supabase
+      .from('demo_inventory')
+      .delete()
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Demo item not found');
+    return data;
   }
 }

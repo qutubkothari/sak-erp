@@ -51,6 +51,24 @@ interface Payslip {
   leave_days: number;
 }
 
+interface SalaryComponent {
+  id: string;
+  employee_id: string;
+  employee_name?: string;
+  component_type: string;
+  component_name: string;
+  amount: number;
+  is_taxable: boolean;
+}
+
+interface PayrollRun {
+  id: string;
+  payroll_month: string;
+  run_date: string;
+  status: string;
+  remarks?: string;
+}
+
 export default function HrPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leaves' | 'payroll'>('employees');
@@ -58,9 +76,36 @@ export default function HrPage() {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [payslips, setPayslips] = useState<Payslip[]>([]);
+  const [salaryComponents, setSalaryComponents] = useState<SalaryComponent[]>([]);
+  const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
+  const [payrollSubTab, setPayrollSubTab] = useState<'salary' | 'runs' | 'payslips'>('salary');
+  
+  // Payroll modals
+  const [showSalaryForm, setShowSalaryForm] = useState(false);
+  const [showPayrollRunForm, setShowPayrollRunForm] = useState(false);
+  const [selectedSalaryComponent, setSelectedSalaryComponent] = useState<SalaryComponent | null>(null);
+  
+  // Employee modals
+  const [showEmployeeForm, setShowEmployeeForm] = useState(false);
+  const [showEmployeeDetails, setShowEmployeeDetails] = useState(false);
+  const [showEditEmployee, setShowEditEmployee] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  
+  // Attendance modals
+  const [showAttendanceDetails, setShowAttendanceDetails] = useState(false);
+  const [showEditAttendance, setShowEditAttendance] = useState(false);
+  const [selectedAttendance, setSelectedAttendance] = useState<AttendanceRecord | null>(null);
+  
+  // Leave modals
+  const [showLeaveDetails, setShowLeaveDetails] = useState(false);
+  const [showEditLeave, setShowEditLeave] = useState(false);
+  const [selectedLeave, setSelectedLeave] = useState<LeaveRequest | null>(null);
+  
+  // Loading and error states
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   
   // Employee form
-  const [showEmployeeForm, setShowEmployeeForm] = useState(false);
   const [employeeForm, setEmployeeForm] = useState({
     employee_code: '',
     employee_name: '',
@@ -96,9 +141,23 @@ export default function HrPage() {
     reason: ''
   });
 
+  // Payroll forms
+  const [salaryForm, setSalaryForm] = useState({
+    employee_id: '',
+    component_type: 'BASIC',
+    component_name: '',
+    amount: 0,
+    is_taxable: true
+  });
+
+  const [payrollRunForm, setPayrollRunForm] = useState({
+    payroll_month: new Date().toISOString().substring(0, 7),
+    remarks: ''
+  });
+
   useEffect(() => {
     fetchData();
-  }, [activeTab]);
+  }, [activeTab, payrollSubTab]);
 
   const fetchData = async () => {
     try {
@@ -145,6 +204,32 @@ export default function HrPage() {
         
         const allLeaves = await Promise.all(leavePromises);
         setLeaves(allLeaves.flat());
+      } else if (activeTab === 'payroll') {
+        const empData = await apiClient.get<any>('/hr/employees');
+        const allEmployees = Array.isArray(empData) ? empData : (empData.data || []);
+        
+        if (payrollSubTab === 'salary') {
+          const salaryPromises = allEmployees.map(async (emp: Employee) => {
+            try {
+              const salData = await apiClient.get<any>(`/hr/salary/${emp.id}`);
+              const records = Array.isArray(salData) ? salData : (salData.data || []);
+              return records.map((comp: any) => ({ ...comp, employee_name: emp.employee_name }));
+            } catch { return []; }
+          });
+          const allSalary = await Promise.all(salaryPromises);
+          setSalaryComponents(allSalary.flat());
+        } else if (payrollSubTab === 'runs') {
+          const runsData = await apiClient.get<any>('/hr/payroll/runs');
+          setPayrollRuns(Array.isArray(runsData) ? runsData : (runsData.data || []));
+        } else if (payrollSubTab === 'payslips') {
+          const slipsData = await apiClient.get<any>('/hr/payroll/payslips');
+          const slips = Array.isArray(slipsData) ? slipsData : (slipsData.data || []);
+          const slipsWithNames = slips.map((slip: any) => {
+            const emp = allEmployees.find((e: Employee) => e.id === slip.employee_id);
+            return { ...slip, employee_name: emp?.employee_name || 'Unknown' };
+          });
+          setPayslips(slipsWithNames);
+        }
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -240,6 +325,147 @@ export default function HrPage() {
       console.error('Error rejecting leave:', error);
       alert('Failed to reject leave');
     }
+  };
+
+  const handleCreateSalaryComponent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await apiClient.post('/hr/salary', salaryForm);
+      setShowSalaryForm(false);
+      setSalaryForm({ employee_id: '', component_type: 'BASIC', component_name: '', amount: 0, is_taxable: true });
+      fetchData();
+      alert('Salary component added successfully');
+    } catch (error) {
+      console.error('Error creating salary component:', error);
+      alert('Failed to add salary component');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteSalaryComponent = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this salary component?')) return;
+    try {
+      await apiClient.delete(`/hr/salary/${id}`);
+      fetchData();
+      alert('Salary component deleted successfully');
+    } catch (error) {
+      console.error('Error deleting salary component:', error);
+      alert('Failed to delete salary component');
+    }
+  };
+
+  const handleCreatePayrollRun = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await apiClient.post('/hr/payroll/run', payrollRunForm);
+      setShowPayrollRunForm(false);
+      setPayrollRunForm({ payroll_month: new Date().toISOString().substring(0, 7), remarks: '' });
+      fetchData();
+      alert('Payroll run created successfully');
+    } catch (error) {
+      console.error('Error creating payroll run:', error);
+      alert('Failed to create payroll run');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGeneratePayslips = async (runId: string) => {
+    if (!confirm('Generate payslips for this payroll run?')) return;
+    setLoading(true);
+    try {
+      await apiClient.post(`/hr/payroll/run/${runId}/generate`);
+      fetchData();
+      alert('Payslips generated successfully');
+    } catch (error) {
+      console.error('Error generating payslips:', error);
+      alert('Failed to generate payslips');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePrintPayslip = (slip: any) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Payslip - ${slip.payslip_number}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 40px; }
+          .header { text-align: center; margin-bottom: 30px; }
+          .company { font-size: 24px; font-weight: bold; }
+          .payslip-title { font-size: 18px; margin-top: 10px; }
+          .info-section { margin: 20px 0; }
+          .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+          .label { font-weight: bold; }
+          .salary-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+          .salary-table th, .salary-table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+          .salary-table th { background-color: #f5f5f5; }
+          .total-row { font-weight: bold; background-color: #f9f9f9; }
+          .net-pay { font-size: 20px; color: #16a34a; }
+          @media print { body { padding: 20px; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="company">SAK ERP</div>
+          <div class="payslip-title">PAYSLIP</div>
+        </div>
+        
+        <div class="info-section">
+          <div class="info-row">
+            <span><span class="label">Employee:</span> ${slip.employee_name}</span>
+            <span><span class="label">Payslip #:</span> ${slip.payslip_number}</span>
+          </div>
+          <div class="info-row">
+            <span><span class="label">Month:</span> ${slip.salary_month}</span>
+            <span><span class="label">Generated:</span> ${new Date().toLocaleDateString()}</span>
+          </div>
+          <div class="info-row">
+            <span><span class="label">Attendance Days:</span> ${slip.attendance_days}</span>
+            <span><span class="label">Leave Days:</span> ${slip.leave_days}</span>
+          </div>
+        </div>
+
+        <table class="salary-table">
+          <thead>
+            <tr>
+              <th>Earnings</th>
+              <th>Amount (₹)</th>
+              <th>Deductions</th>
+              <th>Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Gross Salary</td>
+              <td>${slip.gross_salary.toFixed(2)}</td>
+              <td>Total Deductions</td>
+              <td>${slip.total_deductions.toFixed(2)}</td>
+            </tr>
+            <tr class="total-row">
+              <td colspan="3">Net Pay</td>
+              <td class="net-pay">₹${slip.net_salary.toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="margin-top: 40px; text-align: center; color: #666;">
+          <p>This is a computer-generated payslip and does not require a signature.</p>
+        </div>
+      </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    printWindow.print();
   };
 
   const getStatusColor = (status: string) => {
@@ -343,6 +569,7 @@ export default function HrPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Joining Date</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -359,6 +586,19 @@ export default function HrPage() {
                       <span className={`px-2 py-1 text-xs rounded ${getStatusColor(employee.status)}`}>
                         {employee.status}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <div className="flex space-x-2">
+                        <button onClick={() => { setSelectedEmployee(employee); setShowEmployeeDetails(true); }} className="text-blue-600 hover:text-blue-800" title="View Details">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                        </button>
+                        <button onClick={() => { setSelectedEmployee(employee); setEmployeeForm({ employee_code: employee.employee_code, employee_name: employee.employee_name, designation: employee.designation || '', department: employee.department || '', date_of_joining: employee.date_of_joining, date_of_birth: '', contact_number: employee.contact_number || '', email: employee.email || '', address: '', biometric_id: '' }); setShowEditEmployee(true); }} className="text-amber-600 hover:text-amber-800" title="Edit">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                        </button>
+                        <button onClick={async () => { if (confirm(`Mark ${employee.employee_name} as inactive?`)) { try { await apiClient.put(`/hr/employees/${employee.id}`, { status: 'INACTIVE' }); fetchData(); } catch (err: any) { alert('Failed to deactivate employee'); } } }} className="text-red-600 hover:text-red-800" title="Deactivate">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -380,6 +620,7 @@ export default function HrPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Check In</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Check Out</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -393,6 +634,19 @@ export default function HrPage() {
                       <span className={`px-2 py-1 text-xs rounded ${getStatusColor(record.status)}`}>
                         {record.status}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <div className="flex space-x-2">
+                        <button onClick={() => { setSelectedAttendance(record); setShowAttendanceDetails(true); }} className="text-blue-600 hover:text-blue-800" title="View Details">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                        </button>
+                        <button onClick={() => { setSelectedAttendance(record); setAttendanceForm({ employee_id: record.employee_id, attendance_date: record.attendance_date, check_in_time: record.check_in_time ? new Date(record.check_in_time).toTimeString().slice(0,5) : '', check_out_time: record.check_out_time ? new Date(record.check_out_time).toTimeString().slice(0,5) : '', status: record.status, remarks: '' }); setShowEditAttendance(true); }} className="text-amber-600 hover:text-amber-800" title="Edit">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                        </button>
+                        <button onClick={async () => { if (confirm('Delete this attendance record?')) { try { await apiClient.delete(`/hr/attendance/${record.id}`); fetchData(); } catch (err: any) { alert('Failed to delete attendance'); } } }} className="text-red-600 hover:text-red-800" title="Delete">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -437,23 +691,30 @@ export default function HrPage() {
                         {leave.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                      {leave.status === 'PENDING' && (
-                        <>
-                          <button
-                            onClick={() => handleApproveLeave(leave.id)}
-                            className="text-green-600 hover:text-green-800"
-                          >
-                            Approve
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <div className="flex space-x-2">
+                        <button onClick={() => { setSelectedLeave(leave); setShowLeaveDetails(true); }} className="text-blue-600 hover:text-blue-800" title="View Details">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                        </button>
+                        {leave.status === 'PENDING' && (
+                          <>
+                            <button onClick={() => handleApproveLeave(leave.id)} className="text-green-600 hover:text-green-800" title="Approve">
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                            </button>
+                            <button onClick={() => handleRejectLeave(leave.id)} className="text-red-600 hover:text-red-800" title="Reject">
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                            <button onClick={() => { setSelectedLeave(leave); setLeaveForm({ employee_id: leave.employee_id, leave_type: leave.leave_type, start_date: leave.start_date, end_date: leave.end_date, total_days: leave.total_days, reason: leave.reason }); setShowEditLeave(true); }} className="text-amber-600 hover:text-amber-800" title="Edit">
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                            </button>
+                          </>
+                        )}
+                        {leave.status === 'PENDING' && (
+                          <button onClick={async () => { if (confirm('Cancel this leave request?')) { try { await apiClient.put(`/hr/leaves/${leave.id}`, { status: 'CANCELLED' }); fetchData(); } catch (err: any) { alert('Failed to cancel leave'); } } }} className="text-gray-600 hover:text-gray-800" title="Cancel">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                           </button>
-                          <button
-                            onClick={() => handleRejectLeave(leave.id)}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            Reject
-                          </button>
-                        </>
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -466,10 +727,125 @@ export default function HrPage() {
       {/* Payroll Tab */}
       {activeTab === 'payroll' && (
         <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-center text-gray-500 py-12">
-            <p className="text-lg">Payroll management coming soon</p>
-            <p className="text-sm mt-2">Generate payslips, manage salary components, and track payroll runs</p>
+          {/* Payroll Sub-tabs */}
+          <div className="flex space-x-6 border-b mb-6">
+            <button onClick={() => setPayrollSubTab('salary')} className={`pb-3 px-2 ${payrollSubTab === 'salary' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}>Salary Components</button>
+            <button onClick={() => setPayrollSubTab('runs')} className={`pb-3 px-2 ${payrollSubTab === 'runs' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}>Payroll Runs</button>
+            <button onClick={() => setPayrollSubTab('payslips')} className={`pb-3 px-2 ${payrollSubTab === 'payslips' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}>Payslips</button>
           </div>
+
+          {/* Salary Components Section */}
+          {payrollSubTab === 'salary' && (
+            <>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Salary Components</h3>
+                <button onClick={() => setShowSalaryForm(true)} className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700">+ Add Component</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Component Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Component Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Taxable</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {salaryComponents.map((comp) => (
+                      <tr key={comp.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{comp.employee_name || 'N/A'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm"><span className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800">{comp.component_type}</span></td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{comp.component_name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">₹{comp.amount.toFixed(2)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{comp.is_taxable ? 'Yes' : 'No'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm"><button onClick={() => handleDeleteSalaryComponent(comp.id)} className="text-red-600 hover:text-red-800"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {/* Payroll Runs Section */}
+          {payrollSubTab === 'runs' && (
+            <>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Payroll Runs</h3>
+                <button onClick={() => setShowPayrollRunForm(true)} className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700">+ Create Run</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Run Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Remarks</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {payrollRuns.map((run) => (
+                      <tr key={run.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{run.payroll_month}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(run.run_date).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm"><span className={`px-2 py-1 text-xs rounded ${getStatusColor(run.status)}`}>{run.status}</span></td>
+                        <td className="px-6 py-4 text-sm">{run.remarks || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{run.status === 'PENDING' && (<button onClick={() => handleGeneratePayslips(run.id)} disabled={loading} className="text-amber-600 hover:text-amber-800 disabled:opacity-50">Generate Payslips</button>)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {/* Payslips Section */}
+          {payrollSubTab === 'payslips' && (
+            <>
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold">Payslips</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payslip #</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gross</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deductions</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net Pay</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Days</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {payslips.map((slip) => (
+                      <tr key={slip.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{slip.payslip_number}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{slip.employee_name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{slip.salary_month}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">₹{slip.gross_salary.toFixed(2)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">₹{slip.total_deductions.toFixed(2)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">₹{slip.net_salary.toFixed(2)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{slip.attendance_days} / {slip.leave_days}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                          <button onClick={() => handlePrintPayslip(slip)} className="text-blue-600 hover:text-blue-800" title="Print Payslip">
+                            <svg className="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -805,6 +1181,157 @@ export default function HrPage() {
                   Submit Leave Request
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Employee Details Modal */}
+      {showEmployeeDetails && selectedEmployee && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">Employee Details</h3>
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-4">
+                <div><span className="font-medium">Employee Code:</span> {selectedEmployee.employee_code}</div>
+                <div><span className="font-medium">Name:</span> {selectedEmployee.employee_name}</div>
+                <div><span className="font-medium">Designation:</span> {selectedEmployee.designation || 'N/A'}</div>
+                <div><span className="font-medium">Department:</span> {selectedEmployee.department || 'N/A'}</div>
+                <div><span className="font-medium">Email:</span> {selectedEmployee.email || 'N/A'}</div>
+                <div><span className="font-medium">Contact:</span> {selectedEmployee.contact_number || 'N/A'}</div>
+                <div><span className="font-medium">Joining Date:</span> {new Date(selectedEmployee.date_of_joining).toLocaleDateString()}</div>
+                <div><span className="font-medium">Status:</span> <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedEmployee.status)}`}>{selectedEmployee.status}</span></div>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end"><button onClick={() => setShowEmployeeDetails(false)} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">Close</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Employee Modal */}
+      {showEditEmployee && selectedEmployee && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">Edit Employee</h3>
+            <form onSubmit={async (e) => { e.preventDefault(); setLoading(true); setError(''); try { await apiClient.put(`/hr/employees/${selectedEmployee.id}`, employeeForm); setShowEditEmployee(false); fetchData(); alert('Employee updated successfully'); } catch (err: any) { setError(err.message); alert('Failed to update employee'); } finally { setLoading(false); } }} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium mb-1">Employee Code</label><input type="text" value={employeeForm.employee_code} onChange={(e) => setEmployeeForm({ ...employeeForm, employee_code: e.target.value })} className="w-full border rounded px-3 py-2" required /></div>
+                <div><label className="block text-sm font-medium mb-1">Employee Name</label><input type="text" value={employeeForm.employee_name} onChange={(e) => setEmployeeForm({ ...employeeForm, employee_name: e.target.value })} className="w-full border rounded px-3 py-2" required /></div>
+                <div><label className="block text-sm font-medium mb-1">Designation</label><input type="text" value={employeeForm.designation} onChange={(e) => setEmployeeForm({ ...employeeForm, designation: e.target.value })} className="w-full border rounded px-3 py-2" /></div>
+                <div><label className="block text-sm font-medium mb-1">Department</label><input type="text" value={employeeForm.department} onChange={(e) => setEmployeeForm({ ...employeeForm, department: e.target.value })} className="w-full border rounded px-3 py-2" /></div>
+                <div><label className="block text-sm font-medium mb-1">Contact</label><input type="text" value={employeeForm.contact_number} onChange={(e) => setEmployeeForm({ ...employeeForm, contact_number: e.target.value })} className="w-full border rounded px-3 py-2" /></div>
+                <div><label className="block text-sm font-medium mb-1">Email</label><input type="email" value={employeeForm.email} onChange={(e) => setEmployeeForm({ ...employeeForm, email: e.target.value })} className="w-full border rounded px-3 py-2" /></div>
+              </div>
+              <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowEditEmployee(false)} className="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button><button type="submit" disabled={loading} className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50">{loading ? 'Updating...' : 'Update Employee'}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Attendance Details Modal */}
+      {showAttendanceDetails && selectedAttendance && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Attendance Details</h3>
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-4">
+                <div><span className="font-medium">Employee:</span> {selectedAttendance.employee_name}</div>
+                <div><span className="font-medium">Date:</span> {new Date(selectedAttendance.attendance_date).toLocaleDateString()}</div>
+                <div><span className="font-medium">Check In:</span> {selectedAttendance.check_in_time ? new Date(selectedAttendance.check_in_time).toLocaleTimeString() : 'N/A'}</div>
+                <div><span className="font-medium">Check Out:</span> {selectedAttendance.check_out_time ? new Date(selectedAttendance.check_out_time).toLocaleTimeString() : 'N/A'}</div>
+                <div><span className="font-medium">Status:</span> <span className={`px-2 py-1 text-xs rounded ${getStatusColor(selectedAttendance.status)}`}>{selectedAttendance.status}</span></div>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end"><button onClick={() => setShowAttendanceDetails(false)} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">Close</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Attendance Modal */}
+      {showEditAttendance && selectedAttendance && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Edit Attendance</h3>
+            <form onSubmit={async (e) => { e.preventDefault(); setLoading(true); try { await apiClient.put(`/hr/attendance/${selectedAttendance.id}`, attendanceForm); setShowEditAttendance(false); fetchData(); alert('Attendance updated successfully'); } catch (err: any) { alert('Failed to update attendance'); } finally { setLoading(false); } }} className="space-y-4">
+              <div><label className="block text-sm font-medium mb-1">Date</label><input type="date" value={attendanceForm.attendance_date} onChange={(e) => setAttendanceForm({ ...attendanceForm, attendance_date: e.target.value })} className="w-full border rounded px-3 py-2" required /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium mb-1">Check In</label><input type="time" value={attendanceForm.check_in_time} onChange={(e) => setAttendanceForm({ ...attendanceForm, check_in_time: e.target.value })} className="w-full border rounded px-3 py-2" /></div>
+                <div><label className="block text-sm font-medium mb-1">Check Out</label><input type="time" value={attendanceForm.check_out_time} onChange={(e) => setAttendanceForm({ ...attendanceForm, check_out_time: e.target.value })} className="w-full border rounded px-3 py-2" /></div>
+              </div>
+              <div><label className="block text-sm font-medium mb-1">Status</label><select value={attendanceForm.status} onChange={(e) => setAttendanceForm({ ...attendanceForm, status: e.target.value })} className="w-full border rounded px-3 py-2" required><option value="PRESENT">Present</option><option value="ABSENT">Absent</option><option value="LEAVE">Leave</option><option value="LATE">Late</option><option value="HALF_DAY">Half Day</option><option value="WORK_FROM_HOME">Work From Home</option></select></div>
+              <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowEditAttendance(false)} className="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button><button type="submit" disabled={loading} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">{loading ? 'Updating...' : 'Update Attendance'}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Leave Details Modal */}
+      {showLeaveDetails && selectedLeave && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Leave Request Details</h3>
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-4">
+                <div><span className="font-medium">Employee:</span> {selectedLeave.employee_name}</div>
+                <div><span className="font-medium">Leave Type:</span> <span className="px-2 py-1 text-xs rounded bg-purple-100 text-purple-800">{selectedLeave.leave_type}</span></div>
+                <div><span className="font-medium">Start Date:</span> {new Date(selectedLeave.start_date).toLocaleDateString()}</div>
+                <div><span className="font-medium">End Date:</span> {new Date(selectedLeave.end_date).toLocaleDateString()}</div>
+                <div><span className="font-medium">Total Days:</span> {selectedLeave.total_days}</div>
+                <div><span className="font-medium">Status:</span> <span className={`px-2 py-1 text-xs rounded ${getStatusColor(selectedLeave.status)}`}>{selectedLeave.status}</span></div>
+                <div className="col-span-2"><span className="font-medium">Reason:</span> <p className="mt-1 bg-gray-50 p-3 rounded">{selectedLeave.reason}</p></div>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end"><button onClick={() => setShowLeaveDetails(false)} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">Close</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Leave Modal */}
+      {showEditLeave && selectedLeave && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Edit Leave Request</h3>
+            <form onSubmit={async (e) => { e.preventDefault(); setLoading(true); try { await apiClient.put(`/hr/leaves/${selectedLeave.id}`, leaveForm); setShowEditLeave(false); fetchData(); alert('Leave updated successfully'); } catch (err: any) { alert('Failed to update leave'); } finally { setLoading(false); } }} className="space-y-4">
+              <div><label className="block text-sm font-medium mb-1">Leave Type</label><select value={leaveForm.leave_type} onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })} className="w-full border rounded px-3 py-2" required><option value="CASUAL">Casual Leave</option><option value="SICK">Sick Leave</option><option value="EARNED">Earned Leave</option><option value="UNPAID">Unpaid Leave</option><option value="MATERNITY">Maternity Leave</option><option value="PATERNITY">Paternity Leave</option><option value="COMP_OFF">Compensatory Off</option></select></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium mb-1">Start Date</label><input type="date" value={leaveForm.start_date} onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })} className="w-full border rounded px-3 py-2" required /></div>
+                <div><label className="block text-sm font-medium mb-1">End Date</label><input type="date" value={leaveForm.end_date} onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })} className="w-full border rounded px-3 py-2" required /></div>
+              </div>
+              <div><label className="block text-sm font-medium mb-1">Total Days</label><input type="number" value={leaveForm.total_days} onChange={(e) => setLeaveForm({ ...leaveForm, total_days: parseInt(e.target.value) })} className="w-full border rounded px-3 py-2" min="1" required /></div>
+              <div><label className="block text-sm font-medium mb-1">Reason</label><textarea value={leaveForm.reason} onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })} className="w-full border rounded px-3 py-2" rows={3} required /></div>
+              <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowEditLeave(false)} className="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button><button type="submit" disabled={loading} className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50">{loading ? 'Updating...' : 'Update Leave'}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Salary Component Modal */}
+      {showSalaryForm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Add Salary Component</h3>
+            <form onSubmit={handleCreateSalaryComponent} className="space-y-4">
+              <div><label className="block text-sm font-medium mb-1">Employee</label><select value={salaryForm.employee_id} onChange={(e) => setSalaryForm({ ...salaryForm, employee_id: e.target.value })} className="w-full border rounded px-3 py-2" required><option value="">Select Employee</option>{employees.map(emp => (<option key={emp.id} value={emp.id}>{emp.employee_name} ({emp.employee_code})</option>))}</select></div>
+              <div><label className="block text-sm font-medium mb-1">Component Type</label><select value={salaryForm.component_type} onChange={(e) => setSalaryForm({ ...salaryForm, component_type: e.target.value })} className="w-full border rounded px-3 py-2" required><option value="BASIC">Basic Salary</option><option value="HRA">HRA</option><option value="ALLOWANCE">Allowance</option><option value="BONUS">Bonus</option><option value="DEDUCTION">Deduction</option><option value="PF">Provident Fund</option><option value="ESI">ESI</option><option value="TAX">Tax</option></select></div>
+              <div><label className="block text-sm font-medium mb-1">Component Name</label><input type="text" value={salaryForm.component_name} onChange={(e) => setSalaryForm({ ...salaryForm, component_name: e.target.value })} className="w-full border rounded px-3 py-2" placeholder="e.g., Basic Pay, Transport Allowance" required /></div>
+              <div><label className="block text-sm font-medium mb-1">Amount</label><input type="number" step="0.01" value={salaryForm.amount} onChange={(e) => setSalaryForm({ ...salaryForm, amount: parseFloat(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" required /></div>
+              <div className="flex items-center"><input type="checkbox" id="is_taxable" checked={salaryForm.is_taxable} onChange={(e) => setSalaryForm({ ...salaryForm, is_taxable: e.target.checked })} className="mr-2" /><label htmlFor="is_taxable" className="text-sm font-medium">Taxable Component</label></div>
+              <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowSalaryForm(false)} className="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button><button type="submit" disabled={loading} className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50">{loading ? 'Adding...' : 'Add Component'}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Payroll Run Modal */}
+      {showPayrollRunForm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Create Payroll Run</h3>
+            <form onSubmit={handleCreatePayrollRun} className="space-y-4">
+              <div><label className="block text-sm font-medium mb-1">Payroll Month</label><input type="month" value={payrollRunForm.payroll_month} onChange={(e) => setPayrollRunForm({ ...payrollRunForm, payroll_month: e.target.value })} className="w-full border rounded px-3 py-2" required /></div>
+              <div><label className="block text-sm font-medium mb-1">Remarks (Optional)</label><textarea value={payrollRunForm.remarks} onChange={(e) => setPayrollRunForm({ ...payrollRunForm, remarks: e.target.value })} className="w-full border rounded px-3 py-2" rows={3} placeholder="Any notes about this payroll run..." /></div>
+              <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm text-blue-800"><strong>Note:</strong> This will create a payroll run for the selected month. You can generate payslips after creating the run.</div>
+              <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowPayrollRunForm(false)} className="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button><button type="submit" disabled={loading} className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50">{loading ? 'Creating...' : 'Create Run'}</button></div>
             </form>
           </div>
         </div>

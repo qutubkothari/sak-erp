@@ -50,6 +50,11 @@ yarn-error.log*
 # Docker
 .docker/
 
+# Security Keys (NEVER COMMIT!)
+*.pem
+*.key
+*.ppk
+
 # Misc
 .cache
 temp/
