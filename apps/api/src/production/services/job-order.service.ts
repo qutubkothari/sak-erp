@@ -341,7 +341,7 @@ export class JobOrderService {
           componentType: 'ITEM',
           level,
           requiredQuantity: adjustedQty,
-          availableStock,
+          availableQuantity: availableStock,
           shortageQuantity,
           toMakeQuantity: 0,
         });
@@ -373,7 +373,7 @@ export class JobOrderService {
             componentType: 'BOM',
             level,
             requiredQuantity: adjustedQty,
-            availableStock,
+            availableQuantity: availableStock,
             shortageQuantity,
             toMakeQuantity: Math.max(0, adjustedQty - availableStock),
           });
