@@ -365,7 +365,7 @@ export class JobOrderService {
     const shortages = [];
 
     for (const material of materials) {
-      const required = material.requiredQuantity * jobQuantity;
+      const required = (material.requiredQuantity || material.quantity) * jobQuantity;
 
       // Get available stock from stock_entries
       const { data: stockEntries, error } = await this.supabase
