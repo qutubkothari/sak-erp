@@ -821,11 +821,13 @@ export class JobOrderService {
     // Also get flattened leaf items for material requirement calculation
     const explodedItems = await this.explodeBOMRecursively(bom.id, quantity, tenantId);
 
-    // Check stock availability for each material
+    // Check stock availability - items already have full quantity calculated, so pass 1
     const availabilityCheck = await this.checkMaterialAvailability(tenantId, explodedItems, 1);
 
-    const allAvailable = availabilityCheck.available;
-    const hasShortages = availabilityCheck.shortages.length > 0;
+    // Also check if ANY node in the hierarchy has shortage
+    const hasAnyShortage = hierarchicalNodes.some(node => node.shortageQuantity > 0);
+    const allAvailable = !hasAnyShortage && availabilityCheck.available;
+    const hasShortages = hasAnyShortage || availabilityCheck.shortages.length > 0;
 
     // Calculate sub-assemblies to make
     const subAssembliesToMake = hierarchicalNodes
