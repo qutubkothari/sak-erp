@@ -324,27 +324,65 @@ export class JobOrderService {
           .eq('id', bomItem.item_id)
           .single();
 
-        // Get stock
-        const { data: stockEntries } = await this.supabase
-          .from('stock_entries')
-          .select('available_quantity')
-          .eq('tenant_id', tenantId)
-          .eq('item_id', bomItem.item_id);
+        // Check if this item has its own BOM (making it a sub-assembly)
+        const { data: itemBom } = await this.supabase
+          .from('bom_headers')
+          .select('id, version, is_active')
+          .eq('item_id', bomItem.item_id)
+          .eq('is_active', true)
+          .single();
 
-        const availableStock = stockEntries?.reduce((sum, entry) => sum + (Number(entry.available_quantity) || 0), 0) || 0;
-        const shortageQuantity = Math.max(0, adjustedQty - availableStock);
+        if (itemBom) {
+          // This is actually a sub-assembly - treat it as BOM type
+          const { data: stockEntries } = await this.supabase
+            .from('stock_entries')
+            .select('available_quantity')
+            .eq('tenant_id', tenantId)
+            .eq('item_id', bomItem.item_id);
 
-        nodes.push({
-          itemId: bomItem.item_id,
-          itemCode: itemData?.code || 'Unknown',
-          itemName: itemData?.name || 'Unknown',
-          componentType: 'ITEM',
-          level,
-          requiredQuantity: adjustedQty,
-          availableQuantity: availableStock,
-          shortageQuantity,
-          toMakeQuantity: 0,
-        });
+          const availableStock = stockEntries?.reduce((sum, entry) => sum + (Number(entry.available_quantity) || 0), 0) || 0;
+          const shortageQuantity = Math.max(0, adjustedQty - availableStock);
+
+          // Add sub-assembly node
+          nodes.push({
+            bomId: itemBom.id,
+            itemId: bomItem.item_id,
+            itemCode: itemData?.code || 'Unknown',
+            itemName: itemData?.name || 'Unknown',
+            componentType: 'BOM',
+            level,
+            requiredQuantity: adjustedQty,
+            availableQuantity: availableStock,
+            shortageQuantity,
+            toMakeQuantity: Math.max(0, adjustedQty - availableStock),
+          });
+
+          // Recursively get child components
+          const childNodes = await this.explodeBOMHierarchical(itemBom.id, adjustedQty, tenantId, level + 1);
+          nodes.push(...childNodes);
+        } else {
+          // Regular item (raw material/component)
+          const { data: stockEntries } = await this.supabase
+            .from('stock_entries')
+            .select('available_quantity')
+            .eq('tenant_id', tenantId)
+            .eq('item_id', bomItem.item_id);
+
+          const availableStock = stockEntries?.reduce((sum, entry) => sum + (Number(entry.available_quantity) || 0), 0) || 0;
+          const shortageQuantity = Math.max(0, adjustedQty - availableStock);
+
+          nodes.push({
+            itemId: bomItem.item_id,
+            itemCode: itemData?.code || 'Unknown',
+            itemName: itemData?.name || 'Unknown',
+            componentType: 'ITEM',
+            level,
+            requiredQuantity: adjustedQty,
+            availableQuantity: availableStock,
+            shortageQuantity,
+            toMakeQuantity: 0,
+          });
+        }
       } else if (bomItem.component_type === 'BOM' && bomItem.child_bom_id) {
         // Get sub-assembly details
         const { data: childBom } = await this.supabase
