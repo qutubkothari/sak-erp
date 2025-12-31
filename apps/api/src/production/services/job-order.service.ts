@@ -724,6 +724,39 @@ export class JobOrderService {
     // Explode BOM recursively
     const explodedItems = await this.explodeBOMRecursively(bom.id, quantity, tenantId);
 
+    // Enrich items with code, name, and stock info
+    const enrichedNodes = await Promise.all(
+      explodedItems.map(async (item) => {
+        const { data: itemData } = await this.supabase
+          .from('items')
+          .select('code, name, type')
+          .eq('id', item.itemId)
+          .single();
+
+        // Get stock
+        const { data: stockEntries } = await this.supabase
+          .from('stock_entries')
+          .select('available_quantity')
+          .eq('tenant_id', tenantId)
+          .eq('item_id', item.itemId);
+
+        const availableStock = stockEntries?.reduce((sum, entry) => sum + (Number(entry.available_quantity) || 0), 0) || 0;
+        const shortageQuantity = Math.max(0, item.quantity - availableStock);
+
+        return {
+          itemId: item.itemId,
+          itemCode: itemData?.code || 'Unknown',
+          itemName: itemData?.name || 'Unknown',
+          componentType: 'ITEM',
+          level: 0,
+          requiredQuantity: item.quantity,
+          availableStock,
+          shortageQuantity,
+          toMakeQuantity: 0,
+        };
+      })
+    );
+
     // Check stock availability for each material
     const availabilityCheck = await this.checkMaterialAvailability(tenantId, explodedItems, 1);
 
@@ -735,8 +768,10 @@ export class JobOrderService {
       topBom: { id: bom.id, version: bom.version, is_active: bom.is_active },
       hasBOM: true,
       quantity,
+      nodes: enrichedNodes,
       materials: explodedItems,
       shortages: availabilityCheck.shortages,
+      subAssembliesToMake: [],
       canCreate: true,
       allAvailable,
       message: allAvailable 
