@@ -421,12 +421,6 @@ export default function ProductionPage() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="text-orange-800 hover:text-orange-900 mb-4 flex items-center gap-2"
-          >
-            ← Back to Dashboard
-          </button>
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-4xl font-bold text-orange-900 mb-2">Production Management</h1>
