@@ -310,6 +310,38 @@ export class JobOrderService {
 
     if (!bomItems || bomItems.length === 0) return [];
 
+    // Batch fetch all item IDs
+    const itemIds = bomItems.filter(bi => bi.item_id).map(bi => bi.item_id);
+    
+    // Fetch all items at once
+    const { data: allItems } = await this.supabase
+      .from('items')
+      .select('id, code, name, type')
+      .in('id', itemIds);
+
+    // Fetch all BOMs for these items at once to detect sub-assemblies
+    const { data: allItemBoms } = await this.supabase
+      .from('bom_headers')
+      .select('id, item_id, version, is_active')
+      .in('item_id', itemIds)
+      .eq('is_active', true);
+
+    // Fetch all stock entries at once
+    const { data: allStockEntries } = await this.supabase
+      .from('stock_entries')
+      .select('item_id, available_quantity')
+      .eq('tenant_id', tenantId)
+      .in('item_id', itemIds);
+
+    // Create lookup maps
+    const itemMap = new Map(allItems?.map(item => [item.id, item]) || []);
+    const bomMap = new Map(allItemBoms?.map(bom => [bom.item_id, bom]) || []);
+    const stockMap = new Map<string, number>();
+    allStockEntries?.forEach(entry => {
+      const current = stockMap.get(entry.item_id) || 0;
+      stockMap.set(entry.item_id, current + (Number(entry.available_quantity) || 0));
+    });
+
     const nodes = [];
 
     for (const bomItem of bomItems) {
@@ -317,33 +349,13 @@ export class JobOrderService {
       const adjustedQty = bomItem.quantity * quantity * scrapFactor;
 
       if (bomItem.component_type === 'ITEM' && bomItem.item_id) {
-        // Get item details
-        const { data: itemData } = await this.supabase
-          .from('items')
-          .select('code, name, type')
-          .eq('id', bomItem.item_id)
-          .single();
-
-        // Check if this item has its own BOM (making it a sub-assembly)
-        const { data: itemBom } = await this.supabase
-          .from('bom_headers')
-          .select('id, version, is_active')
-          .eq('item_id', bomItem.item_id)
-          .eq('is_active', true)
-          .single();
+        const itemData = itemMap.get(bomItem.item_id);
+        const itemBom = bomMap.get(bomItem.item_id);
+        const availableStock = stockMap.get(bomItem.item_id) || 0;
+        const shortageQuantity = Math.max(0, adjustedQty - availableStock);
 
         if (itemBom) {
-          // This is actually a sub-assembly - treat it as BOM type
-          const { data: stockEntries } = await this.supabase
-            .from('stock_entries')
-            .select('available_quantity')
-            .eq('tenant_id', tenantId)
-            .eq('item_id', bomItem.item_id);
-
-          const availableStock = stockEntries?.reduce((sum, entry) => sum + (Number(entry.available_quantity) || 0), 0) || 0;
-          const shortageQuantity = Math.max(0, adjustedQty - availableStock);
-
-          // Add sub-assembly node
+          // This is a sub-assembly - treat it as BOM type
           nodes.push({
             bomId: itemBom.id,
             itemId: bomItem.item_id,
@@ -362,15 +374,6 @@ export class JobOrderService {
           nodes.push(...childNodes);
         } else {
           // Regular item (raw material/component)
-          const { data: stockEntries } = await this.supabase
-            .from('stock_entries')
-            .select('available_quantity')
-            .eq('tenant_id', tenantId)
-            .eq('item_id', bomItem.item_id);
-
-          const availableStock = stockEntries?.reduce((sum, entry) => sum + (Number(entry.available_quantity) || 0), 0) || 0;
-          const shortageQuantity = Math.max(0, adjustedQty - availableStock);
-
           nodes.push({
             itemId: bomItem.item_id,
             itemCode: itemData?.code || 'Unknown',
