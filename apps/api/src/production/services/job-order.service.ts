@@ -17,6 +17,7 @@ type SmartJobOrderCreateRequest = {
   salesOrderId?: string;
   salesOrderItemId?: string;
   variantSelections?: Record<string, string>;
+  itemSelections?: Record<string, string>;
 };
 
 type SmartExplosionNode = {
@@ -350,6 +351,7 @@ export class JobOrderService {
       priority?: string;
       notes?: string;
       variantSelections?: Record<string, string>;
+      itemSelections?: Record<string, string>;
     },
   ) {
     const { data: bom } = await this.supabase
@@ -377,12 +379,21 @@ export class JobOrderService {
     const materials = (bom.bom_items || []).map((item: any) => {
       const baseItemId = item.item_id;
       const selectionKey = `${args.bomId}:${baseItemId}`;
+
+      const selectedItemIdRaw = args.itemSelections?.[selectionKey];
+      const selectedItemId = String(selectedItemIdRaw || '').trim();
+      const effectiveItemId = selectedItemId ? selectedItemId : baseItemId;
+
       const selectedVariantId = args.variantSelections?.[selectionKey];
+      const shouldApplyVariant = effectiveItemId === baseItemId;
 
       return {
-        itemId: baseItemId,
+        itemId: effectiveItemId,
         requiredQuantity: item.quantity * args.quantity,
-        selectedVariantId: selectedVariantId && selectedVariantId !== baseItemId ? selectedVariantId : undefined,
+        selectedVariantId:
+          shouldApplyVariant && selectedVariantId && selectedVariantId !== baseItemId
+            ? selectedVariantId
+            : undefined,
       };
     });
 
@@ -1080,6 +1091,7 @@ export class JobOrderService {
         priority: 'NORMAL',
         notes: `Auto-created by Smart Job Order for ${preview.finishedItem.code}`,
         variantSelections: req.variantSelections,
+        itemSelections: req.itemSelections,
       });
 
       // Ensure status is IN_PROGRESS so completeJobOrder can run.
@@ -1105,6 +1117,7 @@ export class JobOrderService {
       priority: 'NORMAL',
       notes: mainNotesParts.join(' | '),
       variantSelections: req.variantSelections,
+      itemSelections: req.itemSelections,
     });
 
     return {

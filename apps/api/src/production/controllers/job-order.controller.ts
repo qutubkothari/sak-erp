@@ -33,6 +33,7 @@ export class JobOrderController {
       salesOrderId?: string;
       salesOrderItemId?: string;
       variantSelections?: Record<string, string>;
+      itemSelections?: Record<string, string>;
     },
   ) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
