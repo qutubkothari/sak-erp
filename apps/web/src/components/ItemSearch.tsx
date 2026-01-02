@@ -16,9 +16,10 @@ interface ItemSearchProps {
   onSelect: (item: Item) => void;
   placeholder?: string;
   className?: string;
+  disabled?: boolean;
 }
 
-export default function ItemSearch({ value, onSelect, placeholder, className }: ItemSearchProps) {
+export default function ItemSearch({ value, onSelect, placeholder, className, disabled }: ItemSearchProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [items, setItems] = useState<Item[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -90,6 +91,7 @@ export default function ItemSearch({ value, onSelect, placeholder, className }: 
         value={searchQuery}
         onChange={handleInputChange}
         onFocus={() => searchQuery.trim().length >= 2 && setShowDropdown(true)}
+        disabled={disabled}
         className={className || "w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"}
         placeholder={placeholder || "Type to search items..."}
       />

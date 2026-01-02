@@ -966,9 +966,9 @@ export default function HrPage() {
     }
   };
 
-  const normalizeLeaveStatus = (status: unknown) => String(status || '').trim().toUpperCase();
+  const normalizeStatus = (status: unknown) => String(status || '').trim().toUpperCase();
   const isPendingLeaveStatus = (status: unknown) => {
-    const s = normalizeLeaveStatus(status);
+    const s = normalizeStatus(status);
     if (!s) return true;
     return (
       s === 'PENDING' ||
@@ -1205,8 +1205,8 @@ export default function HrPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{leave.total_days}</td>
                     <td className="px-6 py-4 text-sm max-w-xs truncate">{leave.reason}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(leave.status)}`}>
-                        {leave.status}
+                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(normalizeStatus(leave.status) || 'PENDING')}`}>
+                        {normalizeStatus(leave.status) || 'PENDING'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -1214,7 +1214,7 @@ export default function HrPage() {
                         <button onClick={() => { setSelectedLeave(leave); setShowLeaveDetails(true); }} className="text-blue-600 hover:text-blue-800" title="View Details">
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                         </button>
-                        {leave.status === 'PENDING' && (
+                        {isPendingLeaveStatus(leave.status) && (
                           <>
                             <button onClick={() => handleApproveLeave(leave.id)} className="text-green-600 hover:text-green-800" title="Approve">
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
@@ -1227,7 +1227,7 @@ export default function HrPage() {
                             </button>
                           </>
                         )}
-                        {leave.status === 'PENDING' && (
+                        {isPendingLeaveStatus(leave.status) && (
                           <button onClick={async () => { if (confirm('Cancel this leave request?')) { try { await apiClient.put(`/hr/leaves/${leave.id}`, { status: 'CANCELLED' }); fetchData(); } catch (err: any) { alert('Failed to cancel leave'); } } }} className="text-gray-600 hover:text-gray-800" title="Cancel">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                           </button>
