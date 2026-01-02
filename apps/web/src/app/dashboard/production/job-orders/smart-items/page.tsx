@@ -535,7 +535,11 @@ function SmartJobOrdersItemsPageContent() {
                                   />
                                 </div>
                               ) : (
-                                <span className="text-gray-500">-</span>
+                                <span className="text-gray-700">
+                                  {node.itemCode && node.itemName
+                                    ? `${node.itemCode} - ${node.itemName}`
+                                    : node.itemName || node.itemCode || 'BOM'}
+                                </span>
                               )}
                             </td>
                             <td className="px-4 py-2 text-sm text-right text-gray-900">{node.requiredQuantity}</td>
