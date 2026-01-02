@@ -214,7 +214,8 @@ export default function HrPage() {
     start_date: new Date().toISOString().split('T')[0],
     end_date: new Date().toISOString().split('T')[0],
     total_days: 1,
-    reason: ''
+    reason: '',
+    status: 'PENDING',
   });
 
   // Payroll forms
@@ -415,7 +416,8 @@ export default function HrPage() {
         start_date: new Date().toISOString().split('T')[0],
         end_date: new Date().toISOString().split('T')[0],
         total_days: 1,
-        reason: ''
+        reason: '',
+        status: 'PENDING',
       });
       fetchData();
       alert('Leave request submitted successfully');
@@ -964,6 +966,18 @@ export default function HrPage() {
     }
   };
 
+  const normalizeLeaveStatus = (status: unknown) => String(status || '').trim().toUpperCase();
+  const isPendingLeaveStatus = (status: unknown) => {
+    const s = normalizeLeaveStatus(status);
+    if (!s) return true;
+    return (
+      s === 'PENDING' ||
+      s === 'PENDING_APPROVAL' ||
+      s === 'APPLIED' ||
+      s === 'REQUESTED' ||
+      s === 'SUBMITTED'
+    );
+  };
   const getStatusColor = (status: string) => {
     const colors: { [key: string]: string } = {
       'ACTIVE': 'bg-green-100 text-green-800',
@@ -1208,7 +1222,7 @@ export default function HrPage() {
                             <button onClick={() => handleRejectLeave(leave.id)} className="text-red-600 hover:text-red-800" title="Reject">
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                             </button>
-                            <button onClick={() => { setSelectedLeave(leave); setLeaveForm({ employee_id: leave.employee_id, leave_type: leave.leave_type, start_date: leave.start_date, end_date: leave.end_date, total_days: leave.total_days, reason: leave.reason }); setShowEditLeave(true); }} className="text-amber-600 hover:text-amber-800" title="Edit">
+                            <button onClick={() => { setSelectedLeave(leave); setLeaveForm({ employee_id: leave.employee_id, leave_type: leave.leave_type, start_date: leave.start_date, end_date: leave.end_date, total_days: leave.total_days, reason: leave.reason, status: normalizeStatus(leave.status) || 'PENDING' }); setShowEditLeave(true); }} className="text-amber-600 hover:text-amber-800" title="Edit">
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                             </button>
                           </>
