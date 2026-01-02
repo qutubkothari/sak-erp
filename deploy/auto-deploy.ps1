@@ -10,7 +10,7 @@ param(
 )
 
 $SERVER = "ubuntu@13.205.17.214"
-$SSH_KEY = "saif-erp.pem"  # Update path if needed
+$SSH_KEY = "sak-erp.pem"  # Update path if needed
 $APP_DIR = "/home/ubuntu/sak-erp"
 
 # Optional overrides via environment variables
