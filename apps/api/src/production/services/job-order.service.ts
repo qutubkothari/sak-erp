@@ -16,6 +16,7 @@ type SmartJobOrderCreateRequest = {
   startDate?: string;
   salesOrderId?: string;
   salesOrderItemId?: string;
+  variantSelections?: Record<string, string>;
 };
 
 type SmartExplosionNode = {
@@ -163,6 +164,8 @@ export class JobOrderService {
             required_quantity: mat.requiredQuantity,
             warehouse_id: mat.warehouseId || null,
             warehouse_name: warehouseName,
+            selected_variant_id: (mat as any).selectedVariantId || null,
+            variant_notes: (mat as any).variantNotes || null,
           };
         })
       );
@@ -336,6 +339,65 @@ export class JobOrderService {
     });
   }
 
+  private async createFromBOMWithVariantSelections(
+    tenantId: string,
+    userId: string,
+    args: {
+      itemId: string;
+      bomId: string;
+      quantity: number;
+      startDate: string;
+      priority?: string;
+      notes?: string;
+      variantSelections?: Record<string, string>;
+    },
+  ) {
+    const { data: bom } = await this.supabase
+      .from('bom_headers')
+      .select(`
+        *,
+        bom_items(*, items(code, name)),
+        bom_routing(*, workstations(id, name))
+      `)
+      .eq('tenant_id', tenantId)
+      .eq('id', args.bomId)
+      .single();
+
+    if (!bom) throw new NotFoundException('BOM not found');
+
+    const operations = (bom.bom_routing || []).map((route: any, idx: number) => ({
+      sequenceNumber: route.operation_sequence || (idx + 1) * 10,
+      operationName: route.operation_name,
+      workstationId: route.workstation_id,
+      expectedDurationHours: route.cycle_time || 0,
+      setupTimeHours: route.setup_time || 0,
+      acceptedVariationPercent: 5,
+    }));
+
+    const materials = (bom.bom_items || []).map((item: any) => {
+      const baseItemId = item.item_id;
+      const selectionKey = `${args.bomId}:${baseItemId}`;
+      const selectedVariantId = args.variantSelections?.[selectionKey];
+
+      return {
+        itemId: baseItemId,
+        requiredQuantity: item.quantity * args.quantity,
+        selectedVariantId: selectedVariantId && selectedVariantId !== baseItemId ? selectedVariantId : undefined,
+      };
+    });
+
+    return this.create(tenantId, userId, {
+      itemId: args.itemId,
+      bomId: args.bomId,
+      quantity: args.quantity,
+      startDate: args.startDate,
+      priority: args.priority || 'NORMAL',
+      notes: args.notes,
+      operations,
+      materials,
+    } as any);
+  }
+
   private async checkMaterialAvailability(tenantId: string, materials: any[], jobQuantity: number) {
     console.log('[JobOrderService] checkMaterialAvailability - tenantId:', tenantId);
     console.log('[JobOrderService] checkMaterialAvailability - materials:', materials);
@@ -346,14 +408,16 @@ export class JobOrderService {
     for (const material of materials) {
       const required = material.requiredQuantity;  // Don't multiply by jobQuantity - it's already included in requiredQuantity
 
+      const itemIdToCheck = material.selectedVariantId || material.selected_variant_id || material.itemId;
+
       // IMPORTANT: Use stock_entries-backed summary (same as GET /items/:id/stock)
       // so Job Order validation matches the stock shown across the app.
       const { data, error } = await this.supabase.rpc('get_item_stock_summary', {
-        p_item_id: material.itemId,
+        p_item_id: itemIdToCheck,
         p_tenant_id: tenantId,
       });
 
-      console.log('[JobOrderService] Stock check for item:', material.itemId);
+      console.log('[JobOrderService] Stock check for item:', itemIdToCheck);
       console.log('[JobOrderService] Stock summary found:', data);
       console.log('[JobOrderService] Stock summary query error:', error);
 
@@ -367,11 +431,11 @@ export class JobOrderService {
         const { data: item } = await this.supabase
           .from('items')
           .select('code, name')
-          .eq('id', material.itemId)
+          .eq('id', itemIdToCheck)
           .single();
 
         shortages.push({
-          itemId: material.itemId,
+          itemId: itemIdToCheck,
           itemCode: item?.code || 'Unknown',
           itemName: item?.name || 'Unknown',
           required,
@@ -1008,13 +1072,14 @@ export class JobOrderService {
     for (const sa of preview.subAssembliesToMake as SmartSubAssemblyPlan[]) {
       if (sa.toMakeQuantity <= 0) continue;
 
-      const created = await this.create(tenantId, userId, {
+      const created = await this.createFromBOMWithVariantSelections(tenantId, userId, {
         itemId: sa.itemId,
         bomId: sa.bomId,
         quantity: sa.toMakeQuantity,
         startDate,
         priority: 'NORMAL',
         notes: `Auto-created by Smart Job Order for ${preview.finishedItem.code}`,
+        variantSelections: req.variantSelections,
       });
 
       // Ensure status is IN_PROGRESS so completeJobOrder can run.
@@ -1032,13 +1097,14 @@ export class JobOrderService {
     if (preview.source?.salesOrderId) mainNotesParts.push(`SalesOrder: ${preview.source.salesOrderId}`);
     if (preview.source?.salesOrderItemId) mainNotesParts.push(`SOItem: ${preview.source.salesOrderItemId}`);
 
-    const main = await this.create(tenantId, userId, {
+    const main = await this.createFromBOMWithVariantSelections(tenantId, userId, {
       itemId: preview.finishedItem.id,
       bomId: preview.topBom.id,
       quantity: preview.quantity,
       startDate,
       priority: 'NORMAL',
       notes: mainNotesParts.join(' | '),
+      variantSelections: req.variantSelections,
     });
 
     return {

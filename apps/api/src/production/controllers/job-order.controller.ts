@@ -26,7 +26,14 @@ export class JobOrderController {
   @Post('smart/create')
   async createSmartJobOrder(
     @Request() req: any,
-    @Body() body: { itemId: string; quantity: number; startDate?: string; salesOrderId?: string; salesOrderItemId?: string },
+    @Body() body: {
+      itemId: string;
+      quantity: number;
+      startDate?: string;
+      salesOrderId?: string;
+      salesOrderItemId?: string;
+      variantSelections?: Record<string, string>;
+    },
   ) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id || req.user?.sub;

@@ -46,6 +46,20 @@ type SmartSubAssemblyPlan = {
   toMakeQuantity: number;
 };
 
+type ItemVariant = {
+  id: string;
+  code: string;
+  name: string;
+  variant_name?: string | null;
+  is_default_variant?: boolean;
+};
+
+type ItemStockSummary = {
+  total_quantity?: number;
+  available_quantity?: number;
+  allocated_quantity?: number;
+};
+
 type SmartPreview = {
   finishedItem: FinishedItem;
   quantity: number;
@@ -98,6 +112,12 @@ function SmartJobOrdersPageContent() {
   const [preview, setPreview] = useState<SmartPreview | null>(null);
   const [previewError, setPreviewError] = useState<string>('');
 
+  const [variantsByItemId, setVariantsByItemId] = useState<Record<string, ItemVariant[]>>({});
+  const [selectedVariantByNodeKey, setSelectedVariantByNodeKey] = useState<Record<string, string>>({});
+  const [stockByItemId, setStockByItemId] = useState<
+    Record<string, { available: number; loading: boolean; error?: string }>
+  >({});
+
   const [creating, setCreating] = useState(false);
 
   const canPreview = Boolean(itemId) && Number(quantity) > 0;
@@ -138,6 +158,51 @@ function SmartJobOrdersPageContent() {
       setItemsError(err?.message || 'Failed to load items');
     } finally {
       setItemsLoading(false);
+    }
+  };
+
+  const nodeKey = (node: SmartExplosionNode) => `${node.bomId}:${node.itemId}`;
+
+  const fetchItemVariants = async (baseItemId: string): Promise<ItemVariant[]> => {
+    const id = String(baseItemId || '').trim();
+    if (!id) return [];
+    try {
+      const variants = await apiClient.get<ItemVariant[]>(`/items/${id}/variants`);
+      return Array.isArray(variants) ? variants : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const fetchItemStockAvailable = async (itemIdToCheck: string) => {
+    const id = String(itemIdToCheck || '').trim();
+    if (!id) return;
+
+    setStockByItemId((prev) => {
+      const existing = prev[id];
+      if (existing?.loading) return prev;
+      return {
+        ...prev,
+        [id]: { available: existing?.available ?? 0, loading: true },
+      };
+    });
+
+    try {
+      const summary = await apiClient.get<ItemStockSummary>(`/items/${id}/stock`);
+      const available = Number((summary as any)?.available_quantity ?? 0) || 0;
+      setStockByItemId((prev) => ({
+        ...prev,
+        [id]: { available, loading: false },
+      }));
+    } catch (err: any) {
+      setStockByItemId((prev) => ({
+        ...prev,
+        [id]: {
+          available: prev[id]?.available ?? 0,
+          loading: false,
+          error: err?.message || 'Failed to load stock',
+        },
+      }));
     }
   };
 
@@ -202,6 +267,61 @@ function SmartJobOrdersPageContent() {
   }, []);
 
   useEffect(() => {
+    if (!preview?.nodes?.length) {
+      setVariantsByItemId({});
+      setSelectedVariantByNodeKey({});
+      setStockByItemId({});
+      return;
+    }
+
+    const itemNodes = preview.nodes.filter((n) => n.componentType === 'ITEM' && n.itemId);
+    const uniqueBaseItemIds = Array.from(new Set(itemNodes.map((n) => String(n.itemId))));
+
+    let cancelled = false;
+
+    (async () => {
+      const variantPairs = await Promise.all(
+        uniqueBaseItemIds.map(async (id) => {
+          const variants = await fetchItemVariants(id);
+          return [id, variants] as const;
+        }),
+      );
+
+      if (cancelled) return;
+
+      const nextVariantsByItemId: Record<string, ItemVariant[]> = {};
+      for (const [id, variants] of variantPairs) {
+        nextVariantsByItemId[id] = variants;
+      }
+      setVariantsByItemId(nextVariantsByItemId);
+
+      const nextSelected: Record<string, string> = {};
+      const toFetchStock = new Set<string>();
+
+      for (const node of itemNodes) {
+        const key = nodeKey(node);
+        const baseId = String(node.itemId);
+        const variants = nextVariantsByItemId[baseId] || [];
+        const defaultVariantId =
+          variants.find((v) => v.is_default_variant)?.id ||
+          variants[0]?.id ||
+          baseId;
+
+        nextSelected[key] = defaultVariantId;
+        toFetchStock.add(defaultVariantId);
+      }
+
+      setSelectedVariantByNodeKey(nextSelected);
+      await Promise.all(Array.from(toFetchStock).map((id) => fetchItemStockAvailable(id)));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview?.topBom?.id, preview?.quantity, preview?.finishedItem?.id]);
+
+  useEffect(() => {
     if (!canPreview) return;
 
     // Auto-preview after selecting item / changing quantity.
@@ -221,12 +341,23 @@ function SmartJobOrdersPageContent() {
 
     setCreating(true);
     try {
+      const variantSelections: Record<string, string> = {};
+      if (preview?.nodes?.length) {
+        for (const node of preview.nodes) {
+          if (node.componentType !== 'ITEM') continue;
+          const key = nodeKey(node);
+          const selected = selectedVariantByNodeKey[key];
+          if (selected) variantSelections[key] = selected;
+        }
+      }
+
       const result = await apiClient.post<any>('/job-orders/smart/create', {
         itemId,
         quantity: Number(quantity),
         startDate: new Date().toISOString().slice(0, 10),
         salesOrderId: salesOrderId || undefined,
         salesOrderItemId: salesOrderItemId || undefined,
+        variantSelections,
       });
 
       const jobOrderNumber = result?.jobOrder?.job_order_number || result?.jobOrder?.jobOrderNumber || result?.jobOrder?.job_order_number;
@@ -410,6 +541,7 @@ function SmartJobOrdersPageContent() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Component</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Variant</th>
                         <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Type</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Required</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">In Stock</th>
@@ -421,8 +553,29 @@ function SmartJobOrdersPageContent() {
                       {preview.nodes.map((node, idx) => {
                         const isBOM = node.componentType === 'BOM';
                         const highlight = isBOM ? 'text-gray-900 font-medium' : 'text-gray-800';
-                        const short = node.shortageQuantity || 0;
+                        const key = nodeKey(node);
+                        const selectedVariantId = !isBOM ? (selectedVariantByNodeKey[key] || node.itemId) : '';
+                        const stockState = selectedVariantId ? stockByItemId[selectedVariantId] : undefined;
+                        const resolvedAvailable = !isBOM
+                          ? (stockState ? stockState.available : (node.availableQuantity || 0))
+                          : (node.availableQuantity || 0);
+
+                        const short = Math.max(0, (node.requiredQuantity || 0) - (resolvedAvailable || 0));
                         const toMake = node.toMakeQuantity || 0;
+
+                        const baseVariants = !isBOM ? (variantsByItemId[String(node.itemId)] || []) : [];
+                        const variantOptions = !isBOM
+                          ? [
+                              {
+                                value: String(node.itemId),
+                                label: `${node.itemCode} - ${node.itemName}`,
+                              },
+                              ...baseVariants.map((v) => ({
+                                value: String(v.id),
+                                label: `${v.code} - ${v.variant_name || v.name}`,
+                              })),
+                            ]
+                          : [];
 
                         return (
                           <tr key={`${node.bomId}:${node.itemId}:${idx}`}>
@@ -431,6 +584,29 @@ function SmartJobOrdersPageContent() {
                                 {node.itemCode} - {node.itemName}
                               </div>
                             </td>
+
+                            <td className="px-4 py-2 text-sm text-gray-900">
+                              {isBOM ? (
+                                <span className="text-gray-400">-</span>
+                              ) : (
+                                <select
+                                  className="w-full border border-gray-300 rounded-lg px-2 py-1 text-sm"
+                                  value={selectedVariantId}
+                                  onChange={(e) => {
+                                    const nextId = e.target.value;
+                                    setSelectedVariantByNodeKey((prev) => ({ ...prev, [key]: nextId }));
+                                    fetchItemStockAvailable(nextId);
+                                  }}
+                                >
+                                  {variantOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </td>
+
                             <td className="px-4 py-2 text-xs text-center">
                               <span
                                 className={`px-2 py-1 rounded-full ${
@@ -441,7 +617,9 @@ function SmartJobOrdersPageContent() {
                               </span>
                             </td>
                             <td className="px-4 py-2 text-sm text-right text-gray-900">{node.requiredQuantity}</td>
-                            <td className="px-4 py-2 text-sm text-right text-gray-900">{node.availableQuantity}</td>
+                            <td className="px-4 py-2 text-sm text-right text-gray-900">
+                              {!isBOM && stockState?.loading ? '…' : resolvedAvailable}
+                            </td>
                             <td className="px-4 py-2 text-sm text-right text-amber-700 font-semibold">{toMake || '-'}</td>
                             <td className={`px-4 py-2 text-sm text-right ${short > 0 ? 'text-red-700 font-semibold' : 'text-gray-500'}`}>
                               {short > 0 ? short : '-'}

@@ -47,6 +47,14 @@ export class JobOrderMaterialDto {
   @IsUUID()
   itemId: string;
 
+  @IsOptional()
+  @IsUUID()
+  selectedVariantId?: string;
+
+  @IsOptional()
+  @IsString()
+  variantNotes?: string;
+
   @IsNotEmpty()
   @IsNumber()
   requiredQuantity: number;
