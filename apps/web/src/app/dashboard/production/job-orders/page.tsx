@@ -492,6 +492,75 @@ export default function JobOrdersPage() {
     setMaterials(updated);
   };
 
+  const fetchItemVariants = async (itemId: string) => {
+    const id = String(itemId || '').trim();
+    if (!id) return [] as any[];
+
+    try {
+      const variants = await apiClient.get(`/items/${id}/variants`);
+      return Array.isArray(variants) ? variants : [];
+    } catch {
+      return [] as any[];
+    }
+  };
+
+  const changeMaterialItem = async (index: number, nextItemId: string) => {
+    const id = String(nextItemId || '').trim();
+    if (!id) {
+      updateMaterial(index, 'itemId', '');
+      return;
+    }
+
+    // Keep quantities stable even when swapping the item.
+    const currentQty = Number(formData.quantity) || 1;
+    const currentRequiredQty = Number(materials[index]?.requiredQuantity) || 0;
+    const basePerUnit = currentRequiredQty / currentQty;
+    setBaseMaterialQuantities((prev) => ({ ...prev, [id]: basePerUnit }));
+
+    // Update basic item fields immediately for responsive UI.
+    const selectedItem = items.find((i) => String(i.id) === id);
+    setMaterials((prev) => {
+      const next = [...prev];
+      const current = next[index] || ({ itemId: '', requiredQuantity: 0 } as Material);
+
+      next[index] = {
+        ...current,
+        itemId: id,
+        itemCode: selectedItem?.code,
+        itemName: selectedItem?.name,
+        variants: [],
+        selectedVariantId: id,
+        selectedVariantName: selectedItem?.name,
+      };
+
+      return next;
+    });
+
+    fetchItemStockSummary(id);
+
+    const variants = await fetchItemVariants(id);
+    if (!Array.isArray(variants) || variants.length === 0) return;
+
+    const defaultVariant = variants.find((v: any) => v.is_default_variant) || variants[0];
+
+    setMaterials((prev) => {
+      const next = [...prev];
+      if (!next[index]) return prev;
+
+      next[index] = {
+        ...next[index],
+        variants,
+        selectedVariantId: defaultVariant?.id || id,
+        selectedVariantName:
+          defaultVariant?.variant_name ||
+          defaultVariant?.name ||
+          next[index]?.selectedVariantName,
+      };
+
+      return next;
+    });
+  };
+
   const addMaterial = () => {
     setMaterials([...materials, {
       itemId: '',
@@ -1087,8 +1156,7 @@ export default function JobOrdersPage() {
                         value={mat.itemId}
                         onChange={(value) => {
                           console.log('Material changed to:', value);
-                          updateMaterial(idx, 'itemId', value);
-                          fetchItemStockSummary(value);
+                          void changeMaterialItem(idx, value);
                         }}
                         placeholder="Search item by code or name..."
                         className="text-sm"
@@ -1100,18 +1168,17 @@ export default function JobOrdersPage() {
                         <label className="block text-xs font-medium mb-1">
                           Variant/Brand {mat.variants.find((v: any) => v.is_default_variant) && <span className="text-green-600">(Default)</span>}
                         </label>
-                        <select
+                        <SearchableSelect
+                          options={mat.variants.map((variant: any) => ({
+                            value: String(variant.id),
+                            label: String(variant.variant_name || variant.name || 'Variant'),
+                            subtitle: variant.is_default_variant ? 'Default' : undefined,
+                          }))}
                           value={mat.selectedVariantId || mat.itemId}
-                          onChange={(e) => updateMaterialVariant(idx, e.target.value)}
-                          className="w-full border rounded px-2 py-1 text-sm bg-yellow-50"
-                        >
-                          {mat.variants.map((variant: any) => (
-                            <option key={variant.id} value={variant.id}>
-                              {variant.variant_name || variant.name} 
-                              {variant.is_default_variant && ' ⭐'}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(value) => updateMaterialVariant(idx, value)}
+                          placeholder="Search brand/variant..."
+                          className="text-sm"
+                        />
                       </div>
                     )}
 
