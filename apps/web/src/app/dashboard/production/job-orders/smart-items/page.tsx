@@ -499,8 +499,7 @@ function SmartJobOrdersItemsPageContent() {
                       <tr>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Level</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">BOM</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item (select)</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Required</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">In Stock</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Short</th>
@@ -520,28 +519,20 @@ function SmartJobOrdersItemsPageContent() {
                           <tr key={`${node.bomId}:${node.itemId}:${idx}`}>
                             <td className="px-4 py-2 text-sm text-gray-700">{node.level}</td>
                             <td className="px-4 py-2 text-sm text-gray-700">{node.componentType}</td>
-                            <td className="px-4 py-2 text-sm text-gray-700">{node.bomId}</td>
                             <td className="px-4 py-2 text-sm text-gray-900">
                               {isItem ? (
-                                <div className="flex flex-col gap-1">
-                                  <select
+                                <div className="min-w-[280px]">
+                                  <SearchableSelect
+                                    options={itemOptions}
                                     value={selectedItemId}
-                                    onChange={async (e) => {
-                                      const next = e.target.value;
+                                    onChange={async (value) => {
+                                      const next = String(value || '');
                                       setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
                                       await fetchItemStockAvailable(next);
                                     }}
-                                    className="w-full border border-gray-300 rounded-md px-2 py-1 bg-white"
-                                  >
-                                    {items.map((it) => (
-                                      <option key={it.id} value={it.id}>
-                                        {it.code} - {it.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <div className="text-[11px] text-gray-500">
-                                    Original: {node.itemCode} - {node.itemName}
-                                  </div>
+                                    placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
+                                    disabled={itemsLoading || itemOptions.length === 0}
+                                  />
                                 </div>
                               ) : (
                                 <span className="text-gray-500">-</span>
