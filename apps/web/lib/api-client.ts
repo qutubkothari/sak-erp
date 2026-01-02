@@ -3,7 +3,18 @@
  * Handles all HTTP requests to the backend API
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://13.205.17.214:4000/api/v1';
+function getDefaultApiBaseUrl(): string {
+  // Prefer explicit env var, but avoid hardcoding old server IPs.
+  // When running in browser, default to same host on port 4000.
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:4000/api/v1`;
+  }
+
+  // Server-side fallback (only used if this module is imported server-side)
+  return 'http://localhost:4000/api/v1';
+}
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || getDefaultApiBaseUrl();
 
 interface ApiResponse<T = any> {
   success: boolean;
