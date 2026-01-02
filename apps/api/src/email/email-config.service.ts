@@ -27,6 +27,16 @@ export class EmailConfigService {
   private cacheTimestamp: number = 0;
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+  private readonly emailTypeToEnvVar: Record<keyof EmailConfig, string> = {
+    admin: 'EMAIL_ADMIN',
+    sales: 'EMAIL_SALES',
+    support: 'EMAIL_SUPPORT',
+    technical: 'EMAIL_TECHNICAL',
+    purchase: 'EMAIL_PURCHASE',
+    hr: 'EMAIL_HR',
+    noreply: 'EMAIL_NOREPLY',
+  };
+
   constructor(
     private configService: ConfigService,
     private databaseService: DatabaseService,
@@ -114,6 +124,15 @@ export class EmailConfigService {
    */
   getEmail(type: keyof EmailConfig): string {
     return this.getEmailConfig()[type];
+  }
+
+  /**
+   * Get specific email by type (async, database-backed)
+   */
+  async getEmailAsync(type: keyof EmailConfig): Promise<string> {
+    const defaultEmail = this.configService.get<string>('DEFAULT_EMAIL', 'erpsak53@gmail.com');
+    const envVar = this.emailTypeToEnvVar[type];
+    return this.getEmailByType(type, envVar, defaultEmail);
   }
 
   /**
@@ -268,6 +287,15 @@ export class EmailConfigService {
    */
   getFromAddress(type: keyof EmailConfig = 'noreply'): string {
     const email = this.getEmail(type);
+    const companyName = this.getCompanyName();
+    return `"${companyName}" <${email}>`;
+  }
+
+  /**
+   * Get formatted sender address for emails (async, database-backed)
+   */
+  async getFromAddressAsync(type: keyof EmailConfig = 'noreply'): Promise<string> {
+    const email = await this.getEmailAsync(type);
     const companyName = this.getCompanyName();
     return `"${companyName}" <${email}>`;
   }

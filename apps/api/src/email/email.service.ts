@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { EmailConfigService } from './email-config.service';
+import { GmailOAuth2Service } from './gmail-oauth2.service';
 
 @Injectable()
 export class EmailService {
@@ -10,12 +11,16 @@ export class EmailService {
   constructor(
     private configService: ConfigService,
     private emailConfig: EmailConfigService,
+    private gmailOAuth2Service: GmailOAuth2Service,
   ) {
     // Initialize email transporter
+    const portRaw = this.configService.get('SMTP_PORT', 587);
+    const port = typeof portRaw === 'string' ? parseInt(portRaw, 10) : portRaw;
+
     this.transporter = nodemailer.createTransport({
       host: this.configService.get('SMTP_HOST', 'smtp.gmail.com'),
-      port: this.configService.get('SMTP_PORT', 587),
-      secure: false, // true for 465, false for other ports
+      port,
+      secure: port === 465, // true for 465, false for other ports
       auth: {
         user: this.configService.get('SMTP_USER'),
         pass: this.configService.get('SMTP_PASS'),
@@ -23,81 +28,136 @@ export class EmailService {
     });
   }
 
+  private getTransportUser(): string | undefined {
+    if (this.gmailOAuth2Service?.isConfigured()) {
+      return this.configService.get('GMAIL_USER', this.configService.get('SMTP_USER'));
+    }
+    return this.configService.get('SMTP_USER');
+  }
+
+  private normalizeEmailAddress(value?: string): string {
+    return (value || '').trim().toLowerCase();
+  }
+
+  private async applyFromAndReplyTo(
+    mailOptions: nodemailer.SendMailOptions,
+    fromType: 'admin' | 'sales' | 'support' | 'technical' | 'purchase' | 'hr' | 'noreply' = 'noreply',
+  ): Promise<nodemailer.SendMailOptions> {
+    const transportUser = this.getTransportUser();
+
+    const configuredFromEmail = await this.emailConfig.getEmailAsync(fromType);
+    const configuredFrom = await this.emailConfig.getFromAddressAsync(fromType);
+
+    if (!transportUser) {
+      // Keep configured sender; the underlying transport will throw a clear error.
+      return { ...mailOptions, from: configuredFrom };
+    }
+
+    const transportFrom = `"${this.emailConfig.getCompanyName()}" <${transportUser}>`;
+
+    // If the configured From isn't the same as the authenticated user, many SMTP providers reject it.
+    // In that case, send from the authenticated user and set Reply-To to the configured department inbox.
+    const sameAddress =
+      this.normalizeEmailAddress(configuredFromEmail) === this.normalizeEmailAddress(transportUser);
+
+    if (sameAddress) {
+      return { ...mailOptions, from: configuredFrom };
+    }
+
+    return {
+      ...mailOptions,
+      from: transportFrom,
+      replyTo: configuredFromEmail,
+    };
+  }
+
   async sendRFQ(to: string, rfqData: any) {
-    const mailOptions = {
-      from: this.emailConfig.getFromAddress('purchase'),
+    let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject: `Request for Quotation - ${rfqData.rfq_number}`,
-      html: this.generateRFQTemplate(rfqData),
+      html: this.generateRFQTemplate(rfqData) + this.emailConfig.getEmailSignature(),
       attachments: rfqData.attachments || [],
     };
 
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase');
     return this.sendMail(mailOptions);
   }
 
   async sendPO(to: string, poData: any) {
-    const mailOptions = {
-      from: this.emailConfig.getFromAddress('purchase'),
+    let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject: `Purchase Order - ${poData.po_number}`,
-      html: this.generatePOTemplate(poData),
+      html: this.generatePOTemplate(poData) + this.emailConfig.getEmailSignature(),
       attachments: poData.attachments || [],
     };
 
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase');
     return this.sendMail(mailOptions);
   }
 
   async sendPOTrackingReminder(to: string, poData: any) {
-    const mailOptions = {
-      from: this.emailConfig.getFromAddress('purchase'),
+    let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject: `Tracking Information Request - PO ${poData.po_number}`,
-      html: this.generateTrackingReminderTemplate(poData),
+      html: this.generateTrackingReminderTemplate(poData) + this.emailConfig.getEmailSignature(),
     };
 
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase');
     return this.sendMail(mailOptions);
   }
 
   async sendSO(to: string, soData: any) {
-    const mailOptions = {
-      from: this.emailConfig.getFromAddress('sales'),
+    let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject: `Sales Order Confirmation - ${soData.so_number}`,
-      html: this.generateSOTemplate(soData),
+      html: this.generateSOTemplate(soData) + this.emailConfig.getEmailSignature(),
       attachments: soData.attachments || [],
     };
 
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'sales');
     return this.sendMail(mailOptions);
   }
 
   async sendDispatchNote(to: string, dispatchData: any) {
-    const mailOptions = {
-      from: this.emailConfig.getFromAddress('sales'),
+    let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject: `Dispatch Note - ${dispatchData.dispatch_number}`,
-      html: this.generateDispatchTemplate(dispatchData),
+      html: this.generateDispatchTemplate(dispatchData) + this.emailConfig.getEmailSignature(),
       attachments: dispatchData.attachments || [],
     };
 
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'sales');
     return this.sendMail(mailOptions);
   }
 
   async sendIssueCertificate(to: string, certificateData: any) {
-    const mailOptions = {
-      from: `"${this.configService.get('COMPANY_NAME', 'SAK Solutions')}" <${this.configService.get('SMTP_USER')}>`,
+    let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject: `Issue Certificate - ${certificateData.certificate_number}`,
-      html: this.generateCertificateTemplate(certificateData),
+      html: this.generateCertificateTemplate(certificateData) + this.emailConfig.getEmailSignature(),
       attachments: certificateData.attachments || [],
     };
 
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'sales');
     return this.sendMail(mailOptions);
   }
 
   private async sendMail(mailOptions: nodemailer.SendMailOptions) {
     try {
+      if (this.gmailOAuth2Service?.isConfigured()) {
+        const info = await this.gmailOAuth2Service.sendEmail(mailOptions);
+        console.log('Email sent (OAuth2):', info.messageId);
+        return { success: true, messageId: info.messageId };
+      }
+
+      const smtpUser = this.configService.get('SMTP_USER');
+      const smtpPass = this.configService.get('SMTP_PASS');
+      if (!smtpUser || !smtpPass) {
+        throw new Error('SMTP not configured (set SMTP_USER and SMTP_PASS)');
+      }
+
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('Email sent:', info.messageId);
+      console.log('Email sent (SMTP):', info.messageId);
       return { success: true, messageId: info.messageId };
     } catch (error) {
       console.error('Email send error:', error);
@@ -531,29 +591,26 @@ export class EmailService {
     attachments?: any[];
     from?: 'admin' | 'sales' | 'support' | 'technical' | 'purchase' | 'hr' | 'noreply';
   }) {
-    const fromAddress = options.from 
-      ? this.emailConfig.getFromAddress(options.from)
-      : this.emailConfig.getFromAddress('noreply');
-
-    const mailOptions = {
-      from: fromAddress,
+    let mailOptions: nodemailer.SendMailOptions = {
       to: options.to,
       subject: options.subject,
       html: options.html + this.emailConfig.getEmailSignature(),
       attachments: options.attachments || [],
     };
 
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, options.from || 'noreply');
+
     return this.sendMail(mailOptions);
   }
 
   async sendLowStockAlert(to: string, lowStockItems: any[]) {
-    const mailOptions = {
-      from: this.emailConfig.getFromAddress('noreply'),
+    let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject: `⚠️ Low Stock Alert - ${lowStockItems.length} Items Need Attention`,
-      html: this.generateLowStockTemplate(lowStockItems),
+      html: this.generateLowStockTemplate(lowStockItems) + this.emailConfig.getEmailSignature(),
     };
 
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'noreply');
     return this.sendMail(mailOptions);
   }
 

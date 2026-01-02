@@ -11,12 +11,6 @@ export class GmailOAuth2Service {
   private transporter: nodemailer.Transporter | null = null;
 
   constructor(private configService: ConfigService) {
-    const enabled = this.configService.get('EMAIL_FETCH_ENABLED', 'false') === 'true';
-    if (!enabled) {
-      this.logger.log('Gmail OAuth2 disabled (set EMAIL_FETCH_ENABLED=true to enable)');
-      return;
-    }
-
     this.initializeOAuth2();
   }
 
