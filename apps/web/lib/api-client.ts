@@ -108,20 +108,71 @@ class ApiClient {
         Object.assign(headers, existingHeaders);
       }
 
+      const applyAuthHeader = (token: string | null) => {
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        } else {
+          delete headers['Authorization'];
+        }
+      };
+
       // Add auth token if available
-      const token = this.getToken();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+      applyAuthHeader(this.getToken());
+
+      const execute = async () => {
+        const response = await fetch(url, {
+          ...options,
+          headers,
+        });
+
+        // Some endpoints return 204/empty body; guard JSON parsing
+        const text = await response.text();
+        let data: any = null;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          data = text || null;
+        }
+
+        return { response, data };
+      };
+
+      let { response, data } = await execute();
+
+      // If access token expired, attempt a single refresh + retry.
+      const isAuthEndpoint = endpoint.startsWith('/auth/');
+      if (
+        response.status === 401 &&
+        !isAuthEndpoint &&
+        typeof window !== 'undefined'
+      ) {
+        const refreshToken = localStorage.getItem('refreshToken');
+        if (refreshToken) {
+          try {
+            const refreshResponse = await fetch(`${this.baseUrl}/auth/refresh`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refreshToken }),
+            });
+
+            const refreshText = await refreshResponse.text();
+            const refreshData = refreshText ? JSON.parse(refreshText) : null;
+
+            if (refreshResponse.ok) {
+              const authData = (refreshData as any)?.data ?? refreshData;
+              const nextAccessToken = authData?.accessToken;
+              const nextRefreshToken = authData?.refreshToken;
+              if (nextAccessToken && nextRefreshToken) {
+                this.saveTokens(nextAccessToken, nextRefreshToken);
+                applyAuthHeader(nextAccessToken);
+                ({ response, data } = await execute());
+              }
+            }
+          } catch {
+            // Ignore refresh errors; fall through to normal error handling.
+          }
+        }
       }
-
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
-
-      // Some endpoints return 204/empty body; guard JSON parsing
-      const text = await response.text();
-      const data = text ? JSON.parse(text) : null;
 
       if (!response.ok) {
         return {
