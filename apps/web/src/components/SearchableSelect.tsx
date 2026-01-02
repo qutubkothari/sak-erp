@@ -34,10 +34,13 @@ export default function SearchableSelect({
   const selectedOption = options.find(opt => opt.value === value);
   const displayValue = selectedOption ? `${selectedOption.label}${selectedOption.subtitle ? ` - ${selectedOption.subtitle}` : ''}` : '';
 
-  const filteredOptions = options.filter(option =>
-    option.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    option.subtitle?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredOptions = options.filter(option => {
+    if (!searchTerm) return true; // Show all options when no search term
+    return (
+      option.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      option.subtitle?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

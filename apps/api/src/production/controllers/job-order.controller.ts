@@ -8,6 +8,31 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 export class JobOrderController {
   constructor(private readonly jobOrderService: JobOrderService) {}
 
+  @Get('smart/preview')
+  async getSmartPreview(
+    @Request() req: any,
+    @Query() query: { itemId?: string; quantity?: string | number; salesOrderId?: string; salesOrderItemId?: string },
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const quantity = typeof query.quantity === 'string' ? Number(query.quantity) : Number(query.quantity);
+    return this.jobOrderService.getSmartJobOrderPreview(tenantId, {
+      itemId: String(query.itemId || ''),
+      quantity,
+      salesOrderId: query.salesOrderId,
+      salesOrderItemId: query.salesOrderItemId,
+    });
+  }
+
+  @Post('smart/create')
+  async createSmartJobOrder(
+    @Request() req: any,
+    @Body() body: { itemId: string; quantity: number; startDate?: string; salesOrderId?: string; salesOrderItemId?: string },
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.createSmartJobOrder(tenantId, userId, body);
+  }
+
   @Post()
   async create(@Request() req: any, @Body() dto: CreateJobOrderDto) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];

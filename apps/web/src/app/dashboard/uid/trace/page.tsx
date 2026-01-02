@@ -87,7 +87,7 @@ function TraceProductContent() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/uid/trace/${encodeURIComponent(searchUID)}`, {
+      const response = await fetch(`/api/v1/uid/trace/${encodeURIComponent(searchUID)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -373,65 +373,126 @@ function TraceProductContent() {
               </div>
             </div>
 
-            {/* Component Tree Diagram */}
+            {/* Component Tree Diagram - Enhanced Hierarchical View */}
             {traceData.components.length > 0 && (
               <div className="bg-white rounded-lg shadow-lg p-6 mt-6">
-                <h2 className="text-xl font-bold text-gray-800 mb-4">🌳 Component Tree</h2>
-                <p className="text-sm text-gray-600 mb-4">
-                  This product was assembled from the following components:
+                <h2 className="text-xl font-bold mb-4" style={{ color: '#6F4E37' }}>🌳 Component Tree - Hierarchical Structure</h2>
+                <p className="text-sm text-gray-600 mb-6">
+                  This product was assembled from {traceData.components.length} component(s). Each branch shows the complete traceability.
                 </p>
                 
-                <div className="space-y-3">
-                  {traceData.components.map((component, index) => (
-                    <div key={index} className="flex items-start gap-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg hover:shadow-md transition-shadow">
-                      <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold">
-                        {index + 1}
-                      </div>
-                      
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-mono text-sm font-bold text-blue-600">{component.uid}</span>
-                          <span className={`px-2 py-1 rounded text-xs font-bold ${getStatusColor(component.qc_status)}`}>
-                            {component.qc_status}
-                          </span>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <p className="text-gray-500">Item</p>
-                            <p className="font-semibold text-gray-800">{component.item_code} - {component.item_name}</p>
-                          </div>
-                          
-                          <div>
-                            <p className="text-gray-500">Batch Number</p>
-                            <p className="font-semibold text-gray-800">{component.batch_number}</p>
-                          </div>
-                          
-                          {component.vendor_name && (
-                            <div>
-                              <p className="text-gray-500">Vendor</p>
-                              <p className="font-semibold text-gray-800">{component.vendor_name}</p>
-                            </div>
-                          )}
-                          
-                          <div>
-                            <p className="text-gray-500">Received Date</p>
-                            <p className="text-gray-700">{new Date(component.received_date).toLocaleDateString()}</p>
-                          </div>
-                        </div>
-                        
-                        <button
-                          onClick={() => {
-                            setSearchUID(component.uid);
-                            searchTrace();
-                          }}
-                          className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-semibold"
-                        >
-                          → Trace this component
-                        </button>
+                {/* Hierarchical Tree Visualization */}
+                <div className="relative">
+                  {/* Root Product */}
+                  <div className="flex items-center justify-center mb-8">
+                    <div className="relative p-4 rounded-lg border-2 shadow-lg text-center min-w-[300px]" 
+                         style={{ borderColor: '#8B6F47', backgroundColor: '#FAF8F3' }}>
+                      <div className="text-xs font-semibold mb-1" style={{ color: '#6F4E37' }}>FINAL PRODUCT</div>
+                      <div className="font-mono text-sm font-bold mb-1" style={{ color: '#8B6F47' }}>{traceData.uid}</div>
+                      <div className="text-sm font-semibold">{traceData.item.code}</div>
+                      <div className="text-xs text-gray-600">{traceData.item.name}</div>
+                      <div className={`inline-block px-2 py-1 rounded text-xs font-bold mt-2 ${getStatusColor(traceData.status)}`}>
+                        {traceData.status}
                       </div>
                     </div>
-                  ))}
+                  </div>
+                  
+                  {/* Connecting Lines */}
+                  {traceData.components.length > 0 && (
+                    <div className="flex justify-center mb-4">
+                      <div className="w-0.5 h-8" style={{ backgroundColor: '#8B6F47' }}></div>
+                    </div>
+                  )}
+                  
+                  {/* Component Branches */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative">
+                    {traceData.components.map((component, index) => (
+                      <div key={index} className="relative">
+                        {/* Branch Line */}
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0.5 h-4 -mt-4" 
+                             style={{ backgroundColor: '#8B6F47' }}></div>
+                        
+                        {/* Component Card */}
+                        <div className="relative p-4 rounded-lg border-2 hover:shadow-xl transition-all cursor-pointer group"
+                             style={{ borderColor: '#E8DCC4', backgroundColor: '#FFFFFF' }}
+                             onClick={() => {
+                               setSearchUID(component.uid);
+                               searchTrace();
+                             }}>
+                          
+                          {/* Branch Number Badge */}
+                          <div className="absolute -top-3 -left-3 w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-sm"
+                               style={{ backgroundColor: '#8B6F47' }}>
+                            {index + 1}
+                          </div>
+                          
+                          {/* UID and Status */}
+                          <div className="mb-3 pb-3 border-b" style={{ borderColor: '#E8DCC4' }}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-mono text-xs font-bold" style={{ color: '#8B6F47' }}>
+                                {component.uid}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded text-xs font-bold ${getStatusColor(component.qc_status)}`}>
+                                {component.qc_status}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* Component Details */}
+                          <div className="space-y-2 text-sm">
+                            <div>
+                              <p className="text-xs text-gray-500 uppercase">Item</p>
+                              <p className="font-semibold text-gray-800">{component.item_code}</p>
+                              <p className="text-xs text-gray-600">{component.item_name}</p>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-2 pt-2">
+                              <div>
+                                <p className="text-xs text-gray-500">Batch</p>
+                                <p className="font-mono text-xs font-semibold">{component.batch_number}</p>
+                              </div>
+                              
+                              <div>
+                                <p className="text-xs text-gray-500">Received</p>
+                                <p className="text-xs">{new Date(component.received_date).toLocaleDateString()}</p>
+                              </div>
+                            </div>
+                            
+                            {component.vendor_name && (
+                              <div className="pt-2 border-t" style={{ borderColor: '#E8DCC4' }}>
+                                <p className="text-xs text-gray-500">Vendor</p>
+                                <p className="text-xs font-semibold">{component.vendor_name}</p>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Hover Action */}
+                          <div className="mt-3 pt-3 border-t flex items-center justify-center text-xs font-semibold transition-colors"
+                               style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}>
+                            <span className="group-hover:underline">→ Click to trace this component</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Tree Legend */}
+                  <div className="mt-6 p-4 rounded-lg" style={{ backgroundColor: '#FAF8F3' }}>
+                    <div className="flex items-center gap-6 text-xs text-gray-600">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#8B6F47' }}></div>
+                        <span>Component Level</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-0.5" style={{ backgroundColor: '#8B6F47' }}></div>
+                        <span>Assembly Relationship</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold" style={{ color: '#8B6F47' }}>UID</span>
+                        <span>Click to drill down</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

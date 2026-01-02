@@ -2,7 +2,55 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '../../../../lib/api-client';
 import ItemSearch from '../../../components/ItemSearch';
+import DrawingManager from '../../../components/DrawingManager';
+
+const fileToDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.readAsDataURL(file);
+  });
+
+const dataUrlToBlob = (dataUrl: string) => {
+  const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
+  if (!match) return null;
+
+  const mimeType = match[1];
+  const base64Data = match[2];
+  const byteString = atob(base64Data);
+  const byteArray = new Uint8Array(byteString.length);
+  for (let i = 0; i < byteString.length; i++) {
+    byteArray[i] = byteString.charCodeAt(i);
+  }
+
+  return new Blob([byteArray], { type: mimeType });
+};
+
+const openDrawingUrlInNewTab = (url: string) => {
+  try {
+    if (!url) return;
+
+    if (url.startsWith('data:')) {
+      const blob = dataUrlToBlob(url);
+      if (!blob) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      return;
+    }
+
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch (error) {
+    console.error('Error opening drawing:', error);
+    alert('Failed to open drawing');
+  }
+};
 
 interface BOM {
   id: string;
@@ -12,6 +60,7 @@ interface BOM {
   effective_to?: string;
   notes?: string;
   item?: {
+    id?: string;
     code: string;
     name: string;
     type: string;
@@ -25,6 +74,7 @@ interface BOM {
     drawing_url?: string;
     notes?: string;
     item?: {
+      id?: string;
       code: string;
       name: string;
       uom: string;
@@ -77,6 +127,7 @@ export default function BOMPage() {
   const [boms, setBoms] = useState<BOM[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingBomId, setEditingBomId] = useState<string | null>(null);
   const [selectedBom, setSelectedBom] = useState<BOM | null>(null);
   const [showPRModal, setShowPRModal] = useState(false);
   const [prBomId, setPrBomId] = useState<string>('');
@@ -85,6 +136,8 @@ export default function BOMPage() {
   const [showTrailModal, setShowTrailModal] = useState(false);
   const [purchaseTrail, setPurchaseTrail] = useState<PurchaseTrail | null>(null);
   const [loadingTrail, setLoadingTrail] = useState(false);
+  const [showDrawingManager, setShowDrawingManager] = useState(false);
+  const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string } | null>(null);
 
   const [formData, setFormData] = useState({
     itemId: '',
@@ -100,9 +153,12 @@ export default function BOMPage() {
       scrapPercentage: number;
       sequence: number;
       notes: string;
+      drawingUrl: string;
     }>,
   });
   const [availableBOMs, setAvailableBOMs] = useState<BOM[]>([]);
+
+  const isEditMode = Boolean(editingBomId);
 
   useEffect(() => {
     fetchBOMs();
@@ -132,14 +188,8 @@ export default function BOMPage() {
 
   const fetchAvailableBOMs = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://13.205.17.214:4000/api/v1/bom', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setAvailableBOMs(Array.isArray(data) ? data : []);
-      }
+      const data = await apiClient.get('/bom');
+      setAvailableBOMs(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching BOMs:', error);
     }
@@ -148,33 +198,26 @@ export default function BOMPage() {
   const fetchBOMs = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
+      console.log('[BOM] Fetching BOMs...');
       
-      if (!token) {
-        console.error('No token found - user not logged in');
+      const data = await apiClient.get('/bom');
+      console.log('[BOM] BOMs loaded:', data?.length || 0, 'First BOM:', data?.[0]);
+      
+      // Ensure data is an array
+      setBoms(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      console.error('Error fetching BOMs:', error);
+      
+      // Handle 401 Unauthorized - redirect to login
+      if (error.message?.includes('Unauthorized') || error.message?.includes('401')) {
+        console.error('[BOM] Unauthorized - redirecting to login');
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('user');
         router.push('/login');
         return;
       }
       
-      const response = await fetch('http://13.205.17.214:4000/api/v1/bom', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      
-      if (!response.ok) {
-        if (response.status === 401) {
-          console.error('Unauthorized - redirecting to login');
-          localStorage.removeItem('accessToken');
-          router.push('/login');
-          return;
-        }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      // Ensure data is an array
-      setBoms(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Error fetching BOMs:', error);
       setBoms([]); // Set empty array on error
     } finally {
       setLoading(false);
@@ -196,7 +239,6 @@ export default function BOMPage() {
     }
     
     try {
-      const token = localStorage.getItem('accessToken');
       console.log('[BOM] Sending create request...');
       
       // Clean up empty date fields - send null instead of empty string
@@ -205,33 +247,100 @@ export default function BOMPage() {
         effectiveTo: formData.effectiveTo || null,
       };
       
-      const response = await fetch('http://13.205.17.214:4000/api/v1/bom', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(cleanedData),
-      });
-
-      console.log('[BOM] Create response status:', response.status);
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log('[BOM] Create successful:', result);
-        alert('BOM created successfully!');
-        setShowModal(false);
-        fetchBOMs();
-        resetForm();
-      } else {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        console.error('[BOM] Create failed:', response.status, errorData);
-        alert(`Failed to create BOM: ${errorData.message || response.statusText}`);
-      }
+      const result = await apiClient.post('/bom', cleanedData);
+      console.log('[BOM] Create successful:', result);
+      alert('BOM created successfully!');
+      setShowModal(false);
+      fetchBOMs();
+      resetForm();
     } catch (error) {
       console.error('[BOM] Create error:', error);
       alert(`Error creating BOM: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  };
+
+  const handleUpdateBOM = async () => {
+    if (!editingBomId) return;
+
+    // Validation
+    if (!formData.itemId) {
+      alert('Please select an item for the BOM');
+      return;
+    }
+
+    if (formData.items.length === 0) {
+      alert('Please add at least one component to the BOM');
+      return;
+    }
+
+    try {
+      const cleanedData = {
+        ...formData,
+        effectiveTo: formData.effectiveTo || null,
+      };
+
+      await apiClient.put(`/bom/${editingBomId}`, cleanedData);
+      alert('✅ BOM updated successfully!');
+      setShowModal(false);
+      setEditingBomId(null);
+      resetForm();
+      await fetchBOMs();
+    } catch (error) {
+      console.error('[BOM] Update error:', error);
+      alert(`Error updating BOM: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const openEditModal = (bom: BOM) => {
+    const toDateOnly = (value?: string) => {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '';
+      return date.toISOString().slice(0, 10);
+    };
+
+    // Get the item ID - try item_id first, then item.id
+    const itemId = (bom as any).item_id || bom.item?.id || '';
+    
+    console.log('[BOM Edit] Opening edit modal for BOM:', {
+      bomId: bom.id,
+      item_id_direct: (bom as any).item_id,
+      item_obj_id: bom.item?.id,
+      item_code: bom.item?.code,
+      finalItemId: itemId
+    });
+
+    setSelectedBom(bom);
+
+    setEditingBomId(bom.id);
+    setFormData({
+      itemId: itemId,
+      version: bom.version || 1,
+      effectiveFrom: toDateOnly(bom.effective_from) || new Date().toISOString().slice(0, 10),
+      effectiveTo: toDateOnly(bom.effective_to),
+      notes: bom.notes || '',
+      items:
+        (bom.bom_items || []).map((bi, index) => {
+          // Determine component type from the structure
+          const componentType = bi.component_type || (bi.child_bom?.id || (bi as any).child_bom_id ? 'BOM' : 'ITEM');
+          
+          return {
+            componentType: componentType,
+            itemId: componentType === 'ITEM' ? (bi.item?.id || (bi as any).item_id || '') : '',
+            childBomId: componentType === 'BOM' ? (bi.child_bom?.id || (bi as any).child_bom_id || '') : '',
+            quantity: typeof bi.quantity === 'number' ? bi.quantity : Number(bi.quantity) || 0,
+            scrapPercentage:
+              typeof bi.scrap_percentage === 'number'
+                ? bi.scrap_percentage
+                : Number(bi.scrap_percentage) || 0,
+            sequence: typeof bi.sequence === 'number' ? bi.sequence : Number(bi.sequence) || index + 1,
+            notes: bi.notes || '',
+            drawingUrl: bi.drawing_url || '',
+          };
+        }) || [],
+    });
+
+    setShowModal(true);
   };
 
   const handleGeneratePR = async (bomId: string) => {
@@ -250,18 +359,9 @@ export default function BOMPage() {
     }
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/bom/${prBomId}/generate-pr`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ quantity: Number(prQuantity) }),
+      const data = await apiClient.post(`/bom/${prBomId}/generate-pr`, { 
+        quantity: Number(prQuantity) 
       });
-
-      console.log('[BOM] PR response status:', response.status);
-      const data = await response.json();
       console.log('[BOM] PR response data:', data);
       
       // Store stock status for display
@@ -269,25 +369,20 @@ export default function BOMPage() {
         setPrStockStatus(data.stockStatus);
       }
       
-      if (response.ok) {
-        if (data.itemsToOrder && data.itemsToOrder.length > 0) {
-          // Show success with stock details - don't close modal yet
-          alert(
-            `✅ Purchase Requisition ${data.prNumber} generated!\n\n` +
-            `Items to order (${data.itemsToOrder.length}):\n${data.itemsToOrder.map((item: any) => 
-              `  • ${item.itemCode} - ${item.itemName}: ${item.quantity} units`
-            ).join('\n')}\n\n` +
-            `Check the detailed stock status below.`
+      if (data.itemsToOrder && data.itemsToOrder.length > 0) {
+        // Show success with stock details - don't close modal yet
+        alert(
+          `✅ Purchase Requisition ${data.prNumber} generated!\n\n` +
+          `Items to order (${data.itemsToOrder.length}):\n${data.itemsToOrder.map((item: any) => 
+            `  • ${item.itemCode} - ${item.itemName}: ${item.quantity} units`
+          ).join('\n')}\n\n` +
+          `Check the detailed stock status below.`
           );
           // Keep modal open to show stock status
         } else {
           alert('✅ All items are in stock! No PR needed.\n\nCheck the detailed stock status below.');
           // Keep modal open to show stock status
         }
-      } else {
-        alert(`❌ Error: ${data.message || response.statusText}`);
-        setShowPRModal(false);
-      }
     } catch (error) {
       console.error('[BOM] Error generating PR:', error);
       alert('❌ Failed to generate PR. Please try again.');
@@ -302,20 +397,10 @@ export default function BOMPage() {
     }
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/bom/${bomId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        alert('✅ BOM deleted successfully!');
-        setSelectedBom(null);
-        fetchBOMs();
-      } else {
-        const data = await response.json();
-        alert(`❌ Error: ${data.message || response.statusText}`);
-      }
+      await apiClient.delete(`/bom/${bomId}`);
+      alert('✅ BOM deleted successfully!');
+      setSelectedBom(null);
+      fetchBOMs();
     } catch (error) {
       console.error('[BOM] Error deleting:', error);
       alert('❌ Failed to delete BOM.');
@@ -325,19 +410,9 @@ export default function BOMPage() {
   const fetchPurchaseTrail = async (uid: string) => {
     try {
       setLoadingTrail(true);
-      const token = localStorage.getItem('accessToken');
-      
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/uid/${uid}/purchase-trail`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setPurchaseTrail(data);
-        setShowTrailModal(true);
-      } else {
-        alert('Purchase trail not found for this UID');
-      }
+      const data = await apiClient.get(`/uid/${uid}/purchase-trail`);
+      setPurchaseTrail(data);
+      setShowTrailModal(true);
     } catch (error) {
       console.error('Error fetching purchase trail:', error);
       alert('Failed to fetch purchase trail');
@@ -369,9 +444,40 @@ export default function BOMPage() {
           scrapPercentage: 0,
           sequence: formData.items.length + 1,
           notes: '',
+          drawingUrl: '',
         },
       ],
     });
+  };
+
+  const handleDrawingFileSelect = async (index: number, file?: File | null) => {
+    if (!file) return;
+
+    const validTypes = [
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload PNG, JPG, PDF, DOC, or DOCX files only');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      handleUpdateItem(index, 'drawingUrl', dataUrl);
+    } catch (error) {
+      console.error('Error reading drawing file:', error);
+      alert('Failed to attach drawing');
+    }
   };
 
   const handleUpdateItem = (index: number, field: string, value: any) => {
@@ -414,7 +520,11 @@ export default function BOMPage() {
             <p className="text-amber-700">Define product structure and generate purchase requisitions</p>
           </div>
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => {
+              setEditingBomId(null);
+              resetForm();
+              setShowModal(true);
+            }}
             className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold"
           >
             + Create BOM
@@ -496,6 +606,14 @@ export default function BOMPage() {
                     View Details
                   </button>
                   <button
+                    onClick={() => {
+                      openEditModal(bom);
+                    }}
+                    className="flex-1 bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 text-sm"
+                  >
+                    Edit
+                  </button>
+                  <button
                     onClick={() => router.push(`/dashboard/bom/${bom.id}/routing`)}
                     className="flex-1 bg-blue-100 text-blue-700 px-4 py-2 rounded hover:bg-blue-200 text-sm"
                   >
@@ -522,7 +640,9 @@ export default function BOMPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-2xl font-bold text-gray-900">Create Bill of Materials</h2>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {isEditMode ? 'Edit Bill of Materials' : 'Create Bill of Materials'}
+              </h2>
             </div>
 
             <div className="p-6 space-y-6">
@@ -552,9 +672,20 @@ export default function BOMPage() {
                   </label>
                   <ItemSearch
                     value={formData.itemId}
+                    initialItem={
+                      selectedBom?.item?.id && selectedBom.item.id === formData.itemId
+                        ? { id: selectedBom.item.id, code: selectedBom.item.code, name: selectedBom.item.name }
+                        : null
+                    }
                     onSelect={(item) => setFormData({ ...formData, itemId: item.id })}
                     placeholder="Search by item name or code..."
+                    disabled={isEditMode}
                   />
+                  {isEditMode ? (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Finished product cannot be changed in edit mode.
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Version</label>
@@ -563,7 +694,11 @@ export default function BOMPage() {
                     value={formData.version}
                     onChange={(e) => setFormData({ ...formData, version: parseInt(e.target.value) })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    disabled={isEditMode}
                   />
+                  {isEditMode ? (
+                    <p className="text-xs text-gray-500 mt-1">Version cannot be changed in edit mode.</p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Effective From</label>
@@ -633,6 +768,16 @@ export default function BOMPage() {
                             {item.componentType === 'ITEM' ? (
                               <ItemSearch
                                 value={item.itemId}
+                                initialItem={
+                                  selectedBom?.bom_items
+                                    ?.map((bi) => {
+                                      const resolvedId = bi.item?.id || (bi as any).item_id;
+                                      if (!resolvedId || resolvedId !== item.itemId) return null;
+                                      if (!bi.item?.code || !bi.item?.name) return null;
+                                      return { id: resolvedId, code: bi.item.code, name: bi.item.name };
+                                    })
+                                    .find(Boolean) || null
+                                }
                                 onSelect={(selectedItem) => handleUpdateItem(index, 'itemId', selectedItem.id)}
                                 placeholder="Search item..."
                                 className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
@@ -689,8 +834,52 @@ export default function BOMPage() {
                             placeholder="Specifications / Notes..."
                           />
                         </div>
+
+                        <div className="mt-3">
+                          <label className="text-xs text-gray-600 font-medium block mb-1">Drawing (optional)</label>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <input
+                              type="text"
+                              value={item.drawingUrl || ''}
+                              onChange={(e) => handleUpdateItem(index, 'drawingUrl', e.target.value)}
+                              className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm"
+                              placeholder="Paste drawing URL (or use Upload)"
+                            />
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/jpg,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  await handleDrawingFileSelect(index, file);
+                                  e.target.value = '';
+                                }}
+                                className="text-sm"
+                              />
+                              {item.drawingUrl ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openDrawingUrlInNewTab(item.drawingUrl)}
+                                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                >
+                                  View
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     ))}
+                  </div>
+                )}
+                {formData.items.length > 0 && (
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      onClick={handleAddItem}
+                      className="px-6 py-2 text-amber-600 hover:text-amber-800 font-medium border-2 border-dashed border-amber-300 hover:border-amber-500 rounded-lg transition-colors"
+                    >
+                      + Add Another Component
+                    </button>
                   </div>
                 )}
               </div>
@@ -711,6 +900,7 @@ export default function BOMPage() {
               <button
                 onClick={() => {
                   setShowModal(false);
+                  setEditingBomId(null);
                   resetForm();
                 }}
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -718,10 +908,10 @@ export default function BOMPage() {
                 Cancel
               </button>
               <button
-                onClick={handleCreateBOM}
+                onClick={isEditMode ? handleUpdateBOM : handleCreateBOM}
                 className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
               >
-                Create BOM
+                {isEditMode ? 'Save Changes' : 'Create BOM'}
               </button>
             </div>
           </div>
@@ -982,18 +1172,37 @@ export default function BOMPage() {
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">{item.notes || '-'}</td>
                             <td className="px-4 py-3 text-center">
-                              {item.drawing_url ? (
-                                <a 
-                                  href={item.drawing_url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800"
-                                >
-                                  📎 View
-                                </a>
-                              ) : (
-                                <span className="text-gray-400">-</span>
-                              )}
+                              <div className="flex items-center justify-center gap-3">
+                                {item.drawing_url ? (
+                                  <a 
+                                    href={item.drawing_url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800"
+                                  >
+                                    📎 View
+                                  </a>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
+
+                                {item.component_type === 'ITEM' && item.item?.id && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedItemForDrawing({
+                                        id: item.item!.id!,
+                                        code: item.item?.code || '',
+                                        name: item.item?.name || '',
+                                      });
+                                      setShowDrawingManager(true);
+                                    }}
+                                    className="text-amber-700 hover:text-amber-900 text-sm font-medium"
+                                  >
+                                    Manage
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1014,6 +1223,15 @@ export default function BOMPage() {
                 Delete BOM
               </button>
               <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    openEditModal(selectedBom);
+                    setSelectedBom(null);
+                  }}
+                  className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                >
+                  Edit BOM
+                </button>
                 <button
                   onClick={() => setSelectedBom(null)}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -1147,6 +1365,19 @@ export default function BOMPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Drawing Manager Modal (BOM component item drawings) */}
+      {showDrawingManager && selectedItemForDrawing && (
+        <DrawingManager
+          itemId={selectedItemForDrawing.id}
+          itemCode={selectedItemForDrawing.code}
+          itemName={selectedItemForDrawing.name}
+          onClose={() => {
+            setShowDrawingManager(false);
+            setSelectedItemForDrawing(null);
+          }}
+        />
       )}
     </div>
   );

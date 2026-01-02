@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import { EmailConfigService } from './email-config.service';
 
 @Injectable()
 export class EmailService {
   private transporter: nodemailer.Transporter;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private emailConfig: EmailConfigService,
+  ) {
     // Initialize email transporter
     this.transporter = nodemailer.createTransport({
       host: this.configService.get('SMTP_HOST', 'smtp.gmail.com'),
@@ -21,7 +25,7 @@ export class EmailService {
 
   async sendRFQ(to: string, rfqData: any) {
     const mailOptions = {
-      from: `"${this.configService.get('COMPANY_NAME', 'SAK Solutions')}" <${this.configService.get('SMTP_USER')}>`,
+      from: this.emailConfig.getFromAddress('purchase'),
       to,
       subject: `Request for Quotation - ${rfqData.rfq_number}`,
       html: this.generateRFQTemplate(rfqData),
@@ -33,7 +37,7 @@ export class EmailService {
 
   async sendPO(to: string, poData: any) {
     const mailOptions = {
-      from: `"${this.configService.get('COMPANY_NAME', 'SAK Solutions')}" <${this.configService.get('SMTP_USER')}>`,
+      from: this.emailConfig.getFromAddress('purchase'),
       to,
       subject: `Purchase Order - ${poData.po_number}`,
       html: this.generatePOTemplate(poData),
@@ -45,7 +49,7 @@ export class EmailService {
 
   async sendPOTrackingReminder(to: string, poData: any) {
     const mailOptions = {
-      from: `"${this.configService.get('COMPANY_NAME', 'SAK Solutions')}" <${this.configService.get('SMTP_USER')}>`,
+      from: this.emailConfig.getFromAddress('purchase'),
       to,
       subject: `Tracking Information Request - PO ${poData.po_number}`,
       html: this.generateTrackingReminderTemplate(poData),
@@ -56,7 +60,7 @@ export class EmailService {
 
   async sendSO(to: string, soData: any) {
     const mailOptions = {
-      from: `"${this.configService.get('COMPANY_NAME', 'SAK Solutions')}" <${this.configService.get('SMTP_USER')}>`,
+      from: this.emailConfig.getFromAddress('sales'),
       to,
       subject: `Sales Order Confirmation - ${soData.so_number}`,
       html: this.generateSOTemplate(soData),
@@ -68,7 +72,7 @@ export class EmailService {
 
   async sendDispatchNote(to: string, dispatchData: any) {
     const mailOptions = {
-      from: `"${this.configService.get('COMPANY_NAME', 'SAK Solutions')}" <${this.configService.get('SMTP_USER')}>`,
+      from: this.emailConfig.getFromAddress('sales'),
       to,
       subject: `Dispatch Note - ${dispatchData.dispatch_number}`,
       html: this.generateDispatchTemplate(dispatchData),
@@ -520,15 +524,108 @@ export class EmailService {
   }
 
   // Generic email sending method
-  async sendEmail(options: { to: string; subject: string; html: string; attachments?: any[] }) {
+  async sendEmail(options: { 
+    to: string; 
+    subject: string; 
+    html: string; 
+    attachments?: any[];
+    from?: 'admin' | 'sales' | 'support' | 'technical' | 'purchase' | 'hr' | 'noreply';
+  }) {
+    const fromAddress = options.from 
+      ? this.emailConfig.getFromAddress(options.from)
+      : this.emailConfig.getFromAddress('noreply');
+
     const mailOptions = {
-      from: `"${this.configService.get('COMPANY_NAME', 'SAK Solutions')}" <${this.configService.get('SMTP_USER')}>`,
+      from: fromAddress,
       to: options.to,
       subject: options.subject,
-      html: options.html,
+      html: options.html + this.emailConfig.getEmailSignature(),
       attachments: options.attachments || [],
     };
 
     return this.sendMail(mailOptions);
+  }
+
+  async sendLowStockAlert(to: string, lowStockItems: any[]) {
+    const mailOptions = {
+      from: this.emailConfig.getFromAddress('noreply'),
+      to,
+      subject: `⚠️ Low Stock Alert - ${lowStockItems.length} Items Need Attention`,
+      html: this.generateLowStockTemplate(lowStockItems),
+    };
+
+    return this.sendMail(mailOptions);
+  }
+
+  private generateLowStockTemplate(lowStockItems: any[]): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .header { background: #DC2626; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; }
+            .alert-box { background: #FEF2F2; border-left: 4px solid #DC2626; padding: 15px; margin: 15px 0; }
+            .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+            .table th, .table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+            .table th { background: #f4f4f4; font-weight: bold; }
+            .critical { background: #FEE2E2; color: #991B1B; font-weight: bold; }
+            .high { background: #FED7AA; color: #9A3412; }
+            .footer { background: #f4f4f4; padding: 15px; text-align: center; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>⚠️ Low Stock Alert</h1>
+            <p>${lowStockItems.length} items require immediate attention</p>
+          </div>
+          <div class="content">
+            <div class="alert-box">
+              <strong>Action Required:</strong> The following items have reached or fallen below their reorder levels. Please take immediate action to replenish stock.
+            </div>
+            
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Item Code</th>
+                  <th>Item Name</th>
+                  <th>Warehouse</th>
+                  <th>Current Stock</th>
+                  <th>Reorder Level</th>
+                  <th>Severity</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${lowStockItems.map((item: any) => `
+                  <tr class="${item.severity === 'CRITICAL' ? 'critical' : item.severity === 'HIGH' ? 'high' : ''}">
+                    <td>${item.items?.item_code || '-'}</td>
+                    <td>${item.items?.item_name || '-'}</td>
+                    <td>${item.warehouses?.warehouse_name || '-'}</td>
+                    <td>${item.current_quantity || 0}</td>
+                    <td>${item.threshold_quantity || 0}</td>
+                    <td>${item.severity}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            
+            <p><strong>Recommended Actions:</strong></p>
+            <ul>
+              <li>Review Purchase Requisitions for these items</li>
+              <li>Check pending Purchase Orders</li>
+              <li>Contact vendors for urgent requirements</li>
+              <li>Consider alternative suppliers if needed</li>
+            </ul>
+            
+            <p>Access the ERP system to view detailed information and take action.</p>
+          </div>
+          <div class="footer">
+            <p>This is an automated alert from ${this.configService.get('COMPANY_NAME', 'SAK Solutions')} ERP System</p>
+            <p>Generated at ${new Date().toLocaleString()}</p>
+          </div>
+        </body>
+      </html>
+    `;
   }
 }

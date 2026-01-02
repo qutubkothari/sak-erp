@@ -3,7 +3,29 @@
  * Handles all HTTP requests to the backend API
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://13.205.17.214:4000/api/v1';
+const DEFAULT_BROWSER_API_BASE_URL = '/api/v1';
+const DEFAULT_SERVER_API_BASE_URL =
+  process.env.INTERNAL_API_URL || 'http://localhost:4000/api/v1';
+
+function normalizeBaseUrl(value: string): string {
+  // Trim whitespace and remove a trailing slash to avoid double slashes when joining.
+  const trimmed = value.trim();
+  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+}
+
+function getApiBaseUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_API_URL;
+  if (raw && raw.trim().length > 0) {
+    return normalizeBaseUrl(raw);
+  }
+
+  if (typeof window !== 'undefined') {
+    // Use a relative URL so the Next.js server can proxy via rewrites.
+    return DEFAULT_BROWSER_API_BASE_URL;
+  }
+
+  return normalizeBaseUrl(DEFAULT_SERVER_API_BASE_URL);
+}
 
 interface ApiResponse<T = any> {
   success: boolean;
@@ -30,9 +52,23 @@ interface LoginResponse {
   refreshToken: string;
   user: {
     id: string;
-    name: string;
     email: string;
-    roles: string[];
+    firstName?: string;
+    lastName?: string;
+    tenantId?: string;
+    isActive?: boolean;
+    role?: {
+      id: string;
+      name: string;
+      permissions?: any[];
+    };
+    roles?: Array<{
+      role: {
+        id: string;
+        name: string;
+        permissions?: any[];
+      };
+    }>;
   };
 }
 
@@ -43,8 +79,8 @@ interface ResetPasswordRequestData {
 class ApiClient {
   private baseUrl: string;
 
-  constructor(baseUrl: string = API_BASE_URL) {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl?: string) {
+    this.baseUrl = normalizeBaseUrl(baseUrl ?? getApiBaseUrl());
   }
 
   /**
@@ -56,10 +92,15 @@ class ApiClient {
   ): Promise<ApiResponse<T>> {
     try {
       const url = `${this.baseUrl}${endpoint}`;
-      
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
+
+      const isFormData =
+        typeof FormData !== 'undefined' && options.body instanceof FormData;
+
+      const headers: Record<string, string> = {};
+
+      if (!isFormData) {
+        headers['Content-Type'] = 'application/json';
+      }
 
       // Merge existing headers
       if (options.headers) {
@@ -128,6 +169,7 @@ class ApiClient {
     localStorage.removeItem('refreshToken');
     // Clear any cached user data to prevent tenant data leakage
     localStorage.removeItem('user');
+    localStorage.removeItem('userId');
     localStorage.removeItem('tenant');
     localStorage.removeItem('tenantId');
   }
@@ -166,6 +208,16 @@ class ApiClient {
 
     if (response.success && response.data) {
       this.saveTokens(response.data.accessToken, response.data.refreshToken);
+
+      // Persist user for role-based UI and employee self-service mapping
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('user', JSON.stringify(response.data.user));
+          localStorage.setItem('userId', response.data.user.id);
+        } catch {
+          // ignore storage errors
+        }
+      }
     }
 
     return response;
@@ -268,6 +320,20 @@ class ApiClient {
     const response = await this.request<T>(endpoint, {
       method: 'POST',
       body: data ? JSON.stringify(data) : undefined,
+    });
+    if (!response.success) {
+      throw new Error(response.error || 'Request failed');
+    }
+    return response.data as T;
+  }
+
+  /**
+   * Generic multipart/form-data POST request
+   */
+  async postForm<T = any>(endpoint: string, formData: FormData): Promise<T> {
+    const response = await this.request<T>(endpoint, {
+      method: 'POST',
+      body: formData,
     });
     if (!response.success) {
       throw new Error(response.error || 'Request failed');

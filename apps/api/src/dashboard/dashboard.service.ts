@@ -41,11 +41,19 @@ export class DashboardService {
       .eq('tenant_id', tenantId)
       .eq('status', 'READY_TO_SHIP');
 
+    // Get low stock alerts count
+    const { count: lowStockCount } = await this.supabase
+      .from('inventory_alerts')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .eq('acknowledged', false);
+
     return {
       activeOrders: activeOrders || 0,
       pendingPOs: pendingPOs || 0,
       inProduction: inProduction || 0,
       readyToShip: readyToShip || 0,
+      lowStockCount: lowStockCount || 0,
     };
   }
 }

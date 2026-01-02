@@ -93,6 +93,29 @@ export class InventoryController {
     return this.inventoryService.acknowledgeAlert(req, alertId);
   }
 
+  @Post('alerts/send-email')
+  async sendLowStockEmail(@Request() req: any, @Body() emailData: { recipientEmail: string }) {
+    return this.inventoryService.sendLowStockEmail(req, emailData.recipientEmail);
+  }
+
+  @Post('alerts/check-low-stock')
+  async checkAllLowStock(@Request() req: any) {
+    return this.inventoryService.checkAllLowStock(req);
+  }
+
+  @Post('alerts/check-job-orders')
+  async checkJobOrderAlerts(@Request() req: any) {
+    try {
+      console.log('[Controller] checkJobOrderAlerts called');
+      const result = await this.inventoryService.checkJobOrderAlerts(req);
+      console.log('[Controller] checkJobOrderAlerts result:', result);
+      return result;
+    } catch (error) {
+      console.error('[Controller] checkJobOrderAlerts error:', error);
+      throw error;
+    }
+  }
+
   @Delete('alerts/:id')
   async deleteAlert(@Request() req: any, @Param('id') alertId: string) {
     return this.inventoryService.deleteAlert(req, alertId);
@@ -151,7 +174,8 @@ export class InventoryController {
     @Param('id') itemId: string,
     @Body() drawingData: any
   ) {
-    return this.itemsService.uploadDrawing(req.user.tenantId, req.user.sub, itemId, drawingData);
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    return this.itemsService.uploadDrawing(req.user.tenantId, userId, itemId, drawingData);
   }
 
   @Put('items/:id/drawings/:drawingId')

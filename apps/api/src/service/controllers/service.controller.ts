@@ -1,4 +1,18 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Request,
+  UseInterceptors,
+  UploadedFiles,
+} from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { ServiceService } from '../services/service.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
@@ -16,6 +30,28 @@ export class ServiceController {
       req.user.userId,
       body,
     );
+  }
+
+  @Post('uploads')
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB
+      },
+    }),
+  )
+  async uploadServiceAttachments(
+    @Request() req: any,
+    @UploadedFiles() files: Array<Express.Multer.File>,
+  ) {
+    const urls = await this.serviceService.uploadServiceAttachments(
+      req.user.tenantId,
+      req.user.userId,
+      files,
+    );
+
+    return { urls };
   }
 
   @Get('tickets')

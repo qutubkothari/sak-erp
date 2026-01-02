@@ -1,12 +1,13 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Request } from 'express';
+import { EmailService } from '../../email/email.service';
 
 @Injectable()
 export class InventoryService {
   private supabase: SupabaseClient;
 
-  constructor() {
+  constructor(private emailService: EmailService) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_KEY!
@@ -19,7 +20,7 @@ export class InventoryService {
 
     // Get stock entries first
     let query = this.supabase
-      .from('stock_entries')
+      .from('inventory_stock')
       .select('*')
       .eq('tenant_id', tenantId);
 
@@ -243,46 +244,20 @@ export class InventoryService {
     quantityChange: number,
     category?: string
   ) {
-    
     const { tenantId } = req.user as any;
 
-    // Get current stock
-    const { data: currentStock } = await this.supabase
-      .from('stock_entries')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .eq('item_id', itemId)
-      .eq('warehouse_id', warehouseId)
-      .maybeSingle();
+    const { error } = await this.supabase.rpc('adjust_inventory_stock', {
+      p_tenant_id: tenantId,
+      p_item_id: itemId,
+      p_warehouse_id: warehouseId,
+      p_location_id: locationId,
+      p_quantity_change: quantityChange,
+      p_category: category || 'RAW_MATERIAL',
+    });
 
-    if (currentStock) {
-      // Update existing stock
-      const newQuantity = parseFloat(currentStock.quantity) + quantityChange;
-      const newAvailable = parseFloat(currentStock.available_quantity) + quantityChange;
-      await this.supabase
-        .from('stock_entries')
-        .update({
-          quantity: newQuantity,
-          available_quantity: newAvailable,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', currentStock.id);
-    } else {
-      // Create new stock record (for receipts)
-      if (quantityChange > 0) {
-        await this.supabase.from('stock_entries').insert({
-          tenant_id: tenantId,
-          item_id: itemId,
-          warehouse_id: warehouseId,
-          quantity: quantityChange,
-          available_quantity: quantityChange,
-          allocated_quantity: 0,
-          metadata: {
-            category: category || 'RAW_MATERIAL',
-            created_from: 'STOCK_MOVEMENT'
-          }
-        });
-      }
+    if (error) {
+      console.error('Error in adjustStock RPC call:', error);
+      throw new BadRequestException('Failed to adjust stock levels.');
     }
   }
 
@@ -405,15 +380,21 @@ export class InventoryService {
     
     const { tenantId } = req.user as any;
 
+    // Get stock and item details (need item's reorder_level)
     const { data: stock } = await this.supabase
       .from('inventory_stock')
-      .select('*')
+      .select('*, items!inner(reorder_level)')
       .eq('tenant_id', tenantId)
       .eq('item_id', itemId)
       .eq('warehouse_id', warehouseId)
-      .single();
+      .maybeSingle();
 
-    if (stock && parseFloat(stock.available_quantity) <= parseFloat(stock.reorder_point)) {
+    if (!stock || !stock.items) return;
+
+    const reorderLevel = stock.items.reorder_level || 0;
+    const availableQty = parseFloat(stock.available_quantity) || 0;
+
+    if (reorderLevel > 0 && availableQty <= reorderLevel) {
       // Check if alert already exists
       const { data: existingAlert } = await this.supabase
         .from('inventory_alerts')
@@ -431,12 +412,192 @@ export class InventoryService {
           alert_type: 'LOW_STOCK',
           item_id: itemId,
           warehouse_id: warehouseId,
-          current_quantity: stock.available_quantity,
-          threshold_quantity: stock.reorder_point,
-          message: `Low stock alert: Item ${itemId} - Available: ${stock.available_quantity}, Reorder Point: ${stock.reorder_point}`,
-          severity: parseFloat(stock.available_quantity) <= 0 ? 'CRITICAL' : 'HIGH',
+          current_quantity: availableQty,
+          threshold_quantity: reorderLevel,
+          message: `Low stock alert: Available quantity (${availableQty}) is at or below reorder level (${reorderLevel})`,
+          severity: availableQty <= 0 ? 'CRITICAL' : 'HIGH',
         });
       }
+    }
+  }
+
+  // Check all items for low stock and create alerts
+  async checkAllLowStock(req: Request) {
+    const { tenantId } = req.user as any;
+
+    // Get all items with reorder levels set
+    const { data: items, error: itemsError } = await this.supabase
+      .from('items')
+      .select('id, code, name, reorder_level')
+      .eq('tenant_id', tenantId)
+      .gt('reorder_level', 0);
+
+    if (itemsError) throw new BadRequestException(itemsError.message);
+
+    if (!items || items.length === 0) {
+      return {
+        success: true,
+        itemsChecked: 0,
+        alertsCreated: 0,
+        message: 'No items found with reorder levels set.'
+      };
+    }
+
+    let alertsCreated = 0;
+    let itemsChecked = 0;
+
+    // Check stock for each item
+    for (const item of items) {
+      const { data: stockRecords } = await this.supabase
+        .from('inventory_stock')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', item.id);
+
+      if (stockRecords && stockRecords.length > 0) {
+        for (const stock of stockRecords) {
+          itemsChecked++;
+          const availableQty = parseFloat(stock.available_quantity) || 0;
+
+          if (availableQty <= item.reorder_level) {
+            // Check if alert already exists
+            const { data: existingAlert } = await this.supabase
+              .from('inventory_alerts')
+              .select('id')
+              .eq('tenant_id', tenantId)
+              .eq('item_id', item.id)
+              .eq('warehouse_id', stock.warehouse_id)
+              .eq('alert_type', 'LOW_STOCK')
+              .eq('acknowledged', false)
+              .maybeSingle();
+
+            if (!existingAlert) {
+              await this.supabase.from('inventory_alerts').insert({
+                tenant_id: tenantId,
+                alert_type: 'LOW_STOCK',
+                item_id: item.id,
+                warehouse_id: stock.warehouse_id,
+                current_quantity: availableQty,
+                threshold_quantity: item.reorder_level,
+                message: `Low stock: ${item.code} - ${item.name} (Available: ${availableQty}, Reorder: ${item.reorder_level})`,
+                severity: availableQty <= 0 ? 'CRITICAL' : 'HIGH',
+              });
+              alertsCreated++;
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      success: true,
+      itemsChecked,
+      alertsCreated,
+      message: `Checked ${itemsChecked} stock records from ${items.length} items with reorder levels. Created ${alertsCreated} new alerts.`
+    };
+  }
+
+  // Check for overdue and approaching due job orders
+  async checkJobOrderAlerts(req: Request) {
+    try {
+      console.log('[checkJobOrderAlerts] Starting job order alerts check');
+      const { tenantId } = req.user as any;
+      console.log('[checkJobOrderAlerts] Tenant ID:', tenantId);
+
+      const today = new Date();
+      const threeDaysFromNow = new Date();
+      threeDaysFromNow.setDate(today.getDate() + 3);
+
+      // Get all active job orders
+      console.log('[checkJobOrderAlerts] Querying production_job_orders table...');
+      const { data: jobOrders, error } = await this.supabase
+        .from('production_job_orders')
+        .select('id, job_order_number, item_code, item_name, item_id, end_date, status')
+        .eq('tenant_id', tenantId)
+        .in('status', ['DRAFT', 'SCHEDULED', 'IN_PROGRESS']);
+
+      if (error) {
+        console.error('[checkJobOrderAlerts] Database error:', error);
+        throw new BadRequestException(`Failed to fetch job orders: ${error.message}`);
+      }
+
+      console.log('[checkJobOrderAlerts] Found', jobOrders?.length || 0, 'active job orders');
+
+    let alertsCreated = 0;
+    const todayStr = today.toISOString().split('T')[0];
+
+    for (const job of jobOrders || []) {
+      if (!job.end_date) continue;
+
+      const endDate = new Date(job.end_date);
+
+      // Check if overdue
+      if (endDate < today && job.status !== 'COMPLETED') {
+        const { data: existingAlert } = await this.supabase
+          .from('inventory_alerts')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('alert_type', 'JOB_OVERDUE')
+          .eq('item_id', job.item_id)
+          .ilike('message', `%${job.job_order_number}%`)
+          .eq('acknowledged', false)
+          .maybeSingle();
+
+        if (!existingAlert) {
+          const daysOverdue = Math.floor((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
+          await this.supabase.from('inventory_alerts').insert({
+            tenant_id: tenantId,
+            alert_type: 'JOB_OVERDUE',
+            item_id: job.item_id,
+            warehouse_id: null,
+            current_quantity: null,
+            threshold_quantity: null,
+            message: `⚠️ Job Order ${job.job_order_number} is OVERDUE by ${daysOverdue} day(s) | Item: ${job.item_code} - ${job.item_name} | Due: ${job.end_date}`,
+            severity: 'CRITICAL',
+          });
+          alertsCreated++;
+        }
+      }
+      // Check if approaching due date (within 3 days)
+      else if (endDate >= today && endDate <= threeDaysFromNow) {
+        const { data: existingAlert } = await this.supabase
+          .from('inventory_alerts')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('alert_type', 'JOB_DUE_SOON')
+          .eq('item_id', job.item_id)
+          .ilike('message', `%${job.job_order_number}%`)
+          .eq('acknowledged', false)
+          .maybeSingle();
+
+        if (!existingAlert) {
+          const daysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          await this.supabase.from('inventory_alerts').insert({
+            tenant_id: tenantId,
+            alert_type: 'JOB_DUE_SOON',
+            item_id: job.item_id,
+            warehouse_id: null,
+            current_quantity: null,
+            threshold_quantity: null,
+            message: `📅 Job Order ${job.job_order_number} due in ${daysRemaining} day(s) | Item: ${job.item_code} - ${job.item_name} | Due: ${job.end_date}`,
+            severity: daysRemaining === 0 ? 'HIGH' : 'MEDIUM',
+          });
+          alertsCreated++;
+        }
+      }
+    }
+
+      console.log('[checkJobOrderAlerts] Successfully created', alertsCreated, 'new alerts');
+      return {
+        success: true,
+        jobOrdersChecked: jobOrders?.length || 0,
+        alertsCreated,
+        message: `Checked ${jobOrders?.length || 0} active job orders. Created ${alertsCreated} new alerts.`
+      };
+    } catch (error) {
+      console.error('[checkJobOrderAlerts] Error occurred:', error);
+      console.error('[checkJobOrderAlerts] Error stack:', error.stack);
+      throw error;
     }
   }
 
@@ -519,6 +680,31 @@ export class InventoryService {
 
     if (error) throw new BadRequestException(error.message);
     return { message: 'Alert acknowledged successfully' };
+  }
+
+  // Send low stock email alert
+  async sendLowStockEmail(req: Request, recipientEmail: string) {
+    
+    const { tenantId } = req.user as any;
+
+    // Get all unacknowledged low stock alerts
+    const alerts = await this.getAlerts(req, false);
+    const lowStockAlerts = alerts.filter((alert: any) => alert.alert_type === 'LOW_STOCK');
+
+    if (lowStockAlerts.length === 0) {
+      throw new BadRequestException('No low stock alerts to send');
+    }
+
+    try {
+      await this.emailService.sendLowStockAlert(recipientEmail, lowStockAlerts);
+      return { 
+        success: true, 
+        message: `Low stock alert email sent to ${recipientEmail}`,
+        itemCount: lowStockAlerts.length 
+      };
+    } catch (error) {
+      throw new BadRequestException(`Failed to send email: ${error.message}`);
+    }
   }
 
   // Demo inventory management
@@ -765,7 +951,7 @@ export class InventoryService {
     const { tenantId } = req.user as any;
 
     const { data, error } = await this.supabase
-      .from('stock_entries')
+      .from('inventory_stock')
       .delete()
       .eq('id', id)
       .eq('tenant_id', tenantId)

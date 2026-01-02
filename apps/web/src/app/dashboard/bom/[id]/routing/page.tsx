@@ -110,7 +110,7 @@ export default function BOMRoutingPage() {
   const fetchBOM = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/bom/${bomId}`, {
+      const response = await fetch(`/api/v1/bom/${bomId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
@@ -127,7 +127,7 @@ export default function BOMRoutingPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `http://13.205.17.214:4000/api/v1/production/routing/bom/${bomId}?withStations=true`,
+        `/api/v1/production/routing/bom/${bomId}?withStations=true`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -149,7 +149,7 @@ export default function BOMRoutingPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        'http://13.205.17.214:4000/api/v1/production/work-stations?isActive=true',
+        '/api/v1/production/work-stations?isActive=true',
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -208,7 +208,7 @@ export default function BOMRoutingPage() {
       let response;
       if (editingId) {
         response = await fetch(
-          `http://13.205.17.214:4000/api/v1/production/routing/${editingId}`,
+          `/api/v1/production/routing/${editingId}`,
           {
             method: 'PUT',
             headers: {
@@ -219,7 +219,7 @@ export default function BOMRoutingPage() {
           }
         );
       } else {
-        response = await fetch('http://13.205.17.214:4000/api/v1/production/routing', {
+        response = await fetch('/api/v1/production/routing', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -264,7 +264,7 @@ export default function BOMRoutingPage() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/production/routing/${id}`, {
+      const response = await fetch(`/api/v1/production/routing/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });

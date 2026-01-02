@@ -17,7 +17,7 @@ export class DeploymentService {
     // Verify UID exists and belongs to tenant
     const { data: uid, error: uidError } = await this.supabase
       .from('uid_registry')
-      .select('id, uid, item_id')
+      .select('id, uid, entity_id, entity_type')
       .eq('id', dto.uid_id)
       .eq('tenant_id', tenantId)
       .single();
@@ -61,6 +61,89 @@ export class DeploymentService {
     return data;
   }
 
+  async getDeploymentStatus(tenantId: string, filters?: {
+    uid?: string;
+    part_number?: string;
+    organization?: string;
+    location?: string;
+    search?: string;
+    offset?: number;
+    limit?: number;
+    sort_by?: string;
+    sort_order?: string;
+  }) {
+    const offset = Number.isFinite(filters?.offset) ? Math.max(0, filters!.offset!) : 0;
+    const limit = Number.isFinite(filters?.limit) ? Math.min(200, Math.max(1, filters!.limit!)) : 50;
+
+    const allowedSortFields = new Set([
+      'uid',
+      'client_part_number',
+      'item_name',
+      'item_code',
+      'current_level',
+      'current_organization',
+      'current_location',
+      'current_deployment_date',
+      'deployment_count',
+      'warranty_expiry_date',
+    ]);
+
+    const sortBy = allowedSortFields.has(filters?.sort_by || '') ? (filters!.sort_by as string) : 'uid';
+    const sortAscending = (filters?.sort_order || 'asc').toLowerCase() !== 'desc';
+
+    let query = this.supabase
+      .from('v_uid_deployment_status')
+      .select('*', { count: 'exact' })
+      .eq('tenant_id', tenantId);
+
+    if (filters?.uid) {
+      query = query.eq('uid', filters.uid);
+    }
+
+    if (filters?.part_number) {
+      query = query.eq('client_part_number', filters.part_number);
+    }
+
+    if (filters?.organization) {
+      query = query.ilike('current_organization', `%${filters.organization}%`);
+    }
+
+    if (filters?.location) {
+      query = query.ilike('current_location', `%${filters.location}%`);
+    }
+
+    if (filters?.search && filters.search.trim()) {
+      const q = filters.search.trim();
+      query = query.or(
+        [
+          `uid.ilike.%${q}%`,
+          `client_part_number.ilike.%${q}%`,
+          `item_name.ilike.%${q}%`,
+          `item_code.ilike.%${q}%`,
+          `current_organization.ilike.%${q}%`,
+          `current_location.ilike.%${q}%`,
+          `current_level.ilike.%${q}%`,
+        ].join(','),
+      );
+    }
+
+    query = query.order(sortBy, { ascending: sortAscending }).range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error('Fetch deployment status error:', error);
+      throw new BadRequestException(error.message);
+    }
+
+    return {
+      data: data || [],
+      total: count || 0,
+      offset,
+      limit,
+    };
+  }
+
   async getDeployments(tenantId: string, filters?: {
     uid_id?: string;
     organization?: string;
@@ -74,10 +157,8 @@ export class DeploymentService {
         uid:uid_registry (
           uid,
           client_part_number,
-          item:items (
-            name,
-            code
-          )
+          entity_id,
+          entity_type
         )
       `)
       .eq('tenant_id', tenantId)
@@ -117,10 +198,8 @@ export class DeploymentService {
         uid:uid_registry (
           uid,
           client_part_number,
-          item:items (
-            name,
-            code
-          )
+          entity_id,
+          entity_type
         ),
         parent:product_deployment_history!parent_deployment_id (
           id,

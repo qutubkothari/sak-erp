@@ -8,6 +8,8 @@ interface PRItem {
   id: string;
   itemCode?: string;
   itemName: string;
+  vendorId?: string;
+  vendorName?: string;
   quantity: number;
   estimatedPrice?: number;
   specifications?: string;
@@ -20,6 +22,8 @@ interface Item {
   uom: string;
   standard_cost?: number;
 }
+
+type RawItem = Record<string, any>;
 
 interface Requisition {
   id: string;
@@ -36,8 +40,10 @@ interface Requisition {
 
 interface PRDetailItem {
   id: string;
+  item_id?: string;
   item_code: string;
   item_name: string;
+  vendor_id?: string | null;
   requested_qty: number;
   estimated_rate: number;
   total_amount: number;
@@ -57,6 +63,14 @@ interface PRDetail {
   approved_by?: string;
   approved_at?: string;
   purchase_requisition_items: PRDetailItem[];
+}
+
+interface Vendor {
+  id: string;
+  code: string;
+  name: string;
+  email: string;
+  is_active: boolean;
 }
 
 export default function PurchaseRequisitionsPage() {
@@ -80,6 +94,8 @@ export default function PurchaseRequisitionsPage() {
 
   const [itemForm, setItemForm] = useState({
     itemName: '',
+    vendorId: '',
+    vendorName: '',
     quantity: '',
     estimatedPrice: '',
     specifications: '',
@@ -91,6 +107,24 @@ export default function PurchaseRequisitionsPage() {
   const [useManualEntry, setUseManualEntry] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [itemsLoadError, setItemsLoadError] = useState<string | null>(null);
+  const [lastPurchasePrice, setLastPurchasePrice] = useState<{
+    unit_price: number;
+    po_number?: string;
+    po_date?: string;
+  } | null>(null);
+
+  const [rfqPanelOpen, setRfqPanelOpen] = useState(false);
+  const [rfqVendors, setRfqVendors] = useState<Vendor[]>([]);
+  const [rfqItemVendors, setRfqItemVendors] = useState<Record<string, string>>({});
+  const [rfqLoadingVendors, setRfqLoadingVendors] = useState(false);
+  const [rfqSending, setRfqSending] = useState(false);
+  const [rfqResponseDate, setRfqResponseDate] = useState('');
+  const [rfqRemarks, setRfqRemarks] = useState('');
+
+  // Helper to get selected vendor IDs
+  const getSelectedVendorIds = () => {
+    return Array.from(new Set(Object.values(rfqItemVendors).filter(Boolean)));
+  };
 
   useEffect(() => {
     fetchRequisitions();
@@ -99,6 +133,9 @@ export default function PurchaseRequisitionsPage() {
   useEffect(() => {
     if (showCreateForm) {
       fetchMasterItems();
+      if (rfqVendors.length === 0) {
+        fetchRFQVendors();
+      }
     }
   }, [showCreateForm]);
 
@@ -118,7 +155,6 @@ export default function PurchaseRequisitionsPage() {
     try {
       setLoadingRequisitions(true);
       const response = await apiClient.get('/purchase/requisitions');
-      console.log('Requisitions API response:', response);
       setRequisitions(Array.isArray(response) ? response : []);
     } catch (error: any) {
       console.error('Error fetching requisitions:', error);
@@ -131,9 +167,25 @@ export default function PurchaseRequisitionsPage() {
     try {
       setItemsLoadError(null);
       const response = await apiClient.get('/inventory/items');
-      console.log('Items API response:', response);
-      // apiClient.get already unwraps the data, so response is the array directly
-      setMasterItems(Array.isArray(response) ? response : []);
+      // apiClient.get already unwraps the data, so response is the array directly.
+      // Normalize field names because some APIs return item_id/item_code/etc.
+      const list = Array.isArray(response) ? (response as RawItem[]) : [];
+      const normalized: Item[] = list
+        .map((raw) => ({
+          id: String(raw.id ?? raw.item_id ?? ''),
+          code: String(raw.code ?? raw.item_code ?? ''),
+          name: String(raw.name ?? raw.item_name ?? ''),
+          uom: String(raw.uom ?? raw.unit ?? raw.unit_of_measure ?? ''),
+          standard_cost:
+            typeof raw.standard_cost === 'number'
+              ? raw.standard_cost
+              : typeof raw.standardCost === 'number'
+                ? raw.standardCost
+                : undefined,
+        }))
+        .filter((i) => i.id && i.code && i.name);
+
+      setMasterItems(normalized);
     } catch (error: any) {
       console.error('Error fetching items:', error);
       if (error.message && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
@@ -145,6 +197,7 @@ export default function PurchaseRequisitionsPage() {
   };
 
   const filteredItems = masterItems.filter(item => {
+    if (!searchTerm) return true; // Show all items when no search term
     const search = searchTerm.toLowerCase();
     return (
       item.name.toLowerCase().includes(search) ||
@@ -157,33 +210,79 @@ export default function PurchaseRequisitionsPage() {
     setSelectedItemId(item.id);
     setSearchTerm(`${item.code} - ${item.name}`);
     setShowDropdown(false);
+    setLastPurchasePrice(null);
 
     // Fetch preferred vendor
     try {
       const preferredVendor = await apiClient.get(`/items/${item.id}/vendors/preferred`);
       
       if (preferredVendor) {
-        setItemForm({
-          ...itemForm,
+        const preferredVendorId =
+          preferredVendor.vendor_id ??
+          preferredVendor.vendorId ??
+          preferredVendor.id ??
+          '';
+
+        const preferredVendorName =
+          preferredVendor.vendor_name ??
+          preferredVendor.vendorName ??
+          preferredVendor.name ??
+          '';
+
+        // Try last purchase price (item + preferred vendor). If available, prefer it.
+        let lastUnitPrice: number | null = null;
+        if (preferredVendorId) {
+          try {
+            const history = await apiClient.get<
+              Array<{ po_number?: string; po_date?: string; unit_price: number; quantity?: number; po_status?: string }>
+            >(`/items/${item.id}/vendors/${String(preferredVendorId)}/price-history`);
+
+            const last = Array.isArray(history) ? history[0] : null;
+            if (last && typeof last.unit_price === 'number' && !Number.isNaN(last.unit_price)) {
+              lastUnitPrice = Number(last.unit_price);
+              setLastPurchasePrice({
+                unit_price: lastUnitPrice,
+                po_number: last.po_number,
+                po_date: last.po_date,
+              });
+            }
+          } catch (error) {
+            console.error('Error fetching last purchase price:', error);
+          }
+        }
+
+        setItemForm((prev) => ({
+          ...prev,
           itemName: `${item.code} - ${item.name}`,
-          estimatedPrice: preferredVendor.unit_price?.toString() || item.standard_cost?.toString() || '',
-          specifications: preferredVendor.vendor_name ? `Preferred Vendor: ${preferredVendor.vendor_name}` : '',
-        });
+          vendorId: preferredVendorId ? String(preferredVendorId) : '',
+          vendorName: preferredVendorName || '',
+          estimatedPrice:
+            (lastUnitPrice !== null
+              ? String(lastUnitPrice)
+              : preferredVendor.unit_price?.toString() || item.standard_cost?.toString()) ||
+            '',
+        }));
       } else {
-        setItemForm({
-          ...itemForm,
+        setLastPurchasePrice(null);
+        setItemForm((prev) => ({
+          ...prev,
           itemName: `${item.code} - ${item.name}`,
+          vendorId: '',
+          vendorName: '',
           estimatedPrice: item.standard_cost?.toString() || '',
-        });
+        }));
       }
     } catch (error) {
       console.error('Error fetching preferred vendor:', error);
       // Fallback to item without vendor
-      setItemForm({
-        ...itemForm,
+      setLastPurchasePrice(null);
+      setItemForm((prev) => ({
+        ...prev,
         itemName: `${item.code} - ${item.name}`,
+        vendorId: '',
+        vendorName: '',
         estimatedPrice: item.standard_cost?.toString() || '',
-      });
+      }));
     }
   };
 
@@ -201,6 +300,8 @@ export default function PurchaseRequisitionsPage() {
         id: Date.now().toString(),
         itemCode: selectedItem?.code || '',
         itemName: useManualEntry ? itemForm.itemName : searchTerm,
+        vendorId: itemForm.vendorId || undefined,
+        vendorName: itemForm.vendorName || undefined,
         quantity: parseFloat(itemForm.quantity),
         estimatedPrice: itemForm.estimatedPrice ? parseFloat(itemForm.estimatedPrice) : undefined,
         specifications: itemForm.specifications,
@@ -209,6 +310,8 @@ export default function PurchaseRequisitionsPage() {
 
     setItemForm({
       itemName: '',
+      vendorId: '',
+      vendorName: '',
       quantity: '',
       estimatedPrice: '',
       specifications: '',
@@ -216,6 +319,7 @@ export default function PurchaseRequisitionsPage() {
     setSearchTerm('');
     setSelectedItemId(null);
     setUseManualEntry(false);
+    setLastPurchasePrice(null);
   };
 
   const removeItem = (id: string) => {
@@ -226,9 +330,12 @@ export default function PurchaseRequisitionsPage() {
     setSelectedPR(null);
     setLoadingDetail(true);
     setShowDetailModal(true);
+    setRfqPanelOpen(false);
+    setRfqItemVendors({});
+    setRfqResponseDate('');
+    setRfqRemarks('');
     try {
       const data = await apiClient.get(`/purchase/requisitions/${prId}`);
-      console.log('PR Details Response:', data);
       setSelectedPR(data);
     } catch (error) {
       console.error('Error fetching PR details:', error);
@@ -236,6 +343,131 @@ export default function PurchaseRequisitionsPage() {
       setShowDetailModal(false);
     } finally {
       setLoadingDetail(false);
+    }
+  };
+
+  const resolveItemIdForPRItem = async (prItem: PRDetailItem): Promise<string | null> => {
+    if (prItem.item_id) return prItem.item_id;
+
+    const query = (prItem.item_code || prItem.item_name || '').trim();
+    if (!query) return null;
+
+    try {
+      const results = await apiClient.get<Array<{ id: string; code: string; name: string }>>(
+        `/items/search?q=${encodeURIComponent(query)}`,
+      );
+      const list = Array.isArray(results) ? results : [];
+
+      const exactCode = prItem.item_code
+        ? list.find((i) => i.code?.toLowerCase() === prItem.item_code.toLowerCase())
+        : undefined;
+      if (exactCode?.id) return exactCode.id;
+
+      const exactName = prItem.item_name
+        ? list.find((i) => i.name?.toLowerCase() === prItem.item_name.toLowerCase())
+        : undefined;
+      if (exactName?.id) return exactName.id;
+
+      return list[0]?.id || null;
+    } catch (error) {
+      console.error('Error resolving item for RFQ preferred vendor:', error);
+      return null;
+    }
+  };
+
+  const fetchPreferredVendorsForPR = async (pr: PRDetail) => {
+    const items = Array.isArray(pr.purchase_requisition_items) ? pr.purchase_requisition_items : [];
+    if (items.length === 0) return;
+
+    const itemIdCache = new Map<string, string | null>();
+    const itemVendorMap: Record<string, string> = {};
+
+    for (const prItem of items) {
+      // If a vendor was already selected and saved with the PR item, prefer it.
+      if (prItem.vendor_id) {
+        itemVendorMap[prItem.id] = prItem.vendor_id;
+        continue;
+      }
+
+      const cacheKey = prItem.item_id || prItem.item_code || prItem.item_name || prItem.id;
+      let itemId: string | null | undefined = itemIdCache.get(cacheKey);
+      if (itemId === undefined) {
+        itemId = await resolveItemIdForPRItem(prItem);
+        itemIdCache.set(cacheKey, itemId);
+      }
+
+      if (!itemId) continue;
+
+      try {
+        const pref = await apiClient.get(`/items/${itemId}/vendors/preferred`);
+        const vendorId = pref?.vendor_id;
+        if (vendorId) {
+          itemVendorMap[prItem.id] = vendorId;
+        }
+      } catch (error) {
+        console.error('Error fetching preferred vendor for item:', error);
+        continue;
+      }
+    }
+
+    // Set the per-item vendor selections
+    setRfqItemVendors(itemVendorMap);
+  };
+
+  const fetchRFQVendors = async () => {
+    try {
+      setRfqLoadingVendors(true);
+      const data = await apiClient.get<Vendor[]>('/purchase/vendors');
+      const list = Array.isArray(data) ? data : [];
+      setRfqVendors(list.filter((v) => v?.is_active !== false));
+    } catch (error) {
+      console.error('Error fetching vendors for RFQ:', error);
+      alert('Failed to load vendors');
+    } finally {
+      setRfqLoadingVendors(false);
+    }
+  };
+
+  const setItemVendor = (itemId: string, vendorId: string) => {
+    setRfqItemVendors((prev) => ({
+      ...prev,
+      [itemId]: vendorId
+    }));
+  };
+
+  const handleSendRFQ = async () => {
+    if (!selectedPR) return;
+    const selectedVendors = getSelectedVendorIds();
+    if (selectedVendors.length === 0) {
+      alert('Please select at least one vendor for the items');
+      return;
+    }
+
+    // Create item-vendor assignments
+    const itemVendorAssignments = selectedPR.purchase_requisition_items?.map((item) => ({
+      itemId: item.id,
+      vendorId: rfqItemVendors[item.id] || null
+    })) || [];
+
+    try {
+      setRfqSending(true);
+      const result = await apiClient.post(`/purchase/requisitions/${selectedPR.id}/rfq/send`, {
+        vendorIds: selectedVendors,
+        itemVendors: itemVendorAssignments,
+        responseDate: rfqResponseDate || undefined,
+        remarks: rfqRemarks || undefined,
+      });
+
+      alert(`RFQ sent: ${result?.sent_count ?? 0}, failed: ${result?.failed_count ?? 0}`);
+      setRfqPanelOpen(false);
+      setRfqItemVendors({});
+      setRfqResponseDate('');
+      setRfqRemarks('');
+    } catch (error) {
+      console.error('Error sending RFQ:', error);
+      alert('Failed to send RFQ');
+    } finally {
+      setRfqSending(false);
     }
   };
 
@@ -290,6 +522,7 @@ export default function PurchaseRequisitionsPage() {
         items: items.map(item => ({
           itemCode: item.itemCode,
           itemName: item.itemName,
+          vendorId: item.vendorId || null,
           requestedQty: item.quantity,
           estimatedRate: item.estimatedPrice || 0,
           remarks: item.specifications || null,
@@ -446,6 +679,8 @@ export default function PurchaseRequisitionsPage() {
                                   setSearchTerm(e.target.value);
                                   setShowDropdown(true);
                                   setSelectedItemId(null);
+                                  setItemForm((prev) => ({ ...prev, vendorId: '', vendorName: '' }));
+                                  setLastPurchasePrice(null);
                                 }}
                                 onFocus={() => setShowDropdown(true)}
                                 placeholder="🔍 Search items by name, code..."
@@ -457,7 +692,8 @@ export default function PurchaseRequisitionsPage() {
                                   onClick={() => {
                                     setSearchTerm('');
                                     setSelectedItemId(null);
-                                    setItemForm({ ...itemForm, estimatedPrice: '' });
+                                    setItemForm({ ...itemForm, estimatedPrice: '', vendorId: '', vendorName: '' });
+                                    setLastPurchasePrice(null);
                                   }}
                                   className="absolute right-2 top-2.5 text-gray-400 hover:text-gray-600"
                                 >
@@ -465,7 +701,12 @@ export default function PurchaseRequisitionsPage() {
                                 </button>
                               )}
                             </div>
-                            {showDropdown && searchTerm && (
+                            {itemForm.vendorName ? (
+                              <div className="mt-1 text-xs text-gray-600">
+                                Preferred Vendor: <span className="font-medium text-gray-800">{itemForm.vendorName}</span>
+                              </div>
+                            ) : null}
+                            {showDropdown && (
                               <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-72 overflow-y-auto">
                                 {itemsLoadError ? (
                                   <div className="px-4 py-6 text-center">
@@ -537,13 +778,20 @@ export default function PurchaseRequisitionsPage() {
                         placeholder="Quantity *"
                         className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                       />
-                      <input
-                        type="number"
-                        value={itemForm.estimatedPrice}
-                        onChange={(e) => setItemForm({ ...itemForm, estimatedPrice: e.target.value })}
-                        placeholder="Est. Price"
-                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-                      />
+                      <div>
+                        <input
+                          type="number"
+                          value={itemForm.estimatedPrice}
+                          onChange={(e) => setItemForm({ ...itemForm, estimatedPrice: e.target.value })}
+                          placeholder="Est. Price"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                        />
+                        {lastPurchasePrice && (
+                          <div className="mt-1 text-[11px] text-gray-600">
+                            Last: <span className="font-medium text-gray-800">₹{Number(lastPurchasePrice.unit_price || 0).toFixed(2)}</span>
+                          </div>
+                        )}
+                      </div>
                       <button
                         onClick={addItem}
                         className="bg-amber-800 text-white px-4 py-2 rounded-lg hover:bg-amber-900 transition-colors"
@@ -567,6 +815,7 @@ export default function PurchaseRequisitionsPage() {
                         <thead className="bg-gray-100">
                           <tr>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Item</th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold">Vendor</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Qty</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Est. Price</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Specifications</th>
@@ -576,7 +825,37 @@ export default function PurchaseRequisitionsPage() {
                         <tbody>
                           {items.map((item) => (
                             <tr key={item.id} className="border-t">
-                              <td className="px-4 py-2">{item.itemName}</td>
+                              <td className="px-4 py-2">
+                                <div className="font-medium text-gray-900">{item.itemName}</div>
+                              </td>
+                              <td className="px-4 py-2">
+                                <select
+                                  value={item.vendorId || ''}
+                                  onChange={(e) => {
+                                    const vendorId = e.target.value;
+                                    const vendor = rfqVendors.find((v) => v.id === vendorId);
+                                    setItems((prev) =>
+                                      prev.map((it) =>
+                                        it.id === item.id
+                                          ? {
+                                              ...it,
+                                              vendorId: vendorId || undefined,
+                                              vendorName: vendor ? vendor.name : undefined,
+                                            }
+                                          : it,
+                                      ),
+                                    );
+                                  }}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                >
+                                  <option value="">Select Vendor</option>
+                                  {rfqVendors.map((vendor) => (
+                                    <option key={vendor.id} value={vendor.id}>
+                                      {vendor.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
                               <td className="px-4 py-2">{item.quantity}</td>
                               <td className="px-4 py-2">
                                 {item.estimatedPrice ? `₹${item.estimatedPrice.toFixed(2)}` : '-'}
@@ -596,6 +875,16 @@ export default function PurchaseRequisitionsPage() {
                           ))}
                         </tbody>
                       </table>
+                      {items.length > 0 && (
+                        <div className="mt-4 flex justify-center">
+                          <button
+                            onClick={addItem}
+                            className="px-6 py-2 text-amber-600 hover:text-amber-800 font-medium border-2 border-dashed border-amber-300 hover:border-amber-500 rounded-lg transition-colors"
+                          >
+                            + Add Another Item
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -846,6 +1135,7 @@ export default function PurchaseRequisitionsPage() {
                           <tr>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Item Code</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Item Name</th>
+                            {rfqPanelOpen && <th className="px-4 py-2 text-left text-sm font-semibold">Vendor</th>}
                             <th className="px-4 py-2 text-right text-sm font-semibold">Quantity</th>
                             <th className="px-4 py-2 text-right text-sm font-semibold">Est. Rate</th>
                             <th className="px-4 py-2 text-right text-sm font-semibold">Total</th>
@@ -858,6 +1148,22 @@ export default function PurchaseRequisitionsPage() {
                               <tr key={item.id} className="border-t">
                                 <td className="px-4 py-2 text-sm">{item.item_code || '-'}</td>
                                 <td className="px-4 py-2 text-sm">{item.item_name}</td>
+                                {rfqPanelOpen && (
+                                  <td className="px-4 py-2">
+                                    <select
+                                      value={rfqItemVendors[item.id] || ''}
+                                      onChange={(e) => setItemVendor(item.id, e.target.value)}
+                                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                    >
+                                      <option value="">Select Vendor</option>
+                                      {rfqVendors.map((vendor) => (
+                                        <option key={vendor.id} value={vendor.id}>
+                                          {vendor.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                )}
                                 <td className="px-4 py-2 text-sm text-right">{item.requested_qty}</td>
                                 <td className="px-4 py-2 text-sm text-right">₹{(item.estimated_rate || 0).toFixed(2)}</td>
                                 <td className="px-4 py-2 text-sm text-right font-semibold">₹{((item.requested_qty || 0) * (item.estimated_rate || 0)).toFixed(2)}</td>
@@ -866,7 +1172,7 @@ export default function PurchaseRequisitionsPage() {
                             ))
                           ) : (
                             <tr>
-                              <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                              <td colSpan={rfqPanelOpen ? 7 : 6} className="px-4 py-8 text-center text-gray-500">
                                 No items found in this requisition
                               </td>
                             </tr>
@@ -875,7 +1181,7 @@ export default function PurchaseRequisitionsPage() {
                         {selectedPR.purchase_requisition_items && selectedPR.purchase_requisition_items.length > 0 && (
                           <tfoot className="bg-gray-50 border-t-2">
                             <tr>
-                              <td colSpan={4} className="px-4 py-3 text-right font-bold">Total Amount:</td>
+                              <td colSpan={rfqPanelOpen ? 5 : 4} className="px-4 py-3 text-right font-bold">Total Amount:</td>
                               <td className="px-4 py-3 text-right font-bold text-lg">
                                 ₹{selectedPR.purchase_requisition_items.reduce((sum, item) => sum + ((item.requested_qty || 0) * (item.estimated_rate || 0)), 0).toFixed(2)}
                               </td>
@@ -906,15 +1212,32 @@ export default function PurchaseRequisitionsPage() {
                       </>
                     )}
                     {selectedPR.status === 'APPROVED' && (
-                      <button
-                        onClick={() => {
-                          setShowDetailModal(false);
-                          router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
-                        }}
-                        className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors"
-                      >
-                        Create PO from this PR
-                      </button>
+                      <>
+                        <button
+                          onClick={async () => {
+                            const nextOpen = !rfqPanelOpen;
+                            setRfqPanelOpen(nextOpen);
+                            if (nextOpen && rfqVendors.length === 0) {
+                              await fetchRFQVendors();
+                            }
+                            if (nextOpen && selectedPR) {
+                              await fetchPreferredVendorsForPR(selectedPR);
+                            }
+                          }}
+                          className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors"
+                        >
+                          Send RFQ
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowDetailModal(false);
+                            router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
+                          }}
+                          className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors"
+                        >
+                          Create PO from this PR
+                        </button>
+                      </>
                     )}
                     <button
                       onClick={() => setShowDetailModal(false)}
@@ -923,6 +1246,64 @@ export default function PurchaseRequisitionsPage() {
                       Close
                     </button>
                   </div>
+
+                  {selectedPR.status === 'APPROVED' && rfqPanelOpen && (
+                    <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-bold text-gray-900">Send RFQ to Vendors</h3>
+                        <button
+                          onClick={() => setRfqPanelOpen(false)}
+                          className="text-gray-600 hover:text-gray-900 font-medium"
+                        >
+                          Hide
+                        </button>
+                      </div>
+
+                      <div className="mb-3 text-sm text-gray-600">
+                        💡 Select vendors for each item in the table above. Preferred vendors are auto-selected.
+                      </div>
+
+                      {rfqLoadingVendors && (
+                        <p className="text-sm text-gray-600">Loading vendors...</p>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">Expected Response Date (optional)</label>
+                          <input
+                            type="date"
+                            value={rfqResponseDate}
+                            onChange={(e) => setRfqResponseDate(e.target.value)}
+                            className="w-full px-3 py-2 border rounded-lg text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">Remarks (optional)</label>
+                          <input
+                            type="text"
+                            value={rfqRemarks}
+                            onChange={(e) => setRfqRemarks(e.target.value)}
+                            placeholder="Any notes to vendor"
+                            className="w-full px-3 py-2 border rounded-lg text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end mt-3">
+                        <button
+                          onClick={handleSendRFQ}
+                          disabled={rfqSending || rfqLoadingVendors}
+                          className={`px-6 py-2 rounded-lg transition-colors ${
+                            rfqSending || rfqLoadingVendors
+                              ? 'bg-gray-300 text-gray-600'
+                              : 'bg-green-600 text-white hover:bg-green-700'
+                          }`}
+                        >
+                          {rfqSending ? 'Sending...' : 'Send RFQ Email'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="p-8 text-center">

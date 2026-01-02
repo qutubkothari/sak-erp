@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
+import { mkdir, writeFile, unlink } from 'fs/promises';
+import { extname, join, resolve } from 'path';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class GrnService {
@@ -11,6 +14,155 @@ export class GrnService {
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_KEY!,
     );
+  }
+
+  private getUploadsRoot(): string {
+    return (
+      process.env.UPLOAD_ROOT_DIR ||
+      resolve(process.cwd(), '..', '..', 'uploads')
+    );
+  }
+
+  async uploadInvoice(tenantId: string, userId: string, file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    const allowedTypes = new Set([
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+    ]);
+
+    if (!file.mimetype || !allowedTypes.has(file.mimetype)) {
+      if ((file as any).path) {
+        await unlink((file as any).path).catch(() => undefined);
+      }
+      throw new BadRequestException(
+        `Unsupported file type: ${file.mimetype || 'unknown'}`,
+      );
+    }
+
+    const maxSizeBytes = 50 * 1024 * 1024;
+    if (typeof file.size === 'number' && file.size > maxSizeBytes) {
+      if ((file as any).path) {
+        await unlink((file as any).path).catch(() => undefined);
+      }
+      throw new BadRequestException('File too large (max 50MB)');
+    }
+
+    // If multer used disk storage, the file is already written; just return the public URL.
+    const filePath = (file as any).path as string | undefined;
+    if (filePath && filePath.length > 0) {
+      const uploadsRoot = this.getUploadsRoot();
+      const relativePath = filePath.startsWith(uploadsRoot)
+        ? filePath.slice(uploadsRoot.length)
+        : filePath;
+      const urlPath = relativePath.replace(/\\/g, '/');
+      return {
+        url: `/uploads${urlPath.startsWith('/') ? '' : '/'}${urlPath}`,
+        name: file.originalname || (file as any).filename || 'invoice',
+        type: file.mimetype,
+        size: file.size,
+      };
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const extensionFromName = extname(file.originalname || '').toLowerCase();
+    const safeExtension =
+      extensionFromName && extensionFromName.length <= 10
+        ? extensionFromName
+        : file.mimetype === 'application/pdf'
+          ? '.pdf'
+          : '';
+
+    const relativeDir = `grn/invoices/${today}/${tenantId}/${userId}`;
+    const fileName = `${randomUUID()}${safeExtension}`;
+
+    const uploadsRoot = this.getUploadsRoot();
+    const targetDir = join(uploadsRoot, relativeDir);
+    await mkdir(targetDir, { recursive: true });
+    const targetPath = join(targetDir, fileName);
+    await writeFile(targetPath, file.buffer);
+
+    return {
+      url: `/uploads/${relativeDir}/${fileName}`,
+      name: file.originalname || fileName,
+      type: file.mimetype,
+      size: file.size,
+    };
+  }
+
+  async uploadQcAttachment(tenantId: string, userId: string, file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    const allowedTypes = new Set([
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+    ]);
+
+    if (!file.mimetype || !allowedTypes.has(file.mimetype)) {
+      if ((file as any).path) {
+        await unlink((file as any).path).catch(() => undefined);
+      }
+      throw new BadRequestException(
+        `Unsupported file type: ${file.mimetype || 'unknown'}`,
+      );
+    }
+
+    const maxSizeBytes = 50 * 1024 * 1024;
+    if (typeof file.size === 'number' && file.size > maxSizeBytes) {
+      if ((file as any).path) {
+        await unlink((file as any).path).catch(() => undefined);
+      }
+      throw new BadRequestException('File too large (max 50MB)');
+    }
+
+    // If multer used disk storage, the file is already written; just return the public URL.
+    const filePath = (file as any).path as string | undefined;
+    if (filePath && filePath.length > 0) {
+      const uploadsRoot = this.getUploadsRoot();
+      const relativePath = filePath.startsWith(uploadsRoot)
+        ? filePath.slice(uploadsRoot.length)
+        : filePath;
+      const urlPath = relativePath.replace(/\\/g, '/');
+      return {
+        url: `/uploads${urlPath.startsWith('/') ? '' : '/'}${urlPath}`,
+        name: file.originalname || (file as any).filename || 'qc',
+        type: file.mimetype,
+        size: file.size,
+      };
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const extensionFromName = extname(file.originalname || '').toLowerCase();
+    const safeExtension =
+      extensionFromName && extensionFromName.length <= 10
+        ? extensionFromName
+        : file.mimetype === 'application/pdf'
+          ? '.pdf'
+          : '';
+
+    const relativeDir = `grn/qc/${today}/${tenantId}/${userId}`;
+    const fileName = `${randomUUID()}${safeExtension}`;
+
+    const uploadsRoot = this.getUploadsRoot();
+    const targetDir = join(uploadsRoot, relativeDir);
+    await mkdir(targetDir, { recursive: true });
+    const targetPath = join(targetDir, fileName);
+    await writeFile(targetPath, file.buffer);
+
+    return {
+      url: `/uploads/${relativeDir}/${fileName}`,
+      name: file.originalname || fileName,
+      type: file.mimetype,
+      size: file.size,
+    };
   }
 
   async create(tenantId: string, userId: string, data: any) {
@@ -49,6 +201,10 @@ export class GrnService {
         receipt_date: data.grnDate || new Date().toISOString().split('T')[0],
         invoice_number: data.invoiceNumber || null,
         invoice_date: data.invoiceDate || null,
+        invoice_file_url: data.invoiceFileUrl || null,
+        invoice_file_name: data.invoiceFileName || null,
+        invoice_file_type: data.invoiceFileType || null,
+        invoice_file_size: data.invoiceFileSize || null,
         warehouse_id: data.warehouseId,
         status: data.status || 'DRAFT',
         notes: data.remarks || null,
@@ -87,6 +243,7 @@ export class GrnService {
         received_qty: item.receivedQty,
         accepted_qty: item.acceptedQty || 0,
         rejected_qty: item.rejectedQty || 0,
+        rejection_reason: item.rejectionReason || null,
         inspection_status: item.inspectionStatus || 'PENDING',
         inspection_remarks: item.inspectionRemarks || null,
         batch_number: item.batchNumber || null,
@@ -168,7 +325,7 @@ export class GrnService {
         purchase_order:purchase_orders(id, po_number, po_date),
         vendor:vendors(id, code, name, contact_person),
         warehouse:warehouses(id, code, name),
-        grn_items(*)
+        grn_items(*, item:items(id, code, name, hsn_code))
       `)
       .eq('tenant_id', tenantId)
       .eq('id', id)
@@ -185,6 +342,10 @@ export class GrnService {
         receipt_date: data.grnDate || null,
         invoice_number: data.invoiceNumber || null,
         invoice_date: data.invoiceDate || null,
+        invoice_file_url: data.invoiceFileUrl || null,
+        invoice_file_name: data.invoiceFileName || null,
+        invoice_file_type: data.invoiceFileType || null,
+        invoice_file_size: data.invoiceFileSize || null,
         warehouse_id: data.warehouseId,
         notes: data.remarks || null,
         updated_at: new Date().toISOString(),
@@ -327,7 +488,7 @@ export class GrnService {
       console.log('generateUIDsForItem called for:', grnItem.item_code);
       console.log('grnItem data:', JSON.stringify(grnItem, null, 2));
       
-      const acceptedQty = parseInt(grnItem.accepted_qty || grnItem.accepted_quantity || '0') || 0;
+      const acceptedQty = Number(grnItem.accepted_qty ?? grnItem.accepted_quantity ?? 0) || 0;
       console.log('Parsed acceptedQty:', acceptedQty);
       const uidsCreated = [];
 
@@ -448,19 +609,6 @@ export class GrnService {
           .eq('id', grnItem.id);
         console.log(`Updated grn_item uid_count to ${uidsCreated.length}`);
       }
-
-      // Create stock entry for inventory tracking
-      await this.createStockEntry({
-        tenant_id: grn.tenant_id,
-        item_id: grnItem.item_id,
-        warehouse_id: grn.warehouse_id,
-        quantity: grnItem.accepted_qty,
-        available_quantity: grnItem.accepted_qty,
-        allocated_quantity: 0,
-        unit_price: grnItem.unit_price,
-        batch_number: grnItem.batch_number,
-        grn_reference: grn.grn_number
-      });
       
       return uidsCreated;
     } catch (error) {
@@ -499,18 +647,35 @@ export class GrnService {
           item.rejectedQty > 0 ? 'REJECTED' :
           'ACCEPTED';
 
-        const { error } = await this.supabase
+        const updatePayload: any = {
+          accepted_qty: item.acceptedQty,
+          rejected_qty: item.rejectedQty,
+          qc_status: qcStatus,
+          qc_date: now,
+          qc_by: userId,
+          qc_notes: item.qcNotes || null,
+          rejection_reason: item.rejectionReason || null,
+          // Optional QC attachment fields (requires DB columns)
+          qc_file_url: item.qcFileUrl || null,
+          qc_file_name: item.qcFileName || null,
+          qc_file_type: item.qcFileType || null,
+          qc_file_size: item.qcFileSize || null,
+        };
+
+        let { error } = await this.supabase
           .from('grn_items')
-          .update({
-            accepted_qty: item.acceptedQty,
-            rejected_qty: item.rejectedQty,
-            qc_status: qcStatus,
-            qc_date: now,
-            qc_by: userId,
-            qc_notes: item.qcNotes || null,
-            rejection_reason: item.rejectionReason || null,
-          })
+          .update(updatePayload)
           .eq('id', item.itemId);
+
+        // Backward compatible: if DB doesn't have qc_file_* columns, retry without them.
+        if (error && /qc_file_(url|name|type|size)/i.test(error.message || '')) {
+          const { qc_file_url, qc_file_name, qc_file_type, qc_file_size, ...fallbackPayload } = updatePayload;
+          const retry = await this.supabase
+            .from('grn_items')
+            .update(fallbackPayload)
+            .eq('id', item.itemId);
+          error = retry.error;
+        }
 
         console.log('GRN item update result:', error ? `ERROR: ${error.message}` : 'SUCCESS');
         if (error) throw new Error(`Failed to update item ${item.itemId}: ${error.message}`);
@@ -518,42 +683,46 @@ export class GrnService {
         // Update stock entries: only accepted quantity goes to available stock
         // Rejected quantity may require debit note creation (future enhancement)
         if (item.acceptedQty > 0) {
-          console.log('Looking for GRN item to update stock...');
-          // Find the stock entry for this GRN item and update available quantity
+          console.log('🟢 Calling createStockEntry from qcAccept for item:', item.itemId, 'qty:', item.acceptedQty);
+          
           const { data: grnItem, error: grnItemError } = await this.supabase
             .from('grn_items')
-            .select('item_id, grn_id')
+            .select('item_id, grn_id, unit_price, batch_number, item_code')
             .eq('id', item.itemId)
             .single();
 
-          console.log('GRN item lookup:', grnItem ? `Found item_id: ${grnItem.item_id}` : `ERROR: ${grnItemError?.message}`);
-
-          if (grnItem) {
-            console.log('Looking for stock entry with item_id:', grnItem.item_id, 'grn_id:', grnItem.grn_id);
-            const { data: stockEntry, error: stockError } = await this.supabase
-              .from('stock_entries')
-              .select('*')
-              .eq('tenant_id', tenantId)
-              .eq('item_id', grnItem.item_id)
-              .contains('metadata', { grn_id: grnItem.grn_id })
-              .maybeSingle();
-
-            console.log('Stock entry lookup:', stockEntry ? `Found ID: ${stockEntry.id}` : `Not found or ERROR: ${stockError?.message}`);
-
-            if (stockEntry) {
-              console.log('Updating stock entry available_quantity to:', item.acceptedQty);
-              // Update available quantity based on accepted qty
-              const { error: stockUpdateError } = await this.supabase
-                .from('stock_entries')
-                .update({
-                  available_quantity: item.acceptedQty,
-                  updated_at: now,
-                })
-                .eq('id', stockEntry.id);
-              
-              console.log('Stock update result:', stockUpdateError ? `ERROR: ${stockUpdateError.message}` : 'SUCCESS');
-            }
+          if (grnItemError || !grnItem) {
+            console.error(`Failed to retrieve GRN item details for id: ${item.itemId}`, grnItemError);
+            continue; // Skip to next item
           }
+
+          const { data: grn } = await this.supabase
+            .from('grns')
+            .select('warehouse_id, grn_number')
+            .eq('id', grnItem.grn_id)
+            .single();
+
+          if (!grn) {
+            console.error(`Failed to retrieve GRN header for item: ${grnItem.item_id}`);
+            continue; // Skip to next item
+          }
+
+          await this.createStockEntry({
+            tenant_id: tenantId,
+            item_id: grnItem.item_id,
+            warehouse_id: grn.warehouse_id,
+            quantity: item.acceptedQty,
+            available_quantity: item.acceptedQty,
+            allocated_quantity: 0,
+            unit_price: grnItem.unit_price,
+            batch_number: grnItem.batch_number,
+            grn_reference: grn.grn_number,
+            created_from: 'GRN_QC_ACCEPT',
+            metadata: {
+              grn_item_id: item.itemId,
+              item_code: grnItem.item_code,
+            },
+          });
         }
 
         // Handle rejections - update rejection amount and status
@@ -809,46 +978,79 @@ export class GrnService {
   // Helper method to create stock entries
   private async createStockEntry(stockData: any) {
     try {
-      // Check if stock entry already exists for this GRN reference to prevent duplicates
-      const { data: existingStock } = await this.supabase
-        .from('stock_entries')
-        .select('*')
-        .eq('tenant_id', stockData.tenant_id)
-        .eq('item_id', stockData.item_id)
-        .eq('warehouse_id', stockData.warehouse_id)
-        .contains('metadata', { grn_reference: stockData.grn_reference })
-        .maybeSingle();
+      console.log('=== CREATE STOCK ENTRY CALLED ===');
+      console.log('Stock Data:', JSON.stringify(stockData, null, 2));
 
-      if (existingStock) {
-        console.log(`Stock entry already exists for GRN ${stockData.grn_reference}, item ${stockData.item_id}. Skipping to prevent duplicate.`);
-        return;
+      const quantityChange = Number(stockData.quantity ?? 0) || 0;
+      const availableQuantity =
+        stockData.available_quantity === undefined || stockData.available_quantity === null
+          ? quantityChange
+          : (Number(stockData.available_quantity) || 0);
+      const allocatedQuantity = Number(stockData.allocated_quantity ?? 0) || 0;
+      const unitPrice =
+        stockData.unit_price === undefined || stockData.unit_price === null
+          ? null
+          : (Number(stockData.unit_price) || 0);
+
+      const metadataFromCaller =
+        stockData.metadata && typeof stockData.metadata === 'object' ? stockData.metadata : {};
+
+      const metadata = {
+        ...metadataFromCaller,
+        ...(stockData.grn_reference ? { grn_reference: stockData.grn_reference } : {}),
+        ...(stockData.created_from ? { created_from: stockData.created_from } : {}),
+      };
+
+      // 1) Insert into stock_entries (used by items stock display)
+      const { error: stockEntryError } = await this.supabase
+        .from('stock_entries')
+        .insert({
+          tenant_id: stockData.tenant_id,
+          item_id: stockData.item_id,
+          warehouse_id: stockData.warehouse_id,
+          quantity: quantityChange,
+          available_quantity: availableQuantity,
+          allocated_quantity: allocatedQuantity,
+          unit_price: unitPrice,
+          batch_number: stockData.batch_number ?? null,
+          expiry_date: stockData.expiry_date ?? null,
+          metadata,
+        });
+
+      if (stockEntryError) {
+        console.error('❌ ERROR inserting stock_entries row:', stockEntryError);
+        console.error('Error details:', JSON.stringify(stockEntryError, null, 2));
+      } else {
+        console.log('✅ stock_entries row inserted successfully');
       }
       
-      // Create new stock entry
-      const { error } = await this.supabase
-          .from('stock_entries')
-          .insert({
-            tenant_id: stockData.tenant_id,
-            item_id: stockData.item_id,
-            warehouse_id: stockData.warehouse_id,
-            quantity: stockData.quantity,
-            available_quantity: stockData.available_quantity,
-            allocated_quantity: stockData.allocated_quantity || 0,
-            unit_price: stockData.unit_price,
-            batch_number: stockData.batch_number,
-            metadata: {
-              grn_reference: stockData.grn_reference,
-              created_from: 'GRN_RECEIPT'
-            }
-          });
+      const { data: item } = await this.supabase
+        .from('items')
+        .select('category')
+        .eq('id', stockData.item_id)
+        .single();
 
-        if (error) {
-          console.error('Error creating stock entry:', error);
-        } else {
-          console.log(`Created new stock entry for item ${stockData.item_id}`);
-        }
+      // 2) Keep inventory_stock in sync (used by other modules)
+      const { error } = await this.supabase.rpc('adjust_inventory_stock', {
+        p_tenant_id: stockData.tenant_id,
+        p_item_id: stockData.item_id,
+        p_warehouse_id: stockData.warehouse_id,
+        p_location_id: null, // Assuming null location for now
+        p_quantity_change: quantityChange,
+        p_category: item?.category || 'RAW_MATERIAL'
+      });
+
+      if (error) {
+        console.error('❌ ERROR creating stock entry:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+      } else {
+        console.log('✅ Stock entry created successfully!');
+        console.log(`Created new stock entry for item ${stockData.item_id}`);
+      }
+      console.log('=== CREATE STOCK ENTRY COMPLETED ===');
     } catch (error) {
-      console.error('Error in createStockEntry:', error);
+      console.error('❌ EXCEPTION in createStockEntry:', error);
+      console.error('Exception details:', JSON.stringify(error, null, 2));
       // Don't throw - allow GRN to continue even if stock creation fails
     }
   }
@@ -860,7 +1062,6 @@ export class GrnService {
       .select('*')
       .eq('id', grnItemId)
       .single();
-
     if (error || !grnItem) {
       throw new NotFoundException('GRN item not found');
     }

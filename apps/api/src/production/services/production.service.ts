@@ -299,89 +299,70 @@ export class ProductionService {
 
     // Reduce inventory for each component
     for (const uid of uidDetails) {
-      // Check if stock entry exists
-      const { data: stockData } = await this.supabase
-        .from('stock_entries')
-        .select('quantity, available_quantity, warehouse_id')
+      const { data: item } = await this.supabase
+        .from('items')
+        .select('category')
+        .eq('id', uid.entity_id)
+        .single();
+
+      const { data: stockEntry } = await this.supabase
+        .from('inventory_stock')
+        .select('warehouse_id')
         .eq('tenant_id', tenantId)
         .eq('item_id', uid.entity_id)
-        .maybeSingle();
-
-      if (stockData && stockData.available_quantity > 0) {
-        // Reduce stock by 1 unit (each UID = 1 unit)
-        await this.supabase
-          .from('stock_entries')
-          .update({
-            quantity: stockData.quantity - 1,
-            available_quantity: stockData.available_quantity - 1,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('tenant_id', tenantId)
-          .eq('item_id', uid.entity_id)
-          .eq('warehouse_id', stockData.warehouse_id);
-
-        // Log inventory movement
-        await this.supabase
-          .from('inventory_movements')
-          .insert({
-            tenant_id: tenantId,
-            item_id: uid.entity_id,
-            movement_type: 'CONSUMPTION',
-            quantity: -1,
-            reference_type: 'PRODUCTION',
-            reference_id: productionOrderId,
-            reference_number: order.order_number,
-            uid: uid.uid,
-            moved_by: assembledBy,
-            notes: `Consumed in production assembly ${finishedUid}`,
-          });
-      }
-    }
-
-    // Add finished goods to stock
-    const { data: fgStock } = await this.supabase
-      .from('stock_entries')
-      .select('quantity, available_quantity, warehouse_id')
-      .eq('tenant_id', tenantId)
-      .eq('item_id', order.item_id)
-      .maybeSingle();
-
-    if (fgStock) {
-      // Update existing stock
-      await this.supabase
-        .from('stock_entries')
-        .update({
-          quantity: fgStock.quantity + 1,
-          available_quantity: fgStock.available_quantity + 1,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('tenant_id', tenantId)
-        .eq('item_id', order.item_id)
-        .eq('warehouse_id', fgStock.warehouse_id);
-    } else {
-      // Create new stock entry (use first available warehouse)
-      const { data: warehouse } = await this.supabase
-        .from('warehouses')
-        .select('id')
-        .eq('tenant_id', tenantId)
         .limit(1)
         .single();
 
+      if (stockEntry) {
+        await this.supabase.rpc('adjust_inventory_stock', {
+            p_tenant_id: tenantId,
+            p_item_id: uid.entity_id,
+            p_warehouse_id: stockEntry.warehouse_id,
+            p_location_id: null,
+            p_quantity_change: -1,
+            p_category: item?.category || 'RAW_MATERIAL'
+        });
+      }
+
+      // Log inventory movement
       await this.supabase
-        .from('stock_entries')
+        .from('stock_movements')
         .insert({
           tenant_id: tenantId,
-          item_id: order.item_id,
-          warehouse_id: warehouse?.id,
+          item_id: uid.entity_id,
+          movement_type: 'PRODUCTION_ISSUE',
           quantity: 1,
-          available_quantity: 1,
-          allocated_quantity: 0,
-          metadata: {
-            created_from: 'PRODUCTION',
-            production_order: order.order_number
-          }
+          reference_type: 'PRODUCTION',
+          reference_id: productionOrderId,
+          reference_number: order.order_number,
+          uid: uid.uid,
+          moved_by: assembledBy,
+          notes: `Consumed in production assembly ${finishedUid}`,
         });
     }
+
+    // Add finished goods to stock
+    const { data: warehouse } = await this.supabase
+      .from('warehouses')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .limit(1)
+      .single();
+
+    const { data: item } = await this.supabase
+      .from('items')
+      .select('category')
+      .eq('id', order.item_id)
+      .single();
+        
+    await this.supabase.rpc('adjust_inventory_stock', {
+      p_tenant_id: tenantId,
+      p_item_id: order.item_id,
+      p_warehouse_id: warehouse?.id,
+      p_location_id: null,
+      p_quantity_change: 1,
+      p_category: item?.category || 'FINISHED_GOODS'
+    });
 
     // Log inventory movement for finished goods
     await this.supabase
@@ -446,7 +427,7 @@ export class ProductionService {
 
     if (error) throw new BadRequestException(error.message);
 
-    // If QC passed, update UID lifecycle
+    // If QC passed, update UID lifecycle and move to IN_STOCK
     if (qcStatus === 'PASSED') {
       const { data: assembly } = await this.supabase
         .from('production_assemblies')
@@ -463,6 +444,13 @@ export class ProductionService {
           'Finished Goods Warehouse',
           'QC Approval'
         );
+
+        // Update UID status to IN_STOCK so it becomes available for dispatch
+        await this.supabase
+          .from('uid_registry')
+          .update({ status: 'IN_STOCK' })
+          .eq('tenant_id', tenantId)
+          .eq('uid', assembly.finished_product_uid);
 
         await this.logStage(assembly.production_order_id, 'QC', qcBy, 'QC inspection completed');
       }

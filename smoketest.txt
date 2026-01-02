@@ -1,0 +1,1 @@
+Invoice total: 100.00\nTax: 20.00\nGrand total: 100.00\nVendor: ACME\nDate: 2025-12-01

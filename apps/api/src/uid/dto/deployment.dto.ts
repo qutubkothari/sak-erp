@@ -1,5 +1,6 @@
 import { IsNotEmpty, IsString, IsUUID, IsOptional, IsEnum, IsDateString, IsBoolean, IsEmail } from 'class-validator';
 
+// Predefined deployment levels (can also accept custom values)
 export enum DeploymentLevel {
   CUSTOMER = 'CUSTOMER',
   DEPOT = 'DEPOT',
@@ -14,8 +15,8 @@ export class CreateDeploymentDto {
   uid_id: string;
 
   @IsNotEmpty()
-  @IsEnum(DeploymentLevel)
-  deployment_level: DeploymentLevel;
+  @IsString()
+  deployment_level: string;
 
   @IsNotEmpty()
   @IsString()

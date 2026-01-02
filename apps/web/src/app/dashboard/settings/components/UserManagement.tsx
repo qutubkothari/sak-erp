@@ -10,11 +10,25 @@ interface User {
   first_name: string;
   last_name: string;
   is_active: boolean;
-  role: {
+  role?: {
     id: string;
     name: string;
   };
+  roles?: Array<{
+    role: {
+      id: string;
+      name: string;
+    };
+  }>;
   created_at: string;
+}
+
+function getUserRoles(user: User): Array<{ id: string; name: string }> {
+  const multi = (user.roles || [])
+    .map((r) => r?.role)
+    .filter(Boolean) as Array<{ id: string; name: string }>;
+  if (multi.length > 0) return multi;
+  return user.role ? [user.role] : [];
 }
 
 export default function UserManagement() {
@@ -133,12 +147,26 @@ export default function UserManagement() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span
-                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
-                      style={{ backgroundColor: '#E8DCC4', color: '#6F4E37' }}
-                    >
-                      {user.role?.name || 'No Role'}
-                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {getUserRoles(user).length === 0 ? (
+                        <span
+                          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                          style={{ backgroundColor: '#E8DCC4', color: '#6F4E37' }}
+                        >
+                          No Role
+                        </span>
+                      ) : (
+                        getUserRoles(user).map((role) => (
+                          <span
+                            key={role.id}
+                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                            style={{ backgroundColor: '#E8DCC4', color: '#6F4E37' }}
+                          >
+                            {role.name}
+                          </span>
+                        ))
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     {user.is_active ? (
@@ -214,7 +242,7 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
     email: '',
     firstName: '',
     lastName: '',
-    roleId: '',
+    roleIds: [] as string[],
     password: '',
   });
   const [roles, setRoles] = useState<any[]>([]);
@@ -318,22 +346,30 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
 
           <div>
             <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-              Role
+              Roles
             </label>
             <select
               required
-              value={formData.roleId}
-              onChange={(e) => setFormData({ ...formData, roleId: e.target.value })}
-              className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
+              multiple
+              value={formData.roleIds}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  roleIds: Array.from(e.target.selectedOptions).map((o) => o.value),
+                })
+              }
+              className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80 min-h-[120px]"
               style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
             >
-              <option value="">Select a role...</option>
               {roles.map((role) => (
                 <option key={role.id} value={role.id}>
                   {role.name}
                 </option>
               ))}
             </select>
+            <p className="text-xs mt-1" style={{ color: '#8B6F47' }}>
+              Hold Ctrl/Command to select multiple roles.
+            </p>
           </div>
 
           {error && (
@@ -377,7 +413,7 @@ function EditUserModal({
   const [formData, setFormData] = useState({
     firstName: user.first_name,
     lastName: user.last_name,
-    roleId: user.role?.id || '',
+    roleIds: getUserRoles(user).map((r) => r.id),
   });
   const [roles, setRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -405,7 +441,7 @@ function EditUserModal({
       await apiClient.put(`/users/${user.id}`, {
         first_name: formData.firstName,
         last_name: formData.lastName,
-        role_id: formData.roleId,
+        roleIds: formData.roleIds,
       });
       onSuccess();
       onClose();
@@ -468,22 +504,30 @@ function EditUserModal({
 
           <div>
             <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-              Role
+              Roles
             </label>
             <select
               required
-              value={formData.roleId}
-              onChange={(e) => setFormData({ ...formData, roleId: e.target.value })}
-              className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
+              multiple
+              value={formData.roleIds}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  roleIds: Array.from(e.target.selectedOptions).map((o) => o.value),
+                })
+              }
+              className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80 min-h-[120px]"
               style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
             >
-              <option value="">Select a role...</option>
               {roles.map((role) => (
                 <option key={role.id} value={role.id}>
                   {role.name}
                 </option>
               ))}
             </select>
+            <p className="text-xs mt-1" style={{ color: '#8B6F47' }}>
+              Hold Ctrl/Command to select multiple roles.
+            </p>
           </div>
 
           {error && (

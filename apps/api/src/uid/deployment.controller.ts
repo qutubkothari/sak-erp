@@ -3,10 +3,49 @@ import { DeploymentService } from './deployment.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateDeploymentDto, UpdateDeploymentDto, PublicDeploymentUpdateDto } from './dto/deployment.dto';
 
-@Controller('api/v1/uid/deployment')
+@Controller('uid/deployment')
 @UseGuards(JwtAuthGuard)
 export class DeploymentController {
   constructor(private readonly deploymentService: DeploymentService) {}
+
+  @Get('status')
+  async getStatus(
+    @Request() req: any,
+    @Query('uid') uid?: string,
+    @Query('part_number') partNumber?: string,
+    @Query('organization') organization?: string,
+    @Query('location') location?: string,
+    @Query('search') search?: string,
+    @Query('offset') offset?: string,
+    @Query('limit') limit?: string,
+    @Query('sort_by') sortBy?: string,
+    @Query('sort_order') sortOrder?: string,
+  ) {
+    const parsedOffset = offset !== undefined ? Number(offset) : undefined;
+    const parsedLimit = limit !== undefined ? Number(limit) : undefined;
+
+    const wantsPagination =
+      parsedOffset !== undefined ||
+      parsedLimit !== undefined ||
+      (search !== undefined && search !== '') ||
+      (sortBy !== undefined && sortBy !== '') ||
+      (sortOrder !== undefined && sortOrder !== '');
+
+    const result = await this.deploymentService.getDeploymentStatus(req.user.tenantId, {
+      uid,
+      part_number: partNumber,
+      organization,
+      location,
+      search,
+      offset: parsedOffset,
+      limit: parsedLimit,
+      sort_by: sortBy,
+      sort_order: sortOrder,
+    });
+
+    // Backward compatible: existing callers expect an array.
+    return wantsPagination ? result : result.data;
+  }
 
   @Post()
   async create(@Request() req: any, @Body() dto: CreateDeploymentDto) {
@@ -30,6 +69,13 @@ export class DeploymentController {
       organization,
       deployment_level: deploymentLevel,
       is_current: isCurrent === 'true' ? true : isCurrent === 'false' ? false : undefined,
+    });
+  }
+
+  @Get(':uidId/history')
+  async getHistory(@Request() req: any, @Param('uidId') uidId: string) {
+    return this.deploymentService.getDeployments(req.user.tenantId, {
+      uid_id: uidId,
     });
   }
 

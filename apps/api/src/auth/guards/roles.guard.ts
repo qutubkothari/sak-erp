@@ -21,7 +21,18 @@ export class RolesGuard implements CanActivate {
       return false;
     }
 
-    // Check if user has required role
-    return requiredRoles.some((role) => user.role?.name === role);
+    const normalize = (value: unknown) => String(value ?? '').trim().toUpperCase();
+
+    const userRoleNames: string[] = Array.isArray(user.roles)
+      ? user.roles
+          .map((entry: any) => entry?.role?.name ?? entry?.name ?? entry)
+          .map(normalize)
+          .filter(Boolean)
+      : user.role?.name
+        ? [normalize(user.role.name)]
+        : [];
+
+    const required = requiredRoles.map(normalize);
+    return required.some((role) => userRoleNames.includes(role));
   }
 }

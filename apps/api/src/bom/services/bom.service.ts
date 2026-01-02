@@ -68,7 +68,6 @@ export class BomService {
         bom_id: bom.id,
         item_id: item.componentType === 'ITEM' ? item.itemId : null,
         child_bom_id: item.componentType === 'BOM' ? item.childBomId : null,
-        component_type: item.componentType || 'ITEM',
         quantity: item.quantity,
         scrap_percentage: item.scrapPercentage || 0,
         sequence: item.sequence || index + 1,
@@ -142,9 +141,9 @@ export class BomService {
       });
     }
 
-    // Fetch component items and child BOMs
-    const componentItemIds = bomItemsRes.data?.filter((bi: any) => bi.component_type === 'ITEM').map((bi: any) => bi.item_id) || [];
-    const childBomIds = bomItemsRes.data?.filter((bi: any) => bi.component_type === 'BOM').map((bi: any) => bi.child_bom_id) || [];
+    // Fetch component items (all bom_items reference items via item_id)
+    const componentItemIds = bomItemsRes.data?.map((bi: any) => bi.item_id).filter(Boolean) || [];
+    const childBomIds = bomItemsRes.data?.map((bi: any) => bi.child_bom_id).filter(Boolean) || [];
     console.log('[BomService] findAll - fetching component items for IDs:', componentItemIds);
     console.log('[BomService] findAll - fetching child BOMs for IDs:', childBomIds);
     
@@ -196,14 +195,42 @@ export class BomService {
     const mainItemsMap = new Map(itemsRes.data?.map((i: any) => [i.id, i]));
     const componentItemsMap = new Map(componentItems.map((i: any) => [i.id, i]));
     const childBomsMap = new Map(childBoms.map((b: any) => [b.id, b]));
+
+    // Infer subassembly BOMs: if an item is a SUBASSEMBLY and has no child_bom_id, fetch its BOM
+    const subassemblyItemIds = componentItems
+      .filter((i: any) => (i.category === 'SUBASSEMBLY' || i.type === 'SUBASSEMBLY'))
+      .map((i: any) => i.id);
+
+    const inferredBomsMap = new Map<string, any>();
+    if (subassemblyItemIds.length > 0) {
+      const { data: subBoms } = await this.supabase
+        .from('bom_headers')
+        .select('*, items(*)')
+        .in('item_id', subassemblyItemIds)
+        .eq('is_active', true)
+        .order('version', { ascending: false });
+
+      if (subBoms && subBoms.length > 0) {
+        const seen = new Set<string>();
+        subBoms.forEach((sb: any) => {
+          if (!seen.has(sb.item_id)) {
+            inferredBomsMap.set(sb.item_id, sb);
+            seen.add(sb.item_id);
+          }
+        });
+      }
+    }
+
     const bomItemsMap = new Map();
     
-    // Group bom_items by bom_id and attach component item/BOM details
+    // Group bom_items by bom_id and attach component item details
     bomItemsRes.data?.forEach((bi: any) => {
       if (!bomItemsMap.has(bi.bom_id)) {
         bomItemsMap.set(bi.bom_id, []);
       }
-      if (bi.component_type === 'BOM') {
+      
+      // Check if it references a child BOM or an item
+      if (bi.child_bom_id) {
         const resolvedChild = childBomsMap.get(bi.child_bom_id);
         if (!resolvedChild) {
           console.warn('[BomService] Missing child BOM details for component', {
@@ -213,20 +240,36 @@ export class BomService {
         }
         bomItemsMap.get(bi.bom_id).push({
           ...bi,
+          component_type: 'BOM',
           child_bom: resolvedChild
         });
       } else {
         const resolvedItem = componentItemsMap.get(bi.item_id);
+        const inferredBom = inferredBomsMap.get(bi.item_id);
+        const isSubassembly = resolvedItem && (resolvedItem.category === 'SUBASSEMBLY' || resolvedItem.type === 'SUBASSEMBLY');
+
         if (!resolvedItem) {
           console.warn('[BomService] Missing component item details', {
             bomId: bi.bom_id,
             itemId: bi.item_id,
           });
         }
-        bomItemsMap.get(bi.bom_id).push({
-          ...bi,
-          item: resolvedItem
-        });
+
+        if (isSubassembly && inferredBom) {
+          // Promote to BOM component
+          bomItemsMap.get(bi.bom_id).push({
+            ...bi,
+            component_type: 'BOM',
+            item: resolvedItem,
+            child_bom: inferredBom,
+          });
+        } else {
+          bomItemsMap.get(bi.bom_id).push({
+            ...bi,
+            component_type: 'ITEM',
+            item: resolvedItem
+          });
+        }
       }
     });
 
@@ -259,9 +302,9 @@ export class BomService {
 
     console.log('[BomService] getBomItems - Raw BOM items:', bomItems);
 
-    // Fetch component items and child BOMs
-    const itemIds = bomItems?.filter((bi: any) => bi.component_type === 'ITEM').map((bi: any) => bi.item_id) || [];
-    const childBomIds = bomItems?.filter((bi: any) => bi.component_type === 'BOM').map((bi: any) => bi.child_bom_id) || [];
+    // Fetch component items and child BOMs (all have item_id, some may have child_bom_id)
+    const itemIds = bomItems?.map((bi: any) => bi.item_id).filter(Boolean) || [];
+    const childBomIds = bomItems?.map((bi: any) => bi.child_bom_id).filter(Boolean) || [];
 
     console.log('[BomService] getBomItems - Item IDs to fetch:', itemIds);
     console.log('[BomService] getBomItems - Child BOM IDs:', childBomIds);
@@ -284,18 +327,60 @@ export class BomService {
     const itemsMap = new Map(items.map((i: any) => [i.id, i]));
     const childBomsMap = new Map(childBoms.map((b: any) => [b.id, b]));
 
+    // Infer subassembly BOMs: if an item with only item_id is a SUBASSEMBLY, fetch its BOM to promote to BOM component
+    const subassemblyItemIds = items
+      .filter((i: any) => !childBomIds.includes(i.id) && (i.category === 'SUBASSEMBLY' || i.type === 'SUBASSEMBLY'))
+      .map((i: any) => i.id);
+
+    const inferredBomsMap = new Map<string, any>();
+    if (subassemblyItemIds.length > 0) {
+      const { data: subBoms } = await this.supabase
+        .from('bom_headers')
+        .select('*, items(*)')
+        .eq('tenant_id', tenantId)
+        .in('item_id', subassemblyItemIds)
+        .eq('is_active', true)
+        .order('version', { ascending: false });
+
+      if (subBoms && subBoms.length > 0) {
+        // Pick the first (latest active) BOM for each subassembly item
+        const seen = new Set<string>();
+        subBoms.forEach((sb: any) => {
+          if (!seen.has(sb.item_id)) {
+            inferredBomsMap.set(sb.item_id, sb);
+            seen.add(sb.item_id);
+          }
+        });
+      }
+    }
+
     const result = bomItems.map((bi: any) => {
-      if (bi.component_type === 'BOM') {
+      if (bi.child_bom_id) {
         const childBom = childBomsMap.get(bi.child_bom_id);
         return {
           ...bi,
-          component_id: childBom?.item_id || bi.child_bom_id, // Use the item_id from the child BOM's items table
+          component_id: childBom?.item_id || bi.child_bom_id,
           component_code: childBom?.items?.code || 'N/A',
           component_name: childBom?.items?.name || 'Unknown BOM',
           component_type: 'BOM'
         };
       } else {
         const item = itemsMap.get(bi.item_id);
+        const inferredBom = inferredBomsMap.get(bi.item_id);
+        const isSubassembly = item && (item.category === 'SUBASSEMBLY' || item.type === 'SUBASSEMBLY');
+
+        if (isSubassembly && inferredBom) {
+          // Promote to BOM component
+          return {
+            ...bi,
+            component_id: item.id,
+            component_code: item.code || 'N/A',
+            component_name: item.name || 'Unknown',
+            component_type: 'BOM',
+            child_bom: inferredBom,
+          };
+        }
+
         console.log('[BomService] getBomItems - Mapping item:', { bomItemId: bi.item_id, foundItem: item });
         return {
           ...bi,
@@ -331,9 +416,9 @@ export class BomService {
     if (itemRes.error) throw new BadRequestException(itemRes.error.message);
     if (bomItemsRes.error) throw new BadRequestException(bomItemsRes.error.message);
 
-    // Fetch items and child BOMs for bom_items
-    const bomItemIds = bomItemsRes.data?.filter((bi: any) => bi.component_type === 'ITEM').map((bi: any) => bi.item_id) || [];
-    const childBomIds = bomItemsRes.data?.filter((bi: any) => bi.component_type === 'BOM').map((bi: any) => bi.child_bom_id) || [];
+    // Fetch items and child BOMs for bom_items (all have item_id, some may have child_bom_id)
+    const bomItemIds = bomItemsRes.data?.map((bi: any) => bi.item_id).filter(Boolean) || [];
+    const childBomIds = bomItemsRes.data?.map((bi: any) => bi.child_bom_id).filter(Boolean) || [];
     console.log('[BomService] findOne - Component item IDs:', bomItemIds);
     console.log('[BomService] findOne - Child BOM IDs:', childBomIds);
     
@@ -385,20 +470,60 @@ export class BomService {
     console.log('[BomService] findOne - Items map size:', itemsMap.size);
     console.log('[BomService] findOne - Child BOMs map size:', childBomsMap.size);
 
+    // Infer subassembly BOMs: if an item has only item_id and is a SUBASSEMBLY, fetch its BOM to promote to BOM component
+    const subassemblyItemIds = bomItems
+      .filter((i: any) => !childBomIds.includes(i.id) && (i.category === 'SUBASSEMBLY' || i.type === 'SUBASSEMBLY'))
+      .map((i: any) => i.id);
+
+    const inferredBomsMap = new Map<string, any>();
+    if (subassemblyItemIds.length > 0) {
+      const { data: subBoms } = await this.supabase
+        .from('bom_headers')
+        .select('*, items(*)')
+        .eq('tenant_id', tenantId)
+        .in('item_id', subassemblyItemIds)
+        .eq('is_active', true)
+        .order('version', { ascending: false });
+
+      if (subBoms && subBoms.length > 0) {
+        const seen = new Set<string>();
+        subBoms.forEach((sb: any) => {
+          if (!seen.has(sb.item_id)) {
+            inferredBomsMap.set(sb.item_id, sb);
+            seen.add(sb.item_id);
+          }
+        });
+      }
+    }
+
     const result = {
       ...header,
       item: itemRes.data,
       bom_items: bomItemsRes.data?.map((bi: any) => {
-        if (bi.component_type === 'BOM') {
+        if (bi.child_bom_id) {
           const childBom = childBomsMap.get(bi.child_bom_id);
           return {
             ...bi,
+            component_type: 'BOM',
             child_bom: childBom
           };
         } else {
           const item = itemsMap.get(bi.item_id);
+          const inferredBom = inferredBomsMap.get(bi.item_id);
+          const isSubassembly = item && (item.category === 'SUBASSEMBLY' || item.type === 'SUBASSEMBLY');
+
+          if (isSubassembly && inferredBom) {
+            return {
+              ...bi,
+              component_type: 'BOM',
+              item,
+              child_bom: inferredBom,
+            };
+          }
+
           return {
             ...bi,
+            component_type: 'ITEM',
             item
           };
         }
@@ -444,7 +569,6 @@ export class BomService {
           bom_id: id,
           item_id: item.componentType === 'ITEM' ? item.itemId : null,
           child_bom_id: item.componentType === 'BOM' ? item.childBomId : null,
-          component_type: item.componentType || 'ITEM',
           quantity: item.quantity,
           scrap_percentage: item.scrapPercentage || 0,
           sequence: item.sequence || index + 1,
@@ -655,7 +779,7 @@ export class BomService {
     
     const { data: bomItems } = await this.supabase
       .from('bom_items')
-      .select('component_type, item_id, child_bom_id, quantity, scrap_percentage, notes, drawing_url')
+      .select('item_id, child_bom_id, quantity, scrap_percentage, notes, drawing_url')
       .eq('bom_id', bomId);
 
     console.log(`${indent}[BOM EXPLODE] Found ${bomItems?.length || 0} components`);
@@ -667,10 +791,11 @@ export class BomService {
     for (const bomItem of bomItems) {
       const scrapFactor = 1 + (bomItem.scrap_percentage || 0) / 100;
       const adjustedQty = bomItem.quantity * quantity * scrapFactor;
+      const componentType = bomItem.child_bom_id ? 'BOM' : 'ITEM';
 
-      console.log(`${indent}[BOM EXPLODE] Component: type=${bomItem.component_type}, qty=${bomItem.quantity}, scrap=${bomItem.scrap_percentage}%, adjustedQty=${adjustedQty}`);
+      console.log(`${indent}[BOM EXPLODE] Component: type=${componentType}, qty=${bomItem.quantity}, scrap=${bomItem.scrap_percentage}%, adjustedQty=${adjustedQty}`);
 
-      if (bomItem.component_type === 'ITEM' && bomItem.item_id) {
+      if (componentType === 'ITEM' && bomItem.item_id) {
         // Direct item
         console.log(`${indent}[BOM EXPLODE] → Adding ITEM ${bomItem.item_id}: ${adjustedQty} units`);
         const existing = allItems.get(bomItem.item_id);
@@ -679,7 +804,7 @@ export class BomService {
           notes: bomItem.notes || existing?.notes || '',
           drawingUrl: bomItem.drawing_url || existing?.drawingUrl || '',
         });
-      } else if (bomItem.component_type === 'BOM' && bomItem.child_bom_id) {
+      } else if (componentType === 'BOM' && bomItem.child_bom_id) {
         // Recursively explode child BOM
         console.log(`${indent}[BOM EXPLODE] → Recursing into child BOM ${bomItem.child_bom_id} with qty=${adjustedQty}`);
         const childItems = await this.explodeBOMForPR(bomItem.child_bom_id, adjustedQty, level + 1);
@@ -738,7 +863,7 @@ export class BomService {
         .from('bom_items')
         .select('child_bom_id')
         .eq('bom_id', currentBomId)
-        .eq('component_type', 'BOM');
+        .not('child_bom_id', 'is', null);
 
       if (bomItems && bomItems.length > 0) {
         bomItems.forEach((bi: any) => {

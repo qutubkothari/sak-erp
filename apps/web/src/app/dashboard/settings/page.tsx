@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { Users, Shield, Building2, Bell, Database } from 'lucide-react';
+import { Users, Shield, Building2, Bell, Database, Mail } from 'lucide-react';
 import UserManagement from './components/UserManagement';
 import RoleManagement from './components/RoleManagement';
 import CompanySettings from './components/CompanySettings';
+import EmailSettings from './components/EmailSettings';
 
-type TabType = 'users' | 'roles' | 'company' | 'notifications' | 'integrations';
+type TabType = 'users' | 'roles' | 'company' | 'email' | 'notifications' | 'integrations';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('users');
@@ -15,6 +16,7 @@ export default function SettingsPage() {
     { id: 'users' as TabType, label: 'User Management', icon: Users },
     { id: 'roles' as TabType, label: 'Roles & Permissions', icon: Shield },
     { id: 'company' as TabType, label: 'Company Settings', icon: Building2 },
+    { id: 'email' as TabType, label: 'Email Configuration', icon: Mail },
     { id: 'notifications' as TabType, label: 'Notifications', icon: Bell },
     { id: 'integrations' as TabType, label: 'Integrations', icon: Database },
   ];
@@ -60,6 +62,7 @@ export default function SettingsPage() {
         {activeTab === 'users' && <UserManagement />}
         {activeTab === 'roles' && <RoleManagement />}
         {activeTab === 'company' && <CompanySettings />}
+        {activeTab === 'email' && <EmailSettings />}
         {activeTab === 'notifications' && (
           <div className="text-center py-12" style={{ color: '#8B6F47' }}>
             <Bell className="w-16 h-16 mx-auto mb-4 opacity-50" />

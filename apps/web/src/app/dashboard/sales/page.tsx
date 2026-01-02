@@ -25,12 +25,16 @@ interface Customer {
 }
 
 interface QuotationItem {
+  id?: string;
   item_id: string;
   item_description: string;
   quantity: number;
+  converted_quantity?: number;
+  pending_quantity?: number;
   unit_price: number;
   discount_percentage: number;
   tax_percentage: number;
+  line_total?: number;
 }
 
 interface Quotation {
@@ -48,6 +52,7 @@ interface Quotation {
   payment_terms?: string;
   delivery_terms?: string;
   created_at: string;
+  quotation_items?: QuotationItem[];
 }
 
 interface SalesOrder {
@@ -116,9 +121,43 @@ export default function SalesPage() {
   const [loadingUIDs, setLoadingUIDs] = useState<{ [key: number]: boolean }>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sendingSOEmailId, setSendingSOEmailId] = useState<string | null>(null);
+
+  // Sales Order edit
+  const [showOrderEditForm, setShowOrderEditForm] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [orderEditForm, setOrderEditForm] = useState({
+    expected_delivery_date: '',
+    payment_terms: '',
+    delivery_terms: '',
+    notes: '',
+    status: 'CONFIRMED',
+  });
+
+  // Dispatch edit
+  const [showDispatchEditForm, setShowDispatchEditForm] = useState(false);
+  const [editingDispatchId, setEditingDispatchId] = useState<string | null>(null);
+  const [dispatchEditForm, setDispatchEditForm] = useState({
+    dispatch_date: '',
+    transporter_name: '',
+    vehicle_number: '',
+    lr_number: '',
+    lr_date: '',
+    delivery_address: '',
+    notes: '',
+  });
+
+  // Warranty edit
+  const [showWarrantyEditForm, setShowWarrantyEditForm] = useState(false);
+  const [editingWarrantyId, setEditingWarrantyId] = useState<string | null>(null);
+  const [warrantyEditForm, setWarrantyEditForm] = useState({
+    status: 'ACTIVE',
+    warranty_type: 'STANDARD',
+  });
   
   // Customer form
   const [showCustomerForm, setShowCustomerForm] = useState(false);
+  const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
   const [customerForm, setCustomerForm] = useState({
     customer_name: '',
     customer_type: 'REGULAR',
@@ -137,6 +176,28 @@ export default function SalesPage() {
     credit_limit: 0,
     credit_days: 30,
   });
+
+  const resetCustomerForm = () => {
+    setEditingCustomerId(null);
+    setCustomerForm({
+      customer_name: '',
+      customer_type: 'REGULAR',
+      contact_person: '',
+      email: '',
+      phone: '',
+      mobile: '',
+      gst_number: '',
+      pan_number: '',
+      billing_address: '',
+      shipping_address: '',
+      city: '',
+      state: '',
+      country: 'India',
+      pincode: '',
+      credit_limit: 0,
+      credit_days: 30,
+    });
+  };
 
   // Quotation form
   const createDefaultQuotationForm = (): {
@@ -174,7 +235,7 @@ export default function SalesPage() {
     lr_date: new Date().toISOString().split('T')[0],
     delivery_address: '',
     notes: '',
-    items: [] as { sales_order_item_id: string; item_id: string; uid: string; quantity: number; batch_number?: string }[],
+    items: [] as { sales_order_item_id: string; item_id: string; uid: string[]; quantity: number; batch_number?: string }[],
   });
 
   // Warranty form
@@ -195,6 +256,219 @@ export default function SalesPage() {
     payment_terms: '',
     special_instructions: '',
   });
+  const [conversionItems, setConversionItems] = useState<{[key: string]: number}>({});
+
+  const handlePrintWarranty = async (warrantyId: string) => {
+    try {
+      // Try to open a print window immediately (must be synchronous on click to avoid Chrome popup blocking).
+      // If popups are blocked, we will fall back to printing via a hidden iframe.
+      const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+      if (printWindow) {
+        printWindow.document.write(
+          '<!doctype html><html><head><title>Preparing warranty certificate...</title></head><body style="font-family: Arial, sans-serif; padding: 16px;">Preparing warranty certificate…</body></html>',
+        );
+        printWindow.document.close();
+      }
+
+      const [company, warranty] = await Promise.all([
+        apiClient.get<any>('/tenant/current').catch(() => null),
+        apiClient.get<any>(`/sales/warranties/${warrantyId}`),
+      ]);
+
+      const escapeHtml = (value: unknown) =>
+        String(value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+
+      const formatDate = (d: any) => {
+        if (!d) return '';
+        try {
+          return new Date(d).toLocaleDateString('en-IN');
+        } catch {
+          return String(d);
+        }
+      };
+
+      const companyName = company?.name || 'Company';
+      const companyAddress = company?.address || '';
+      const companyPhone = company?.phone || '';
+      const companyEmail = company?.email || '';
+      const companyLogoUrl = company?.logo_url || '';
+
+      const itemLabel =
+        (warranty?.item_code || warranty?.item_name)
+          ? `${warranty?.item_code ? `${warranty.item_code} - ` : ''}${warranty?.item_name || ''}`
+          : (warranty?.item_description || 'Item');
+
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Warranty Certificate - ${escapeHtml(warranty?.warranty_number || '')}</title>
+  <style>
+    @page { margin: 0.5cm; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #000; font-size: 11pt; }
+    .letterhead {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #1e3a8a;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+    .logo-section { display: flex; align-items: center; gap: 12px; }
+    .logo-box {
+      width: 52px; height: 52px; background: #1e3a8a; color: white;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; border-radius: 8px;
+    }
+    .company-name { font-size: 18px; font-weight: 700; margin: 0; }
+    .company-meta { font-size: 10.5pt; margin: 2px 0 0 0; color: #111; }
+    .title {
+      text-align: center;
+      font-size: 18px;
+      font-weight: 800;
+      margin: 18px 0 10px 0;
+      letter-spacing: 0.4px;
+    }
+    .sub { text-align: center; font-size: 10.5pt; color: #333; margin-top: -6px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+    .box { border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; }
+    .box h3 { margin: 0 0 8px 0; font-size: 12pt; }
+    .row { display: flex; justify-content: space-between; gap: 12px; margin: 6px 0; }
+    .label { color: #374151; font-size: 10.5pt; }
+    .value { font-weight: 600; font-size: 10.5pt; text-align: right; }
+    .terms { margin-top: 16px; border-top: 1px dashed #cbd5e1; padding-top: 12px; font-size: 10.5pt; color: #111; }
+    .footer { margin-top: 18px; display: flex; justify-content: space-between; gap: 12px; }
+    .sign { width: 48%; border-top: 1px solid #111; padding-top: 6px; font-size: 10.5pt; }
+    .muted { color: #4b5563; }
+    img.logo { width: 52px; height: 52px; object-fit: contain; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div class="letterhead">
+    <div class="logo-section">
+      ${companyLogoUrl ? `<img class="logo" src="${escapeHtml(companyLogoUrl)}" alt="Logo" />` : `<div class="logo-box">${escapeHtml(companyName).slice(0, 2).toUpperCase()}</div>`}
+      <div>
+        <p class="company-name">${escapeHtml(companyName)}</p>
+        ${companyAddress ? `<p class="company-meta">${escapeHtml(companyAddress)}</p>` : ''}
+        <p class="company-meta">${[companyPhone ? `Phone: ${escapeHtml(companyPhone)}` : '', companyEmail ? `Email: ${escapeHtml(companyEmail)}` : ''].filter(Boolean).join(' • ')}</p>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div class="muted" style="font-size:10.5pt">Generated on</div>
+      <div style="font-weight:700">${escapeHtml(new Date().toLocaleDateString('en-IN'))}</div>
+    </div>
+  </div>
+
+  <div class="title">WARRANTY CERTIFICATE</div>
+  <div class="sub">(1 certificate per dispatched UID)</div>
+
+  <div class="grid">
+    <div class="box">
+      <h3>Warranty Details</h3>
+      <div class="row"><div class="label">Warranty No.</div><div class="value">${escapeHtml(warranty?.warranty_number)}</div></div>
+      <div class="row"><div class="label">UID</div><div class="value">${escapeHtml(warranty?.uid)}</div></div>
+      <div class="row"><div class="label">Product</div><div class="value">${escapeHtml(itemLabel)}</div></div>
+      ${warranty?.serial_number ? `<div class="row"><div class="label">Serial No.</div><div class="value">${escapeHtml(warranty.serial_number)}</div></div>` : ''}
+      ${warranty?.batch_number ? `<div class="row"><div class="label">Batch</div><div class="value">${escapeHtml(warranty.batch_number)}</div></div>` : ''}
+      <div class="row"><div class="label">Warranty Type</div><div class="value">${escapeHtml(warranty?.warranty_type || 'STANDARD')}</div></div>
+      <div class="row"><div class="label">Start Date</div><div class="value">${escapeHtml(formatDate(warranty?.warranty_start_date))}</div></div>
+      <div class="row"><div class="label">End Date</div><div class="value">${escapeHtml(formatDate(warranty?.warranty_end_date))}</div></div>
+      <div class="row"><div class="label">Duration</div><div class="value">${escapeHtml(String(warranty?.warranty_duration_months || 12))} months</div></div>
+    </div>
+    <div class="box">
+      <h3>Customer / Dispatch</h3>
+      <div class="row"><div class="label">Customer</div><div class="value">${escapeHtml(warranty?.customer_name || '')}</div></div>
+      ${warranty?.customer_code ? `<div class="row"><div class="label">Customer Code</div><div class="value">${escapeHtml(warranty.customer_code)}</div></div>` : ''}
+      ${warranty?.so_number ? `<div class="row"><div class="label">Sales Order</div><div class="value">${escapeHtml(warranty.so_number)}</div></div>` : ''}
+      ${warranty?.dn_number ? `<div class="row"><div class="label">Dispatch Note</div><div class="value">${escapeHtml(warranty.dn_number)}</div></div>` : ''}
+      ${warranty?.dn_date ? `<div class="row"><div class="label">Dispatch Date</div><div class="value">${escapeHtml(formatDate(warranty.dn_date))}</div></div>` : ''}
+      <div class="row"><div class="label">Status</div><div class="value">${escapeHtml(warranty?.status || 'ACTIVE')}</div></div>
+    </div>
+  </div>
+
+  <div class="terms">
+    <div style="font-weight:700; margin-bottom:6px">Standard Warranty Terms</div>
+    <div>• This warranty is valid only for the UID/product mentioned above.</div>
+    <div>• Warranty is applicable from the start date until the end date stated in this certificate.</div>
+    <div>• Please retain this certificate for warranty claims and service support.</div>
+  </div>
+
+  <div class="footer">
+    <div class="sign">Authorized Signatory</div>
+    <div class="sign">Customer Signature</div>
+  </div>
+
+  <script>
+    window.onload = function(){
+      // Keep it immediate; browsers can treat delayed prints as non-user initiated.
+      try { window.focus(); } catch(e) {}
+      try { window.print(); } catch(e) {}
+    };
+  </script>
+</body>
+</html>
+      `;
+
+      // Preferred path: if a popup window was successfully opened, render into it.
+      if (printWindow) {
+        printWindow.document.open();
+        printWindow.document.write(html);
+        printWindow.document.close();
+        return;
+      }
+
+      // Fallback: print via hidden iframe (no popup required).
+      const frameId = `warranty-print-frame-${warrantyId}`;
+      const existing = document.getElementById(frameId);
+      if (existing) existing.remove();
+
+      const iframe = document.createElement('iframe');
+      iframe.id = frameId;
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.style.visibility = 'hidden';
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow?.document;
+      if (!doc) {
+        iframe.remove();
+        throw new Error('Unable to create print frame');
+      }
+
+      doc.open();
+      doc.write(html);
+      doc.close();
+
+      const cleanup = () => {
+        try {
+          iframe.remove();
+        } catch {
+          // ignore
+        }
+      };
+
+      try {
+        iframe.contentWindow?.addEventListener('afterprint', cleanup, { once: true });
+      } catch {
+        // ignore
+      }
+
+      setTimeout(cleanup, 30_000);
+    } catch (err: any) {
+      console.error('Failed to print warranty certificate:', err);
+      alert(err?.message || 'Failed to print warranty certificate');
+    }
+  };
 
   useEffect(() => {
     fetchItems(); // Fetch items on mount for all forms
@@ -265,6 +539,145 @@ export default function SalesPage() {
     }
   };
 
+  const handleSendSalesOrderEmail = async (orderId: string) => {
+    try {
+      setSendingSOEmailId(orderId);
+      const result = await apiClient.post(`/sales/orders/${orderId}/send-email`, {});
+      alert(`Sales order email sent to: ${result?.to || 'customer email'}`);
+    } catch (err: any) {
+      console.error('Error sending sales order email:', err);
+      alert(err?.message || 'Failed to send sales order email');
+    } finally {
+      setSendingSOEmailId(null);
+    }
+  };
+
+  const handleEditSalesOrder = async (orderId: string) => {
+    try {
+      const data: any = await apiClient.get(`/sales/orders/${orderId}`);
+      setEditingOrderId(orderId);
+      setOrderEditForm({
+        expected_delivery_date: data.expected_delivery_date?.split('T')[0] || '',
+        payment_terms: data.payment_terms || '',
+        delivery_terms: data.delivery_terms || '',
+        notes: data.notes || '',
+        status: data.status || 'CONFIRMED',
+      });
+      setShowOrderEditForm(true);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to load sales order');
+    }
+  };
+
+  const handleSaveSalesOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOrderId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await apiClient.put(`/sales/orders/${editingOrderId}`, orderEditForm);
+      setShowOrderEditForm(false);
+      setEditingOrderId(null);
+      await fetchOrders();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to update sales order');
+      alert(err?.message || 'Failed to update sales order');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteSalesOrder = async (order: SalesOrder) => {
+    if (!confirm(`Delete sales order ${order.so_number}?`)) return;
+    try {
+      await apiClient.delete(`/sales/orders/${order.id}`);
+      await fetchOrders();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete sales order');
+    }
+  };
+
+  const handleEditDispatch = (dispatch: DispatchNote) => {
+    setEditingDispatchId(dispatch.id);
+    setDispatchEditForm({
+      dispatch_date: dispatch.dispatch_date?.split('T')[0] || '',
+      transporter_name: dispatch.transporter_name || '',
+      vehicle_number: dispatch.vehicle_number || '',
+      lr_number: dispatch.lr_number || '',
+      lr_date: (dispatch as any).lr_date?.split('T')[0] || '',
+      delivery_address: (dispatch as any).delivery_address || '',
+      notes: (dispatch as any).notes || '',
+    });
+    setShowDispatchEditForm(true);
+  };
+
+  const handleSaveDispatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDispatchId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await apiClient.put(`/sales/dispatch/${editingDispatchId}`, dispatchEditForm);
+      setShowDispatchEditForm(false);
+      setEditingDispatchId(null);
+      await fetchDispatches();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to update dispatch');
+      alert(err?.message || 'Failed to update dispatch');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteDispatch = async (dispatch: DispatchNote) => {
+    if (!confirm(`Delete dispatch note ${dispatch.dn_number}? This will attempt to revert stock and UIDs.`)) return;
+    try {
+      await apiClient.delete(`/sales/dispatch/${dispatch.id}`);
+      await fetchDispatches();
+      await fetchOrders();
+      await fetchWarranties();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete dispatch');
+    }
+  };
+
+  const handleEditWarranty = (warranty: Warranty) => {
+    setEditingWarrantyId(warranty.id);
+    setWarrantyEditForm({
+      status: warranty.status || 'ACTIVE',
+      warranty_type: warranty.warranty_type || 'STANDARD',
+    });
+    setShowWarrantyEditForm(true);
+  };
+
+  const handleSaveWarranty = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingWarrantyId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await apiClient.put(`/sales/warranties/${editingWarrantyId}`, warrantyEditForm);
+      setShowWarrantyEditForm(false);
+      setEditingWarrantyId(null);
+      await fetchWarranties();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to update warranty');
+      alert(err?.message || 'Failed to update warranty');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteWarranty = async (warranty: Warranty) => {
+    if (!confirm(`Delete warranty ${warranty.warranty_number}?`)) return;
+    try {
+      await apiClient.delete(`/sales/warranties/${warranty.id}`);
+      await fetchWarranties();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete warranty');
+    }
+  };
+
   const fetchDispatches = async () => {
     setLoading(true);
     setError(null);
@@ -291,40 +704,62 @@ export default function SalesPage() {
     }
   };
 
-  const handleCreateCustomer = async (e: React.FormEvent) => {
+  const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     try {
-      console.log('Creating customer with data:', customerForm);
-      const response = await apiClient.post('/sales/customers', customerForm);
-      console.log('Customer created successfully:', response);
+      if (editingCustomerId) {
+        await apiClient.put(`/sales/customers/${editingCustomerId}`, customerForm);
+        alert('Customer updated successfully!');
+      } else {
+        console.log('Creating customer with data:', customerForm);
+        const response = await apiClient.post('/sales/customers', customerForm);
+        console.log('Customer created successfully:', response);
+        alert('Customer created successfully!');
+      }
       setShowCustomerForm(false);
-      setCustomerForm({
-        customer_name: '',
-        customer_type: 'REGULAR',
-        contact_person: '',
-        email: '',
-        phone: '',
-        mobile: '',
-        gst_number: '',
-        pan_number: '',
-        billing_address: '',
-        shipping_address: '',
-        city: '',
-        state: '',
-        country: 'India',
-        pincode: '',
-        credit_limit: 0,
-        credit_days: 30,
-      });
+      resetCustomerForm();
       fetchCustomers();
     } catch (err: any) {
       console.error('Full error object:', err);
       console.error('Error response:', err.response?.data);
-      setError(err.response?.data?.message || err.message || 'Failed to create customer');
+      setError(err.response?.data?.message || err.message || 'Failed to save customer');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEditCustomer = (customer: Customer) => {
+    setEditingCustomerId(customer.id);
+    setCustomerForm({
+      customer_name: customer.customer_name || '',
+      customer_type: customer.customer_type || 'REGULAR',
+      contact_person: customer.contact_person || '',
+      email: customer.email || '',
+      phone: customer.phone || '',
+      mobile: customer.mobile || '',
+      gst_number: customer.gst_number || '',
+      pan_number: '',
+      billing_address: '',
+      shipping_address: '',
+      city: customer.city || '',
+      state: customer.state || '',
+      country: 'India',
+      pincode: '',
+      credit_limit: Number(customer.credit_limit) || 0,
+      credit_days: Number(customer.credit_days) || 30,
+    });
+    setShowCustomerForm(true);
+  };
+
+  const handleDeleteCustomer = async (customer: Customer) => {
+    if (!confirm(`Delete customer ${customer.customer_name}? This will deactivate the customer.`)) return;
+    try {
+      await apiClient.delete(`/sales/customers/${customer.id}`);
+      await fetchCustomers();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete customer');
     }
   };
 
@@ -386,16 +821,61 @@ export default function SalesPage() {
     }
   };
 
+  const handleDeleteQuotation = async (quotation: Quotation) => {
+    if (quotation.status !== 'DRAFT') return;
+    if (!confirm(`Delete quotation ${quotation.quotation_number}?`)) return;
+    try {
+      await apiClient.delete(`/sales/quotations/${quotation.id}`);
+      await fetchQuotations();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete quotation');
+    }
+  };
+
+  const handleOpenSOConversion = async (quotation: Quotation) => {
+    try {
+      // Fetch full quotation details with items
+      const fullQuotation = await apiClient.get<any>(`/sales/quotations/${quotation.id}`);
+      setSelectedQuotationForSO(fullQuotation);
+      
+      // Initialize conversion items with pending quantities
+      const initialConversionItems: {[key: string]: number} = {};
+      if (fullQuotation.quotation_items) {
+        fullQuotation.quotation_items.forEach((item: QuotationItem) => {
+          const pendingQty = item.pending_quantity || (item.quantity - (item.converted_quantity || 0));
+          initialConversionItems[item.id!] = pendingQty;
+        });
+      }
+      setConversionItems(initialConversionItems);
+      
+      setSOConversionForm({
+        ...soConversionForm,
+        payment_terms: fullQuotation.payment_terms || '',
+      });
+      setShowSOConversionForm(true);
+    } catch (err: any) {
+      alert('Failed to load quotation details: ' + err.message);
+    }
+  };
+
   const handleCreateDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post('/sales/dispatch', dispatchForm);
+      // Prepare dispatch payload with customer_id from selected order
+      const dispatchPayload = {
+        ...dispatchForm,
+        customer_id: selectedOrderForDispatch?.customer_id,
+      };
+
+      console.log('Creating dispatch with payload:', dispatchPayload);
+      await apiClient.post('/sales/dispatch', dispatchPayload);
       alert('Dispatch note created successfully!');
       setShowDispatchForm(false);
       setSelectedOrderForDispatch(null);
       setSalesOrderItems([]);
+      setAvailableUIDs({});
       setDispatchForm({
         sales_order_id: '',
         dispatch_date: new Date().toISOString().split('T')[0],
@@ -411,7 +891,10 @@ export default function SalesPage() {
       fetchOrders();
       fetchWarranties();
     } catch (err: any) {
-      setError(err.message || 'Failed to create dispatch');
+      console.error('Dispatch creation error:', err);
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to create dispatch';
+      setError(errorMessage);
+      alert('❌ Dispatch Creation Failed:\n\n' + errorMessage);
     } finally {
       setLoading(false);
     }
@@ -455,7 +938,7 @@ export default function SalesPage() {
         {
           sales_order_item_id: '',
           item_id: '',
-          uid: '',
+          uid: [],
           quantity: 1,
           batch_number: '',
         },
@@ -473,14 +956,18 @@ export default function SalesPage() {
           ...newItems[index], 
           sales_order_item_id: value,
           item_id: soItem.item_id,
-          quantity: soItem.quantity - (soItem.dispatched_quantity || 0), // Remaining qty
-          uid: '' // Reset UID when item changes
+          // Quantity is based on selected *saleable* UIDs (auto-fills)
+          quantity: 0,
+          uid: [] // Reset UID when item changes
         };
         // Fetch available UIDs for this item
         fetchAvailableUIDs(soItem.item_id, index);
       } else {
         newItems[index] = { ...newItems[index], [field]: value };
       }
+    } else if (field === 'uid') {
+      // Handle UID array changes and auto-update quantity
+      newItems[index] = { ...newItems[index], uid: value, quantity: value.length };
     } else {
       newItems[index] = { ...newItems[index], [field]: value };
     }
@@ -503,11 +990,12 @@ export default function SalesPage() {
       console.log('SO items extracted:', itemsArray);
       setSalesOrderItems(itemsArray);
       if (itemsArray.length === 0) {
-        alert('Warning: This sales order has no items. Please check the sales order.');
+        alert('⚠️ Warning: This sales order has no items. Please check the sales order.');
       }
     } catch (err: any) {
       console.error('Failed to fetch SO items:', err);
-      alert('Failed to fetch sales order items: ' + err.message);
+      const errorMsg = err.response?.data?.message || err.message || 'Unknown error';
+      alert('❌ Failed to fetch sales order items:\n\n' + errorMsg);
       setSalesOrderItems([]);
     }
   };
@@ -517,18 +1005,22 @@ export default function SalesPage() {
     
     setLoadingUIDs({ ...loadingUIDs, [rowIndex]: true });
     try {
-      // Fetch UIDs with status GENERATED (newly received UIDs ready for dispatch)
-      const response = await apiClient.get(`/uid?item_id=${itemId}&status=GENERATED`);
+      // Fetch only saleable UIDs for dispatch: QC PASSED + IN_STOCK status
+      const response = await apiClient.get(
+        `/uid?item_id=${itemId}&status=IN_STOCK&quality_status=PASSED&limit=5000&sortBy=created_at&sortOrder=asc`
+      );
       // Handle paginated response structure: { data: [...], pagination: {...} }
       const uids = response?.data || (Array.isArray(response) ? response : []);
       setAvailableUIDs({ ...availableUIDs, [itemId]: uids });
       
       if (uids.length === 0) {
-        alert(`No available UIDs found for this item. Please complete a GRN first.`);
+        console.warn(`No UIDs available for item ${itemId}`);
+        alert(`⚠️ No saleable UIDs found for this item. Ensure QC is PASSED and inventory is IN_STOCK.`);
       }
     } catch (err: any) {
       console.error('Failed to fetch UIDs:', err);
-      alert('Failed to fetch available UIDs: ' + err.message);
+      const errorMsg = err.response?.data?.message || err.message || 'Unknown error';
+      alert('❌ Failed to fetch available UIDs:\n\n' + errorMsg);
       setAvailableUIDs({ ...availableUIDs, [itemId]: [] });
     } finally {
       setLoadingUIDs({ ...loadingUIDs, [rowIndex]: false });
@@ -538,10 +1030,28 @@ export default function SalesPage() {
   const handleConvertToSO = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedQuotationForSO) return;
+    
+    // Build items array with selected quantities
+    const items = Object.entries(conversionItems)
+      .filter(([_, qty]) => qty > 0)
+      .map(([quotation_item_id, quantity]) => ({
+        quotation_item_id,
+        quantity,
+      }));
+    
+    if (items.length === 0) {
+      alert('Please specify quantities to convert for at least one item.');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post(`/sales/quotations/${selectedQuotationForSO.id}/convert-to-so`, soConversionForm);
+      const payload = {
+        ...soConversionForm,
+        items,
+      };
+      await apiClient.post(`/sales/quotations/${selectedQuotationForSO.id}/convert-to-so`, payload);
       alert('Quotation converted to Sales Order successfully!');
       setShowSOConversionForm(false);
       setSelectedQuotationForSO(null);
@@ -551,6 +1061,7 @@ export default function SalesPage() {
         payment_terms: '',
         special_instructions: '',
       });
+      setConversionItems({});
       fetchQuotations();
       fetchOrders();
     } catch (err: any) {
@@ -606,6 +1117,56 @@ export default function SalesPage() {
 
   const router = useRouter();
 
+  // Smart Job Order (from Sales Order) state
+  const [showSmartJOModal, setShowSmartJOModal] = useState(false);
+  const [smartJOOrder, setSmartJOOrder] = useState<SalesOrder | null>(null);
+  const [smartJOSOItems, setSmartJOSOItems] = useState<any[]>([]);
+  const [smartJOSelectedSOItemId, setSmartJOSelectedSOItemId] = useState<string>('');
+  const [smartJOLoading, setSmartJOLoading] = useState(false);
+
+  const openSmartJOForSO = async (order: SalesOrder) => {
+    setSmartJOLoading(true);
+    try {
+      const so = await apiClient.get<any>(`/sales/orders/${order.id}`);
+      const soItems = (so?.sales_order_items || so?.items || []) as any[];
+
+      const remaining = (Array.isArray(soItems) ? soItems : [])
+        .map((soItem) => {
+          const remainingQty = Number(soItem.quantity) - Number(soItem.dispatched_quantity || 0);
+          return {
+            ...soItem,
+            remainingQty,
+          };
+        })
+        .filter((soItem) => soItem.item_id && Number(soItem.remainingQty) > 0);
+
+      if (remaining.length === 0) {
+        alert('No remaining quantity found in this sales order.');
+        return;
+      }
+
+      if (remaining.length === 1) {
+        const soItem = remaining[0];
+        router.push(
+          `/dashboard/production/job-orders/smart?salesOrderId=${encodeURIComponent(order.id)}` +
+            `&salesOrderItemId=${encodeURIComponent(soItem.id)}` +
+            `&itemId=${encodeURIComponent(soItem.item_id)}` +
+            `&quantity=${encodeURIComponent(String(soItem.remainingQty))}`,
+        );
+        return;
+      }
+
+      setSmartJOOrder(order);
+      setSmartJOSOItems(remaining);
+      setSmartJOSelectedSOItemId(String(remaining[0]?.id || ''));
+      setShowSmartJOModal(true);
+    } catch (err: any) {
+      alert(`Failed to load sales order items: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setSmartJOLoading(false);
+    }
+  };
+
   return (
     <div className="p-6">
       <div className="mb-6">
@@ -658,7 +1219,10 @@ export default function SalesPage() {
           <div className="mb-4 flex justify-between items-center">
             <h2 className="text-lg font-semibold">Customer List</h2>
             <button
-              onClick={() => setShowCustomerForm(true)}
+              onClick={() => {
+                resetCustomerForm();
+                setShowCustomerForm(true);
+              }}
               className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
             >
               + Add Customer
@@ -679,6 +1243,7 @@ export default function SalesPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">City</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Credit Limit</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -707,6 +1272,24 @@ export default function SalesPage() {
                           {customer.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleEditCustomer(customer)}
+                            className="text-amber-600 hover:text-amber-800"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomer(customer)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -718,8 +1301,8 @@ export default function SalesPage() {
           {showCustomerForm && (
             <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
               <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                <h3 className="text-lg font-semibold mb-4">Add New Customer</h3>
-                <form onSubmit={handleCreateCustomer}>
+                <h3 className="text-lg font-semibold mb-4">{editingCustomerId ? 'Edit Customer' : 'Add New Customer'}</h3>
+                <form onSubmit={handleSaveCustomer}>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name *</label>
@@ -847,7 +1430,10 @@ export default function SalesPage() {
                   <div className="mt-6 flex justify-end space-x-3">
                     <button
                       type="button"
-                      onClick={() => setShowCustomerForm(false)}
+                      onClick={() => {
+                        setShowCustomerForm(false);
+                        resetCustomerForm();
+                      }}
                       className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
                     >
                       Cancel
@@ -857,7 +1443,13 @@ export default function SalesPage() {
                       disabled={loading}
                       className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
                     >
-                      {loading ? 'Creating...' : 'Create Customer'}
+                      {loading
+                        ? editingCustomerId
+                          ? 'Saving...'
+                          : 'Creating...'
+                        : editingCustomerId
+                          ? 'Save Changes'
+                          : 'Create Customer'}
                     </button>
                   </div>
                 </form>
@@ -929,14 +1521,32 @@ export default function SalesPage() {
                         >
                           View
                         </button>
-                        {quotation.status === 'DRAFT' && (
-                          <button
-                            onClick={() => handleEditQuotation(quotation.id)}
-                            className="text-amber-600 hover:text-amber-900"
-                          >
-                            Edit
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleEditQuotation(quotation.id)}
+                          disabled={quotation.status !== 'DRAFT'}
+                          title={quotation.status !== 'DRAFT' ? 'Only DRAFT quotations can be edited' : 'Edit quotation'}
+                          className={
+                            quotation.status === 'DRAFT'
+                              ? 'text-amber-600 hover:text-amber-900'
+                              : 'text-gray-400 cursor-not-allowed'
+                          }
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteQuotation(quotation)}
+                          disabled={quotation.status !== 'DRAFT'}
+                          title={quotation.status !== 'DRAFT' ? 'Only DRAFT quotations can be deleted' : 'Delete quotation'}
+                          className={
+                            quotation.status === 'DRAFT'
+                              ? 'text-red-600 hover:text-red-900'
+                              : 'text-gray-400 cursor-not-allowed'
+                          }
+                        >
+                          Delete
+                        </button>
                         {quotation.status === 'DRAFT' && (
                           <button
                             onClick={async () => {
@@ -955,17 +1565,18 @@ export default function SalesPage() {
                         )}
                         {quotation.status === 'APPROVED' && (
                           <button
-                            onClick={() => {
-                              setSelectedQuotationForSO(quotation);
-                              setSOConversionForm({
-                                ...soConversionForm,
-                                payment_terms: quotation.payment_terms || '',
-                              });
-                              setShowSOConversionForm(true);
-                            }}
+                            onClick={() => handleOpenSOConversion(quotation)}
                             className="text-amber-600 hover:text-amber-900"
                           >
                             Convert to SO
+                          </button>
+                        )}
+                        {quotation.status === 'PARTIALLY_CONVERTED' && (
+                          <button
+                            onClick={() => handleOpenSOConversion(quotation)}
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            Convert Remaining
                           </button>
                         )}
                       </td>
@@ -978,59 +1589,175 @@ export default function SalesPage() {
 
           {/* SO Conversion Form Modal */}
           {showSOConversionForm && selectedQuotationForSO && (
-            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 max-w-lg w-full">
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+              <div className="bg-white rounded-lg p-6 max-w-4xl w-full my-8 max-h-[90vh] overflow-y-auto">
                 <h3 className="text-lg font-semibold mb-4">
                   Convert Quotation {selectedQuotationForSO.quotation_number} to Sales Order
                 </h3>
                 <form onSubmit={handleConvertToSO}>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
-                      <p className="text-sm text-gray-900">{selectedQuotationForSO.customer_name}</p>
+                  <div className="space-y-6">
+                    {/* Customer Info */}
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Customer</label>
+                          <p className="text-sm text-gray-900 font-medium">{selectedQuotationForSO.customer_name}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Quotation Total</label>
+                          <p className="text-sm text-gray-900 font-medium">₹{selectedQuotationForSO.net_amount.toLocaleString()}</p>
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Items to Convert */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount</label>
-                      <p className="text-sm text-gray-900">₹{selectedQuotationForSO.net_amount.toLocaleString()}</p>
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3">Select Items & Quantities to Convert</h4>
+                      <div className="border rounded-lg overflow-hidden">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Total Qty</th>
+                              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Converted</th>
+                              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Pending</th>
+                              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Convert Now</th>
+                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {selectedQuotationForSO.quotation_items?.map((item) => {
+                              const convertedQty = item.converted_quantity || 0;
+                              const pendingQty = item.pending_quantity || (item.quantity - convertedQty);
+                              const currentConvertQty = conversionItems[item.id!] || 0;
+                              
+                              return (
+                                <tr key={item.id} className={pendingQty === 0 ? 'bg-gray-50 opacity-60' : ''}>
+                                  <td className="px-4 py-3">
+                                    <div className="text-sm font-medium text-gray-900">{item.item_description}</div>
+                                    {convertedQty > 0 && (
+                                      <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
+                                        <div 
+                                          className="bg-green-500 h-2 rounded-full" 
+                                          style={{ width: `${(convertedQty / item.quantity) * 100}%` }}
+                                        ></div>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-center text-sm text-gray-900">{item.quantity}</td>
+                                  <td className="px-4 py-3 text-center">
+                                    <span className="text-sm text-green-600 font-medium">{convertedQty}</span>
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <span className="text-sm text-amber-600 font-medium">{pendingQty}</span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={pendingQty}
+                                      step="0.01"
+                                      value={currentConvertQty}
+                                      onChange={(e) => {
+                                        const value = parseFloat(e.target.value) || 0;
+                                        setConversionItems({
+                                          ...conversionItems,
+                                          [item.id!]: Math.min(value, pendingQty),
+                                        });
+                                      }}
+                                      disabled={pendingQty === 0}
+                                      className="w-24 px-2 py-1 text-center border border-gray-300 rounded text-sm focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100"
+                                    />
+                                  </td>
+                                  <td className="px-4 py-3 text-right text-sm text-gray-900">₹{item.unit_price.toLocaleString()}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      
+                      {/* Quick Actions */}
+                      <div className="mt-3 flex space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allItems: {[key: string]: number} = {};
+                            selectedQuotationForSO.quotation_items?.forEach((item) => {
+                              const pendingQty = item.pending_quantity || (item.quantity - (item.converted_quantity || 0));
+                              allItems[item.id!] = pendingQty;
+                            });
+                            setConversionItems(allItems);
+                          }}
+                          className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
+                        >
+                          Convert All Remaining
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const halfItems: {[key: string]: number} = {};
+                            selectedQuotationForSO.quotation_items?.forEach((item) => {
+                              const pendingQty = item.pending_quantity || (item.quantity - (item.converted_quantity || 0));
+                              halfItems[item.id!] = Math.floor(pendingQty / 2);
+                            });
+                            setConversionItems(halfItems);
+                          }}
+                          className="px-3 py-1 text-xs bg-amber-50 text-amber-600 rounded hover:bg-amber-100"
+                        >
+                          Convert Half
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConversionItems({})}
+                          className="px-3 py-1 text-xs bg-gray-50 text-gray-600 rounded hover:bg-gray-100"
+                        >
+                          Clear All
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Expected Delivery Date *</label>
-                      <input
-                        type="date"
-                        required
-                        value={soConversionForm.expected_delivery_date}
-                        onChange={(e) => setSOConversionForm({ ...soConversionForm, expected_delivery_date: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      />
+
+                    {/* Order Details */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Expected Delivery Date *</label>
+                        <input
+                          type="date"
+                          required
+                          value={soConversionForm.expected_delivery_date}
+                          onChange={(e) => setSOConversionForm({ ...soConversionForm, expected_delivery_date: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Advance Amount (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={soConversionForm.advance_amount}
+                          onChange={(e) => setSOConversionForm({ ...soConversionForm, advance_amount: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Advance Amount (₹) *</label>
-                      <input
-                        type="number"
-                        required
-                        min="0"
-                        max={selectedQuotationForSO.net_amount}
-                        value={soConversionForm.advance_amount}
-                        onChange={(e) => setSOConversionForm({ ...soConversionForm, advance_amount: parseFloat(e.target.value) })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
+                    
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
                       <input
                         type="text"
                         value={soConversionForm.payment_terms}
                         onChange={(e) => setSOConversionForm({ ...soConversionForm, payment_terms: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                       />
                     </div>
+                    
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Special Instructions</label>
                       <textarea
-                        rows={3}
+                        rows={2}
                         value={soConversionForm.special_instructions}
                         onChange={(e) => setSOConversionForm({ ...soConversionForm, special_instructions: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                       />
                     </div>
                   </div>
@@ -1041,6 +1768,7 @@ export default function SalesPage() {
                       onClick={() => {
                         setShowSOConversionForm(false);
                         setSelectedQuotationForSO(null);
+                        setConversionItems({});
                       }}
                       className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
                     >
@@ -1401,24 +2129,138 @@ export default function SalesPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        {(order.status === 'READY_TO_DISPATCH' || order.status === 'CONFIRMED') && (
+                        <div className="flex items-center gap-3">
                           <button
-                            onClick={async () => {
-                              setSelectedOrderForDispatch(order);
-                              setDispatchForm({ ...dispatchForm, sales_order_id: order.id });
-                              await fetchSalesOrderItems(order.id);
-                              setShowDispatchForm(true);
-                            }}
+                            onClick={() => openSmartJOForSO(order)}
+                            className="text-amber-600 hover:text-amber-900 disabled:opacity-50"
+                            title="Create a Smart Job Order from this Sales Order"
+                            disabled={smartJOLoading}
+                          >
+                            {smartJOLoading ? 'Loading…' : 'Create Job Order'}
+                          </button>
+                          <button
+                            onClick={() => handleEditSalesOrder(order.id)}
                             className="text-amber-600 hover:text-amber-900"
                           >
-                            Create Dispatch
+                            Edit
                           </button>
-                        )}
+                          <button
+                            onClick={() => handleDeleteSalesOrder(order)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            Delete
+                          </button>
+                          {(order.status === 'READY_TO_DISPATCH' || order.status === 'CONFIRMED') && (
+                            <button
+                              onClick={async () => {
+                                setSelectedOrderForDispatch(order);
+                                setDispatchForm({ ...dispatchForm, sales_order_id: order.id });
+                                await fetchSalesOrderItems(order.id);
+                                setShowDispatchForm(true);
+                              }}
+                              className="text-amber-600 hover:text-amber-900"
+                            >
+                              Create Dispatch
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => handleSendSalesOrderEmail(order.id)}
+                            disabled={sendingSOEmailId === order.id}
+                            className="text-amber-600 hover:text-amber-900 disabled:opacity-50"
+                          >
+                            {sendingSOEmailId === order.id ? 'Sending...' : 'Send SO Email'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {showOrderEditForm && editingOrderId && (
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 max-w-xl w-full">
+                <h3 className="text-lg font-semibold mb-4">Edit Sales Order</h3>
+                <form onSubmit={handleSaveSalesOrder}>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Expected Delivery Date</label>
+                      <input
+                        type="date"
+                        value={orderEditForm.expected_delivery_date}
+                        onChange={(e) =>
+                          setOrderEditForm({ ...orderEditForm, expected_delivery_date: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                      <select
+                        value={orderEditForm.status}
+                        onChange={(e) => setOrderEditForm({ ...orderEditForm, status: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      >
+                        <option value="CONFIRMED">CONFIRMED</option>
+                        <option value="IN_PRODUCTION">IN_PRODUCTION</option>
+                        <option value="READY_TO_DISPATCH">READY_TO_DISPATCH</option>
+                        <option value="DISPATCHED">DISPATCHED</option>
+                        <option value="DELIVERED">DELIVERED</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
+                      <input
+                        type="text"
+                        value={orderEditForm.payment_terms}
+                        onChange={(e) => setOrderEditForm({ ...orderEditForm, payment_terms: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Delivery Terms</label>
+                      <input
+                        type="text"
+                        value={orderEditForm.delivery_terms}
+                        onChange={(e) => setOrderEditForm({ ...orderEditForm, delivery_terms: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                      <textarea
+                        value={orderEditForm.notes}
+                        onChange={(e) => setOrderEditForm({ ...orderEditForm, notes: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowOrderEditForm(false);
+                        setEditingOrderId(null);
+                      }}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      {loading ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           )}
 
@@ -1491,7 +2333,7 @@ export default function SalesPage() {
                     )}
 
                     {dispatchForm.items.map((item, index) => (
-                      <div key={index} className="grid grid-cols-5 gap-2 mb-2 p-3 border border-gray-200 rounded-lg">
+                      <div key={index} className="grid grid-cols-4 gap-2 mb-2 p-3 border border-gray-200 rounded-lg bg-gray-50">
                         <div>
                           <label className="block text-xs text-gray-600 mb-1">SO Item *</label>
                           <select
@@ -1510,28 +2352,44 @@ export default function SalesPage() {
                             ))}
                           </select>
                         </div>
-                        <div>
-                          <label className="block text-xs text-gray-600 mb-1">UID *</label>
+                        <div className="col-span-2">
+                          <label className="block text-xs text-gray-600 mb-1">Select UIDs * (Quantity auto-fills)</label>
                           {loadingUIDs[index] ? (
                             <div className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-gray-50 text-gray-500">
                               Loading UIDs...
                             </div>
                           ) : item.item_id && availableUIDs[item.item_id] ? (
-                            <select
-                              required
-                              value={item.uid}
-                              onChange={(e) => updateDispatchItem(index, 'uid', e.target.value)}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                            >
-                              <option value="">
-                                {availableUIDs[item.item_id].length === 0 ? 'No UIDs available' : 'Select UID'}
-                              </option>
-                              {availableUIDs[item.item_id].map((uid) => (
-                                <option key={uid.id} value={uid.uid}>
-                                  {uid.uid} - {uid.status} {uid.location ? `(${uid.location})` : ''}
-                                </option>
-                              ))}
-                            </select>
+                            <div className="w-full border border-gray-300 rounded-lg p-2 max-h-40 overflow-y-auto bg-white">
+                              {availableUIDs[item.item_id].length === 0 ? (
+                                <div className="text-sm text-gray-500">No UIDs available</div>
+                              ) : (
+                                <div className="space-y-1">
+                                  {availableUIDs[item.item_id].map((uid) => (
+                                    <label key={uid.id} className="flex items-center space-x-2 p-1 hover:bg-amber-50 rounded cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={item.uid.includes(uid.uid)}
+                                        onChange={(e) => {
+                                          const newUids = e.target.checked
+                                            ? [...item.uid, uid.uid]
+                                            : item.uid.filter(u => u !== uid.uid);
+                                          updateDispatchItem(index, 'uid', newUids);
+                                        }}
+                                        className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
+                                      />
+                                      <span className="text-sm">
+                                        {uid.uid} - {uid.status} {uid.location ? `(${uid.location})` : ''}
+                                      </span>
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
+                              {item.uid.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-gray-200 text-xs font-medium text-amber-600">
+                                  {item.uid.length} UID{item.uid.length > 1 ? 's' : ''} selected
+                                </div>
+                              )}
+                            </div>
                           ) : (
                             <div className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-gray-50 text-gray-500">
                               Select item first
@@ -1539,16 +2397,14 @@ export default function SalesPage() {
                           )}
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-600 mb-1">Quantity *</label>
+                          <label className="block text-xs text-gray-600 mb-1">Quantity (Auto)</label>
                           <input
                             type="number"
-                            placeholder="Qty"
-                            required
-                            min="0.01"
-                            step="0.01"
+                            placeholder="Auto"
                             value={item.quantity}
-                            onChange={(e) => updateDispatchItem(index, 'quantity', parseFloat(e.target.value))}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                            readOnly
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-gray-50 text-gray-700 font-semibold"
+                            title="Quantity is automatically set based on selected UIDs"
                           />
                         </div>
                         <div>
@@ -1601,6 +2457,69 @@ export default function SalesPage() {
         </div>
       )}
 
+      {showSmartJOModal && smartJOOrder && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full">
+            <h3 className="text-lg font-semibold mb-2">Create Job Order</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Sales Order: <span className="font-medium text-gray-900">{smartJOOrder.so_number}</span>
+            </p>
+
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Sales Order Item</label>
+            <select
+              value={smartJOSelectedSOItemId}
+              onChange={(e) => setSmartJOSelectedSOItemId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            >
+              {smartJOSOItems.map((soItem) => {
+                const item = items.find((i) => i.id === soItem.item_id);
+                const label = `${item?.code || soItem.item_id} - Remaining: ${soItem.remainingQty}`;
+                return (
+                  <option key={soItem.id} value={soItem.id}>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSmartJOModal(false);
+                  setSmartJOOrder(null);
+                  setSmartJOSOItems([]);
+                  setSmartJOSelectedSOItemId('');
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const soItem = smartJOSOItems.find((x) => String(x.id) === String(smartJOSelectedSOItemId));
+                  if (!soItem?.item_id || Number(soItem.remainingQty) <= 0) {
+                    alert('Invalid sales order item selected.');
+                    return;
+                  }
+                  router.push(
+                    `/dashboard/production/job-orders/smart?salesOrderId=${encodeURIComponent(smartJOOrder.id)}` +
+                      `&salesOrderItemId=${encodeURIComponent(soItem.id)}` +
+                      `&itemId=${encodeURIComponent(soItem.item_id)}` +
+                      `&quantity=${encodeURIComponent(String(soItem.remainingQty))}`,
+                  );
+                  setShowSmartJOModal(false);
+                }}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Dispatch Tab */}
       {activeTab === 'dispatch' && (
         <div>
@@ -1618,6 +2537,7 @@ export default function SalesPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dispatch Date</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Transporter</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vehicle No.</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -1641,10 +2561,128 @@ export default function SalesPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                         {dispatch.vehicle_number || '-'}
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleEditDispatch(dispatch)}
+                            className="text-amber-600 hover:text-amber-900"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDispatch(dispatch)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {showDispatchEditForm && editingDispatchId && (
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <h3 className="text-lg font-semibold mb-4">Edit Dispatch Note</h3>
+                <form onSubmit={handleSaveDispatch}>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Dispatch Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={dispatchEditForm.dispatch_date}
+                        onChange={(e) => setDispatchEditForm({ ...dispatchEditForm, dispatch_date: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Transporter Name</label>
+                      <input
+                        type="text"
+                        value={dispatchEditForm.transporter_name}
+                        onChange={(e) =>
+                          setDispatchEditForm({ ...dispatchEditForm, transporter_name: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Number</label>
+                      <input
+                        type="text"
+                        value={dispatchEditForm.vehicle_number}
+                        onChange={(e) => setDispatchEditForm({ ...dispatchEditForm, vehicle_number: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">LR Number</label>
+                      <input
+                        type="text"
+                        value={dispatchEditForm.lr_number}
+                        onChange={(e) => setDispatchEditForm({ ...dispatchEditForm, lr_number: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">LR Date</label>
+                      <input
+                        type="date"
+                        value={dispatchEditForm.lr_date}
+                        onChange={(e) => setDispatchEditForm({ ...dispatchEditForm, lr_date: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Delivery Address</label>
+                      <textarea
+                        value={dispatchEditForm.delivery_address}
+                        onChange={(e) =>
+                          setDispatchEditForm({ ...dispatchEditForm, delivery_address: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        rows={2}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                      <textarea
+                        value={dispatchEditForm.notes}
+                        onChange={(e) => setDispatchEditForm({ ...dispatchEditForm, notes: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        rows={2}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDispatchEditForm(false);
+                        setEditingDispatchId(null);
+                      }}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      {loading ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           )}
         </div>
@@ -1677,6 +2715,7 @@ export default function SalesPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">End Date</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Claims</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -1708,10 +2747,95 @@ export default function SalesPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                         {warranty.claim_count}
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handlePrintWarranty(warranty.id)}
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            Print
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleEditWarranty(warranty)}
+                            className="text-amber-600 hover:text-amber-900"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteWarranty(warranty)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {showWarrantyEditForm && editingWarrantyId && (
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 max-w-lg w-full">
+                <h3 className="text-lg font-semibold mb-4">Edit Warranty</h3>
+                <form onSubmit={handleSaveWarranty}>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Warranty Type *</label>
+                      <select
+                        required
+                        value={warrantyEditForm.warranty_type}
+                        onChange={(e) => setWarrantyEditForm({ ...warrantyEditForm, warranty_type: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      >
+                        <option value="STANDARD">Standard Warranty</option>
+                        <option value="EXTENDED">Extended Warranty</option>
+                        <option value="COMPREHENSIVE">Comprehensive</option>
+                        <option value="LIMITED">Limited Warranty</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+                      <select
+                        required
+                        value={warrantyEditForm.status}
+                        onChange={(e) => setWarrantyEditForm({ ...warrantyEditForm, status: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      >
+                        <option value="ACTIVE">Active</option>
+                        <option value="CLAIMED">Claimed</option>
+                        <option value="EXPIRED">Expired</option>
+                        <option value="VOID">Void</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowWarrantyEditForm(false);
+                        setEditingWarrantyId(null);
+                      }}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      {loading ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           )}
 

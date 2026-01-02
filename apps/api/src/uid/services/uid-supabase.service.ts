@@ -442,6 +442,59 @@ export class UidSupabaseService {
   }
 
   /**
+   * Update UID quality status (QC result)
+   *
+   * Used by Job Order quick-QC flow. Quality status controls saleability.
+   */
+  async updateQualityStatus(req: any, uid: string, qualityStatus: string, notes?: string) {
+    const tenantId = req.user.tenantId;
+
+    const raw = String(qualityStatus || '').trim();
+    if (!raw) throw new Error('quality_status is required');
+
+    let normalized = raw.toUpperCase();
+    if (normalized === 'FAIL') normalized = 'ON_HOLD';
+    if (normalized === 'HOLD') normalized = 'ON_HOLD';
+
+    if (!['PASSED', 'ON_HOLD', 'FAILED'].includes(normalized)) {
+      throw new Error('Invalid quality status');
+    }
+
+    // Update quality_status and move to IN_STOCK if PASSED
+    const updateFields: any = {
+      quality_status: normalized,
+      updated_at: new Date().toISOString(),
+    };
+
+    // If QC PASSED, update status to IN_STOCK so it's available for dispatch
+    if (normalized === 'PASSED') {
+      updateFields.status = 'IN_STOCK';
+    }
+
+    const { data, error } = await this.supabase
+      .from('uid_registry')
+      .update(updateFields)
+      .eq('tenant_id', tenantId)
+      .eq('uid', uid)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    // Add lifecycle event
+    const location = data?.location || 'N/A';
+    await this.updateLifecycle(
+      req,
+      uid,
+      `QC_${normalized}`,
+      location,
+      notes ? `QC marked as ${normalized}: ${notes}` : `QC marked as ${normalized}`,
+    );
+
+    return data;
+  }
+
+  /**
    * Validate UID format
    */
   validateUIDFormat(uid: string): boolean {
@@ -760,26 +813,27 @@ export class UidSupabaseService {
       }
     }
 
-    // 6. Get customer details (from sales order/delivery if available)
+    // 6. Get customer + location details from deployment tracking (authoritative)
     let customer = null;
-    const shipmentRef = lifecycle.find((event: any) => 
-      event.stage.includes('SHIPPED') || 
-      event.stage.includes('DELIVERED') ||
-      event.reference.includes('SO-') ||
-      event.reference.includes('INV-')
-    );
+    try {
+      const { data: deploymentStatus } = await this.supabase
+        .from('v_uid_deployment_status')
+        .select('current_level, current_organization, current_location, current_deployment_date, warranty_expiry_date')
+        .eq('tenant_id', tenantId)
+        .eq('uid', uidRecord.uid)
+        .maybeSingle();
 
-    if (shipmentRef) {
-      // Try to extract invoice or SO number
-      const refNumber = shipmentRef.reference;
-      
-      // You can enhance this to fetch from sales_orders or invoices table
-      customer = {
-        name: 'Customer Name', // Placeholder - fetch from sales_orders
-        location: shipmentRef.location || 'Customer Location',
-        delivery_date: shipmentRef.timestamp,
-        invoice_number: refNumber,
-      };
+      if (deploymentStatus?.current_organization || deploymentStatus?.current_location) {
+        customer = {
+          name: deploymentStatus.current_organization || null,
+          location: deploymentStatus.current_location || null,
+          deployment_level: deploymentStatus.current_level || null,
+          deployment_date: deploymentStatus.current_deployment_date || null,
+          warranty_expiry_date: deploymentStatus.warranty_expiry_date || null,
+        };
+      }
+    } catch (e) {
+      console.warn('[UID Trace] Deployment status lookup failed:', e);
     }
 
     const itemData = Array.isArray(uidRecord.item) ? uidRecord.item[0] : uidRecord.item;
@@ -814,18 +868,29 @@ export class UidSupabaseService {
   /**
    * Get all UIDs with filtering - for quality inspection form
    */
-  async getAllUIDs(req: any, status?: string, entityType?: string, itemId?: string, page?: number, limit?: number) {
+  async getAllUIDs(
+    req: any, 
+    status?: string, 
+    entityType?: string, 
+    itemId?: string, 
+    qualityStatus?: string,
+    search?: string,
+    limit?: number,
+    offset?: number,
+    sortBy?: string,
+    sortOrder?: 'asc' | 'desc',
+    jobOrderId?: string
+  ) {
     const tenantId = req.user?.tenantId || req.tenantId;
-    console.log('[getAllUIDs] Called with:', { tenantId, status, entityType, itemId, page, limit });
+    console.log('[getAllUIDs] Called with:', { tenantId, status, entityType, itemId, qualityStatus, search, limit, offset, sortBy, sortOrder, jobOrderId });
     
     if (!tenantId) {
       throw new Error('Tenant ID is required');
     }
 
     // Pagination parameters
-    const currentPage = page || 1;
-    const pageLimit = limit || 50;
-    const offset = (currentPage - 1) * pageLimit;
+    const pageLimit = limit || 10;
+    const pageOffset = offset || 0;
     
     let query = this.supabase
       .from('uid_registry')
@@ -837,11 +902,15 @@ export class UidSupabaseService {
         location, 
         batch_number, 
         quality_status, 
+        client_part_number,
         created_at
       `, { count: 'exact' })
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + pageLimit - 1);
+      .eq('tenant_id', tenantId);
+
+    // Search across multiple fields
+    if (search) {
+      query = query.or(`uid.ilike.%${search}%,client_part_number.ilike.%${search}%,location.ilike.%${search}%,batch_number.ilike.%${search}%`);
+    }
 
     if (status) {
       // Support comma-separated statuses
@@ -853,6 +922,16 @@ export class UidSupabaseService {
       }
     }
 
+    if (qualityStatus) {
+      // Support comma-separated quality statuses
+      const qStatuses = qualityStatus.split(',').map(s => s.trim());
+      if (qStatuses.length === 1) {
+        query = query.eq('quality_status', qStatuses[0]);
+      } else {
+        query = query.in('quality_status', qStatuses);
+      }
+    }
+
     if (entityType) {
       query = query.eq('entity_type', entityType);
     }
@@ -861,13 +940,31 @@ export class UidSupabaseService {
       query = query.eq('entity_id', itemId);
     }
 
+    if (jobOrderId) {
+      query = query.eq('job_order_id', jobOrderId);
+    }
+
+    // Sorting
+    const orderField = sortBy || 'created_at';
+    const orderAscending = sortOrder === 'asc';
+    query = query.order(orderField, { ascending: orderAscending });
+    
+    // Pagination
+    query = query.range(pageOffset, pageOffset + pageLimit - 1);
+
     const { data, error, count } = await query;
 
     console.log('[getAllUIDs] Query result:', { dataCount: data?.length, error, totalCount: count });
 
     if (error) {
-      console.error('[getAllUIDs] Error:', error);
-      throw new Error(`Failed to fetch UIDs: ${error.message}`);
+      console.error('[getAllUIDs] Supabase Error Details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: JSON.stringify(error, null, 2)
+      });
+      throw new Error(`Failed to fetch UIDs: ${error.message} (Code: ${error.code}, Details: ${error.details})`);
     }
 
     // Fetch item details separately if we have UIDs
@@ -905,12 +1002,9 @@ export class UidSupabaseService {
 
     return {
       data,
-      pagination: {
-        page: currentPage,
-        limit: pageLimit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / pageLimit)
-      }
+      total: count || 0,
+      limit: pageLimit,
+      offset: pageOffset
     };
   }
 
@@ -1024,5 +1118,49 @@ export class UidSupabaseService {
       hash = hash & hash;
     }
     return Math.abs(hash).toString(36).toUpperCase().substring(0, 2).padEnd(2, '0');
+  }
+
+  /**
+   * Update client part number for a UID
+   */
+  async updatePartNumber(
+    req: any,
+    uid: string,
+    clientPartNumber: string | null,
+  ): Promise<void> {
+    const tenantId = req.user?.tenantId || req.tenantId;
+    
+    if (!tenantId) {
+      throw new Error('Tenant ID is required');
+    }
+
+    // Verify UID exists and belongs to tenant
+    const { data: existing, error: fetchError } = await this.supabase
+      .from('uid_registry')
+      .select('id')
+      .eq('uid', uid)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (fetchError || !existing) {
+      throw new Error(`UID ${uid} not found`);
+    }
+
+    // Update the part number
+    const { error: updateError } = await this.supabase
+      .from('uid_registry')
+      .update({ 
+        client_part_number: clientPartNumber,
+        updated_at: new Date().toISOString()
+      })
+      .eq('uid', uid)
+      .eq('tenant_id', tenantId);
+
+    if (updateError) {
+      console.error('[updatePartNumber] Error:', updateError);
+      throw new Error(`Failed to update part number: ${updateError.message}`);
+    }
+
+    console.log(`[updatePartNumber] Successfully updated UID ${uid} with part number: ${clientPartNumber}`);
   }
 }

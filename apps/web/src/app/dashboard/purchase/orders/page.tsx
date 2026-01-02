@@ -4,11 +4,17 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import DrawingManager from '../../../../components/DrawingManager';
+import SearchableSelect from '../../../../components/SearchableSelect';
 import { useSelection } from '../../../../hooks/useSelection';
 
 interface PurchaseOrder {
   id: string;
   po_number: string;
+  pr_id?: string;
+  pr?: {
+    id: string;
+    pr_number: string;
+  } | null;
   vendor: {
     name: string;
     contact_person: string;
@@ -49,16 +55,18 @@ function PurchaseOrdersContent() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [editingPOId, setEditingPOId] = useState<string | null>(null);
+  const [editingMode, setEditingMode] = useState<'create' | 'edit' | 'tracking'>('create');
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [loadingPR, setLoadingPR] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showDrawingManager, setShowDrawingManager] = useState(false);
-  const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string } | null>(null);
+  const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string; mandatory: boolean } | null>(null);
   const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [currentPrId, setCurrentPrId] = useState<string | null>(null);
-  const [priceHistory, setPriceHistory] = useState<Record<string, Array<{ po_number: string; po_date: string; unit_price: number; quantity: number; po_status: string }>>>({});
+  type PriceHistoryRecord = { po_number: string; po_date: string; unit_price: number; quantity: number; po_status: string };
+  const [priceHistory, setPriceHistory] = useState<Record<string, PriceHistoryRecord[]>>({});
   const [stockInfo, setStockInfo] = useState<Record<string, { total_quantity: number; available_quantity: number; allocated_quantity: number }>>({});
   const [hoveredItem, setHoveredItem] = useState<number | null>(null);
 
@@ -105,10 +113,93 @@ function PurchaseOrdersContent() {
     }
   }, [filterStatus, prId]);
 
+  // Ensure item master data is loaded whenever the create/edit modal is open.
+  // This prevents the Product dropdown from appearing empty in some edit flows.
+  useEffect(() => {
+    if (!showModal) return;
+    if (items.length > 0) return;
+    fetchItems();
+  }, [showModal, items.length]);
+
+  // Backfill missing itemId (and itemName) from itemCode once items master data loads.
+  // Some PO payloads provide only item_code/item_name; SearchableSelect needs itemId.
+  useEffect(() => {
+    if (items.length === 0) return;
+
+    setFormData((prev) => {
+      const currentItems = Array.isArray(prev.items) ? prev.items : [];
+      if (currentItems.length === 0) return prev;
+
+      let changed = false;
+      const patched = currentItems.map((row) => {
+        if (String(row?.itemId || '').trim()) return row;
+        const code = String(row?.itemCode || '').trim();
+        if (!code) return row;
+        const match = items.find((i) => String(i.code || '').trim() === code);
+        if (!match?.id) return row;
+        changed = true;
+        return {
+          ...row,
+          itemId: String(match.id),
+          itemCode: row.itemCode || String(match.code || ''),
+          itemName: row.itemName || String(match.name || ''),
+        };
+      });
+
+      return changed ? { ...prev, items: patched } : prev;
+    });
+  }, [items]);
+
+  // Prefetch last purchase price for any item+vendor pairs shown in the create/edit modal
+  useEffect(() => {
+    const pairs = new Set(
+      (formData.items || [])
+        .map((it) => {
+          const rawItemId = String((it as any)?.itemId || '').trim();
+          const code = String((it as any)?.itemCode || '').trim();
+          const resolvedItemId =
+            rawItemId ||
+            String(items.find((i) => String(i.code).trim() === code)?.id || '').trim();
+          const vendorId = String((it as any)?.vendorId || formData.vendorId || '').trim();
+          return resolvedItemId && vendorId ? `${resolvedItemId}-${vendorId}` : '';
+        })
+        .filter(Boolean),
+    );
+
+    pairs.forEach((key) => {
+      if (priceHistory[key] !== undefined) return;
+      const [itemId, vendorId] = key.split('-');
+      if (itemId && vendorId) {
+        fetchPriceHistory(itemId, vendorId);
+      }
+    });
+  }, [formData.items, formData.vendorId, items, priceHistory]);
+
+  // Prefetch last purchase prices for the approval/details (view) modal.
+  // This handles the case where vendorId/itemId can only be resolved after
+  // vendors/items master data finishes loading.
+  useEffect(() => {
+    if (!showViewModal || !selectedPO) return;
+
+    const vendorId = resolveVendorIdFromPO(selectedPO);
+    if (!vendorId) return;
+
+    const poItems = Array.isArray((selectedPO as any)?.purchase_order_items)
+      ? (selectedPO as any).purchase_order_items
+      : [];
+
+    const itemIds = poItems.map((it: any) => resolveItemIdFromPOLine(it)).filter(Boolean);
+    itemIds.forEach((itemId: string) => {
+      const key = `${itemId}-${vendorId}`;
+      if (priceHistory[key] !== undefined) return;
+      fetchPriceHistory(itemId, vendorId);
+    });
+  }, [showViewModal, selectedPO, vendors, items, priceHistory]);
+
   const fetchVendors = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/vendors', {
+      const response = await fetch('/api/v1/purchase/vendors', {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
@@ -121,7 +212,7 @@ function PurchaseOrdersContent() {
   const fetchItems = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://13.205.17.214:4000/api/v1/inventory/items', {
+      const response = await fetch('/api/v1/inventory/items', {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
@@ -131,24 +222,51 @@ function PurchaseOrdersContent() {
     }
   };
 
-  const fetchPriceHistory = async (itemId: string, vendorId: string) => {
+  const fetchPriceHistory = async (itemId: string, vendorId: string): Promise<PriceHistoryRecord[]> => {
     const key = `${itemId}-${vendorId}`;
-    if (priceHistory[key]) return; // Already fetched
+    if (priceHistory[key] !== undefined) return priceHistory[key];
 
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `http://13.205.17.214:4000/api/v1/items/${itemId}/vendors/${vendorId}/price-history`,
+        `/api/v1/items/${itemId}/vendors/${vendorId}/price-history`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      
-      if (response.ok) {
-        const data = await response.json();
-        setPriceHistory(prev => ({ ...prev, [key]: data || [] }));
+
+      if (!response.ok) {
+        setPriceHistory((prev) => ({ ...prev, [key]: [] }));
+        return [];
       }
+
+      const data = await response.json().catch(() => []);
+      const normalized = Array.isArray(data) ? (data as PriceHistoryRecord[]) : [];
+      setPriceHistory((prev) => ({ ...prev, [key]: normalized }));
+      return normalized;
     } catch (error) {
       console.error('Error fetching price history:', error);
+      setPriceHistory((prev) => ({ ...prev, [key]: [] }));
     }
+
+    return [];
+  };
+
+  const resolveVendorIdFromPO = (po: any): string => {
+    const direct = String(po?.vendor_id || po?.vendorId || po?.vendor?.id || po?.vendor?.vendor_id || '').trim();
+    if (direct) return direct;
+
+    const vendorName = String(po?.vendor?.name || po?.vendor_name || '').trim().toLowerCase();
+    if (!vendorName) return '';
+    const match = vendors.find((v) => String(v?.name || '').trim().toLowerCase() === vendorName);
+    return String(match?.id || '').trim();
+  };
+
+  const resolveItemIdFromPOLine = (poLine: any): string => {
+    const direct = String(poLine?.item_id || poLine?.itemId || poLine?.item?.id || '').trim();
+    if (direct) return direct;
+    const code = String(poLine?.item?.code || poLine?.item_code || '').trim();
+    if (!code) return '';
+    const match = items.find((i) => i.code === code);
+    return String(match?.id || '').trim();
   };
 
   const fetchStockInfo = async (itemId: string) => {
@@ -157,7 +275,7 @@ function PurchaseOrdersContent() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `http://13.205.17.214:4000/api/v1/items/${itemId}/stock`,
+        `/api/v1/items/${itemId}/stock`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
@@ -177,7 +295,7 @@ function PurchaseOrdersContent() {
       
       // Fetch fresh items data to ensure we have prices
       const token = localStorage.getItem('accessToken');
-      const itemsResponse = await fetch('http://13.205.17.214:4000/api/v1/inventory/items', {
+      const itemsResponse = await fetch('/api/v1/inventory/items', {
         headers: { Authorization: `Bearer ${token}` },
       });
       const itemsData = await itemsResponse.json();
@@ -232,7 +350,7 @@ function PurchaseOrdersContent() {
         if (itemId) {
           try {
             console.log(`[PR→PO] Fetching preferred vendor for ${item.item_code} (ID: ${itemId})...`);
-            const vendorResponse = await fetch(`http://13.205.17.214:4000/api/v1/items/${itemId}/vendors/preferred`, {
+            const vendorResponse = await fetch(`/api/v1/items/${itemId}/vendors/preferred`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             
@@ -307,15 +425,11 @@ function PurchaseOrdersContent() {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
       const params = new URLSearchParams();
       if (filterStatus !== 'ALL') params.append('status', filterStatus);
       if (searchTerm) params.append('search', searchTerm);
 
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
+      const data = await apiClient.get(`/purchase/orders?${params}`);
       console.log('PO API Response:', data);
       if (data && data.length > 0) {
         console.log('First PO:', data[0]);
@@ -366,35 +480,103 @@ function PurchaseOrdersContent() {
         return;
       }
 
+      // Unit price cannot be 0/empty for any PO line
+      const itemsWithInvalidPrice = formData.items
+        .map((row, index) => {
+          const masterItem = items.find((i) => i.id === row.itemId || i.code === row.itemCode);
+          const displayCode = row.itemCode || masterItem?.code || '';
+          const displayName = row.itemName || masterItem?.name || '';
+          const price = typeof row.unitPrice === 'number' ? row.unitPrice : Number(row.unitPrice);
+          return {
+            index,
+            label: displayCode && displayName ? `${displayCode} - ${displayName}` : (displayName || displayCode || `Row ${index + 1}`),
+            price,
+          };
+        })
+        .filter((x) => !Number.isFinite(x.price) || x.price <= 0);
+
+      if (itemsWithInvalidPrice.length > 0) {
+        setAlertMessage({
+          type: 'error',
+          message: `Unit Price cannot be 0. Please enter a valid price for: ${itemsWithInvalidPrice.map((x) => x.label).join(', ')}`,
+        });
+        setPendingItemIndex(itemsWithInvalidPrice[0].index);
+        setSubmitting(false);
+        return;
+      }
+
       // Check for compulsory drawings
-      const compulsoryItems = formData.items.filter(item => {
-        const itemDetails = items.find(i => i.id === item.itemId || i.code === item.itemCode);
-        return itemDetails?.drawing_required === 'COMPULSORY';
-      });
+      const compulsoryItems = formData.items
+        .map((row, index) => {
+          const masterItem = items.find(i => i.id === row.itemId || i.code === row.itemCode);
+          return {
+            row,
+            index,
+            resolvedItemId: masterItem?.id || row.itemId,
+            resolvedCode: masterItem?.code || row.itemCode,
+            resolvedName: masterItem?.name || row.itemName,
+            drawingRequired: masterItem?.drawing_required,
+          };
+        })
+        .filter(x => x.drawingRequired === 'COMPULSORY');
 
       if (compulsoryItems.length > 0) {
-        // Fetch drawings for compulsory items
-        const itemsWithoutDrawings = [];
-        
+        const itemsWithoutDrawings: Array<{ name: string; firstMissing?: { id: string; code: string; name: string; index: number } }> = [];
+        let firstMissing: { id: string; code: string; name: string; index: number } | null = null;
+
         for (const item of compulsoryItems) {
+          const id = item.resolvedItemId;
+          const name = item.resolvedName || item.resolvedCode || 'Unknown item';
+
+          if (!id) {
+            itemsWithoutDrawings.push({ name });
+            continue;
+          }
+
           try {
-            const drawings = await apiClient.get(`/inventory/items/${item.itemId}/drawings`);
+            const drawings = await apiClient.get(`/inventory/items/${id}/drawings`);
             if (!drawings || drawings.length === 0) {
-              const itemDetails = items.find(i => i.id === item.itemId);
-              itemsWithoutDrawings.push(itemDetails?.name || item.itemName || item.itemCode);
+              itemsWithoutDrawings.push({ name });
+              if (!firstMissing) {
+                firstMissing = {
+                  id,
+                  code: item.resolvedCode || '',
+                  name: item.resolvedName || '',
+                  index: item.index,
+                };
+              }
             }
           } catch (error) {
-            console.error(`Error checking drawings for item ${item.itemId}:`, error);
-            const itemDetails = items.find(i => i.id === item.itemId);
-            itemsWithoutDrawings.push(itemDetails?.name || item.itemName || item.itemCode);
+            console.error(`Error checking drawings for item ${id}:`, error);
+            itemsWithoutDrawings.push({ name });
+            if (!firstMissing) {
+              firstMissing = {
+                id,
+                code: item.resolvedCode || '',
+                name: item.resolvedName || '',
+                index: item.index,
+              };
+            }
           }
         }
 
         if (itemsWithoutDrawings.length > 0) {
-          setAlertMessage({ 
-            type: 'error', 
-            message: `Drawing upload is compulsory for: ${itemsWithoutDrawings.join(', ')}. Please upload drawings before creating PO.` 
+          setAlertMessage({
+            type: 'error',
+            message: `Drawing upload is compulsory for: ${itemsWithoutDrawings.map(i => i.name).join(', ')}. Please upload drawings before creating PO.`,
           });
+
+          if (firstMissing) {
+            setPendingItemIndex(firstMissing.index);
+            setSelectedItemForDrawing({
+              id: firstMissing.id,
+              code: firstMissing.code,
+              name: firstMissing.name,
+              mandatory: true,
+            });
+            setShowDrawingManager(true);
+          }
+
           setSubmitting(false);
           return;
         }
@@ -466,7 +648,7 @@ function PurchaseOrdersContent() {
 
         console.log(`Creating PO for vendor ${vendorId}:`, payload);
         
-        const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders', {
+        const response = await fetch('/api/v1/purchase/orders', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -496,6 +678,122 @@ function PurchaseOrdersContent() {
     } catch (error: any) {
       console.error('Error creating order:', error);
       setAlertMessage({ type: 'error', message: error.message || 'Failed to create PO. Please try again.' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdateOrder = async (poId: string) => {
+    if (submitting) return; // Prevent duplicate submissions
+
+    try {
+      setSubmitting(true);
+      const token = localStorage.getItem('accessToken');
+
+      if (!formData.orderDate) {
+        setAlertMessage({ type: 'error', message: 'Please select an order date' });
+        setSubmitting(false);
+        return;
+      }
+
+      if (formData.items.length === 0) {
+        setAlertMessage({ type: 'error', message: 'Please add at least one item' });
+        setSubmitting(false);
+        return;
+      }
+
+      const vendorId = formData.vendorId || formData.items[0]?.vendorId;
+      if (!vendorId) {
+        setAlertMessage({ type: 'error', message: 'Please select a vendor' });
+        setSubmitting(false);
+        return;
+      }
+
+      const invalidItems = formData.items.filter((item) => !item.itemId && !item.itemCode);
+      if (invalidItems.length > 0) {
+        setAlertMessage({ type: 'error', message: 'Please select items for all rows' });
+        setSubmitting(false);
+        return;
+      }
+
+      const itemsWithInvalidPrice = formData.items
+        .map((row, index) => {
+          const masterItem = items.find((i) => i.id === row.itemId || i.code === row.itemCode);
+          const displayCode = row.itemCode || masterItem?.code || '';
+          const displayName = row.itemName || masterItem?.name || '';
+          const price = typeof row.unitPrice === 'number' ? row.unitPrice : Number(row.unitPrice);
+          return {
+            index,
+            label:
+              displayCode && displayName
+                ? `${displayCode} - ${displayName}`
+                : displayName || displayCode || `Row ${index + 1}`,
+            price,
+          };
+        })
+        .filter((x) => !Number.isFinite(x.price) || x.price <= 0);
+
+      if (itemsWithInvalidPrice.length > 0) {
+        setAlertMessage({
+          type: 'error',
+          message: `Unit Price cannot be 0. Please enter a valid price for: ${itemsWithInvalidPrice
+            .map((x) => x.label)
+            .join(', ')}`,
+        });
+        setPendingItemIndex(itemsWithInvalidPrice[0].index);
+        setSubmitting(false);
+        return;
+      }
+
+      const itemsSubtotal = formData.items.reduce((sum, item) => sum + item.totalPrice, 0);
+      const customsDuty = parseFloat(formData.customsDuty?.toString() || '0');
+      const otherCharges = parseFloat(formData.otherCharges?.toString() || '0');
+      const grandTotal = itemsSubtotal + customsDuty + otherCharges;
+
+      const payload = {
+        vendorId,
+        poDate: formData.orderDate,
+        deliveryDate: formData.expectedDelivery || null,
+        paymentTerms: formData.paymentTerms,
+        paymentStatus: formData.paymentStatus,
+        paymentNotes: formData.paymentNotes || null,
+        deliveryAddress: formData.deliveryAddress,
+        remarks: formData.notes,
+        customsDuty,
+        otherCharges,
+        totalAmount: grandTotal,
+        items: formData.items.map((item) => ({
+          itemCode: item.itemCode || '',
+          itemName: item.itemName || '',
+          orderedQty: item.quantity,
+          rate: item.unitPrice,
+          taxPercent: item.taxRate,
+          amount: item.totalPrice,
+          remarks: item.specifications || '',
+        })),
+      };
+
+      const response = await fetch(`/api/v1/purchase/orders/${poId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || 'Failed to update PO');
+      }
+
+      setAlertMessage({ type: 'success', message: 'Purchase Order updated successfully' });
+      setShowModal(false);
+      fetchOrders();
+      resetForm();
+    } catch (error: any) {
+      console.error('Error updating PO:', error);
+      setAlertMessage({ type: 'error', message: error.message || 'Failed to update PO' });
     } finally {
       setSubmitting(false);
     }
@@ -543,7 +841,7 @@ function PurchaseOrdersContent() {
         try {
           const token = localStorage.getItem('accessToken');
           console.log(`Fetching preferred vendor for item ${value}...`);
-          const response = await fetch(`http://13.205.17.214:4000/api/v1/items/${value}/vendors/preferred`, {
+          const response = await fetch(`/api/v1/items/${value}/vendors/preferred`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           
@@ -552,14 +850,21 @@ function PurchaseOrdersContent() {
           if (response.ok) {
             const preferredVendor = await response.json();
             console.log('Preferred vendor data:', preferredVendor);
-            
-            if (preferredVendor && preferredVendor.vendor_id) {
-              updatedItems[index].vendorId = preferredVendor.vendor_id;
+
+            const preferredVendorId =
+              preferredVendor?.vendor_id ??
+              preferredVendor?.vendorId ??
+              preferredVendor?.id ??
+              preferredVendor?.vendor?.id ??
+              '';
+
+            if (preferredVendor && preferredVendorId) {
+              updatedItems[index].vendorId = String(preferredVendorId);
               // Update unit price from preferred vendor if available
               if (preferredVendor.unit_price) {
                 updatedItems[index].unitPrice = preferredVendor.unit_price;
               }
-              console.log(`✓ Auto-selected preferred vendor: ${preferredVendor.vendor_name} (ID: ${preferredVendor.vendor_id}) for item ${selectedItem.code}`);
+              console.log(`✓ Auto-selected preferred vendor: ${preferredVendor.vendor_name || preferredVendor.vendorName || preferredVendor.name || ''} (ID: ${String(preferredVendorId)}) for item ${selectedItem.code}`);
             } else {
               console.log('⚠ No preferred vendor ID in response:', preferredVendor);
             }
@@ -575,14 +880,31 @@ function PurchaseOrdersContent() {
       updatedItems[index] = { ...updatedItems[index], [field]: value };
     }
 
+    // If we have item + vendor, try to autofill the unit price from last purchase price.
+    // (This overrides standard cost / preferred vendor unit_price when history exists.)
+    const row = updatedItems[index];
+    const shouldTryAutofill =
+      (field === 'itemId' || field === 'vendorId') &&
+      Boolean(row?.itemId) &&
+      Boolean(row?.vendorId);
+
+    if (shouldTryAutofill) {
+      const history = await fetchPriceHistory(row.itemId, row.vendorId);
+      const last = history?.[0];
+      if (last && typeof last.unit_price === 'number' && !Number.isNaN(last.unit_price)) {
+        row.unitPrice = Number(last.unit_price);
+      }
+    }
+
     // Recalculate total price
-    if (field === 'quantity' || field === 'unitPrice' || field === 'taxRate' || field === 'itemId') {
+    if (field === 'quantity' || field === 'unitPrice' || field === 'taxRate' || field === 'itemId' || field === 'vendorId') {
       const item = updatedItems[index];
       const subtotal = item.quantity * item.unitPrice;
       item.totalPrice = subtotal + (subtotal * item.taxRate) / 100;
     }
 
-    setFormData({ ...formData, items: updatedItems });
+    // Use functional update to avoid clobbering other form fields
+    setFormData((prev) => ({ ...prev, items: updatedItems }));
   };
 
   const handleRemoveItem = (index: number) => {
@@ -623,18 +945,40 @@ function PurchaseOrdersContent() {
     });
     setCurrentPrId(null); // Clear PR ID on form reset
     setEditingPOId(null); // Clear editing state
+    setEditingMode('create');
   };
 
   const handleViewDetails = async (poId: string) => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders/${poId}`, {
+      const response = await fetch(`/api/v1/purchase/orders/${poId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
       console.log('PO Details:', data);
       setSelectedPO(data);
       setShowViewModal(true);
+
+      // Prefetch last purchase prices for inline display on the approval/details screen
+      try {
+        const vendorId = resolveVendorIdFromPO(data);
+        const poItems = Array.isArray(data?.purchase_order_items) ? data.purchase_order_items : [];
+        if (vendorId) {
+          await Promise.all(
+            poItems
+              .map((it: any) => resolveItemIdFromPOLine(it))
+              .filter(Boolean)
+              .map((itemId: string) => fetchPriceHistory(itemId, vendorId)),
+          );
+        }
+      } catch (e) {
+        console.error('Error prefetching PO price history:', e);
+      }
+
+      // Ensure we have item master data so we can resolve drawing_required + item ids
+      if (items.length === 0) {
+        fetchItems();
+      }
     } catch (error) {
       console.error('Error fetching PO details:', error);
       setAlertMessage({ type: 'error', message: 'Failed to load PO details' });
@@ -654,7 +998,7 @@ function PurchaseOrdersContent() {
         delivery_status: formData.deliveryStatus || 'PENDING',
       };
 
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders/${poId}/tracking`, {
+      const response = await fetch(`/api/v1/purchase/orders/${poId}/tracking`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -678,21 +1022,38 @@ function PurchaseOrdersContent() {
     }
   };
 
-  const handleEditDetails = async (poId: string) => {
+  const handleEditDetails = async (poId: string, mode: 'edit' | 'tracking' = 'edit') => {
     try {
+      setCurrentPrId(null);
+      setPendingItemIndex(null);
+
+      // Ensure item options are loaded so SearchableSelect can render the selected label
+      if (items.length === 0) {
+        await fetchItems();
+      }
+
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders/${poId}`, {
+      const response = await fetch(`/api/v1/purchase/orders/${poId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
       console.log('PO Details for Edit:', data);
+
+      const resolvedVendorId = String(data?.vendor_id || data?.vendorId || data?.vendor?.id || data?.vendor?.vendor_id || '');
       
       // Populate form with PO data for editing
       const editItems = data.purchase_order_items?.map((item: any) => ({
-        itemId: item.item_id || '',
-        itemCode: item.item_code || '',
-        itemName: item.item_name || '',
-        vendorId: data.vendor_id || '', // Use PO's vendor for all items
+        itemCode: item.item_code || item.item?.code || '',
+        itemId: (() => {
+          const direct = item.item_id || item.itemId || item.item?.id;
+          if (direct) return direct;
+          const code = String(item.item_code || item.item?.code || '').trim();
+          if (!code) return '';
+          const match = items.find((i) => String(i.code).trim() === code);
+          return match?.id || '';
+        })(),
+        itemName: item.item_name || item.item?.name || '',
+        vendorId: resolvedVendorId, // Use PO's vendor for all items
         quantity: item.ordered_qty || 0,
         unitPrice: item.rate || 0,
         taxRate: item.tax_percent || 18,
@@ -701,7 +1062,7 @@ function PurchaseOrdersContent() {
       })) || [];
       
       setFormData({
-        vendorId: data.vendor_id || '',
+        vendorId: resolvedVendorId,
         orderDate: data.po_date || new Date().toISOString().split('T')[0],
         expectedDelivery: data.delivery_date || '',
         paymentTerms: data.payment_terms || 'NET_30',
@@ -721,8 +1082,12 @@ function PurchaseOrdersContent() {
       });
       
       setEditingPOId(poId);
+      setEditingMode(mode);
       setShowModal(true);
-      setAlertMessage({ type: 'info', message: 'Edit mode: Update the PO details below' });
+      setAlertMessage({
+        type: 'info',
+        message: mode === 'tracking' ? 'Update tracking details below' : 'Edit mode: Update the PO details below',
+      });
     } catch (error) {
       console.error('Error fetching PO details:', error);
       setAlertMessage({ type: 'error', message: 'Failed to load PO details' });
@@ -733,15 +1098,56 @@ function PurchaseOrdersContent() {
     if (!confirm(`Are you sure you want to delete ${orderSelection.selectedItems.length} purchase orders? This action cannot be undone.`)) return;
 
     try {
-      await Promise.all(
-        orderSelection.selectedItems.map(order => apiClient.delete(`/purchase/orders/${order.id}`))
+      const selectedOrders = [...orderSelection.selectedItems];
+      const results = await Promise.allSettled(
+        selectedOrders.map((order) => apiClient.delete(`/purchase/orders/${order.id}`)),
       );
+
+      const failed: Array<{ poNumber: string; reason: string }> = [];
+      let successCount = 0;
+
+      results.forEach((result, index) => {
+        const order = selectedOrders[index];
+        if (result.status === 'fulfilled') {
+          successCount += 1;
+          return;
+        }
+
+        const reason =
+          (result.reason as any)?.message ||
+          (typeof result.reason === 'string' ? result.reason : 'Delete failed');
+
+        failed.push({ poNumber: order?.po_number || 'Unknown PO', reason });
+      });
+
       orderSelection.deselectAll();
       fetchOrders();
-      setAlertMessage({ type: 'success', message: `${orderSelection.selectedItems.length} purchase orders deleted successfully` });
+
+      if (failed.length === 0) {
+        setAlertMessage({
+          type: 'success',
+          message: `${successCount} purchase orders deleted successfully`,
+        });
+        return;
+      }
+
+      const shown = failed.slice(0, 3);
+      const remainder = failed.length - shown.length;
+      const details = shown
+        .map((f) => `${f.poNumber}: ${f.reason}`)
+        .join(' | ');
+      const suffix = remainder > 0 ? ` (+${remainder} more)` : '';
+
+      setAlertMessage({
+        type: failed.length === selectedOrders.length ? 'error' : 'info',
+        message: `Deleted ${successCount} of ${selectedOrders.length} purchase orders. Failed: ${details}${suffix}`,
+      });
     } catch (error) {
       console.error('Error deleting purchase orders:', error);
-      setAlertMessage({ type: 'error', message: 'Failed to delete some purchase orders' });
+      setAlertMessage({
+        type: 'error',
+        message: (error as any)?.message || 'Failed to delete purchase orders',
+      });
     }
   };
 
@@ -784,6 +1190,8 @@ function PurchaseOrdersContent() {
             <button
               onClick={() => {
                 setShowModal(true);
+                setEditingMode('create');
+                setEditingPOId(null);
                 // Lazy load items when modal opens
                 if (items.length === 0) {
                   fetchItems();
@@ -852,7 +1260,8 @@ function PurchaseOrdersContent() {
         </div>
 
         {/* Orders List */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        <div className="bg-white rounded-lg shadow-md border border-gray-200">
+          <div className="overflow-x-auto">
           {loading ? (
             <div className="p-8 text-center text-gray-500">Loading orders...</div>
           ) : orders.length === 0 ? (
@@ -862,38 +1271,42 @@ function PurchaseOrdersContent() {
               <p className="text-gray-500">Create your first purchase order to get started</p>
             </div>
           ) : (
-            <table className="w-full">
-              <thead className="bg-amber-50">
+            <table className="w-full min-w-[1000px]">
+              <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase w-12"></th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">PO Number</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Vendor</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Order Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Expected Delivery</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Items</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Payment</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-12"></th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">PO Number</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">PR Ref</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Vendor</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Order Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Expected</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Items</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Payment</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-100">
                 {orders.map((order) => (
-                  <tr key={order.id} className={`hover:bg-gray-50 ${orderSelection.isSelected(order.id) ? 'bg-amber-50' : ''}`}>
-                    <td className="px-6 py-4">
+                  <tr key={order.id} className={`hover:bg-gray-50 transition-colors ${orderSelection.isSelected(order.id) ? 'bg-amber-50' : ''}`}>
+                    <td className="px-4 py-3">
                       <input
                         type="checkbox"
                         checked={orderSelection.isSelected(order.id)}
                         onChange={() => orderSelection.toggleSelection(order.id)}
-                        className="w-4 h-4"
+                        className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
                       />
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{order.po_number}</td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">{order.vendor.name}</div>
-                      <div className="text-sm text-gray-500">{order.vendor.contact_person}</div>
+                    <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">{order.po_number}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                      {order.pr?.pr_number || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-4 py-3">
+                      <div className="text-sm font-medium text-gray-900">{order.vendor.name}</div>
+                      <div className="text-xs text-gray-500">{order.vendor.contact_person}</div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
                       {order.po_date ? (() => {
                         try {
                           return new Date(order.po_date).toLocaleDateString();
@@ -902,7 +1315,7 @@ function PurchaseOrdersContent() {
                         }
                       })() : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
                       {order.delivery_date ? (() => {
                         try {
                           return new Date(order.delivery_date).toLocaleDateString();
@@ -911,37 +1324,37 @@ function PurchaseOrdersContent() {
                         }
                       })() : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
                       {order.purchase_order_items.length} items
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <td className="px-4 py-3 text-right whitespace-nowrap text-sm font-semibold text-gray-900">
                       ₹{order.total_amount?.toLocaleString() || 0}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        order.payment_status === 'PAID' ? 'bg-green-100 text-green-800' :
-                        order.payment_status === 'CHEQUE_ISSUED' ? 'bg-blue-100 text-blue-800' :
-                        order.payment_status === 'OTHER' ? 'bg-purple-100 text-purple-800' :
-                        'bg-yellow-100 text-yellow-800'
+                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                        order.payment_status === 'PAID' ? 'bg-green-100 text-green-700' :
+                        order.payment_status === 'CHEQUE_ISSUED' ? 'bg-blue-100 text-blue-700' :
+                        order.payment_status === 'OTHER' ? 'bg-purple-100 text-purple-700' :
+                        'bg-yellow-100 text-yellow-700'
                       }`}>
                         {order.payment_status === 'CHEQUE_ISSUED' ? 'CHEQUE' : order.payment_status || 'UNPAID'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(order.status)}`}>
+                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(order.status)}`}>
                         {order.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-4 py-3 text-right whitespace-nowrap text-sm">
                       <button 
                         onClick={() => handleViewDetails(order.id)}
-                        className="text-amber-600 hover:text-amber-900 mr-3"
+                        className="text-amber-600 hover:text-amber-800 font-medium mr-3"
                       >
                         View
                       </button>
                       <button 
-                        onClick={() => handleEditDetails(order.id)}
-                        className="text-blue-600 hover:text-blue-900"
+                        onClick={() => handleEditDetails(order.id, 'edit')}
+                        className="text-blue-600 hover:text-blue-800 font-medium"
                       >
                         Edit
                       </button>
@@ -951,6 +1364,7 @@ function PurchaseOrdersContent() {
               </tbody>
             </table>
           )}
+          </div>
         </div>
       </div>
 
@@ -960,7 +1374,11 @@ function PurchaseOrdersContent() {
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900">
-                {editingPOId ? 'Update Tracking Information' : 'Create Purchase Order'}
+                {editingMode === 'create'
+                  ? 'Create Purchase Order'
+                  : editingMode === 'tracking'
+                    ? 'Update Tracking Information'
+                    : 'Edit Purchase Order'}
               </h2>
             </div>
 
@@ -1046,7 +1464,7 @@ function PurchaseOrdersContent() {
               </div>
 
               {/* Tracking Information */}
-              {editingPOId && (
+              {editingMode !== 'create' && (
                 <div className="border-t pt-4">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Tracking Information</h3>
                   <div className="grid grid-cols-2 gap-4">
@@ -1130,7 +1548,7 @@ function PurchaseOrdersContent() {
               )}
 
               {/* Items */}
-              {!editingPOId && (
+              {editingMode !== 'tracking' && (
                 <div>
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="text-lg font-semibold text-gray-900">Items</h3>
@@ -1141,7 +1559,7 @@ function PurchaseOrdersContent() {
                       + Add Item
                     </button>
                   </div>
-                  {currentPrId && (
+                  {editingMode === 'create' && currentPrId && (
                     <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                       <p className="text-sm text-blue-800">
                         <strong>Multiple Vendors?</strong> Remove items not from the selected vendor (click × button), then create PO. You can create another PO from the same PR for different vendors.
@@ -1166,13 +1584,54 @@ function PurchaseOrdersContent() {
                     </div>
                     
                     {formData.items.map((item, index) => (
-                      <div key={index} className="border border-gray-300 rounded-lg p-4">
+                      <div key={index} className={`border border-gray-300 rounded-lg p-4 ${pendingItemIndex === index ? 'ring-2 ring-red-300' : ''}`}>
                         <div className="grid grid-cols-7 gap-4">
                           <div className="col-span-2">
-                            {item.itemCode && item.itemName ? (
+                            {item.itemId ? (
                               <div className="space-y-1">
                                 <div className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50">
-                                  <div className="font-medium text-sm">{item.itemCode} - {item.itemName}</div>
+                                  {(() => {
+                                    const masterItem = items.find((i) => i.id === item.itemId || i.code === item.itemCode);
+                                    const displayCode = item.itemCode || masterItem?.code || '';
+                                    const displayName = item.itemName || masterItem?.name || '';
+                                    const drawingRequired = masterItem?.drawing_required || 'OPTIONAL';
+                                    const resolvedItemId = masterItem?.id || item.itemId;
+
+                                    return (
+                                      <>
+                                        <div className="font-medium text-sm">
+                                          {displayCode && displayName ? `${displayCode} - ${displayName}` : (displayName || displayCode || 'Selected Item')}
+                                        </div>
+                                        {resolvedItemId ? (
+                                          <div className="mt-1 flex items-center justify-between gap-2">
+                                            <span className={`text-xs px-2 py-0.5 rounded ${
+                                              drawingRequired === 'COMPULSORY'
+                                                ? 'bg-red-100 text-red-800'
+                                                : 'bg-gray-100 text-gray-700'
+                                            }`}>
+                                              Drawing: {drawingRequired}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setPendingItemIndex(index);
+                                                setSelectedItemForDrawing({
+                                                  id: resolvedItemId,
+                                                  code: displayCode,
+                                                  name: displayName,
+                                                  mandatory: drawingRequired === 'COMPULSORY',
+                                                });
+                                                setShowDrawingManager(true);
+                                              }}
+                                              className="text-xs text-amber-700 hover:text-amber-900 font-medium"
+                                            >
+                                              Manage Drawings
+                                            </button>
+                                          </div>
+                                        ) : null}
+                                      </>
+                                    );
+                                  })()}
                                   {item.itemId && stockInfo[item.itemId] && (
                                     <div className="text-xs text-gray-600 mt-1 space-y-0.5">
                                       <div className="flex justify-between">
@@ -1190,33 +1649,30 @@ function PurchaseOrdersContent() {
                                     </div>
                                   )}
                                 </div>
-                                <select
+                                <SearchableSelect
                                   value={item.itemId}
-                                  onChange={(e) => handleUpdateItem(index, 'itemId', e.target.value)}
-                                  className="w-full border border-gray-300 rounded px-3 py-2 text-xs"
-                                >
-                                  <option value="">Change item...</option>
-                                  {items.map((masterItem) => (
-                                    <option key={masterItem.id} value={masterItem.id}>
-                                      {masterItem.code} - {masterItem.name}
-                                    </option>
-                                  ))}
-                                </select>
+                                  onChange={(value) => handleUpdateItem(index, 'itemId', value)}
+                                  options={items.map(i => ({
+                                    value: i.id,
+                                    label: i.code,
+                                    subtitle: i.name
+                                  }))}
+                                  placeholder="Change item..."
+                                  className="text-xs"
+                                />
                               </div>
                             ) : (
-                              <select
+                              <SearchableSelect
                                 value={item.itemId}
-                                onChange={(e) => handleUpdateItem(index, 'itemId', e.target.value)}
-                                className="w-full border border-gray-300 rounded px-3 py-2"
+                                onChange={(value) => handleUpdateItem(index, 'itemId', value)}
+                                options={items.map(i => ({
+                                  value: i.id,
+                                  label: i.code,
+                                  subtitle: i.name
+                                }))}
+                                placeholder="Select Item"
                                 required
-                              >
-                                <option value="">Select Item</option>
-                                {items.map((masterItem) => (
-                                  <option key={masterItem.id} value={masterItem.id}>
-                                    {masterItem.code} - {masterItem.name}
-                                  </option>
-                                ))}
-                              </select>
+                              />
                             )}
                           </div>
                           <div>
@@ -1253,12 +1709,19 @@ function PurchaseOrdersContent() {
                                 placeholder="Unit Price"
                                 className="w-full border border-gray-300 rounded px-3 py-2"
                               />
-                              {item.itemId && item.vendorId && (
+                              {(() => {
+                                const effectiveVendorId = String(item.vendorId || formData.vendorId || '').trim();
+                                const effectiveItemId =
+                                  String(item.itemId || '').trim() ||
+                                  String(items.find((i) => i.code === item.itemCode)?.id || '').trim();
+                                if (!effectiveItemId || !effectiveVendorId) return null;
+
+                                return (
                                 <div
                                   className="relative"
                                   onMouseEnter={() => {
                                     setHoveredItem(index);
-                                    fetchPriceHistory(item.itemId, item.vendorId);
+                                    fetchPriceHistory(effectiveItemId, effectiveVendorId);
                                   }}
                                   onMouseLeave={() => setHoveredItem(null)}
                                 >
@@ -1275,7 +1738,7 @@ function PurchaseOrdersContent() {
                                     <div className="absolute z-50 right-0 mr-2 top-0 w-80 bg-white border border-gray-300 rounded-lg shadow-xl p-4">
                                       <div className="text-sm font-semibold text-gray-700 mb-2">Last 3 Purchase Prices</div>
                                       {(() => {
-                                        const key = `${item.itemId}-${item.vendorId}`;
+                                        const key = `${effectiveItemId}-${effectiveVendorId}`;
                                         const history = priceHistory[key];
                                         
                                         if (!history) {
@@ -1316,11 +1779,36 @@ function PurchaseOrdersContent() {
                                           </div>
                                         );
                                       })()}
+
                                     </div>
                                   )}
                                 </div>
-                              )}
+                                );
+                              })()}
                             </div>
+
+                            {(() => {
+                              const effectiveVendorId = String(item.vendorId || formData.vendorId || '').trim();
+                              const effectiveItemId =
+                                String(item.itemId || '').trim() ||
+                                String(items.find((i) => i.code === item.itemCode)?.id || '').trim();
+                              if (!effectiveItemId || !effectiveVendorId) return null;
+
+                              const key = `${effectiveItemId}-${effectiveVendorId}`;
+                              const history = priceHistory[key];
+                              if (!history) {
+                                return <div className="mt-1 max-w-[220px] break-words text-[11px] leading-tight text-gray-500">Last: Loading...</div>;
+                              }
+                              const last = history?.[0];
+                              if (!last) {
+                                return <div className="mt-1 max-w-[220px] break-words text-[11px] leading-tight text-gray-500">Last purchase price not available</div>;
+                              }
+                              return (
+                                <div className="mt-1 max-w-[220px] break-words text-[11px] leading-tight text-gray-600">
+                                  Last: <span className="font-medium text-gray-800">₹{Number(last.unit_price || 0).toFixed(2)}</span>
+                                </div>
+                              );
+                            })()}
                           </div>
                           <div>
                             <input
@@ -1346,6 +1834,16 @@ function PurchaseOrdersContent() {
                     ))}
                   </div>
                 )}
+                {(editingMode === 'create' || editingMode === 'edit') && formData.items.length > 0 && (
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      onClick={handleAddItem}
+                      className="px-6 py-2 text-amber-600 hover:text-amber-800 font-medium border-2 border-dashed border-amber-300 hover:border-amber-500 rounded-lg transition-colors"
+                    >
+                      + Add Another Item
+                    </button>
+                  </div>
+                )}
               </div>
               )}
 
@@ -1361,7 +1859,7 @@ function PurchaseOrdersContent() {
               </div>
 
               {/* Additional Charges */}
-              {!editingPOId && (
+              {editingMode !== 'tracking' && (
                 <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Customs Duty (₹)</label>
@@ -1435,13 +1933,21 @@ function PurchaseOrdersContent() {
               >
                 Cancel
               </button>
-              {editingPOId ? (
+              {editingMode === 'tracking' && editingPOId ? (
                 <button
                   onClick={() => handleSaveTracking(editingPOId)}
                   disabled={submitting}
                   className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? 'Saving...' : 'Save Tracking Info'}
+                </button>
+              ) : editingMode === 'edit' && editingPOId ? (
+                <button
+                  onClick={() => handleUpdateOrder(editingPOId)}
+                  disabled={submitting}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Saving...' : 'Save Changes'}
                 </button>
               ) : (
                 <button
@@ -1467,10 +1973,15 @@ function PurchaseOrdersContent() {
             setShowDrawingManager(false);
             setSelectedItemForDrawing(null);
             setPendingItemIndex(null);
-            // After closing, user needs to try creating PO again
-            setAlertMessage({ type: 'info', message: 'Drawing uploaded! Please try creating the PO again.' });
+
+            // Context-aware message
+            if (showModal && editingMode === 'create') {
+              setAlertMessage({ type: 'info', message: 'Drawing uploaded! Please try creating the PO again.' });
+            } else {
+              setAlertMessage({ type: 'success', message: 'Drawing updated successfully.' });
+            }
           }}
-          mandatory={true}
+          mandatory={selectedItemForDrawing.mandatory}
         />
       )}
 
@@ -1495,6 +2006,10 @@ function PurchaseOrdersContent() {
                   <p className="font-semibold text-lg">{selectedPO.po_number}</p>
                 </div>
                 <div>
+                  <p className="text-sm text-gray-600">PR Reference</p>
+                  <p className="font-semibold">{selectedPO.pr?.pr_number || '-'}</p>
+                </div>
+                <div>
                   <p className="text-sm text-gray-600">Status</p>
                   <span className={`inline-block px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedPO.status)}`}>
                     {selectedPO.status}
@@ -1502,8 +2017,8 @@ function PurchaseOrdersContent() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Vendor</p>
-                  <p className="font-semibold">{selectedPO.vendor.name}</p>
-                  <p className="text-sm text-gray-500">{selectedPO.vendor.contact_person}</p>
+                  <p className="font-semibold">{(selectedPO as any)?.vendor?.name || (selectedPO as any)?.vendor_name || '-'}</p>
+                  <p className="text-sm text-gray-500">{(selectedPO as any)?.vendor?.contact_person || (selectedPO as any)?.vendor_contact_person || ''}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Order Date</p>
@@ -1527,6 +2042,7 @@ function PurchaseOrdersContent() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Item</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Drawing</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Quantity</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Rate</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Amount</th>
@@ -1540,14 +2056,76 @@ function PurchaseOrdersContent() {
                               <div className="font-medium">{item.item?.name || item.item_name || '-'}</div>
                               <div className="text-xs text-gray-500">{item.item?.code || item.item_code || ''}</div>
                             </td>
+                            <td className="px-4 py-2">
+                              {(() => {
+                                const itemCode = item.item?.code || item.item_code;
+                                const itemId = item.item_id || item.itemId || item.item?.id;
+                                const masterItem = items.find((i) => i.id === itemId || i.code === itemCode);
+                                const drawingRequired = masterItem?.drawing_required || 'OPTIONAL';
+                                const resolvedItemId = masterItem?.id || itemId;
+
+                                if (!resolvedItemId) {
+                                  return <span className="text-xs text-gray-500">-</span>;
+                                }
+
+                                return (
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className={`text-xs px-2 py-0.5 rounded ${
+                                      drawingRequired === 'COMPULSORY'
+                                        ? 'bg-red-100 text-red-800'
+                                        : 'bg-gray-100 text-gray-700'
+                                    }`}>
+                                      {drawingRequired}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedItemForDrawing({
+                                          id: resolvedItemId,
+                                          code: masterItem?.code || itemCode || '',
+                                          name: masterItem?.name || item.item?.name || item.item_name || '',
+                                          mandatory: drawingRequired === 'COMPULSORY',
+                                        });
+                                        setShowDrawingManager(true);
+                                      }}
+                                      className="text-xs text-amber-700 hover:text-amber-900 font-medium"
+                                    >
+                                      Manage Drawings
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+                            </td>
                             <td className="px-4 py-2 text-right">{item.quantity || item.ordered_qty || 0}</td>
-                            <td className="px-4 py-2 text-right">₹{(item.rate || 0).toLocaleString()}</td>
+                            <td className="px-4 py-2 text-right">
+                              <div>₹{(item.rate || 0).toLocaleString()}</div>
+                              {(() => {
+                                const vendorId = resolveVendorIdFromPO(selectedPO);
+                                const itemId = resolveItemIdFromPOLine(item);
+
+                                // Always show some message under Rate
+                                if (!vendorId || !itemId) {
+                                  return <div className="mt-0.5 ml-auto max-w-[160px] break-words text-[11px] leading-tight text-gray-500">Last purchase price not available</div>;
+                                }
+
+                                const key = `${itemId}-${vendorId}`;
+                                const history = priceHistory[key];
+                                if (!history) return <div className="mt-0.5 ml-auto max-w-[160px] break-words text-[11px] leading-tight text-gray-500">Last: Loading...</div>;
+                                const last = history?.[0];
+                                if (!last) return <div className="mt-0.5 ml-auto max-w-[160px] break-words text-[11px] leading-tight text-gray-500">Last purchase price not available</div>;
+                                return (
+                                  <div className="mt-0.5 ml-auto max-w-[160px] break-words text-[11px] leading-tight text-gray-600">
+                                    Last: <span className="font-medium text-gray-800">₹{Number(last.unit_price || 0).toFixed(2)}</span>
+                                  </div>
+                                );
+                              })()}
+                            </td>
                             <td className="px-4 py-2 text-right font-medium">₹{(item.amount || 0).toLocaleString()}</td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={4} className="px-4 py-8 text-center text-gray-500">No items found</td>
+                          <td colSpan={5} className="px-4 py-8 text-center text-gray-500">No items found</td>
                         </tr>
                       )}
                     </tbody>
@@ -1556,13 +2134,16 @@ function PurchaseOrdersContent() {
               </div>
 
               {/* Tracking Information */}
-              {(selectedPO as any).tracking_number && (
+              {(selectedPO as any).status && (selectedPO as any).status !== 'DRAFT' && (
                 <div className="border-t pt-4">
                   <h3 className="text-lg font-semibold mb-3">Tracking Information</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-gray-600">Tracking Number</p>
-                      <p className="font-semibold">{(selectedPO as any).tracking_number}</p>
+                      <p className="font-semibold">{(selectedPO as any).tracking_number || '-'}</p>
+                      {!(selectedPO as any).tracking_number && (
+                        <p className="text-xs text-gray-500 mt-1">No tracking added yet</p>
+                      )}
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Delivery Status</p>
@@ -1624,10 +2205,19 @@ function PurchaseOrdersContent() {
                 {selectedPO.status === 'DRAFT' && (
                   <>
                     <button
+                      onClick={() => {
+                        setShowViewModal(false);
+                        handleEditDetails(selectedPO.id, 'edit');
+                      }}
+                      className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      Edit
+                    </button>
+                    <button
                       onClick={async () => {
                         try {
                           const token = localStorage.getItem('accessToken');
-                          const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders/${selectedPO.id}/status`, {
+                          const response = await fetch(`/api/v1/purchase/orders/${selectedPO.id}/status`, {
                             method: 'POST',
                             headers: {
                               'Content-Type': 'application/json',
@@ -1657,7 +2247,7 @@ function PurchaseOrdersContent() {
                       onClick={async () => {
                         try {
                           const token = localStorage.getItem('accessToken');
-                          const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/orders/${selectedPO.id}/status`, {
+                          const response = await fetch(`/api/v1/purchase/orders/${selectedPO.id}/status`, {
                             method: 'POST',
                             headers: {
                               'Content-Type': 'application/json',
@@ -1684,6 +2274,18 @@ function PurchaseOrdersContent() {
                       Reject
                     </button>
                   </>
+                )}
+
+                {selectedPO.status !== 'DRAFT' && (
+                  <button
+                    onClick={() => {
+                      setShowViewModal(false);
+                      handleEditDetails(selectedPO.id, 'tracking');
+                    }}
+                    className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                  >
+                    Update Tracking
+                  </button>
                 )}
               </div>
               <button

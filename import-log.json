@@ -1,0 +1,3713 @@
+{
+  "startTime": "2025-12-29T16:47:46.330Z",
+  "vendors": {
+    "success": [],
+    "failed": [
+      {
+        "name": "Robu ",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Roland",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Gadgets Deal",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Pan India Consultants",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Hobbywing",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Rajguru",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "RR Innovations",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "JLC",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "NSK Electronics",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Quartz Components",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Ampower India",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Seutes",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Global Electronics",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Canner Connectors",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Shenzen ISD Technology",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Donor RC",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Synergy",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "synergy",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Cable Fort",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Ali Irani - Kolkata ",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Vinod Rai",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Agarwal Aluminium",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Dolphin Rubber",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Janki Die",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "In-house",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Local Market",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Marhash Toroid Rings",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Weipu",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Evelta",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Tanveer International",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "BlueRobotics",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Premier Electronics",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Dynamic Industrial Supplier",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Sri Venkateswara Timber",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Naveen",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "In House",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "ARB Accessories",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "NDP",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Himalaya Traders",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Ambica Industries",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "CaseNfoam Toolfit",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Webel",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "PrathameshTechnology & Industries ",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Local Market Kolkata",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Suzhou Volsun Electronics Technology",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Commercial Engineering",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Hi Tech",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Innovine Tech Marketing PVt. Ltd.",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Royal Tools & Hardware",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "AliHussain Bharmal",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Bagnan",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Balaji - PB Manufacturing",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "D. B. Smelting",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Svtherm Technologies",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Robu 3D print",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Leopard",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Popular Pnuematic / Hydro Pnuematic",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Jain Wire Netting",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Elegant Enterprises",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Attitude Master Vizag",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Toolkit",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      },
+      {
+        "name": "Amazon",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'city' column of 'vendors' in the schema cache\"}"
+      }
+    ]
+  },
+  "items": {
+    "success": [],
+    "failed": [
+      {
+        "slNo": "1",
+        "partNumber": "RAD-TRR-QX71W915",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "2",
+        "partNumber": "RAD-TRR-R9MI1W915",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "3",
+        "partNumber": "SIC-DIO-M7-v100i1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "4",
+        "partNumber": "SIC-DIO-SS310-v100i1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "5",
+        "partNumber": "SIC-REG-AMS1117-5v",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "6",
+        "partNumber": " ",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "7",
+        "partNumber": "MOD-GNS-LC86L",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "8",
+        "partNumber": "MOD-GNS-HERE3+",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "9",
+        "partNumber": "MOD-GNS-BX992",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "10",
+        "partNumber": "CON-BUL-55F",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "11",
+        "partNumber": "CON-BUL-4M",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "12",
+        "partNumber": "CON-BUL-4F",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "13",
+        "partNumber": "CON-BUL-2M",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "14",
+        "partNumber": "CON-BUL-2F",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "15",
+        "partNumber": "CON-BUL-6M",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "16",
+        "partNumber": "CON-BUL-6F",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "17",
+        "partNumber": "CON-BUL-8M",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "18",
+        "partNumber": "CON-BUL-8F",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "19",
+        "partNumber": "CAB-SIL-BLACK8AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "20",
+        "partNumber": "CAB-SIL-RED8AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "21",
+        "partNumber": "CAB-SIL-BLACK10AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "22",
+        "partNumber": "CAB-SIL-RED10AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "23",
+        "partNumber": "CAB-SIL-BLACK12AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "24",
+        "partNumber": "CAB-SIL-BLACK12AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "25",
+        "partNumber": "CAB-SIL-BLACK18AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "26",
+        "partNumber": "CAB-SIL-RED18AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "27",
+        "partNumber": "CAB-SIL-GREEN18AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "28",
+        "partNumber": "CAB-SIL-BLACK20AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "29",
+        "partNumber": "CAB-SIL-GREEN20AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "30",
+        "partNumber": "CAB-SIL-RED20AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "31",
+        "partNumber": "CAB-SIL-BLUE20AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "32",
+        "partNumber": "SEN-WFL-YFS401v5",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "33",
+        "partNumber": "ACT-PMP-DIA550",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "34",
+        "partNumber": "IND-LIP-1S",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "35",
+        "partNumber": "IND-LIP-2S",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "36",
+        "partNumber": "IND-LIP-CASING",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "37",
+        "partNumber": "MOD-BUK-XL7015v80i07",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "38",
+        "partNumber": "MOD-BUK-LM2596HVSv48i2",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "39",
+        "partNumber": "MOD-BUK-XL4005v40i5",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "40",
+        "partNumber": "MOD-BUK-XL4015v40i5",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "41",
+        "partNumber": "CON-BTC-AS150uF",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "42",
+        "partNumber": "CON-BTC-AS150uM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "43",
+        "partNumber": "CON-BTC-XT90F",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "44",
+        "partNumber": "CON-BTC-XT90M",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "45",
+        "partNumber": "CON-BTC-XT30F",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "46",
+        "partNumber": "CON-BTC-XT30M",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "47",
+        "partNumber": "CON-BTC-XT60F",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "48",
+        "partNumber": "CON-BTC-XT60M",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "49",
+        "partNumber": "CON-BTC-MT30F",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "50",
+        "partNumber": "MOD-HLK-W20v24i08",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "51",
+        "partNumber": "SWI-PUS-MS16MM-PM-16MM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "52",
+        "partNumber": "SWI-PUS-LS16MM-PM-16MM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "53",
+        "partNumber": "PCB-IFU",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "54",
+        "partNumber": "PCB-AMCA",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "55",
+        "partNumber": "PCB-STBD-FLASH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "56",
+        "partNumber": "PCB-PORT-FLASH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "57",
+        "partNumber": "PCB-A4MEGA328P-MUR",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "58",
+        "partNumber": "PCB-CUR-SENSOR",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "59",
+        "partNumber": "PCB-QX7-BUTTON",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "60",
+        "partNumber": "PCB-X16-XL4015-CHARGER",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "61",
+        "partNumber": "PCB-BATHEMETRY",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "62",
+        "partNumber": "PCB-GEN6x4-P2054",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "63",
+        "partNumber": "PCB-GEN4x4-P2054",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "64",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "65",
+        "partNumber": "PCB-XL7015FOOT-MP9486",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "66",
+        "partNumber": "PCB-ONBOARD-CHARGING",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "67",
+        "partNumber": "PCB-SBUS-NANO",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "68",
+        "partNumber": "SEN-CUR-WCS1700-CTi35",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "69",
+        "partNumber": "PWR-CELL-HOLDER-1x3-21700-21.2MM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "70",
+        "partNumber": "PWR-BLK-6x3-50S",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "71",
+        "partNumber": "PWR-BLK-6x3-40T",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "72",
+        "partNumber": "PWR-BLK-6x3-P42A",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "73",
+        "partNumber": "PWR-BAR-2170-50S",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "74",
+        "partNumber": "PWR-BAR-2170-40T",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "75",
+        "partNumber": "PWR-BAR-2170-P42A",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "76",
+        "partNumber": "PWR-BAR-1865-MJ1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "77",
+        "partNumber": "PWR-CELL-HOLDER-SMD-18650",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "78",
+        "partNumber": "CAB-USB-1i5M24AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "79",
+        "partNumber": "CON-MIS-DCJACK-PM-505MM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "80",
+        "partNumber": "SOL-PAS-6040-ROHS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "81",
+        "partNumber": "SOL-WIR-6040-ROHS-22AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "82",
+        "partNumber": "SIC-REG-AMS1117-33v",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "83",
+        "partNumber": "HET-PAD-SIL-2MM-1W",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "84",
+        "partNumber": "HET-PAD-SIL-1MM-1W",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "85",
+        "partNumber": "SIC-COM-LM358DT",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "86",
+        "partNumber": "CAP-SMD-0805-100V10P-0D1uF",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "87",
+        "partNumber": "CAP-SMD-0805-100V10P-0D01uF",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "88",
+        "partNumber": "IND-SMD-2D2v-RED",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "89",
+        "partNumber": "SIC-SSR-TS5A3157DBVR",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "90",
+        "partNumber": "SWI-PUS-THT-4LEG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "91",
+        "partNumber": "SIC-BUK-LM2596HVS-ADJ-50v3A",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "92",
+        "partNumber": "SIC-BUK-MP9486AGN-Z-100v1A",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "93",
+        "partNumber": "DCC-BUK-MPRB4812LD-30W-v12i2D5",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "94",
+        "partNumber": "DCC-BUK-MPRB4812LD-30W-v5i6",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "95",
+        "partNumber": "SIC-DIO-1N4148-100V1A",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "96",
+        "partNumber": "CAP-SMD-0805-50V5P-18pF",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "97",
+        "partNumber": "CAP-SMD-0805-16V10P-10uF",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "98",
+        "partNumber": "CAP-SMD-TANTA-10V10P-10UF",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "99",
+        "partNumber": "RES-SMD-0805-125mW5P-1k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "100",
+        "partNumber": "RES-SMD-0805-125mW5P-10k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "101",
+        "partNumber": "RES-SMD-0805-125mW5P-510k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "102",
+        "partNumber": "RES-SMD-0805-125mW5P-560k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "103",
+        "partNumber": "RES-SMD-0805-125mW1P-330E",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "104",
+        "partNumber": "RES-SMD-0805-3W1P-22E",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "105",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "106",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "107",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "108",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "109",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "110",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "111",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "112",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "113",
+        "partNumber": "REL-PWR-SPST-24v-V63i23",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "114",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "115",
+        "partNumber": "SIC-ADC-MCP3208-5V8CH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "116",
+        "partNumber": "IDR-SMD-SPM7054-uH33i3.5",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "117",
+        "partNumber": "SEN-TEM-LM61",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "118",
+        "partNumber": "RES-SMD-0805-125mW5P-47k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "119",
+        "partNumber": "RES-SMD-0805-125mW5P-47k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "120",
+        "partNumber": "RES-SMD-0805-125mW5P-47k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "121",
+        "partNumber": "RES-SMD-0805-125mW5P-20k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "122",
+        "partNumber": "RES-SMD-0805-125mW5P-20k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "123",
+        "partNumber": "RES-SMD-0805-125mW5P-30k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "124",
+        "partNumber": "RES-SMD-0805-500mW5P-470k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "125",
+        "partNumber": "RES-SMD-0805-125mW5P-470k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "126",
+        "partNumber": "RES-SMD-0805-125mW5P-470k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "127",
+        "partNumber": "RES-SMD-0805-125mW5P-15k",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "128",
+        "partNumber": "CAP-SMD-0805-25V10P-1uF",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "129",
+        "partNumber": "OSC-SMD-ABM3-16MHZ-18pF",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "130",
+        "partNumber": "SIC-AMP-SMD-ULN2004D-50V05A7CH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "131",
+        "partNumber": "SIC-SSR-AQW282SX-63vD35A-2CH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "132",
+        "partNumber": "SIC-MPU-TQFP-ATMEGA328PAN",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "133",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "134",
+        "partNumber": "REL-PWR-SPST-12v-V63i90",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "135",
+        "partNumber": "REL-SIG-SPST-12v-V63i5",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "136",
+        "partNumber": "REL-SIG-DPDT-24v-V63i1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "137",
+        "partNumber": "REL-SIG-SPST-24v-V63i5",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "138",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "139",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "140",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "141",
+        "partNumber": "MOD-SDCARD-32GB-CLASS10A",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "142",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "143",
+        "partNumber": "MOD-BLE-HC05",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "144",
+        "partNumber": "RES-THT-20MM-2W10P-22E",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "145",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "146",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "147",
+        "partNumber": "CON-BRG-40X1-F2.54MM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "148",
+        "partNumber": "CON-BRG-40X1-M2.54MM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "149",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "150",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "151",
+        "partNumber": "CON-BRG-40X1-F2MM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "152",
+        "partNumber": "CON-BRG-40X1-M2MM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "153",
+        "partNumber": "EAC-CONFORMAL",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "154",
+        "partNumber": "EAC-CONFORMAL-LOC3900",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "155",
+        "partNumber": "CON-RMC-M5",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "156",
+        "partNumber": "CON-CABLE-RMC-M5-OPEN",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "157",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "158",
+        "partNumber": "CON-JXH-HOS-F2",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "159",
+        "partNumber": "CON-JXH-HOS-F3",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "160",
+        "partNumber": "CON-JXH-HOS-F13",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "161",
+        "partNumber": "CON-JXH-HOS-F15",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "162",
+        "partNumber": "CON-JXH-TOP-M2",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "163",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "164",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "165",
+        "partNumber": "CON-JXH-TOP-M3",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "166",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "167",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "168",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "169",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "170",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "171",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "172",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "173",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "174",
+        "partNumber": "CON-JXH-TOP-M13",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "175",
+        "partNumber": "CON-JXH-TOP-M15",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "176",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "177",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "178",
+        "partNumber": "CAB-CRI-2511RED25CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "179",
+        "partNumber": "CAB-CRI-2511GREEN25CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "180",
+        "partNumber": "CAB-CRI-2511BLACK25CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "181",
+        "partNumber": "CAB-CRI-2515BLACK10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "182",
+        "partNumber": "CAB-CRI-2515GREEN10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "183",
+        "partNumber": "CAB-CRI-2515VOILET10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "184",
+        "partNumber": "CAB-CRI-2515YELLOW10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "185",
+        "partNumber": "CAB-CRI-2515SBLUE10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "186",
+        "partNumber": "CAB-CRI-2515PINK10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "187",
+        "partNumber": "CAB-CRI-2515ORANGE10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "188",
+        "partNumber": "CAB-CRI-2515DBLUE10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "189",
+        "partNumber": "CAB-CRI-2515LBROWN10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "190",
+        "partNumber": "CAB-CRI-2515DBROWN10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "191",
+        "partNumber": "CAB-CRI-2515WHITERED10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "192",
+        "partNumber": "CAB-CRI-2515WHITEBLACK10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "193",
+        "partNumber": "CAB-CRI-2515WHITE10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "194",
+        "partNumber": "CAB-CRI-2515RED10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "195",
+        "partNumber": "CAB-CRI-2515LGREY10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "196",
+        "partNumber": "CAB-CRI-2515DGREY10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "197",
+        "partNumber": "CAB-CRI-2515CYAN10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "198",
+        "partNumber": "CAB-CRI-2515PGREEN10CM14/38",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "199",
+        "partNumber": "CAB-BAL-MFIT20CM20WGISDT",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "200",
+        "partNumber": "SWI-PUS-SMD-2LEG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "201",
+        "partNumber": "RAD-ANT-OMPCH1W915",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "202",
+        "partNumber": "CAB-CAX-SMAFtoIPEX11.13",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "203",
+        "partNumber": "CAB-CAX-RPSMAFtoOPEN1.13",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "204",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "205",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "206",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "207",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "208",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "209",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "210",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "211",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "212",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "213",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "214",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "215",
+        "partNumber": "CAB-MCO-20C14/38LENChetan",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "216",
+        "partNumber": "CAB-MCO-16C14/38LENChetan",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "217",
+        "partNumber": "CAB-MCO-12C14/38LENChetan",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "218",
+        "partNumber": "CAB-MCO-10C14/38LENChetan",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "219",
+        "partNumber": "CAB-MCO-8C14/38LENChetan",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "220",
+        "partNumber": "CAB-MCO-6C14/38LENChetan",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "221",
+        "partNumber": "CAB-SCO-1C14/38LENChetan-Red",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "222",
+        "partNumber": "CAB-SCO-1C14/38LENChetan-Black",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "223",
+        "partNumber": "CAB-SCO-1C14/38LENChetan-Yellow",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "224",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "225",
+        "partNumber": "CAB-SCO-1C14/38LENChetan-SkyBlue",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "226",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "227",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "228",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "229",
+        "partNumber": "CAB-SCO-1C14/38LENChetan-Purple",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "230",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "231",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "232",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "233",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "234",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "235",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "236",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "237",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "238",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "239",
+        "partNumber": "FAB-TEM-AFT-SSLIFE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "240",
+        "partNumber": "MOD-CHG-X16-220VAC-16Si20-2CH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "241",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "242",
+        "partNumber": "MOD-CHG-PD60-V5i6-4Si6-1CH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "243",
+        "partNumber": "FAB-ROT-HULL-8KG-ORANGE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "244",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "245",
+        "partNumber": "FAB-ROT-SRSTRUCT-ORANGE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "246",
+        "partNumber": "FAB-ROT-SRPILLOW-ORANGE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "247",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "248",
+        "partNumber": "FAB-MCN-60x70-18mmFRP",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "249",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "250",
+        "partNumber": "FAB-MCN-6S3P-CLAMP",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "251",
+        "partNumber": "FAB-IJM-ElecBox-TopLid",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "252",
+        "partNumber": "FAB-IJM-Kangaroo-Box",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "253",
+        "partNumber": "FAB-IJM-Kangaroo-TopLid",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "254",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "255",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "256",
+        "partNumber": "COR-ZIP-100M3M-MULTICOMPRO",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "257",
+        "partNumber": "COR-ZIP-250M3M-COMM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "259",
+        "partNumber": "COR-ZIP-300M3M-COMM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "260",
+        "partNumber": "EAC-TOR-CF199T1306C",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "261",
+        "partNumber": "CON-CRC-SY21BY-PM-M15PL67",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "262",
+        "partNumber": "CON-CRC-SY21BY-CM-F15PL67",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "265",
+        "partNumber": "CON-CRC-SY21BY-PM-F15PL67",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "266",
+        "partNumber": "CON-CRC-SY21BY-CM-M15PL67",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "267",
+        "partNumber": "CON-CRC-WY28BY-CM-M26AL67-RA",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "268",
+        "partNumber": "CON-CRC-WY28BY-CM-F26AL67",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "269",
+        "partNumber": "CON-CRC-SA12PF-CM-M9AL67-ST",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "270",
+        "partNumber": "CON-CRC-SA12PF-PM-F9AL67-ST",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "271",
+        "partNumber": "CON-CRC-SA12PF-CM-F9AL67-ST",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "272",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "273",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "274",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "275",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "276",
+        "partNumber": "CON-CRS-LP24PF-CM-F24PL67-ST",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "277",
+        "partNumber": "CON-CRS-LP24PF-PM-M24PL67",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "278",
+        "partNumber": "CON-CRS-LP12PF-CM-M3PL67-ST",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "279",
+        "partNumber": "CON-CRS-LP12PF-PM-F3PL67-ST",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "280",
+        "partNumber": "CON-CRS-LP12PF-CM-M4PL67-ST",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "281",
+        "partNumber": "CON-CRS-LP12PF-PM-F4PL67-ST",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "282",
+        "partNumber": "CON-CRS-LP12PF-CM-M6PL67-ST",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "283",
+        "partNumber": "CON-CRS-LP12PF-CM-F6PL67-ST",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "284",
+        "partNumber": "CON-CRS-LP12PF-CM-M8PL67-ST",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "285",
+        "partNumber": "CON-CRS-LP12PF-PM-F8PL67-ST",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "286",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "287",
+        "partNumber": "SEN-LEK-BLUEROBOTICS-PROB",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "288",
+        "partNumber": "IND-PAM-Al68-12V",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "289",
+        "partNumber": "SWI-ROT-BLUEROBOTICS-v63i5",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "290",
+        "partNumber": "IND-SMD-W1LEG-RD",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "291",
+        "partNumber": "IND-SMD-W1LEG-GR",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "292",
+        "partNumber": "FAS-TAP-4No605MPH304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "293",
+        "partNumber": "FAS-TAP-2No605MPH304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "294",
+        "partNumber": "FAS-BLT-CSK-3M50M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "295",
+        "partNumber": "FAS-BLT-ALN-3M6M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "296",
+        "partNumber": "FAS-BLT-CSK-3M8M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "297",
+        "partNumber": "FAS-BLT-CSK-3M12M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "298",
+        "partNumber": "FAS-BLT-ALN-3M12M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "299",
+        "partNumber": "FAS-BLT-CSK-3M20M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "300",
+        "partNumber": "FAS-BLT-BUT-3M8M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "301",
+        "partNumber": "FAS-BLT-ALN-3M8M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "302",
+        "partNumber": "FAS-WAS-PWS-3M10M1M-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "303",
+        "partNumber": "FAS-WAS-SPWS-3M8M1M-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "304",
+        "partNumber": "FAS-GRB-3M5M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "305",
+        "partNumber": "FAS-BLT-CSK-4M8M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "306",
+        "partNumber": "FAS-BLT-CSK-4M8M-PH-GI",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "307",
+        "partNumber": "FAS-NUT-4M-HEX-SS304",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "308",
+        "partNumber": "FAS-BLT-ALN-2M12M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "309",
+        "partNumber": "FAS-BLT-ALN-2M15M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "310",
+        "partNumber": "FAS-BLT-CSK-4M10M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "311",
+        "partNumber": "FAS-BLT-CSK-4M20M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "312",
+        "partNumber": "FAS-WAS-PWS-4M20M1M-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "313",
+        "partNumber": "FAS-BLT-BUT-4M20M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "314",
+        "partNumber": "FAS-BLT-ALN-4M12M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "315",
+        "partNumber": "FAS-BLT-ALN-4M16M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "316",
+        "partNumber": "FAS-BLT-PAN-4M6M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "317",
+        "partNumber": "FAS-BLT-PAN-4M8M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "318",
+        "partNumber": "FAS-BLT-PAN-4M16M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "319",
+        "partNumber": "FAS-BLT-ALN-4M10M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "320",
+        "partNumber": "FAS-BLT-ALN-4M30M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "321",
+        "partNumber": "FAS-BLT-BUT-4M30M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "322",
+        "partNumber": "FAS-BLT-ALN-4M40M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "323",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "324",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "325",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "326",
+        "partNumber": "FAS-BLT-PANCOMBI-4M20M-GI",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "327",
+        "partNumber": "FAS-BLT-PANCOMBI-4M30M-GI",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "328",
+        "partNumber": "FAS-NUT-4M-HEX-GI",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "329",
+        "partNumber": "FAS-WAS-PWS-4M12M1M-GI",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "330",
+        "partNumber": "FAS-WAS-PWS-5M15M1M-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "331",
+        "partNumber": "FAS-BLT-ALN-4M15M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "332",
+        "partNumber": "FAS-BLT-ALN-4M20M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "333",
+        "partNumber": "FAS-BLT-BUT-4M20M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "334",
+        "partNumber": "FAS-BLT-PANCOMBI-5M20M-GI",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "335",
+        "partNumber": "FAS-BLT-PANCOMBI-5M30M-GI",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "337",
+        "partNumber": "FAS-NUT-5M-HEX-GI",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "338",
+        "partNumber": "FAS-BLT-BUT-4M20M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "339",
+        "partNumber": "FAS-BLT-CSK-4M12M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "340",
+        "partNumber": "FAS-BLT-BUT-4M8M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "341",
+        "partNumber": "FAS-BLT-BUT-4M12M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "342",
+        "partNumber": "FAS-BLT-PANCOMBI-4M12M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "343",
+        "partNumber": "FAS-BLT-PANCOMBI-4M6M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "344",
+        "partNumber": "FAS-WAS-PWS-4M12M1M-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "345",
+        "partNumber": "FAS-WAS-SWS-4M8M1M-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "346",
+        "partNumber": "FAS-NUT-4M-NYL-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "347",
+        "partNumber": "FAS-NUT-4M-HEX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "348",
+        "partNumber": "FAS-NUT-4M-SQR-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "349",
+        "partNumber": "FAS-NUT-3M-SQR-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "350",
+        "partNumber": "FAS-NUT-3M-HEX-SS304",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "351",
+        "partNumber": "FAS-GRB-4M5M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "352",
+        "partNumber": "FAS-BLT-ALN-5M10M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "353",
+        "partNumber": "FAS-BLT-TRX-5M10M-T25-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "354",
+        "partNumber": "FAS-GRB-4M10M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "355",
+        "partNumber": "FAS-BLT-ALN-5M16M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "356",
+        "partNumber": "FAS-BLT-BUT-5M16M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "357",
+        "partNumber": "FAS-BLT-ALN-5M10M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "358",
+        "partNumber": "FAS-BLT-CSK-5M50M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "359",
+        "partNumber": "FAS-BLT-ALN-5M50M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "360",
+        "partNumber": "FAS-NUT-5M-SQR-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "361",
+        "partNumber": "FAS-BLT-ALN-6M50M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "362",
+        "partNumber": "FAS-BLT-ALN-6M150M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "363",
+        "partNumber": "FAS-NUT-6M-NYL-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "364",
+        "partNumber": "FAS-BLT-BUT-6M16M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "365",
+        "partNumber": "FAS-WAS-PWS-6M15M1M-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "366",
+        "partNumber": "FAS-BLT-BUT-6M20M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "367",
+        "partNumber": "FAS-BLT-BUT-6M25M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "368",
+        "partNumber": "FAS-GRB-4M5M-HX-SS304",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "369",
+        "partNumber": "FAS-NUT-6M-DOM-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "370",
+        "partNumber": "FAS-BLT-BUT-6M12M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "371",
+        "partNumber": "FAS-BLT-BUT-6M30M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "372",
+        "partNumber": "FAS-BLT-ALN-6M30MHX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "373",
+        "partNumber": "FAS-NUT-6M-HEX-SS304",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "374",
+        "partNumber": "FAS-WAS-PWS-8M20M2M-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "375",
+        "partNumber": "FAS-BLT-ALN-8M25MHX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "376",
+        "partNumber": "FAS-BLT-TRX-5M12M-T25-SS304",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "377",
+        "partNumber": "FAS-BLT-CSK-5M12M-PH-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "378",
+        "partNumber": "FAS-WAS-PWS-5M12M1.2M-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "379",
+        "partNumber": "FAS-BLT-BUT-5M25M-HX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "380",
+        "partNumber": "FAS-BLT-ALN-5M25MHX-304SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "381",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "382",
+        "partNumber": "FAB-MCN-3S2P-CU-2170",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "383",
+        "partNumber": "ASSY-MCN-3S2P-CU-2170",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "384",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "385",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "386",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "387",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "388",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "389",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "390",
+        "partNumber": "SOL-WIR-6040-ROHS-16AWG",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "391",
+        "partNumber": "SOL-FLX-AQUA-SOLDRON",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "392",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "393",
+        "partNumber": "MAC-GLA-PG7-PL",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "394",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "396",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "397",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "398",
+        "partNumber": "FAB-MCN-ROT14-0D",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "399",
+        "partNumber": "SER-MCN-ROT14-8D7F",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "400",
+        "partNumber": "FAB-IJM-EBX",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "401",
+        "partNumber": "FAB-IJM-FLID-LIFE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "402",
+        "partNumber": "FAB-IJM-BTM-BLOC-LIFE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "403",
+        "partNumber": "STW-ET2612-QX7-FOAM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "404",
+        "partNumber": "FAB-IJM-QX7-UPPERSHELL",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "405",
+        "partNumber": "FAB-IJM-QX7-LOWERSHELL",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "406",
+        "partNumber": "FAB-IJM-FLSH-GLASS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "407",
+        "partNumber": "FAB-IJM-FLSH-PLATE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "408",
+        "partNumber": "FAB-GSK-EBX",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "409",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "410",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "411",
+        "partNumber": "SLN-STB-6.4M-4X-BK-ADH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "412",
+        "partNumber": "SLN-STB-9.5M-3X-BK-ADH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "413",
+        "partNumber": "SLN-STB-4M-3X-BK-ADH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "414",
+        "partNumber": "SLN-STB-3M-3X-BK-ADH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "415",
+        "partNumber": "SLN-STB-2.4M-3X-BK-ADH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "416",
+        "partNumber": "SLN-STB-12M-4X-BK-ADH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "417",
+        "partNumber": "SLN-STB-4.8M-4X-BK-ADH",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "418",
+        "partNumber": "SLN-STB-1.6M-4X-BK",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "419",
+        "partNumber": "SLN-STB-2.0M-4X-BK",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "420",
+        "partNumber": "SLN-STB-25.0M-2X-BK",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "421",
+        "partNumber": "SLN-STB-100M-2X-BK",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "422",
+        "partNumber": "SLN-STB-125M-2X-BK",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "423",
+        "partNumber": "SLN-STB-16M-2X-CL",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "424",
+        "partNumber": "SLN-STB-10M-2X-CL",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "425",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "426",
+        "partNumber": "HET-PAS-SIL-1W",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "427",
+        "partNumber": "SLN-SMP-MS930-400ML",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "428",
+        "partNumber": "SLN-RTV-732-VISCOUS-400ML",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "429",
+        "partNumber": "SLN-RTV-734-FLOWABLE-400ML",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "430",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "431",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "432",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "433",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "434",
+        "partNumber": "PKG-MASK-2IN",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "435",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "436",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "437",
+        "partNumber": "MAC-ADH-TAPE-RR",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "438",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "439",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "440",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "441",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "442",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "443",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "444",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "445",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "446",
+        "partNumber": "FAB-MCN-I52-NOZZLE-CW",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "447",
+        "partNumber": "FAB-MCN-I52-NOZZLE-CCW",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "448",
+        "partNumber": "FAB-MCN-I52-STATOR-CW",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "449",
+        "partNumber": "FAB-MCN-I52-STATOR-CCW",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "450",
+        "partNumber": "FAB-MCN-I52-IMPELLER-CW",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "451",
+        "partNumber": "FAB-MCN-I52-IMPELLER-CCW",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "452",
+        "partNumber": "FAB-MCN-I52-SHAFT-SS304",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "453",
+        "partNumber": "MAC-BEARING-IJK108",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "454",
+        "partNumber": "FAB-MCN-S52-WASHER09",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "455",
+        "partNumber": "FAB-MCN-S52-SPACERMID",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "456",
+        "partNumber": "FAB-MCN-S52-WASHER5.5",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "457",
+        "partNumber": "MAC-OILSEAS-10-18-6",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "458",
+        "partNumber": "MAC-OILSEAS-7-16-5",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "459",
+        "partNumber": "FAB-MCN-S52-TFLN-12M7M",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "460",
+        "partNumber": "FAB-MCN-S52-TFLN-12M6M",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "461",
+        "partNumber": "MAC-CIRCLIP-18MM-SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "462",
+        "partNumber": "MAC-CIRCLIP-19MM-SS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "463",
+        "partNumber": "FAB-CST-S52-V1.0",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "464",
+        "partNumber": "FAB-CST-INT-I52-V1.0",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "465",
+        "partNumber": "FAB-CST-INT-I52-V1.1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "466",
+        "partNumber": "CPTL-MLD-GDC-FAB-CST-INT-I52-V1.1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "467",
+        "partNumber": "FAB-MCN-INT-I52-V1.0",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "468",
+        "partNumber": "FAB-MCN-INT-I52-V1.1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "469",
+        "partNumber": "CPTL-FIX-LEK-FAB-MCN-INT-I52-V1.1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "470",
+        "partNumber": "FAB-LEK-INT-I52-V1.1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "471",
+        "partNumber": "CPTL-FIX-DIMS-FAB-MCN-INT-I52-V1.1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "472",
+        "partNumber": "FAB-MCN-ESC-S52-5692-PLATEM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "473",
+        "partNumber": "FAB-MCN-ESC-I52-5692-PLATEM-V1.1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "474",
+        "partNumber": "FAB-MCN-S52V1-PLATEM-V1.0",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "475",
+        "partNumber": "FAB-MCN-I52V1-PLATEF-237.88mm-V1.0",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "476",
+        "partNumber": "FAB-MCN-5692HE-S52-TMOUNT-V1.0",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "477",
+        "partNumber": "FAB-MCN-5692HE-I52-TMOUNT-V1.1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "478",
+        "partNumber": "FAB-MCN-5692HE-S52-BMOUNT-V1.0",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "479",
+        "partNumber": "FAB-MCN-5692HE-I52-BMOUNT-V1.1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "480",
+        "partNumber": "CPTL-FIX-DIMS-FAB-MCN-5692HE-I52-T/BMOUNT-V1.1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "481",
+        "partNumber": "FAB-MCN-I52-TPLATE-V1.1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "482",
+        "partNumber": "FAB-MCN-I52-RLPLATE-V1.1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "483",
+        "partNumber": "FAB-MCN-5692HE-RLPLATE-V1.1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "484",
+        "partNumber": "Not Needed",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "485",
+        "partNumber": "Not Needed",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "486",
+        "partNumber": "Not Needed",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "487",
+        "partNumber": "Not Needed",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "488",
+        "partNumber": "Not Needed",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "489",
+        "partNumber": "Not Needed",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "490",
+        "partNumber": "Not Needed",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "491",
+        "partNumber": "Not Needed",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "492",
+        "partNumber": "Not Needed",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "493",
+        "partNumber": "Not Needed",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "494",
+        "partNumber": "Not Needed",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "495",
+        "partNumber": "FAB-MCN-CU-I52-5692-10MM230MM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "496",
+        "partNumber": "FAB-MCN-SAFT-SSLIFE-AL",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "497",
+        "partNumber": "FAB-MCN-PAFT-SSLIFE-AL",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "498",
+        "partNumber": "FAB-IJM-SAFT-SSLIFE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "499",
+        "partNumber": "FAB-IJM-PAFT-SSLIFE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "500",
+        "partNumber": "FAB-3DP-PILCAP-SSLIFE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "501",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "502",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "503",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "504",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "505",
+        "partNumber": "FAB-3DP-QX7-PRES-BRAC",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "506",
+        "partNumber": "FAB-3DP-QX7-BAT-BRAC",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "507",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "508",
+        "partNumber": "FAB-STC-QX7-STRAP",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "509",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "510",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "511",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "512",
+        "partNumber": "FAB-3DP-QX7-ANT-CLMP1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "513",
+        "partNumber": "FAB-3DP-QX7-ANT-CLMP2",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "514",
+        "partNumber": "FAB-3DP-QX7-LCD-HOLD",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "515",
+        "partNumber": "FAB-3DP-X16-EXT-PILLER",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "516",
+        "partNumber": "FAB-3DP-IFU-KNOB",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "517",
+        "partNumber": "MOD-QX7-ENC",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "518",
+        "partNumber": "FAB-3DP-IFU-MID",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "519",
+        "partNumber": "FAB-3DP-IFU-TOP",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "520",
+        "partNumber": "FAB-3DP-IFU-BOTTOM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "521",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "522",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "523",
+        "partNumber": "ACT-MTR-5692KW3i5KV485LEO",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "524",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "525",
+        "partNumber": "MOD-ESC-HV130v52i130",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "526",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "527",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "528",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "529",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "530",
+        "partNumber": "FAB-QX7-IPREMOTE-GLASS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "531",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "532",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "533",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "534",
+        "partNumber": "MAC-MESH-5x4M5",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "535",
+        "partNumber": "MAC-AIR-NOZZLE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "536",
+        "partNumber": "CHM-ACETONE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "537",
+        "partNumber": "CHM-IPA",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "538",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "539",
+        "partNumber": "MAC-PUF-ISO&POLYOL-40D30S",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "540",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "541",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "542",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "543",
+        "partNumber": "SLN-BOOT-JOYSTICK",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "544",
+        "partNumber": "SLN-BOOT-BUTTON1",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "545",
+        "partNumber": "SLN-BOOT-BUTTON2",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "546",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "547",
+        "partNumber": "MAC-ADH-242-2MTO3M",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "548",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "549",
+        "partNumber": "MAC-ADH-290-4MTO8M",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "550",
+        "partNumber": "MAC-ADH-SF7649",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "551",
+        "partNumber": "MAC-ADH-407-INSTA",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "552",
+        "partNumber": "SLN-ORI-60C-6MSQ",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "553",
+        "partNumber": "SLN-ORI-60C-3CYL",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "554",
+        "partNumber": "STX-STBD-LIFTFHERE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "555",
+        "partNumber": "STX-PORT-LIFTFHERE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "556",
+        "partNumber": "STX-STBD-HOLDHERE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "557",
+        "partNumber": "STX-PORT-HOLDHERE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "558",
+        "partNumber": "STX-PORT-HOLDHERE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "559",
+        "partNumber": "STX-WOODENBOX",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "560",
+        "partNumber": "STX-CHR-CHARGEPROCESS",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "561",
+        "partNumber": "MAC-FERRULE-185No",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "562",
+        "partNumber": "COR-ROPE-DBRAIDED-8MM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "563",
+        "partNumber": "STW-WOOD-46x35x18",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "564",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "565",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "566",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "567",
+        "partNumber": "TOL-THD-6MM",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "568",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "569",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "570",
+        "partNumber": "GAC-USERMANUAL",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "571",
+        "partNumber": "GAC-ENVELOPE",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "572",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "573",
+        "partNumber": "FAB-INJ-X16-EXT-PANEL",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "574",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "575",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "576",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "577",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "578",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "579",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "580",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "581",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "582",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "583",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "584",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "585",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "586",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "587",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "588",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "589",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "590",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "591",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "592",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "593",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "594",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "595",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "596",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "597",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "598",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "599",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "600",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "601",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "602",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "603",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "604",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "605",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "606",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "607",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "608",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "609",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "610",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "611",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "612",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "613",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "614",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "615",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "616",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "617",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "618",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "619",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "620",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "621",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "622",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "623",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "624",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "625",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "626",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "627",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "628",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "629",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "630",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "631",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "632",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "633",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "634",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "635",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "636",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "637",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "638",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "639",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "640",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "641",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "642",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "643",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "644",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "645",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "646",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "647",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "648",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "649",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "650",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "651",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "652",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "653",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "654",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "655",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "656",
+        "partNumber": "ASYE-MCH-IP7-FLSHM-ST",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "657",
+        "partNumber": "ASYE-MCH-IP7-FLSHM-PT",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "658",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "659",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "660",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "661",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "662",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "663",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "664",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "665",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "666",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "667",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "668",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "669",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "670",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "671",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "672",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "673",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "674",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "675",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "676",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "677",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "678",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "679",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "680",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "681",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "682",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "683",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "684",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "685",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "686",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "687",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "688",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "689",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "690",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      },
+      {
+        "slNo": "691",
+        "partNumber": "",
+        "error": "HTTP 400: {\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'gst_rate' column of 'items' in the schema cache\"}"
+      }
+    ]
+  },
+  "relationships": {
+    "success": [],
+    "failed": []
+  },
+  "summary": {
+    "vendors": {
+      "total": 62,
+      "success": 0,
+      "failed": 62
+    },
+    "items": {
+      "total": 686,
+      "success": 0,
+      "failed": 686
+    },
+    "relationships": {
+      "total": 0,
+      "success": 0,
+      "failed": 0
+    }
+  },
+  "endTime": "2025-12-29T16:49:21.069Z"
+}

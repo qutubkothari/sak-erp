@@ -1,0 +1,19 @@
+# Add these to your .env file on EC2 (or locally)
+
+# Email Configuration
+DEFAULT_EMAIL="kutubkothari@gmail.com"
+EMAIL_ADMIN="kutubkothari@gmail.com"
+EMAIL_SALES="kutubkothari@gmail.com"
+EMAIL_SUPPORT="kutubkothari@gmail.com"
+EMAIL_TECHNICAL="kutubkothari@gmail.com"
+EMAIL_PURCHASE="kutubkothari@gmail.com"
+EMAIL_HR="kutubkothari@gmail.com"
+EMAIL_NOREPLY="kutubkothari@gmail.com"
+
+# Company Information
+COMPANY_NAME="SAK Solutions"
+COMPANY_ADDRESS=""
+COMPANY_PHONE=""
+
+# Frontend URL (for email links)
+FRONTEND_URL="http://3.110.100.60"

@@ -2,6 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '../../../../../lib/api-client';
+
+function getApiV1BaseUrl(): string | null {
+  const raw = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+  if (!raw) return null;
+  const normalized = raw.endsWith('/') ? raw.slice(0, -1) : raw;
+  return normalized.endsWith('/api/v1') ? normalized : `${normalized}/api/v1`;
+}
 
 interface GRN {
   id: string;
@@ -9,6 +17,10 @@ interface GRN {
   grn_date: string;
   invoice_number: string;
   invoice_date: string;
+  invoice_file_url?: string;
+  invoice_file_name?: string;
+  invoice_file_type?: string;
+  invoice_file_size?: number;
   status: string;
   remarks?: string;
   qc_completed?: boolean;
@@ -44,6 +56,10 @@ interface GRN {
     rejection_amount?: number;
     rejection_reason?: string;
     qc_notes?: string;
+    qc_file_url?: string;
+    qc_file_name?: string;
+    qc_file_type?: string;
+    qc_file_size?: number;
     return_status?: string;
     debit_note_id?: string;
   }>;
@@ -138,11 +154,19 @@ export default function GRNPage() {
     rejectedQty: number;
     qcNotes: string;
     rejectionReason: string;
+    qcFileUrl?: string;
+    qcFileName?: string;
+    qcFileType?: string;
+    qcFileSize?: number;
   }>>([]);
   const [editMode, setEditMode] = useState(false);
   const [editFormData, setEditFormData] = useState<{
     invoiceNumber: string;
     invoiceDate: string;
+    invoiceFileUrl: string;
+    invoiceFileName: string;
+    invoiceFileType: string;
+    invoiceFileSize: number;
     warehouseId: string;
     notes: string;
     items: Array<{
@@ -157,6 +181,10 @@ export default function GRNPage() {
   }>({
     invoiceNumber: '',
     invoiceDate: '',
+    invoiceFileUrl: '',
+    invoiceFileName: '',
+    invoiceFileType: '',
+    invoiceFileSize: 0,
     warehouseId: '',
     notes: '',
     items: [],
@@ -168,6 +196,10 @@ export default function GRNPage() {
     receiptDate: new Date().toISOString().split('T')[0],
     invoiceNumber: '',
     invoiceDate: '',
+    invoiceFileUrl: '',
+    invoiceFileName: '',
+    invoiceFileType: '',
+    invoiceFileSize: 0,
     warehouseId: '',
     notes: '',
     items: [] as Array<{
@@ -183,10 +215,181 @@ export default function GRNPage() {
       batchNumber: string;
       expiryDate: string;
       notes: string;
+      rejectionReason?: string;
       supplierHsnCode?: string;
       masterHsnCode?: string;
     }>,
   });
+
+  const handleViewInvoice = (invoiceFileUrl: string, invoiceFileName?: string) => {
+    // Convert base64 data URL to blob and open in new window
+    if (invoiceFileUrl.startsWith('data:')) {
+      const base64Data = invoiceFileUrl.split(',')[1];
+      const mimeType = invoiceFileUrl.split(':')[1].split(';')[0];
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const newWindow = window.open(url, '_blank');
+      // Clean up the URL after window opens
+      if (newWindow) {
+        newWindow.onload = () => {
+          URL.revokeObjectURL(url);
+        };
+      }
+    } else {
+      // Regular URL, open directly
+      window.open(invoiceFileUrl, '_blank');
+    }
+  };
+
+  const handleInvoiceFileSelect = (file: File, target: 'create' | 'edit') => {
+    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload PNG, JPG, or PDF files only');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+
+    // Prefer server-side upload (avoids large base64 JSON payloads that can break GRN save)
+    const upload = async () => {
+      try {
+        const token = localStorage.getItem('accessToken');
+        const fd = new FormData();
+        fd.append('file', file);
+
+        const apiBase = getApiV1BaseUrl();
+        const uploadUrl = apiBase
+          ? `${apiBase}/purchase/grn/invoice/upload`
+          : '/api/v1/purchase/grn/invoice/upload';
+
+        const response = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: fd,
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const url = String(data?.url || '').trim();
+          if (!url) throw new Error('Upload did not return a URL');
+
+          if (target === 'create') {
+            setFormData(prev => ({
+              ...prev,
+              invoiceFileUrl: url,
+              invoiceFileName: String(data?.name || file.name),
+              invoiceFileType: String(data?.type || file.type),
+              invoiceFileSize: Number(data?.size || file.size) || 0,
+            }));
+          } else {
+            setEditFormData(prev => ({
+              ...prev,
+              invoiceFileUrl: url,
+              invoiceFileName: String(data?.name || file.name),
+              invoiceFileType: String(data?.type || file.type),
+              invoiceFileSize: Number(data?.size || file.size) || 0,
+            }));
+          }
+
+          return;
+        }
+      } catch (e) {
+        console.warn('Invoice upload failed; falling back to base64', e);
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        if (target === 'create') {
+          setFormData(prev => ({
+            ...prev,
+            invoiceFileUrl: base64,
+            invoiceFileName: file.name,
+            invoiceFileType: file.type,
+            invoiceFileSize: file.size,
+          }));
+        } else {
+          setEditFormData(prev => ({
+            ...prev,
+            invoiceFileUrl: base64,
+            invoiceFileName: file.name,
+            invoiceFileType: file.type,
+            invoiceFileSize: file.size,
+          }));
+        }
+      };
+      reader.readAsDataURL(file);
+    };
+
+    upload();
+  };
+
+  const handleQCFileSelect = async (file: File, index: number) => {
+    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload PNG, JPG, or PDF files only');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const fd = new FormData();
+      fd.append('file', file);
+
+      const apiBase = getApiV1BaseUrl();
+      const uploadUrl = apiBase
+        ? `${apiBase}/purchase/grn/qc/upload`
+        : '/api/v1/purchase/grn/qc/upload';
+
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: fd,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        alert(`QC upload failed: ${errorData.message || response.statusText}`);
+        return;
+      }
+
+      const data = await response.json();
+      const url = String(data?.url || '').trim();
+      if (!url) {
+        alert('QC upload failed: no URL returned');
+        return;
+      }
+
+      const newData = [...qcFormData];
+      newData[index] = {
+        ...newData[index],
+        qcFileUrl: url,
+        qcFileName: String(data?.name || file.name),
+        qcFileType: String(data?.type || file.type),
+        qcFileSize: Number(data?.size || file.size) || 0,
+      };
+      setQcFormData(newData);
+    } catch (e) {
+      console.error('QC upload error:', e);
+      alert('QC upload failed. Please try again.');
+    }
+  };
 
   useEffect(() => {
     fetchGRNs();
@@ -199,7 +402,7 @@ export default function GRNPage() {
       const token = localStorage.getItem('accessToken');
       
       // Fetch all approved POs
-      const poResponse = await fetch('http://13.205.17.214:4000/api/v1/purchase/orders?status=APPROVED', {
+      const poResponse = await fetch('/api/v1/purchase/orders?status=APPROVED', {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -216,7 +419,7 @@ export default function GRNPage() {
       const allPOs = await poResponse.json();
       
       // Fetch all GRNs to check which POs already have GRNs
-      const grnResponse = await fetch('http://13.205.17.214:4000/api/v1/purchase/grn', {
+      const grnResponse = await fetch('/api/v1/purchase/grn', {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -243,7 +446,7 @@ export default function GRNPage() {
   const fetchWarehouses = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://13.205.17.214:4000/api/v1/inventory/warehouses', {
+      const response = await fetch('/api/v1/inventory/warehouses', {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -290,6 +493,7 @@ export default function GRNPage() {
           batchNumber: '',
           expiryDate: '',
           notes: '',
+          rejectionReason: '',
           masterHsnCode: item.item?.hsn_code || '',
           supplierHsnCode: item.item?.hsn_code || '',
         })),
@@ -300,15 +504,11 @@ export default function GRNPage() {
   const fetchGRNs = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
       const params = new URLSearchParams();
       if (filterStatus !== 'ALL') params.append('status', filterStatus);
       if (searchTerm) params.append('search', searchTerm);
 
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/grn?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
+      const data = await apiClient.get(`/purchase/grn?${params}`);
       setGrns(data);
     } catch (error) {
       console.error('Error fetching GRNs:', error);
@@ -321,38 +521,29 @@ export default function GRNPage() {
     if (!selectedGRN) return;
     
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/grn/${selectedGRN.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          invoiceNumber: editFormData.invoiceNumber,
-          invoiceDate: editFormData.invoiceDate,
-          warehouseId: editFormData.warehouseId,
-          remarks: editFormData.notes,
-          items: editFormData.items.map(item => ({
-            itemCode: item.itemCode,
-            itemName: item.itemName,
-            receivedQty: item.receivedQty,
-            acceptedQty: item.acceptedQty,
-            rejectedQty: item.rejectedQty,
-            batchNumber: item.batchNumber,
-          })),
-        }),
+      await apiClient.put(`/purchase/grn/${selectedGRN.id}`, {
+        invoiceNumber: editFormData.invoiceNumber,
+        invoiceDate: editFormData.invoiceDate,
+        invoiceFileUrl: editFormData.invoiceFileUrl || null,
+        invoiceFileName: editFormData.invoiceFileName || null,
+        invoiceFileType: editFormData.invoiceFileType || null,
+        invoiceFileSize: editFormData.invoiceFileSize || null,
+        warehouseId: editFormData.warehouseId,
+        remarks: editFormData.notes,
+        items: editFormData.items.map(item => ({
+          itemCode: item.itemCode,
+          itemName: item.itemName,
+          receivedQty: item.receivedQty,
+          acceptedQty: item.acceptedQty,
+          rejectedQty: item.rejectedQty,
+          batchNumber: item.batchNumber,
+        })),
       });
 
-      if (response.ok) {
-        setAlertMessage({ type: 'success', message: 'GRN updated successfully!' });
-        setShowViewModal(false);
-        setEditMode(false);
-        fetchGRNs();
-      } else {
-        const errorData = await response.json();
-        setAlertMessage({ type: 'error', message: `Failed to update GRN: ${errorData.message || 'Unknown error'}` });
-      }
+      setAlertMessage({ type: 'success', message: 'GRN updated successfully!' });
+      setShowViewModal(false);
+      setEditMode(false);
+      fetchGRNs();
     } catch (error) {
       console.error('Error updating GRN:', error);
       setAlertMessage({ type: 'error', message: 'Failed to update GRN. Please try again.' });
@@ -384,6 +575,10 @@ export default function GRNPage() {
         grnDate: formData.receiptDate,
         invoiceNumber: formData.invoiceNumber || null,
         invoiceDate: formData.invoiceDate || null,
+        invoiceFileUrl: formData.invoiceFileUrl || null,
+        invoiceFileName: formData.invoiceFileName || null,
+        invoiceFileType: formData.invoiceFileType || null,
+        invoiceFileSize: formData.invoiceFileSize || null,
         warehouseId: formData.warehouseId,
         remarks: formData.notes || null,
         status: 'DRAFT',
@@ -396,6 +591,7 @@ export default function GRNPage() {
           receivedQty: item.receivedQuantity,
           acceptedQty: item.acceptedQuantity,
           rejectedQty: item.rejectedQuantity,
+          rejectionReason: item.rejectionReason || null,
           rate: item.unitPrice,
           batchNumber: item.batchNumber || null,
           expiryDate: item.expiryDate || null,
@@ -413,7 +609,7 @@ export default function GRNPage() {
         if (item.supplierHsnCode && item.supplierHsnCode !== item.masterHsnCode) {
           console.log(`Updating HSN for ${item.itemCode}: ${item.masterHsnCode} → ${item.supplierHsnCode}`);
           try {
-            await fetch(`http://13.205.17.214:4000/api/v1/inventory/items/${item.itemId}`, {
+            await fetch(`/api/v1/inventory/items/${item.itemId}`, {
               method: 'PUT',
               headers: {
                 'Content-Type': 'application/json',
@@ -427,7 +623,7 @@ export default function GRNPage() {
         }
       }
       
-      const response = await fetch('http://13.205.17.214:4000/api/v1/purchase/grn', {
+      const response = await fetch('/api/v1/purchase/grn', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -461,7 +657,7 @@ export default function GRNPage() {
       setLoadingUIDs(true);
       setSelectedGRNUIDs([]);
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/grn/${grnId}/uids`, {
+      const response = await fetch(`/api/v1/purchase/grn/${grnId}/uids`, {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -505,7 +701,7 @@ export default function GRNPage() {
       setLoadingTrail(true);
       const token = localStorage.getItem('accessToken');
       
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/uid/${uid}/purchase-trail`, {
+      const response = await fetch(`/api/v1/uid/${uid}/purchase-trail`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -550,6 +746,7 @@ export default function GRNPage() {
           batchNumber: '',
           expiryDate: '',
           notes: '',
+          rejectionReason: '',
         },
       ],
     });
@@ -559,18 +756,41 @@ export default function GRNPage() {
     const updatedItems = [...formData.items];
     updatedItems[index] = { ...updatedItems[index], [field]: value };
 
+    const toNum = (v: any) => {
+      const n = typeof v === 'number' ? v : Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
     // Auto-calculate accepted/rejected based on received
     if (field === 'receivedQuantity') {
-      updatedItems[index].acceptedQuantity = value;
+      const received = Math.max(0, toNum(value));
+      updatedItems[index].receivedQuantity = received;
+      updatedItems[index].acceptedQuantity = received;
       updatedItems[index].rejectedQuantity = 0;
     }
 
     if (field === 'acceptedQuantity' || field === 'rejectedQuantity') {
       const item = updatedItems[index];
       if (field === 'acceptedQuantity') {
-        item.rejectedQuantity = item.receivedQuantity - value;
+        let received = Math.max(0, toNum(item.receivedQuantity));
+        const ordered = Math.max(0, toNum(item.orderedQuantity));
+        const acceptedRaw = Math.max(0, toNum(value));
+
+        // UX: if user edits Accepted and hasn't explicitly adjusted Received,
+        // assume full receipt (Received = Ordered) so Rejected auto-fills.
+        if (ordered > 0 && (received === 0 || (received === acceptedRaw && ordered > received))) {
+          received = ordered;
+          item.receivedQuantity = received;
+        }
+
+        const accepted = Math.min(received, acceptedRaw);
+        item.acceptedQuantity = accepted;
+        item.rejectedQuantity = received - accepted;
       } else {
-        item.acceptedQuantity = item.receivedQuantity - value;
+        const received = Math.max(0, toNum(item.receivedQuantity));
+        const rejected = Math.min(received, Math.max(0, toNum(value)));
+        item.rejectedQuantity = rejected;
+        item.acceptedQuantity = received - rejected;
       }
     }
 
@@ -592,6 +812,10 @@ export default function GRNPage() {
       receiptDate: new Date().toISOString().split('T')[0],
       invoiceNumber: '',
       invoiceDate: '',
+      invoiceFileUrl: '',
+      invoiceFileName: '',
+      invoiceFileType: '',
+      invoiceFileSize: 0,
       warehouseId: '',
       notes: '',
       items: [],
@@ -660,7 +884,8 @@ export default function GRNPage() {
         </div>
 
         {/* GRN List */}
-        <div className="bg-white rounded-lg shadow-md overflow-x-auto">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="overflow-x-auto">
           {loading ? (
             <div className="p-8 text-center text-gray-500">Loading GRNs...</div>
           ) : grns.length === 0 ? (
@@ -670,44 +895,52 @@ export default function GRNPage() {
               <p className="text-gray-500">Create your first goods receipt note to track incoming inventory</p>
             </div>
           ) : (
-            <table className="w-full">
-              <thead className="bg-amber-50">
+            <table className="w-full min-w-[1100px]">
+              <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">GRN Number</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">PO Number</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Vendor</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Receipt Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Invoice</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Warehouse</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Items / UIDs</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">GRN Number</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">PO Number</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Vendor</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Receipt Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Invoice</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Warehouse</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Items / UIDs</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-100">
                 {grns.map((grn) => (
-                  <tr key={grn.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{grn.grn_number}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <tr key={grn.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">{grn.grn_number}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
                       {grn.purchase_order?.po_number || '-'}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-3">
                       <div className="text-sm font-medium text-gray-900">{grn.vendor.name}</div>
-                      <div className="text-sm text-gray-500">{grn.vendor.code}</div>
+                      <div className="text-xs text-gray-500">{grn.vendor.code}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
                       {grn.grn_date ? new Date(grn.grn_date).toLocaleDateString() : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
                       <div>{grn.invoice_number || '-'}</div>
                       {grn.invoice_date && (
                         <div className="text-xs text-gray-400">{new Date(grn.invoice_date).toLocaleDateString()}</div>
                       )}
+                      {grn.invoice_file_url && (
+                        <button
+                          onClick={() => handleViewInvoice(grn.invoice_file_url!, grn.invoice_file_name)}
+                          className="text-xs text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                        >
+                          View Invoice
+                        </button>
+                      )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
                       {grn.warehouse?.name || '-'}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
+                    <td className="px-4 py-3 text-sm text-gray-600">
                       <div className="font-medium">{grn.grn_items.length} items</div>
                       <div className="text-xs text-gray-400">
                         Accepted: {grn.grn_items.reduce((sum, item) => sum + (Number(item.accepted_qty || item.accepted_quantity) || 0), 0)}
@@ -719,26 +952,23 @@ export default function GRNPage() {
                       </div>
                       {/* Display UID count instead of individual UIDs */}
                       {grn.grn_items.some((item: any) => item.uid_count > 0) ? (
-                        <div className="mt-2">
-                          <div className="text-xs text-green-600 font-semibold">
-                            ✓ {grn.grn_items.reduce((sum: number, item: any) => sum + (item.uid_count || 0), 0)} UIDs Generated
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Click &ldquo;🔍 UIDs&rdquo; to view details
-                          </div>
+                        <div className="mt-1">
+                          <span className="text-xs text-green-600 font-medium">
+                            ✓ {grn.grn_items.reduce((sum: number, item: any) => sum + (item.uid_count || 0), 0)} UIDs
+                          </span>
                         </div>
                       ) : (
                         <div className="text-xs text-amber-500 mt-1">
-                          ⚠️ UIDs pending generation
+                          ⚠️ UIDs pending
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(grn.status)}`}>
+                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(grn.status)}`}>
                         {grn.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-4 py-3 text-right whitespace-nowrap text-sm">
                       <button 
                         type="button"
                         onClick={async (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -749,7 +979,7 @@ export default function GRNPage() {
                           // Fetch full GRN details with items
                           try {
                             const token = localStorage.getItem('accessToken');
-                            const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/grn/${grn.id}`, {
+                            const response = await fetch(`/api/v1/purchase/grn/${grn.id}`, {
                               headers: { Authorization: `Bearer ${token}` },
                             });
                             const detailedGRN = await response.json();
@@ -787,6 +1017,10 @@ export default function GRNPage() {
                           setEditFormData({
                             invoiceNumber: grn.invoice_number || '',
                             invoiceDate: grn.invoice_date || '',
+                            invoiceFileUrl: grn.invoice_file_url || '',
+                            invoiceFileName: grn.invoice_file_name || '',
+                            invoiceFileType: grn.invoice_file_type || '',
+                            invoiceFileSize: grn.invoice_file_size || 0,
                             warehouseId: grn.warehouse?.id || '',
                             notes: grn.remarks || '',
                             items: grn.grn_items.map(item => ({
@@ -811,6 +1045,7 @@ export default function GRNPage() {
               </tbody>
             </table>
           )}
+          </div>
         </div>
       </div>
 
@@ -893,6 +1128,22 @@ export default function GRNPage() {
                     onChange={(e) => setFormData({ ...formData, invoiceDate: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
                   />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Purchase Invoice (File)</label>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,application/pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleInvoiceFileSelect(file, 'create');
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                  />
+                  {formData.invoiceFileName && (
+                    <div className="text-xs text-gray-600 mt-1">Selected: {formData.invoiceFileName}</div>
+                  )}
                 </div>
               </div>
 
@@ -1000,6 +1251,18 @@ export default function GRNPage() {
                             placeholder="Item notes..."
                           />
                         </div>
+
+                        {(Number(item.rejectedQuantity) || 0) > 0 && (
+                          <div className="mt-2">
+                            <input
+                              type="text"
+                              value={item.rejectionReason || ''}
+                              onChange={(e) => handleUpdateItem(index, 'rejectionReason', e.target.value)}
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                              placeholder="Rejection remark..."
+                            />
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1126,6 +1389,35 @@ export default function GRNPage() {
                     />
                   ) : (
                     <p className="mt-1 text-gray-900">{selectedGRN.invoice_date ? new Date(selectedGRN.invoice_date).toLocaleDateString() : '-'}</p>
+                  )}
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">Purchase Invoice (File)</label>
+                  {editMode ? (
+                    <>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,application/pdf"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleInvoiceFileSelect(file, 'edit');
+                        }}
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                      />
+                      {editFormData.invoiceFileName && (
+                        <div className="text-xs text-gray-600 mt-1">Selected: {editFormData.invoiceFileName}</div>
+                      )}
+                    </>
+                  ) : selectedGRN.invoice_file_url ? (
+                    <button
+                      onClick={() => handleViewInvoice(selectedGRN.invoice_file_url!, selectedGRN.invoice_file_name)}
+                      className="mt-1 inline-block text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                    >
+                      View Invoice
+                    </button>
+                  ) : (
+                    <p className="mt-1 text-gray-900">-</p>
                   )}
                 </div>
               </div>
@@ -1255,12 +1547,15 @@ export default function GRNPage() {
                   <div className="space-y-3">
                     {selectedGRN.grn_items
                       .filter((item: any) => (item.rejected_qty || 0) > 0)
-                      .map((item: any, idx: number) => (
+                      .map((item: any, idx: number) => {
+                        const itemName = item.item_name || item.item?.name || 'Unknown Item';
+                        const itemCode = item.item_code || item.item?.code || 'N/A';
+                        return (
                         <div key={idx} className="bg-white border border-red-200 rounded-lg p-3">
                           <div className="flex justify-between items-start mb-2">
                             <div>
                               <div className="font-semibold text-gray-900">
-                                {item.item_name || item.item?.name} ({item.item_code || item.item?.code})
+                                {itemName} ({itemCode})
                               </div>
                               <div className="text-sm text-gray-600 mt-1">
                                 Rejected Qty: <span className="font-bold text-red-600">{item.rejected_qty}</span>
@@ -1300,7 +1595,8 @@ export default function GRNPage() {
                             </div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                   </div>
                 </div>
               )}
@@ -1321,16 +1617,25 @@ export default function GRNPage() {
                     <button
                       onClick={() => {
                         // Initialize QC form data with GRN items
-                        const qcData = selectedGRN.grn_items.map((item: any) => ({
-                          itemId: item.id,
-                          itemCode: item.item_code || item.item?.code,
-                          itemName: item.item_name || item.item?.name,
-                          receivedQty: item.received_qty || item.received_quantity || 0,
-                          acceptedQty: item.received_qty || item.received_quantity || 0,
-                          rejectedQty: 0,
-                          qcNotes: '',
-                          rejectionReason: ''
-                        }));
+                        const qcData = selectedGRN.grn_items.map((item: any) => {
+                          const receivedQty = item.received_qty || item.received_quantity || 0;
+                          const acceptedQty = item.accepted_qty || item.accepted_quantity || receivedQty;
+                          const rejectedQty = item.rejected_qty || item.rejected_quantity || 0;
+                          return {
+                            itemId: item.id,
+                            itemCode: item.item_code || item.item?.code,
+                            itemName: item.item_name || item.item?.name,
+                            receivedQty: receivedQty,
+                            acceptedQty: acceptedQty,
+                            rejectedQty: rejectedQty,
+                            qcNotes: item.qc_notes || '',
+                            rejectionReason: item.rejection_reason || '',
+                            qcFileUrl: item.qc_file_url || '',
+                            qcFileName: item.qc_file_name || '',
+                            qcFileType: item.qc_file_type || '',
+                            qcFileSize: item.qc_file_size || 0,
+                          };
+                        });
                         setQcFormData(qcData);
                         setShowQCModal(true);
                       }}
@@ -1352,7 +1657,7 @@ export default function GRNPage() {
                         try {
                           const token = localStorage.getItem('accessToken');
                           console.log('Token exists:', !!token);
-                          const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/grn/${selectedGRN.id}/status`, {
+                          const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/status`, {
                             method: 'POST',
                             headers: {
                               'Content-Type': 'application/json',
@@ -1392,7 +1697,7 @@ export default function GRNPage() {
                         console.log('Reject button clicked!');
                         try {
                           const token = localStorage.getItem('accessToken');
-                          const response = await fetch(`http://13.205.17.214:4000/api/v1/purchase/grn/${selectedGRN.id}/status`, {
+                          const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/status`, {
                             method: 'POST',
                             headers: {
                               'Content-Type': 'application/json',
@@ -1720,6 +2025,35 @@ export default function GRNPage() {
                         placeholder="Optional inspection notes"
                       />
                     </div>
+
+                    <div className="mt-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Upload QC Photo / Report (PNG, JPG, PDF)
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,application/pdf"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleQCFileSelect(file, index);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                      {(item.qcFileName || item.qcFileUrl) && (
+                        <div className="text-xs text-gray-600 mt-1">
+                          Selected: {item.qcFileName || 'QC Attachment'}
+                          {item.qcFileUrl && (
+                            <button
+                              type="button"
+                              onClick={() => handleViewInvoice(item.qcFileUrl!, item.qcFileName)}
+                              className="ml-2 text-blue-600 hover:text-blue-800 underline"
+                            >
+                              View
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1752,7 +2086,7 @@ export default function GRNPage() {
 
                     const token = localStorage.getItem('accessToken');
                     const response = await fetch(
-                      `http://13.205.17.214:4000/api/v1/purchase/grn/${selectedGRN.id}/qc-accept`,
+                      `/api/v1/purchase/grn/${selectedGRN.id}/qc-accept`,
                       {
                         method: 'POST',
                         headers: {

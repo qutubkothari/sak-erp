@@ -25,6 +25,56 @@ interface LoginDto {
 export class AuthService {
   private supabase: SupabaseClient;
 
+  private async getRolesForUser(
+    userId: string,
+    tenantId: string,
+    legacyRole?: any,
+  ): Promise<any[]> {
+    try {
+      const { data, error } = await this.supabase
+        .from('user_roles')
+        .select(
+          `role:roles (
+            id,
+            name,
+            permissions
+          )`,
+        )
+        .eq('tenant_id', tenantId)
+        .eq('user_id', userId);
+
+      if (error) {
+        // Most common: relation/table not yet created. Fall back to legacy role_id.
+        throw error;
+      }
+
+      const roles = (data || [])
+        .map((row: any) => row?.role)
+        .filter(Boolean);
+
+      if (roles.length > 0) {
+        return roles;
+      }
+    } catch {
+      // ignore and fall back
+    }
+
+    return legacyRole ? [legacyRole] : [];
+  }
+
+  private slugifySubdomain(input: string): string {
+    const slug = input
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 50);
+
+    return slug || `tenant-${Date.now()}`;
+  }
+
   constructor(
     private jwtService: JwtService,
     private configService: ConfigService,
@@ -61,11 +111,33 @@ export class AuthService {
         throw new ConflictException(`Company "${dto.companyName}" already exists. Please contact your administrator for an invitation.`);
       }
 
+      const baseSubdomain = this.slugifySubdomain(dto.companyName);
+      let subdomainToUse = baseSubdomain;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const { data: existingSubdomain, error: subdomainCheckError } =
+          await this.supabase
+            .from('tenants')
+            .select('id')
+            .eq('subdomain', subdomainToUse)
+            .maybeSingle();
+
+        if (subdomainCheckError && subdomainCheckError.code !== 'PGRST116') {
+          throw new Error(
+            `Failed to validate tenant subdomain: ${subdomainCheckError.message}`,
+          );
+        }
+
+        if (!existingSubdomain) break;
+
+        subdomainToUse = `${baseSubdomain}-${attempt + 2}`.slice(0, 50);
+      }
+
       // Create new tenant for this company
       const { data: newTenant, error: tenantError } = await this.supabase
         .from('tenants')
         .insert({
           name: dto.companyName,
+          subdomain: subdomainToUse,
           domain: dto.companyName.toLowerCase().replace(/\s+/g, '-'),
           is_active: true,
           created_at: new Date().toISOString(),
@@ -80,12 +152,18 @@ export class AuthService {
       tenantId = newTenant.id;
     }
 
+    if (!tenantId) {
+      throw new Error('Tenant ID is required but was not set');
+    }
+
+    const resolvedTenantId = tenantId;
+
     // Check if user already exists
     const { data: existingUser, error: checkError } = await this.supabase
       .from('users')
       .select('id')
       .eq('email', dto.email)
-      .eq('tenant_id', tenantId)
+      .eq('tenant_id', resolvedTenantId)
       .maybeSingle();
 
     if (existingUser) {
@@ -110,7 +188,7 @@ export class AuthService {
       const { data: defaultRole, error: roleError } = await this.supabase
         .from('roles')
         .select('id')
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', resolvedTenantId)
         .eq('name', 'USER')
         .maybeSingle();
       
@@ -128,7 +206,7 @@ export class AuthService {
         password: hashedPassword,
         first_name: firstName || '',
         last_name: lastName || '',
-        tenant_id: tenantId,
+        tenant_id: resolvedTenantId,
         role_id: roleId,
         is_active: true,
       })
@@ -137,6 +215,19 @@ export class AuthService {
 
     if (createError) {
       throw new Error(`Failed to create user: ${createError.message}`);
+    }
+
+    // Best-effort: keep user_roles in sync when multi-role table exists
+    if (roleId) {
+      try {
+        await this.supabase.from('user_roles').insert({
+          tenant_id: resolvedTenantId,
+          user_id: newUser.id,
+          role_id: roleId,
+        });
+      } catch {
+        // ignore if user_roles doesn't exist yet
+      }
     }
 
     // Fetch user with role for response
@@ -160,22 +251,25 @@ export class AuthService {
       throw new Error(`Failed to fetch user details: ${fetchError.message}`);
     }
 
+    const rolesForUser = await this.getRolesForUser(
+      userWithRole.id,
+      resolvedTenantId,
+      (userWithRole as any).role,
+    );
+
     // Transform to match expected format
     const user = {
       id: userWithRole.id,
       email: userWithRole.email,
       firstName: userWithRole.first_name,
       lastName: userWithRole.last_name,
-      roles: userWithRole.role ? [{ role: userWithRole.role }] : [],
+      role: (userWithRole as any).role,
+      roles: rolesForUser.map((role: any) => ({ role })),
     };
 
     // Ensure tenantId is set
-    if (!tenantId) {
-      throw new Error('Tenant ID is required but was not set');
-    }
-
     // Generate tokens
-    const tokens = await this.generateTokens(user.id, user.email, tenantId);
+    const tokens = await this.generateTokens(user.id, user.email, resolvedTenantId);
 
     return {
       user,
@@ -196,9 +290,24 @@ export class AuthService {
       tenantId = defaultTenant?.id;
     }
 
+    // Fallback: if no active tenant is configured, infer tenant from the user record.
+    // This helps local/dev environments where tenants.is_active may not be set.
+    if (!tenantId) {
+      const { data: userTenant } = await this.supabase
+        .from('users')
+        .select('tenant_id')
+        .eq('email', dto.email)
+        .limit(1)
+        .maybeSingle();
+
+      tenantId = (userTenant as any)?.tenant_id;
+    }
+
     if (!tenantId) {
       throw new UnauthorizedException('No active tenant found');
     }
+
+    const resolvedTenantId = tenantId;
 
     // Find user
     const { data: user, error: userError } = await this.supabase
@@ -218,7 +327,7 @@ export class AuthService {
         )
       `)
       .eq('email', dto.email)
-      .eq('tenant_id', tenantId)
+      .eq('tenant_id', resolvedTenantId)
       .maybeSingle();
 
     if (userError || !user) {
@@ -244,17 +353,24 @@ export class AuthService {
       .eq('id', user.id);
 
     // Generate tokens
-    const tokens = await this.generateTokens(user.id, user.email, tenantId);
+    const tokens = await this.generateTokens(user.id, user.email, resolvedTenantId);
 
     // Remove password from response and transform to camelCase
     const { password, ...userWithoutPassword } = user;
+
+    const rolesForUser = await this.getRolesForUser(
+      user.id,
+      resolvedTenantId,
+      (user as any).role,
+    );
+
     const transformedUser = {
       ...userWithoutPassword,
       firstName: user.first_name,
       lastName: user.last_name,
       tenantId: user.tenant_id,
       isActive: user.is_active,
-      roles: user.role ? [{ role: user.role }] : [],
+      roles: rolesForUser.map((role: any) => ({ role })),
     };
 
     return {
@@ -315,6 +431,12 @@ export class AuthService {
       return null;
     }
 
+    const rolesForUser = await this.getRolesForUser(
+      user.id,
+      tenantId,
+      (user as any).role,
+    );
+
     // Transform to camelCase format
     const result = {
       id: user.id,
@@ -323,7 +445,8 @@ export class AuthService {
       lastName: user.last_name,
       isActive: user.is_active,
       tenantId: user.tenant_id,
-      roles: user.role ? [{ role: user.role }] : [],
+      role: (user as any).role,
+      roles: rolesForUser.map((role: any) => ({ role })),
     };
 
     return result;

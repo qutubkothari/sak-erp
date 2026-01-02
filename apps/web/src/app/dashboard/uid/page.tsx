@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 
@@ -65,48 +65,106 @@ export default function UIDTrackingPage() {
   const [uids, setUids] = useState<UIDRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchUID, setSearchUID] = useState('');
+  const [searchResults, setSearchResults] = useState<UIDRecord[]>([]);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [selectedUID, setSelectedUID] = useState<UIDRecord | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showTraceModal, setShowTraceModal] = useState(false);
   const [showPartNumberModal, setShowPartNumberModal] = useState(false);
   const [editingUID, setEditingUID] = useState<UIDRecord | null>(null);
   const [partNumberInput, setPartNumberInput] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
+  
+  // Pagination and sorting
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
+  const [sortField, setSortField] = useState<keyof UIDRecord>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Filters
   const [filters, setFilters] = useState({
     status: '',
     entity_type: '',
     location: '',
+    quality_status: '',
   });
 
-  useEffect(() => {
-    fetchUIDs();
-  }, [filters]);
-
-  const fetchUIDs = async () => {
+  const fetchUIDs = useCallback(async () => {
+    setLoading(true);
     try {
       const queryParams = new URLSearchParams();
       
       if (filters.status) queryParams.append('status', filters.status);
       if (filters.entity_type) queryParams.append('entity_type', filters.entity_type);
       if (filters.location) queryParams.append('location', filters.location);
+      if (filters.quality_status) queryParams.append('quality_status', filters.quality_status);
+      
+      // Server-side pagination
+      const offset = (currentPage - 1) * itemsPerPage;
+      queryParams.append('limit', itemsPerPage.toString());
+      queryParams.append('offset', offset.toString());
+      
+      // Sorting
+      queryParams.append('sortBy', sortField);
+      queryParams.append('sortOrder', sortOrder);
 
       const response = await apiClient.get<any>(`/uid?${queryParams}`);
       // Handle both old array format and new paginated format
       const data = Array.isArray(response) ? response : response.data || [];
       setUids(data);
+      
+      // If API returns total count, use it for pagination
+      if (response.total) {
+        setTotalCount(response.total);
+      }
     } catch (error) {
       console.error('Error fetching UIDs:', error);
     } finally {
       setLoading(false);
     }
+  }, [filters, currentPage, itemsPerPage, sortField, sortOrder]);
+
+  useEffect(() => {
+    fetchUIDs();
+  }, [fetchUIDs]);
+
+  // Debounced search - only call API after user stops typing
+  useEffect(() => {
+    if (searchUID.trim().length > 0) {
+      const timeoutId = setTimeout(() => {
+        performSearch();
+      }, 300); // Wait 300ms after user stops typing
+      return () => clearTimeout(timeoutId);
+    } else {
+      setSearchResults([]);
+      setShowSearchDropdown(false);
+    }
+  }, [searchUID]);
+
+  const performSearch = async () => {
+    if (!searchUID.trim()) return;
+    
+    setSearchLoading(true);
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('search', searchUID.trim());
+      queryParams.append('limit', '10'); // Only fetch top 10 results
+      
+      const response = await apiClient.get<any>(`/uid?${queryParams}`);
+      const data = Array.isArray(response) ? response : response.data || [];
+      setSearchResults(data);
+      setShowSearchDropdown(data.length > 0);
+    } catch (error) {
+      console.error('Error searching UIDs:', error);
+    } finally {
+      setSearchLoading(false);
+    }
   };
 
-  const searchForUID = async () => {
-    if (!searchUID.trim()) return;
-
+  const searchForUID = async (uid: string) => {
     try {
-      const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(searchUID)}`);
+      const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(uid)}`);
       // Parse JSON strings to objects and add vendor/GRN names
       const parsedData: any = {
         ...data,
@@ -119,10 +177,16 @@ export default function UIDTrackingPage() {
       };
       setSelectedUID(parsedData);
       setShowTraceModal(true);
+      setShowSearchDropdown(false);
     } catch (error) {
       console.error('Error searching UID:', error);
       alert('Error searching for UID');
     }
+  };
+
+  const selectSearchResult = (uid: UIDRecord) => {
+    setSearchUID(uid.uid);
+    searchForUID(uid.uid);
   };
 
   const openPartNumberModal = (uid: UIDRecord) => {
@@ -156,6 +220,33 @@ export default function UIDTrackingPage() {
   const generateQRCode = (uid: string) => {
     // Generate QR code URL using a QR code API
     return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(uid)}`;
+  };
+
+  const handleSort = (field: keyof UIDRecord) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+    setCurrentPage(1); // Reset to first page when sorting
+  };
+
+  const getSortIcon = (field: keyof UIDRecord) => {
+    if (sortField !== field) return '⇅';
+    return sortOrder === 'asc' ? '↑' : '↓';
+  };
+
+  // Calculate total pages based on total count or current data
+  const totalPages = totalCount > 0 
+    ? Math.ceil(totalCount / itemsPerPage)
+    : Math.ceil(uids.length / itemsPerPage);
+  
+  // No need to sort or paginate client-side - server does it
+  const paginatedUIDs = uids;
+
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
   };
 
   const formatDate = (dateString: string) => {
@@ -207,34 +298,78 @@ export default function UIDTrackingPage() {
       {/* Search Bar */}
       <div className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 p-6 rounded-xl shadow">
         <h2 className="text-lg font-semibold mb-3 text-gray-800">🔎 Track Any UID</h2>
-        <div className="flex gap-3">
+        <div className="relative">
           <input
             type="text"
-            placeholder="Enter UID (e.g., UID-SAIF-KOL-RM-000001-A7)"
+            placeholder="Start typing UID, Part No, Item, Location..."
             value={searchUID}
             onChange={(e) => setSearchUID(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && searchForUID()}
-            className="flex-1 px-4 py-3 border-2 border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-lg"
+            onFocus={() => searchUID && setShowSearchDropdown(true)}
+            onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)}
+            className="w-full px-4 py-3 pr-10 border-2 border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-lg"
           />
-          <button
-            onClick={searchForUID}
-            className="bg-amber-600 text-white px-8 py-3 rounded-lg hover:bg-amber-700 transition-colors font-medium"
-          >
-            Search
-          </button>
+          {searchLoading ? (
+            <div className="absolute right-3 top-3.5 h-6 w-6">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-amber-600"></div>
+            </div>
+          ) : (
+            <svg className="absolute right-3 top-3.5 h-6 w-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          )}
+          
+          {/* Autocomplete Dropdown */}
+          {showSearchDropdown && searchResults.length > 0 && (
+            <div className="absolute z-50 w-full mt-2 bg-white border-2 border-amber-300 rounded-lg shadow-xl max-h-96 overflow-y-auto">
+              {searchResults.map((uid) => (
+                <div
+                  key={uid.id}
+                  onClick={() => selectSearchResult(uid)}
+                  className="px-4 py-3 cursor-pointer hover:bg-amber-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="font-semibold text-gray-900">{uid.uid}</div>
+                      <div className="text-sm text-gray-600 mt-1 flex items-center gap-2">
+                        {uid.itemName && <span>📦 {uid.itemName}</span>}
+                        {uid.itemCode && <span className="text-amber-600">({uid.itemCode})</span>}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1 flex items-center gap-3">
+                        {uid.client_part_number && <span>🔖 {uid.client_part_number}</span>}
+                        {uid.location && <span>📍 {uid.location}</span>}
+                        {uid.batch_number && <span>🏷️ Batch: {uid.batch_number}</span>}
+                      </div>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColors[uid.status] || 'bg-gray-100 text-gray-800'}`}>
+                      {uid.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {searchUID && searchResults.length === 0 && !showSearchDropdown && !searchLoading && (
+            <div className="absolute z-50 w-full mt-2 bg-white border-2 border-amber-300 rounded-lg shadow-xl p-4 text-center text-gray-500">
+              No UIDs found matching &quot;{searchUID}&quot;
+            </div>
+          )}
         </div>
         <p className="text-sm text-gray-600 mt-2">
           💡 Scan QR code or enter UID to view complete history and traceability
+        </p>
+        <p className="text-xs text-amber-600 mt-1">
+          ℹ️ Showing 10 UIDs per page. Use search above to find specific UIDs, or navigate pages below to browse all records.
         </p>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Total UIDs', value: uids.length, color: 'amber', icon: '🏷️' },
-          { label: 'Active', value: uids.filter(u => u.status === 'ACTIVE').length, color: 'green', icon: '✅' },
-          { label: 'In Production', value: uids.filter(u => u.status === 'IN_PRODUCTION').length, color: 'amber', icon: '⚙️' },
-          { label: 'Sold', value: uids.filter(u => u.status === 'SOLD').length, color: 'orange', icon: '🚚' },
+          { label: 'Total UIDs', value: totalCount || uids.length, color: 'amber', icon: '🏷️' },
+          { label: 'Showing', value: uids.length, color: 'blue', icon: '📄' },
+          { label: 'Current Page', value: currentPage, color: 'green', icon: '📖' },
+          { label: 'Total Pages', value: totalPages, color: 'orange', icon: '📚' },
         ].map((stat, idx) => (
           <div key={idx} className="bg-white p-5 rounded-lg shadow border-l-4 border-amber-500">
             <div className="flex items-center justify-between">
@@ -249,60 +384,119 @@ export default function UIDTrackingPage() {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 bg-white p-4 rounded-lg shadow flex gap-4 items-center">
-        <select
-          value={filters.status}
-          onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-        >
-          <option value="">All Status</option>
-          <option value="ACTIVE">Active</option>
-          <option value="IN_PRODUCTION">In Production</option>
-          <option value="IN_TRANSIT">In Transit</option>
-          <option value="SOLD">Sold</option>
-          <option value="IN_SERVICE">In Service</option>
-          <option value="SCRAPPED">Scrapped</option>
-        </select>
+      <div className="mb-6 bg-white p-4 rounded-lg shadow">
+        <div className="flex gap-4 items-center justify-between">
+          <div className="flex gap-4 items-center flex-1">
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="">All Status</option>
+              <option value="ACTIVE">Active</option>
+              <option value="IN_PRODUCTION">In Production</option>
+              <option value="IN_TRANSIT">In Transit</option>
+              <option value="SOLD">Sold</option>
+              <option value="IN_SERVICE">In Service</option>
+              <option value="SCRAPPED">Scrapped</option>
+            </select>
 
-        <select
-          value={filters.entity_type}
-          onChange={(e) => setFilters({ ...filters, entity_type: e.target.value })}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-        >
-          <option value="">All Types</option>
-          <option value="RAW_MATERIAL">Raw Material</option>
-          <option value="COMPONENT">Component</option>
-          <option value="ASSEMBLY">Assembly</option>
-          <option value="FINISHED_GOOD">Finished Good</option>
-        </select>
+            <select
+              value={filters.entity_type}
+              onChange={(e) => setFilters({ ...filters, entity_type: e.target.value })}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="">All Types</option>
+              <option value="RAW_MATERIAL">Raw Material</option>
+              <option value="COMPONENT">Component</option>
+              <option value="ASSEMBLY">Assembly</option>
+              <option value="FINISHED_GOOD">Finished Good</option>
+            </select>
 
-        <input
-          type="text"
-          placeholder="Filter by location..."
-          value={filters.location}
-          onChange={(e) => setFilters({ ...filters, location: e.target.value })}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-        />
+            <select
+              value={filters.quality_status}
+              onChange={(e) => setFilters({ ...filters, quality_status: e.target.value })}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="">All QC</option>
+              <option value="PASSED">QC PASSED</option>
+              <option value="ON_HOLD">QC ON HOLD</option>
+              <option value="FAILED">QC FAILED</option>
+            </select>
+
+            <input
+              type="text"
+              placeholder="Filter by location..."
+              value={filters.location}
+              onChange={(e) => setFilters({ ...filters, location: e.target.value })}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+          
+          {(filters.status || filters.entity_type || filters.location || filters.quality_status) && (
+            <button
+              onClick={() => setFilters({ status: '', entity_type: '', location: '', quality_status: '' })}
+              className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium flex items-center gap-2"
+            >
+              ✕ Clear Filters
+            </button>
+          )}
+        </div>
       </div>
 
       {/* UID Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+          <thead className="bg-amber-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">UID</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Part No</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Level</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+              <th 
+                onClick={() => handleSort('uid')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                UID {getSortIcon('uid')}
+              </th>
+              <th 
+                onClick={() => handleSort('client_part_number')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                Part No {getSortIcon('client_part_number')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Item</th>
+              <th 
+                onClick={() => handleSort('entity_type')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                Type {getSortIcon('entity_type')}
+              </th>
+              <th 
+                onClick={() => handleSort('status')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                Status {getSortIcon('status')}
+              </th>
+              <th 
+                onClick={() => handleSort('location')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                Location {getSortIcon('location')}
+              </th>
+              <th 
+                onClick={() => handleSort('assembly_level')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                Level {getSortIcon('assembly_level')}
+              </th>
+              <th 
+                onClick={() => handleSort('created_at')}
+                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
+              >
+                Created {getSortIcon('created_at')}
+              </th>
+              <th className="px-6 py-3 text-center text-xs font-medium text-amber-900 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {uids.map((uid) => (
+            {paginatedUIDs.map((uid) => (
               <tr key={uid.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4">
                   <div className="font-mono text-sm font-medium text-amber-600">{uid.uid}</div>
@@ -404,9 +598,77 @@ export default function UIDTrackingPage() {
             ))}
           </tbody>
         </table>
+
+        {/* Pagination */}
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+          <div className="text-sm text-gray-700">
+            {totalCount > 0 ? (
+              <>Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, totalCount)} of {totalCount} results</>
+            ) : (
+              <>Showing {uids.length} results</>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => goToPage(1)}
+              disabled={currentPage === 1}
+              className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+            >
+              ««
+            </button>
+            <button
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+            >
+              «
+            </button>
+            
+            {[...Array(totalPages)].map((_, i) => {
+              const page = i + 1;
+              if (
+                page === 1 ||
+                page === totalPages ||
+                (page >= currentPage - 1 && page <= currentPage + 1)
+              ) {
+                return (
+                  <button
+                    key={page}
+                    onClick={() => goToPage(page)}
+                    className={`px-3 py-1 rounded text-sm ${
+                      currentPage === page
+                        ? 'bg-amber-600 text-white font-semibold'
+                        : 'border border-gray-300 hover:bg-gray-100'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                );
+              } else if (page === currentPage - 2 || page === currentPage + 2) {
+                return <span key={page} className="px-2">...</span>;
+              }
+              return null;
+            })}
+            
+            <button
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+            >
+              »
+            </button>
+            <button
+              onClick={() => goToPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+            >
+              »»
+            </button>
+          </div>
+        </div>
       </div>
 
-      {uids.length === 0 && (
+      {uids.length === 0 && !loading && (
         <div className="text-center py-12 bg-white rounded-lg shadow mt-6">
           <p className="text-gray-500">No UIDs found. UIDs are auto-generated at Goods Receipt.</p>
         </div>

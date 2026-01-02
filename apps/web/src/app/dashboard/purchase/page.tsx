@@ -31,7 +31,12 @@ export default function PurchasePage() {
       ]);
 
       setStats({
-        pendingPRs: Array.isArray(prs) ? prs.filter((pr: any) => pr.status === 'PENDING' || pr.status === 'SUBMITTED').length : 0,
+        pendingPRs: Array.isArray(prs)
+          ? prs.filter((pr: any) => {
+              const status = String(pr?.status ?? '').toUpperCase();
+              return status === 'DRAFT' || status === 'SUBMITTED' || status === 'PENDING';
+            }).length
+          : 0,
         activePOs: Array.isArray(pos) ? pos.filter((po: any) => po.status === 'APPROVED' || po.status === 'PARTIAL').length : 0,
         activeVendors: Array.isArray(vendors) ? vendors.filter((v: any) => v.is_active).length : 0,
         pendingGRNs: Array.isArray(grns) ? grns.filter((grn: any) => grn.status === 'DRAFT' || grn.status === 'PENDING').length : 0,

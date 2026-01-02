@@ -1,0 +1,1903 @@
+{
+  "finishedGoods": [
+    {
+      "name": "Saif Seas Life - DSR",
+      "id": "d4a65f71-4c17-46c1-9e59-c8c4b4d46810"
+    }
+  ],
+  "subAssemblies": [
+    {
+      "name": "Jet Motor Assy",
+      "id": "7fb31438-599b-4a26-9f1c-69dc95bd1323",
+      "existed": false
+    },
+    {
+      "name": "STBD_ESC Assy",
+      "id": "e830895f-bfa1-409f-ad4a-3495e3fff292",
+      "existed": false
+    },
+    {
+      "name": "PORT_ESC Assy",
+      "id": "5e3efdea-bf91-4409-a389-010ec3d5a0d4",
+      "existed": false
+    },
+    {
+      "name": "STBD Signal PM Assy",
+      "id": "aca5c3aa-9fcb-4ee8-a351-1b6780f46c51",
+      "existed": true
+    },
+    {
+      "name": "PORT Signal PM Assy",
+      "id": "2c2b2860-9343-47a1-bddb-fd853318a9e6",
+      "existed": true
+    },
+    {
+      "name": "STBD Signal CM Assy",
+      "id": "6ddc2a48-4985-4e11-aa35-f70b9fb10ae5",
+      "existed": true
+    },
+    {
+      "name": "PORT Signal CM Assy",
+      "id": "33f300b3-a333-4bcb-8911-8f65168f63e3",
+      "existed": true
+    },
+    {
+      "name": "Charging PM Assy",
+      "id": "6068d8a7-bb55-4511-add3-de2d5240da7b",
+      "existed": true
+    },
+    {
+      "name": "Charger Box Assy",
+      "id": "09f41175-9765-49f8-80db-5e810bba09de",
+      "existed": true
+    },
+    {
+      "name": "Charging CM Assy",
+      "id": "cb9c8a0c-b2a2-4193-a732-b91209dd66de",
+      "existed": true
+    },
+    {
+      "name": "RPM Sensor Assy",
+      "id": "0c3c8a4d-689e-4a4f-b8d1-05b3492d33e9",
+      "existed": true
+    },
+    {
+      "name": "Current Sensor Assy",
+      "id": "c4f4904a-6b84-42c6-a40b-78d2bf9681ba",
+      "existed": true
+    },
+    {
+      "name": "A21 MotherBoard Assy",
+      "id": "4fde7d09-c4c5-4268-a295-93072dcda60f",
+      "existed": false
+    },
+    {
+      "name": "Electronic Box Assy",
+      "id": "20b959cd-4f95-47f3-9ee9-da769c45d844",
+      "existed": true
+    },
+    {
+      "name": "FL_STBD Elec",
+      "id": "bd15987d-7ae9-4acc-b828-54b180708e29",
+      "existed": false
+    },
+    {
+      "name": "FL_PORT Elec",
+      "id": "301493a1-c310-4615-ba74-52282c5e4be8",
+      "existed": false
+    },
+    {
+      "name": "FL_STBD Mech",
+      "id": "1a3294bd-7cb4-4e88-9679-7fa959da4529",
+      "existed": false
+    },
+    {
+      "name": "FL_PORT Mech",
+      "id": "db983e65-7579-4e03-80f1-e7a18320c97a",
+      "existed": false
+    },
+    {
+      "name": "Battery Block Assy",
+      "id": "e9374621-0027-4d4b-90e8-85443119fa28",
+      "existed": false
+    },
+    {
+      "name": "STBD Battery Assy",
+      "id": "4d7dc449-e426-4589-99ac-8a1e3416b441",
+      "existed": true
+    },
+    {
+      "name": "PORT Battery Assy",
+      "id": "1e439835-d24f-489d-926d-70a4a4634def",
+      "existed": true
+    },
+    {
+      "name": "STBD Unit Assy",
+      "id": "68080fce-8b81-424a-a35b-acff75982655",
+      "existed": true
+    },
+    {
+      "name": "PORT Unit Assy",
+      "id": "25fa7ade-e99b-464b-80e7-27d7a1be7150",
+      "existed": true
+    },
+    {
+      "name": "Self Rightening Assy",
+      "id": "5370bee3-5334-4647-ae2c-0b66ad80db57",
+      "existed": true
+    },
+    {
+      "name": "IP Remote Assy",
+      "id": "1a72a278-b61f-4698-ab7a-10c582da51ed",
+      "existed": true
+    },
+    {
+      "name": "IP Remote Charging Cable Assy",
+      "id": "c556eec1-891e-41a8-88bb-2104572fa8ee",
+      "existed": true
+    },
+    {
+      "name": "AMCA Elec Assy",
+      "id": "cb83c1b1-9e4f-4a2d-b083-8271cfa9b67c",
+      "existed": true
+    },
+    {
+      "name": "AMCA Mech Assy",
+      "id": "5cacdebb-953a-424f-acc8-a3300663b539",
+      "existed": true
+    },
+    {
+      "name": "Final Craft Assy",
+      "id": "8d6be93e-9b70-4ee1-a0e2-9ca4feec1ff3",
+      "existed": true
+    },
+    {
+      "name": "Bottom Block Assy",
+      "id": "8a4179c2-779f-4b27-9ece-79cab1516215",
+      "existed": true
+    },
+    {
+      "name": "STBD Aft Plate Assy",
+      "id": "1e0ca2ce-351a-4339-8aea-fa16ab241321",
+      "existed": false
+    },
+    {
+      "name": "PORT Aft Plate Assy",
+      "id": "bce0e578-123f-4c71-9763-314b7138b053",
+      "existed": false
+    },
+    {
+      "name": "R9MX Adapter",
+      "id": "275806f7-b257-49d1-bab2-796177e094fd",
+      "existed": false
+    },
+    {
+      "name": "Final Packing",
+      "id": "5fc9df1e-a8fe-45cb-b68f-0f36f85b661f",
+      "existed": false
+    },
+    {
+      "name": "Power Switch Assy",
+      "id": "7d43bdcd-6744-42fe-a9c2-ed9b58a47a1f",
+      "existed": true
+    }
+  ],
+  "boms": [
+    {
+      "parent": "Saif Seas Life - DSR",
+      "id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d"
+    }
+  ],
+  "bomItems": [
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "Jet Motor Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "Power Switch Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "Charging PM Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "Charging CM Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "STBD Signal PM Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "PORT Signal PM Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "PORT Signal CM Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "A21 MotherBoard Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "Battery Block Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "STBD_ESC Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "PORT_ESC Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "STBD Battery Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "PORT Battery Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "Charger Box Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "Electronic Box Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "FL_STBD Elec"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "FL_PORT Elec"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "FL_STBD Mech"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "FL_PORT Mech"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "STBD Unit Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "PORT Unit Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "Self Rightening Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "IP Remote Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "IP Remote Charging Cable Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "AMCA Elec Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "AMCA Mech Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "Final Craft Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "STBD Aft Plate Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "PORT Aft Plate Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "Current Sensor Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "RPM Sensor Assy"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "R9MX Adapter"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "Final Packing"
+    },
+    {
+      "bom_id": "d8641c2f-bb05-4e03-9812-00d2c0c8408d",
+      "component": "Bottom Block Assy"
+    }
+  ],
+  "errors": [
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "M4x25 Hex Head",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "M4 Spring washer",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "M4x16 CSK Phillips",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "M4x10 CSK Phillips ",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "Grub M6x10 SS (Coupling tightening)",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "Rotex14 Coupling",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "Silicon hose pipe clip 7mm",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "Water Jet pump Jet S52",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "ESC Mounting Plate",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "Jet S52 Mounting plate",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "Motor Mount 5692",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "Motor 5692 495 KV",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "Motor Cooling Jacket 56mm x 50mm",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "Thread locker 242/270/290",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Jet Motor Assy",
+      "child": "Thread locker Activator",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD_ESC Assy",
+      "child": "5.5mm Female Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD_ESC Assy",
+      "child": "4mm Male Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD_ESC Assy",
+      "child": "4mm Female Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD_ESC Assy",
+      "child": "Red 12AWG",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD_ESC Assy",
+      "child": "16AWG Lead",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD_ESC Assy",
+      "child": "Heatshrink Tube 9:3",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT_ESC Assy",
+      "child": "5.5mm Female Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT_ESC Assy",
+      "child": "4mm Male Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT_ESC Assy",
+      "child": "4mm Female Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT_ESC Assy",
+      "child": "Red 12AWG",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT_ESC Assy",
+      "child": "16AWG Lead",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT_ESC Assy",
+      "child": "Heatshrink Tube 9:3",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped Black",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped Green",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped Voilet",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped Yellow",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped Sky Blue",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped Pink",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped Orange",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped Dark Blue",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped Light Brown",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped Dark Brown",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped White with Red strip",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped White with black strip",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped White",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal PM Assy",
+      "child": "10cm one sided JST crimped Red",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped Black",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped Green",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped Voilet",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped Yellow",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped Sky Blue",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped Pink",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped Orange",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped Dark Blue",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped Light Brown",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped Dark Brown",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped White with Red strip",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped White with black strip",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped White",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal PM Assy",
+      "child": "10cm one sided JST crimped Dark Parrot Green",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal CM Assy",
+      "child": "2mm male bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal CM Assy",
+      "child": "2mm Female Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal CM Assy",
+      "child": "Soldering flux",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal CM Assy",
+      "child": "20Core Wire 14/38",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Signal CM Assy",
+      "child": "BlueRobotics Leak",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal CM Assy",
+      "child": "2mm male bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal CM Assy",
+      "child": "2mm Female Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal CM Assy",
+      "child": "Soldering flux",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal CM Assy",
+      "child": "20Core Wire 14/38",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Signal CM Assy",
+      "child": "BlueRobotics Leak",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "2mm male bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "10cm one sided JST crimped Green",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "10cm one sided JST crimped Voilet",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "10cm one sided JST crimped Yellow",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "10cm one sided JST crimped Sky Blue",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "10cm one sided JST crimped Pink",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "10cm one sided JST crimped Orange",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "10cm one sided JST crimped Dark Blue",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "10cm one sided JST crimped Light Brown",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "10cm one sided JST crimped Dark Brown",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "10cm one sided JST crimped White with Red strip",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "10cm one sided JST crimped White with black strip",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "10cm one sided JST crimped White",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "10cm one sided JST crimped Light Grey",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging PM Assy",
+      "child": "WY-28 Metal connector PM",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "24v AC/DC module",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "Soldering flux",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "25cm Black Microfit one side crimped wires",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "25cm Green Microfit one side crimped wires",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "25cm Violet Microfit one side crimped wires",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "25cm Yellow Microfit one side crimped wires",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "25cm Blue Microfit one side crimped wires",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "25cm Pink Microfit one side crimped wires",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "25cm L.Brown Microfit one side crimped wires",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "25cm D.Brown Microfit one side crimped wires",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "25cm White Microfit one side crimped wires",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "25cm White-Red Microfit one side crimped wires",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "25cm Red Microfit one side crimped wires",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "25cm Dark Blue Microfit one side crimped wires",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "25cm Orange Microfit one side crimped wires",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "18pin Microfit housing",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "12S Lipo Charger",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charger Box Assy",
+      "child": "PG-7 Cable Gland",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging CM Assy",
+      "child": "Soldering flux",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging CM Assy",
+      "child": "20Core Wire 14/38",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Charging CM Assy",
+      "child": "WY-28 Metal connector CM",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "RPM Sensor Assy",
+      "child": "PWB of RPM Sensor",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "RPM Sensor Assy",
+      "child": "LM358D SMD",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "RPM Sensor Assy",
+      "child": "470k 0805 Com grade",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Current Sensor Assy",
+      "child": "PWB of Current Sensor",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "Receiver Module R9MM/R9MX/R9",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "LM1117 5.0v",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "LM1117 3.3v",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "NEO-6M GPS",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "4mm Male Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "4mm Female Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "2mm male bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "2mm Female Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "6mm male bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "6mm female bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "Red 12AWG",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "Buck converter XL7015 50v",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "LM2596HW for PC",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "PWB of Motherboard",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "SPST relay 5A-12v ANTI_S & KILL",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "Balancing 1A DPDT 24v Relay",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "Balancing relay 5A/2A 24v SPST",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "24AWG Soldering Wire",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "12E 2W Resistor THT",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "Soldering flux",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "23A 24v Power relay",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "20k 0805 resistor PANASONIC",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "ULN2004 SMD",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "Atmega328P-AU",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "A21 MotherBoard Assy",
+      "child": "Heatshrink Tube 9:3",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Electronic Box Assy",
+      "child": "Ipex4 to SMA converter extension",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Electronic Box Assy",
+      "child": "BlueRobotics Leak",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Electronic Box Assy",
+      "child": "BlueRobotics Indicator",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Electronic Box Assy",
+      "child": "M4x6 PCB mount screw Magnetic",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Electronic Box Assy",
+      "child": "PG-7 Cable Gland",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Electronic Box Assy",
+      "child": "IM Front Lid",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Electronic Box Assy",
+      "child": "Silicon RTV 732",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_STBD Elec",
+      "child": "2mm male bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_STBD Elec",
+      "child": "PWB of STBD flash light",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_STBD Elec",
+      "child": "Green 2835 SMD LED 1W",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_PORT Elec",
+      "child": "2mm male bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_PORT Elec",
+      "child": "2mm Female Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_PORT Elec",
+      "child": "PWB of PORT flash light",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_PORT Elec",
+      "child": "Red 2835 SMD LED 1W",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_STBD Mech",
+      "child": "M3x8 Button Head",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_STBD Mech",
+      "child": "Flashing Light glass",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_STBD Mech",
+      "child": "Flashing Light bottom plate",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_STBD Mech",
+      "child": "Heatsink paste",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_STBD Mech",
+      "child": "M4x12 Allen Head",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_PORT Mech",
+      "child": "M3x8 Button Head",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_PORT Mech",
+      "child": "Flashing Light glass",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_PORT Mech",
+      "child": "Flashing Light bottom plate",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_PORT Mech",
+      "child": "Heatsink paste",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "FL_PORT Mech",
+      "child": "M4x12 Allen Head",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Battery Block Assy",
+      "child": "Li-In 21700 Cells Molicel P42A/ Samsung-40T",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Battery Block Assy",
+      "child": "Soldering flux",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Battery Block Assy",
+      "child": "70mm Paper Separator",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Battery Block Assy",
+      "child": "Barley paper for 21700 cylindrical cell",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Battery Assy",
+      "child": "6mm female bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Battery Assy",
+      "child": "8mm male bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Battery Assy",
+      "child": "Soldering flux",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Battery Assy",
+      "child": "70mm Paper Separator",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Battery Assy",
+      "child": "16AWG Lead",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Battery Assy",
+      "child": "4mm Female Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Battery Assy",
+      "child": "2mm Female Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Battery Assy",
+      "child": "8mm female bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Battery Assy",
+      "child": "Soldering flux",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Battery Assy",
+      "child": "70mm Paper Separator",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Battery Assy",
+      "child": "16AWG Lead",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Unit Assy",
+      "child": "ESC Mounting Clamp",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Unit Assy",
+      "child": "M4 Spring washer",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Unit Assy",
+      "child": "3mm Silicon Rubber Gaskets (35mmx10mm)",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Unit Assy",
+      "child": "M4x16 Allen Head",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Unit Assy",
+      "child": "ESC Mounting Clamp",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Unit Assy",
+      "child": "M4 Spring washer",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Unit Assy",
+      "child": "3mm Silicon Rubber Gaskets (35mmx10mm)",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "SR Structure",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "SR Pillow",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "M6x50 Button head",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "M6 Spring washer (SR structure clamping)",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "M6x20 Plain washer (SR structure clamping)",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "M6 Dome NUT SS (SR structure Clamping)",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "3D printed SR Pillow Side Caps",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "3D printed SR Pillow Middle Caps",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "6mmx12mm Rubber Bush",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "Thread locker 242/270/290",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "STBD SR Rubber Boot",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "PORT SR Rubber Boot",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "M6x150 Allen head ",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "M6 Nyloc Nut",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Self Rightening Assy",
+      "child": "M6x12 Plain washer",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "QX7 Transmitter with R9M",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "Li-In 21700 Cells Molicel P42A/ Samsung-40T",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "25cm Red one side crimped wire",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "25cm Green one side crimped wire",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "25cm Black one side crimped wire",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "R9M Antenna Extension wire RP-SMA to Open",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "SA12 9pin PM Pushpull",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "IP Remote Lower Shell",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "IP Remote Upper Shell",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "PU Gasket Remote Lower Shell",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "Remote Battery Holding Bracket",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "Cable Holder",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "Remote Handle",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "Polycarbonate Glass for Remote",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "Joystick Water proof rubber",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "Button Silicon Cover No. 1",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "Button Silicon Cover No. 2",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "Neck Strap Hook",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "Neck Strap",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "M2x12 Allen Head SS304",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Assy",
+      "child": "32Gb SD Card",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Charging Cable Assy",
+      "child": "USB Data & Charging Cable 1m length",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Charging Cable Assy",
+      "child": "5v 2A USB Adapter",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "IP Remote Charging Cable Assy",
+      "child": "SA12 9pin CM Pushpull",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "1N4007 THT diode",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "3S Lipo indicator",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "LM2596HW for PC",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "PWB for JCB",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "3S, >2Ah Li-Ion cell for JCB",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "DC JAck Panel Mount",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "ULN2003A THT",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "8core Wire 14/38",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "Soldering flux",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "10cm one sided JST crimped Black",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "10cm one sided JST crimped Red",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "Atmega328P-AU",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "2mm male bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Elec Assy",
+      "child": "2mm Female Bullet connector",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Mech Assy",
+      "child": "Water tank with clamp",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Mech Assy",
+      "child": "M5x10 Allen / M5x12",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Mech Assy",
+      "child": "M4x12 Allen Head",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Mech Assy",
+      "child": "M4x16 Allen Head",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Mech Assy",
+      "child": "M4 Spring washer",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "AMCA Mech Assy",
+      "child": "12 to 8 reducer with lock clips",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Craft Assy",
+      "child": "M4x20 Allen Head",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Craft Assy",
+      "child": "M5x10 Torx",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Craft Assy",
+      "child": "Rope 8mm",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Craft Assy",
+      "child": "Ferrole",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Craft Assy",
+      "child": "Hook Sticker STBD",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Craft Assy",
+      "child": "Hook Stiker PORT",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Craft Assy",
+      "child": "Hold here sticker STBD",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Craft Assy",
+      "child": "Hold here sticker PORT",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Craft Assy",
+      "child": "915MHz Antenna",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Craft Assy",
+      "child": "M4x12 Button head",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Craft Assy",
+      "child": "8kg Hull",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Bottom Block Assy",
+      "child": "IM Bottom Block",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Bottom Block Assy",
+      "child": "Bottom Mesh (120mm x 100mm, 5\"x4\")",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Bottom Block Assy",
+      "child": "M4x12 Pan Combi Screws",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Bottom Block Assy",
+      "child": "M3x8 plain wahser",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "STBD Aft Plate Assy",
+      "child": "M8 Slim Locknut",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "PORT Aft Plate Assy",
+      "child": "M8 Slim Locknut",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "R9MX Adapter",
+      "child": "LM1117 5.0v",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Packing",
+      "child": "66 No. Box for chraging cable & Tool box",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Packing",
+      "child": "22 No. Box for SR structure screws",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Packing",
+      "child": "10mm Nut Driver with 15mm Depth",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Packing",
+      "child": "4mm T-Handle",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Packing",
+      "child": "HardBox FRP/HDPE/CARTON/EPE",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Packing",
+      "child": "2.5mm T handle",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Final Packing",
+      "child": "Oring AFT plate",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Power Switch Assy",
+      "child": "IP68 Rotary main Switch",
+      "error": "Component not found"
+    },
+    {
+      "type": "sub_bom_item",
+      "parent": "Power Switch Assy",
+      "child": "10cm one sided JST crimped White",
+      "error": "Component not found"
+    }
+  ]
+}

@@ -88,6 +88,49 @@
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  /* Custom scrollbar styles for better UX */
+  .overflow-x-auto {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+  }
+  
+  .overflow-x-auto::-webkit-scrollbar {
+    height: 8px;
+  }
+  
+  .overflow-x-auto::-webkit-scrollbar-track {
+    background: #f3f4f6;
+    border-radius: 4px;
+  }
+  
+  .overflow-x-auto::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+  }
+  
+  .overflow-x-auto::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+  }
+
+  /* Sidebar scrollbar */
+  nav.overflow-y-auto {
+    scrollbar-width: thin;
+    scrollbar-color: #475569 transparent;
+  }
+  
+  nav.overflow-y-auto::-webkit-scrollbar {
+    width: 4px;
+  }
+  
+  nav.overflow-y-auto::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  nav.overflow-y-auto::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 2px;
+  }
   
   /* Manufacturing-specific utilities */
   .manufacturing-card {

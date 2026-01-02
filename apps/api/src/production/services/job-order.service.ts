@@ -3,6 +3,45 @@ import { createClient } from '@supabase/supabase-js';
 import { CreateJobOrderDto, UpdateJobOrderDto, UpdateOperationDto } from '../dto/job-order.dto';
 import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
 
+type SmartJobOrderPreviewRequest = {
+  itemId: string;
+  quantity: number;
+  salesOrderId?: string;
+  salesOrderItemId?: string;
+};
+
+type SmartJobOrderCreateRequest = {
+  itemId: string;
+  quantity: number;
+  startDate?: string;
+  salesOrderId?: string;
+  salesOrderItemId?: string;
+};
+
+type SmartExplosionNode = {
+  level: number;
+  componentType: 'ITEM' | 'BOM';
+  bomId: string;
+  parentBomId?: string;
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  requiredQuantity: number;
+  availableQuantity: number;
+  toMakeQuantity: number;
+  shortageQuantity: number;
+};
+
+type SmartSubAssemblyPlan = {
+  bomId: string;
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  requiredQuantity: number;
+  availableQuantity: number;
+  toMakeQuantity: number;
+};
+
 @Injectable()
 export class JobOrderService {
   private supabase = createClient(
@@ -257,32 +296,35 @@ export class JobOrderService {
   }
 
   async createFromBOM(tenantId: string, userId: string, itemId: string, bomId: string, quantity: number, startDate: string) {
-    // Get BOM details from bom_headers (new schema)
+    // Get BOM details
     const { data: bom } = await this.supabase
       .from('bom_headers')
       .select(`
         *,
-        items!bom_headers_item_id_fkey(code, name, type)
+        bom_items(*, items(code, name)),
+        bom_routing(*, workstations(id, name))
       `)
-      .eq('id', bomId)
       .eq('tenant_id', tenantId)
+      .eq('id', bomId)
       .single();
 
     if (!bom) throw new NotFoundException('BOM not found');
 
-    // Explode BOM recursively to get all actual leaf items needed
-    const explodedItems = await this.explodeBOMRecursively(bomId, quantity, tenantId);
-    
-    console.log('[JobOrderService] Exploded BOM items:', explodedItems);
-
-    // Create materials from exploded items (only actual items, not sub-assemblies)
-    const materials = explodedItems.map((item: any) => ({
-      itemId: item.itemId,
-      requiredQuantity: item.quantity,
+    // Create operations from routing
+    const operations = (bom.bom_routing || []).map((route: any, idx: number) => ({
+      sequenceNumber: route.operation_sequence || (idx + 1) * 10,
+      operationName: route.operation_name,
+      workstationId: route.workstation_id,
+      expectedDurationHours: route.cycle_time || 0,
+      setupTimeHours: route.setup_time || 0,
+      acceptedVariationPercent: 5, // default 5%
     }));
 
-    // TODO: Get routing/operations if they exist in the future
-    const operations: any[] = [];
+    // Create materials from BOM items
+    const materials = (bom.bom_items || []).map((item: any) => ({
+      itemId: item.item_id,
+      requiredQuantity: item.quantity * quantity,
+    }));
 
     return this.create(tenantId, userId, {
       itemId,
@@ -294,204 +336,6 @@ export class JobOrderService {
     });
   }
 
-  /**
-   * Recursively explode BOM to get hierarchical structure with sub-assemblies
-   */
-  private async explodeBOMHierarchical(
-    bomId: string,
-    quantity: number,
-    tenantId: string,
-    level: number = 0
-  ): Promise<any[]> {
-    const { data: bomItems } = await this.supabase
-      .from('bom_items')
-      .select('component_type, item_id, child_bom_id, quantity, scrap_percentage')
-      .eq('bom_id', bomId);
-
-    if (!bomItems || bomItems.length === 0) return [];
-
-    // Batch fetch all item IDs
-    const itemIds = bomItems.filter(bi => bi.item_id).map(bi => bi.item_id);
-    
-    // Fetch all items at once
-    const { data: allItems } = await this.supabase
-      .from('items')
-      .select('id, code, name, type')
-      .in('id', itemIds);
-
-    // Fetch all BOMs for these items at once to detect sub-assemblies
-    const { data: allItemBoms } = await this.supabase
-      .from('bom_headers')
-      .select('id, item_id, version, is_active')
-      .in('item_id', itemIds)
-      .eq('is_active', true);
-
-    // Fetch all stock entries at once
-    const { data: allStockEntries } = await this.supabase
-      .from('stock_entries')
-      .select('item_id, available_quantity')
-      .eq('tenant_id', tenantId)
-      .in('item_id', itemIds);
-
-    // Create lookup maps
-    const itemMap = new Map(allItems?.map(item => [item.id, item]) || []);
-    const bomMap = new Map(allItemBoms?.map(bom => [bom.item_id, bom]) || []);
-    const stockMap = new Map<string, number>();
-    allStockEntries?.forEach(entry => {
-      const current = stockMap.get(entry.item_id) || 0;
-      stockMap.set(entry.item_id, current + (Number(entry.available_quantity) || 0));
-    });
-
-    const nodes = [];
-
-    for (const bomItem of bomItems) {
-      const scrapFactor = 1 + (bomItem.scrap_percentage || 0) / 100;
-      const adjustedQty = bomItem.quantity * quantity * scrapFactor;
-
-      if (bomItem.component_type === 'ITEM' && bomItem.item_id) {
-        const itemData = itemMap.get(bomItem.item_id);
-        const itemBom = bomMap.get(bomItem.item_id);
-        const availableStock = stockMap.get(bomItem.item_id) || 0;
-        const shortageQuantity = Math.max(0, adjustedQty - availableStock);
-
-        if (itemBom) {
-          // This is a sub-assembly - treat it as BOM type
-          nodes.push({
-            bomId: itemBom.id,
-            itemId: bomItem.item_id,
-            itemCode: itemData?.code || 'Unknown',
-            itemName: itemData?.name || 'Unknown',
-            componentType: 'BOM',
-            level,
-            requiredQuantity: adjustedQty,
-            availableQuantity: availableStock,
-            shortageQuantity,
-            toMakeQuantity: Math.max(0, adjustedQty - availableStock),
-          });
-
-          // Recursively get child components
-          const childNodes = await this.explodeBOMHierarchical(itemBom.id, adjustedQty, tenantId, level + 1);
-          nodes.push(...childNodes);
-        } else {
-          // Regular item (raw material/component)
-          nodes.push({
-            itemId: bomItem.item_id,
-            itemCode: itemData?.code || 'Unknown',
-            itemName: itemData?.name || 'Unknown',
-            componentType: 'ITEM',
-            level,
-            requiredQuantity: adjustedQty,
-            availableQuantity: availableStock,
-            shortageQuantity,
-            toMakeQuantity: 0,
-          });
-        }
-      } else if (bomItem.component_type === 'BOM' && bomItem.child_bom_id) {
-        // Get sub-assembly details
-        const { data: childBom } = await this.supabase
-          .from('bom_headers')
-          .select('*, items!bom_headers_item_id_fkey(code, name, type)')
-          .eq('id', bomItem.child_bom_id)
-          .single();
-
-        if (childBom) {
-          // Get stock for sub-assembly
-          const { data: stockEntries } = await this.supabase
-            .from('stock_entries')
-            .select('available_quantity')
-            .eq('tenant_id', tenantId)
-            .eq('item_id', childBom.item_id);
-
-          const availableStock = stockEntries?.reduce((sum, entry) => sum + (Number(entry.available_quantity) || 0), 0) || 0;
-          const shortageQuantity = Math.max(0, adjustedQty - availableStock);
-
-          // Add sub-assembly node
-          nodes.push({
-            bomId: childBom.id,
-            itemId: childBom.item_id,
-            itemCode: childBom.items.code,
-            itemName: childBom.items.name,
-            componentType: 'BOM',
-            level,
-            requiredQuantity: adjustedQty,
-            availableQuantity: availableStock,
-            shortageQuantity,
-            toMakeQuantity: Math.max(0, adjustedQty - availableStock),
-          });
-
-          // Recursively get child components
-          const childNodes = await this.explodeBOMHierarchical(bomItem.child_bom_id, adjustedQty, tenantId, level + 1);
-          nodes.push(...childNodes);
-        }
-      }
-    }
-
-    return nodes;
-  }
-
-  /**
-   * Recursively explode BOM to get all leaf items (raw materials/components)
-   * Handles multi-level BOMs with sub-assemblies
-   */
-  private async explodeBOMRecursively(
-    bomId: string,
-    quantity: number,
-    tenantId: string,
-    level: number = 0
-  ): Promise<Array<{ itemId: string; quantity: number }>> {
-    const indent = '  '.repeat(level);
-    console.log(`${indent}[BOM EXPLODE] Level ${level}: BOM ID=${bomId}, Quantity=${quantity}`);
-
-    const { data: bomItems } = await this.supabase
-      .from('bom_items')
-      .select('component_type, item_id, child_bom_id, quantity, scrap_percentage')
-      .eq('bom_id', bomId);
-
-    console.log(`${indent}[BOM EXPLODE] Found ${bomItems?.length || 0} components`);
-
-    if (!bomItems || bomItems.length === 0) return [];
-
-    const allItems: Map<string, number> = new Map();
-
-    for (const bomItem of bomItems) {
-      const scrapFactor = 1 + (bomItem.scrap_percentage || 0) / 100;
-      const adjustedQty = bomItem.quantity * quantity * scrapFactor;
-
-      console.log(`${indent}[BOM EXPLODE] Component: type=${bomItem.component_type}, qty=${bomItem.quantity}, scrap=${bomItem.scrap_percentage}%, adjustedQty=${adjustedQty}`);
-
-      if (bomItem.component_type === 'ITEM' && bomItem.item_id) {
-        // Direct item - this is a leaf node
-        console.log(`${indent}[BOM EXPLODE] → Adding ITEM ${bomItem.item_id}: ${adjustedQty} units`);
-        const existing = allItems.get(bomItem.item_id) || 0;
-        allItems.set(bomItem.item_id, existing + adjustedQty);
-      } else if (bomItem.component_type === 'BOM' && bomItem.child_bom_id) {
-        // Sub-assembly - recursively explode it
-        console.log(`${indent}[BOM EXPLODE] → Recursing into child BOM ${bomItem.child_bom_id} with qty=${adjustedQty}`);
-        const childItems = await this.explodeBOMRecursively(bomItem.child_bom_id, adjustedQty, tenantId, level + 1);
-        console.log(`${indent}[BOM EXPLODE] ← Child BOM returned ${childItems.length} items`);
-
-        childItems.forEach((childItem) => {
-          const existing = allItems.get(childItem.itemId) || 0;
-          const newQty = existing + childItem.quantity;
-          console.log(`${indent}[BOM EXPLODE]   Aggregating item ${childItem.itemId}: +${childItem.quantity} = ${newQty}`);
-          allItems.set(childItem.itemId, newQty);
-        });
-      }
-    }
-
-    const result = Array.from(allItems.entries()).map(([itemId, qty]) => ({
-      itemId,
-      quantity: qty,
-    }));
-
-    console.log(
-      `${indent}[BOM EXPLODE] Level ${level} returning ${result.length} unique items:`,
-      result.map((r) => `${r.itemId}:${r.quantity}`).join(', ')
-    );
-
-    return result;
-  }
-
   private async checkMaterialAvailability(tenantId: string, materials: any[], jobQuantity: number) {
     console.log('[JobOrderService] checkMaterialAvailability - tenantId:', tenantId);
     console.log('[JobOrderService] checkMaterialAvailability - materials:', materials);
@@ -500,21 +344,21 @@ export class JobOrderService {
     const shortages = [];
 
     for (const material of materials) {
-      const required = (material.requiredQuantity || material.quantity) * jobQuantity;
+      const required = material.requiredQuantity;  // Don't multiply by jobQuantity - it's already included in requiredQuantity
 
-      // Get available stock from stock_entries
-      const { data: stockEntries, error } = await this.supabase
-        .from('stock_entries')
-        .select('available_quantity, item_id')
-        .eq('tenant_id', tenantId)
-        .eq('item_id', material.itemId);
+      // IMPORTANT: Use stock_entries-backed summary (same as GET /items/:id/stock)
+      // so Job Order validation matches the stock shown across the app.
+      const { data, error } = await this.supabase.rpc('get_item_stock_summary', {
+        p_item_id: material.itemId,
+        p_tenant_id: tenantId,
+      });
 
       console.log('[JobOrderService] Stock check for item:', material.itemId);
-      console.log('[JobOrderService] Stock entries found:', stockEntries);
-      console.log('[JobOrderService] Stock query error:', error);
+      console.log('[JobOrderService] Stock summary found:', data);
+      console.log('[JobOrderService] Stock summary query error:', error);
 
-      // Sum up available quantity across all stock entries for this item
-      const available = stockEntries?.reduce((sum, entry) => sum + (Number(entry.available_quantity) || 0), 0) || 0;
+      const summary = Array.isArray(data) && data.length > 0 ? data[0] : null;
+      const available = Number(summary?.available_quantity) || 0;
       
       console.log('[JobOrderService] Required:', required, 'Available:', available);
 
@@ -564,19 +408,22 @@ export class JobOrderService {
       for (const material of jobOrder.job_order_materials) {
         const consumeQty = material.required_quantity;
 
+        // Use selected_variant_id if available, otherwise use item_id
+        const itemIdToConsume = material.selected_variant_id || material.item_id;
+
         // Get item details
         const { data: item } = await this.supabase
           .from('items')
-          .select('code, name')
-          .eq('id', material.item_id)
+          .select('code, name, category')
+          .eq('id', itemIdToConsume)
           .single();
 
-        // Get available stock entries for this material
+        // Get available stock entries for this material (use variant if selected)
         const { data: stockEntries } = await this.supabase
           .from('stock_entries')
           .select('*')
           .eq('tenant_id', tenantId)
-          .eq('item_id', material.item_id)
+          .eq('item_id', itemIdToConsume)
           .gt('available_quantity', 0)
           .order('created_at', { ascending: true });
 
@@ -585,10 +432,15 @@ export class JobOrderService {
         }
 
         // Calculate total available
-        const totalAvailable = stockEntries.reduce((sum, entry) => sum + parseFloat(entry.available_quantity.toString()), 0);
-        
+        const totalAvailable = stockEntries.reduce(
+          (sum, entry) => sum + parseFloat(entry.available_quantity.toString()),
+          0,
+        );
+
         if (totalAvailable < consumeQty) {
-          throw new BadRequestException(`Failed to consume ${item?.code}: Insufficient stock. Need ${consumeQty}, have ${totalAvailable}`);
+          throw new BadRequestException(
+            `Failed to consume ${item?.code}: Insufficient stock. Need ${consumeQty}, have ${totalAvailable}`,
+          );
         }
 
         // Consume from stock entries using FIFO
@@ -602,9 +454,9 @@ export class JobOrderService {
 
           const { error: updateError } = await this.supabase
             .from('stock_entries')
-            .update({ 
+            .update({
               available_quantity: newAvailable,
-              updated_at: new Date().toISOString()
+              updated_at: new Date().toISOString(),
             })
             .eq('id', entry.id);
 
@@ -725,7 +577,7 @@ export class JobOrderService {
             job_order_id: jobOrderId,
             job_order_number: jobOrder.job_order_number,
             uids_generated: uidsCreated.length,
-          }
+          },
         });
 
       if (addError) {
@@ -818,128 +670,381 @@ export class JobOrderService {
     };
   }
 
-  /**
-   * Smart Job Order Preview - Auto-detects BOM and shows what will be created
-   */
-  async getSmartJobOrderPreview(tenantId: string, params: { itemId: string; quantity: number; salesOrderId?: string; salesOrderItemId?: string }) {
-    const { itemId, quantity } = params;
+  private toStartDate(value?: string): string {
+    if (value && value.trim()) return value;
+    return new Date().toISOString().slice(0, 10);
+  }
 
-    // Get item details
-    const { data: item } = await this.supabase
+  private async getItemBasic(itemId: string): Promise<{ id: string; code: string; name: string; category?: string | null } | null> {
+    const { data } = await this.supabase
       .from('items')
-      .select('*')
+      .select('id, code, name, category')
       .eq('id', itemId)
-      .eq('tenant_id', tenantId)
       .single();
+    return data || null;
+  }
 
-    if (!item) throw new NotFoundException('Item not found');
+  private async getAvailableStock(tenantId: string, itemId: string): Promise<number> {
+    const { data } = await this.supabase.rpc('get_item_stock_summary', {
+      p_item_id: itemId,
+      p_tenant_id: tenantId,
+    });
 
-    // Find active BOM for this item
-    const { data: boms } = await this.supabase
+    const summary = Array.isArray(data) && data.length > 0 ? data[0] : null;
+    return Number(summary?.available_quantity) || 0;
+  }
+
+  private async getActiveBomForItem(tenantId: string, itemId: string): Promise<any | null> {
+    // Prefer active BOM. If is_active is not present or no active exists, fall back to latest version.
+    const { data: active } = await this.supabase
       .from('bom_headers')
       .select('*')
-      .eq('item_id', itemId)
       .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
       .eq('is_active', true)
-      .order('created_at', { ascending: false })
+      .order('version', { ascending: false })
       .limit(1);
 
-    const bom = boms?.[0];
-    
+    if (Array.isArray(active) && active.length > 0) return active[0];
+
+    const { data: latest } = await this.supabase
+      .from('bom_headers')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .order('version', { ascending: false })
+      .limit(1);
+
+    if (Array.isArray(latest) && latest.length > 0) return latest[0];
+    return null;
+  }
+
+  private async getBomById(tenantId: string, bomId: string): Promise<any | null> {
+    const { data } = await this.supabase
+      .from('bom_headers')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('id', bomId)
+      .single();
+    return data || null;
+  }
+
+  private async getBomItems(bomId: string): Promise<any[]> {
+    const { data } = await this.supabase
+      .from('bom_items')
+      .select('*')
+      .eq('bom_id', bomId)
+      .order('sequence', { ascending: true });
+    return Array.isArray(data) ? data : [];
+  }
+
+  private async buildSmartExplosion(
+    tenantId: string,
+    bomId: string,
+    multiplier: number,
+    level: number,
+    visitedBomIds: Set<string>,
+    caches: {
+      itemById: Map<string, any>;
+      stockByItemId: Map<string, number>;
+      bomById: Map<string, any>;
+    },
+  ): Promise<{ nodes: SmartExplosionNode[]; subAssemblies: SmartSubAssemblyPlan[] }> {
+    if (multiplier <= 0) return { nodes: [], subAssemblies: [] };
+
+    if (visitedBomIds.has(bomId)) {
+      throw new BadRequestException('BOM cycle detected. Please check BOM hierarchy.');
+    }
+    visitedBomIds.add(bomId);
+
+    const nodes: SmartExplosionNode[] = [];
+    const subAssemblies: SmartSubAssemblyPlan[] = [];
+
+    let bom = caches.bomById.get(bomId);
     if (!bom) {
-      return {
-        finishedItem: { code: item.code, name: item.name, type: item.type },
-        hasBOM: false,
-        message: 'No active BOM found for this item. A manual job order can still be created.',
-        materials: [],
-        canCreate: false,
-      };
+      bom = await this.getBomById(tenantId, bomId);
+      if (!bom) throw new NotFoundException('BOM not found');
+      caches.bomById.set(bomId, bom);
     }
 
-    // Explode BOM hierarchically to show sub-assemblies
-    const hierarchicalNodes = await this.explodeBOMHierarchical(bom.id, quantity, tenantId);
+    const bomItems = await this.getBomItems(bomId);
+    for (const bi of bomItems) {
+      const lineQty = Number(bi.quantity) || 0;
+      if (lineQty <= 0) continue;
 
-    // Also get flattened leaf items for material requirement calculation
-    const explodedItems = await this.explodeBOMRecursively(bom.id, quantity, tenantId);
+      const requiredQuantity = lineQty * multiplier;
 
-    // Check stock availability - items already have full quantity calculated, so pass 1
-    const availabilityCheck = await this.checkMaterialAvailability(tenantId, explodedItems, 1);
+      const childBomId = (bi as any).child_bom_id || (bi as any).child_bomId || null;
+      const itemId = (bi as any).item_id || (bi as any).itemId || null;
 
-    // Also check if ANY node in the hierarchy has shortage
-    const hasAnyShortage = hierarchicalNodes.some(node => node.shortageQuantity > 0);
-    const allAvailable = !hasAnyShortage && availabilityCheck.available;
-    const hasShortages = hasAnyShortage || availabilityCheck.shortages.length > 0;
+      if (childBomId) {
+        let childBom = caches.bomById.get(childBomId);
+        if (!childBom) {
+          childBom = await this.getBomById(tenantId, childBomId);
+          if (!childBom) throw new NotFoundException('Child BOM not found');
+          caches.bomById.set(childBomId, childBom);
+        }
 
-    // Calculate sub-assemblies to make
-    const subAssembliesToMake = hierarchicalNodes
-      .filter(node => node.componentType === 'BOM' && node.toMakeQuantity > 0)
-      .map(node => ({
-        itemCode: node.itemCode,
-        itemName: node.itemName,
-        requiredQuantity: node.requiredQuantity,
-        availableQuantity: node.availableQuantity,
-        toMakeQuantity: node.toMakeQuantity,
-      }));
+        const subItemId = childBom.item_id;
+        if (!subItemId) continue;
+
+        let subItem = caches.itemById.get(subItemId);
+        if (!subItem) {
+          subItem = await this.getItemBasic(subItemId);
+          if (!subItem) throw new NotFoundException('Item not found');
+          caches.itemById.set(subItemId, subItem);
+        }
+
+        let available = caches.stockByItemId.get(subItemId);
+        if (available === undefined) {
+          available = await this.getAvailableStock(tenantId, subItemId);
+          caches.stockByItemId.set(subItemId, available);
+        }
+
+        const toMakeQuantity = Math.max(0, requiredQuantity - available);
+
+        nodes.push({
+          level,
+          componentType: 'BOM',
+          bomId: childBomId,
+          parentBomId: bomId,
+          itemId: subItemId,
+          itemCode: subItem.code,
+          itemName: subItem.name,
+          requiredQuantity,
+          availableQuantity: available,
+          toMakeQuantity,
+          shortageQuantity: 0,
+        });
+
+        if (toMakeQuantity > 0) {
+          subAssemblies.push({
+            bomId: childBomId,
+            itemId: subItemId,
+            itemCode: subItem.code,
+            itemName: subItem.name,
+            requiredQuantity,
+            availableQuantity: available,
+            toMakeQuantity,
+          });
+
+          const childResult = await this.buildSmartExplosion(
+            tenantId,
+            childBomId,
+            toMakeQuantity,
+            level + 1,
+            new Set(visitedBomIds),
+            caches,
+          );
+          nodes.push(...childResult.nodes);
+          subAssemblies.push(...childResult.subAssemblies);
+        }
+
+        continue;
+      }
+
+      if (itemId) {
+        let item = caches.itemById.get(itemId);
+        if (!item) {
+          item = await this.getItemBasic(itemId);
+          if (!item) throw new NotFoundException('Item not found');
+          caches.itemById.set(itemId, item);
+        }
+
+        // Infer if this item is actually a subassembly and should be treated as BOM
+        const isSubassembly = item.category === 'SUBASSEMBLY' || item.type === 'SUBASSEMBLY';
+        if (isSubassembly) {
+          // Attempt to find an active BOM for this subassembly
+          const subBom = await this.getActiveBomForItem(tenantId, itemId);
+          if (subBom) {
+            caches.bomById.set(subBom.id, subBom);
+
+            let available = caches.stockByItemId.get(itemId);
+            if (available === undefined) {
+              available = await this.getAvailableStock(tenantId, itemId);
+              caches.stockByItemId.set(itemId, available);
+            }
+
+            const toMakeQuantity = Math.max(0, requiredQuantity - available);
+
+            nodes.push({
+              level,
+              componentType: 'BOM',
+              bomId: subBom.id,
+              parentBomId: bomId,
+              itemId,
+              itemCode: item.code,
+              itemName: item.name,
+              requiredQuantity,
+              availableQuantity: available,
+              toMakeQuantity,
+              shortageQuantity: 0,
+            });
+
+            if (toMakeQuantity > 0) {
+              subAssemblies.push({
+                bomId: subBom.id,
+                itemId,
+                itemCode: item.code,
+                itemName: item.name,
+                requiredQuantity,
+                availableQuantity: available,
+                toMakeQuantity,
+              });
+
+              const childResult = await this.buildSmartExplosion(
+                tenantId,
+                subBom.id,
+                toMakeQuantity,
+                level + 1,
+                new Set(visitedBomIds),
+                caches,
+              );
+              nodes.push(...childResult.nodes);
+              subAssemblies.push(...childResult.subAssemblies);
+            }
+
+            continue;
+          }
+        }
+
+        // Standard ITEM component (not a subassembly or no BOM found)
+        let available = caches.stockByItemId.get(itemId);
+        if (available === undefined) {
+          available = await this.getAvailableStock(tenantId, itemId);
+          caches.stockByItemId.set(itemId, available);
+        }
+
+        const shortageQuantity = Math.max(0, requiredQuantity - available);
+
+        nodes.push({
+          level,
+          componentType: 'ITEM',
+          bomId,
+          parentBomId: bomId,
+          itemId,
+          itemCode: item.code,
+          itemName: item.name,
+          requiredQuantity,
+          availableQuantity: available,
+          toMakeQuantity: 0,
+          shortageQuantity,
+        });
+      }
+    }
+
+    return { nodes, subAssemblies };
+  }
+
+  async getSmartJobOrderPreview(tenantId: string, req: SmartJobOrderPreviewRequest) {
+    if (!req?.itemId) throw new BadRequestException('itemId is required');
+    if (!req?.quantity || Number(req.quantity) <= 0) throw new BadRequestException('quantity must be > 0');
+
+    const finishedItem = await this.getItemBasic(req.itemId);
+    if (!finishedItem) throw new NotFoundException('Item not found');
+
+    const topBom = await this.getActiveBomForItem(tenantId, req.itemId);
+    if (!topBom) {
+      throw new BadRequestException('No BOM found for this item');
+    }
+
+    const caches = {
+      itemById: new Map<string, any>([[finishedItem.id, finishedItem]]),
+      stockByItemId: new Map<string, number>(),
+      bomById: new Map<string, any>([[topBom.id, topBom]]),
+    };
+
+    const { nodes, subAssemblies } = await this.buildSmartExplosion(
+      tenantId,
+      topBom.id,
+      Number(req.quantity),
+      0,
+      new Set<string>(),
+      caches,
+    );
+
+    // De-dup sub assemblies by (bomId,itemId) keeping the max-toMake (covers repeated usage).
+    const planMap = new Map<string, SmartSubAssemblyPlan>();
+    for (const sa of subAssemblies) {
+      const key = `${sa.bomId}:${sa.itemId}`;
+      const existing = planMap.get(key);
+      if (!existing || sa.toMakeQuantity > existing.toMakeQuantity) {
+        planMap.set(key, sa);
+      }
+    }
 
     return {
-      finishedItem: { code: item.code, name: item.name, type: item.type },
-      topBom: { id: bom.id, version: bom.version, is_active: bom.is_active },
-      hasBOM: true,
-      quantity,
-      nodes: hierarchicalNodes,
-      materials: explodedItems,
-      shortages: availabilityCheck.shortages,
-      subAssembliesToMake,
-      canCreate: true,
-      allAvailable,
-      message: allAvailable 
-        ? 'All required materials are available in stock' 
-        : hasShortages 
-        ? `${availabilityCheck.shortages.length} material(s) have insufficient stock` 
-        : 'Some materials may have insufficient stock',
+      finishedItem,
+      quantity: Number(req.quantity),
+      topBom: {
+        id: topBom.id,
+        version: topBom.version,
+        is_active: (topBom as any).is_active,
+      },
+      nodes,
+      subAssembliesToMake: Array.from(planMap.values()).sort((a, b) => b.toMakeQuantity - a.toMakeQuantity),
+      source: {
+        salesOrderId: req.salesOrderId || null,
+        salesOrderItemId: req.salesOrderItemId || null,
+      },
     };
   }
 
-  /**
-   * Smart Job Order Creation - Auto-creates job order with BOM explosion
-   */
-  async createSmartJobOrder(tenantId: string, userId: string, params: { itemId: string; quantity: number; startDate?: string; salesOrderId?: string; salesOrderItemId?: string }) {
-    const { itemId, quantity, startDate, salesOrderId, salesOrderItemId } = params;
+  async createSmartJobOrder(tenantId: string, userId: string, req: SmartJobOrderCreateRequest) {
+    if (!req?.itemId) throw new BadRequestException('itemId is required');
+    if (!req?.quantity || Number(req.quantity) <= 0) throw new BadRequestException('quantity must be > 0');
 
-    // Get item details
-    const { data: item } = await this.supabase
-      .from('items')
-      .select('*')
-      .eq('id', itemId)
-      .eq('tenant_id', tenantId)
-      .single();
+    const startDate = this.toStartDate(req.startDate);
+    const preview = await this.getSmartJobOrderPreview(tenantId, {
+      itemId: req.itemId,
+      quantity: Number(req.quantity),
+      salesOrderId: req.salesOrderId,
+      salesOrderItemId: req.salesOrderItemId,
+    });
 
-    if (!item) throw new NotFoundException('Item not found');
+    const completedSubJobOrders: any[] = [];
 
-    // Find active BOM
-    const { data: boms } = await this.supabase
-      .from('bom_headers')
-      .select('*')
-      .eq('item_id', itemId)
-      .eq('tenant_id', tenantId)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .limit(1);
+    // Auto-create and auto-complete missing sub assemblies.
+    for (const sa of preview.subAssembliesToMake as SmartSubAssemblyPlan[]) {
+      if (sa.toMakeQuantity <= 0) continue;
 
-    const bom = boms?.[0];
+      const created = await this.create(tenantId, userId, {
+        itemId: sa.itemId,
+        bomId: sa.bomId,
+        quantity: sa.toMakeQuantity,
+        startDate,
+        priority: 'NORMAL',
+        notes: `Auto-created by Smart Job Order for ${preview.finishedItem.code}`,
+      });
 
-    if (!bom) {
-      throw new BadRequestException('No active BOM found for this item');
+      // Ensure status is IN_PROGRESS so completeJobOrder can run.
+      await this.supabase
+        .from('production_job_orders')
+        .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
+        .eq('id', created.id);
+
+      const completed = await this.completeJobOrder(tenantId, created.id, userId);
+      completedSubJobOrders.push(completed);
     }
 
-    // Use the createFromBOM method
-    return this.createFromBOM(
-      tenantId,
-      userId,
-      itemId,
-      bom.id,
-      quantity,
-      startDate || new Date().toISOString().split('T')[0]
-    );
+    // Create the main finished-goods job order. Keep it as-is (typically PLANNED) for shop floor execution.
+    const mainNotesParts: string[] = ['Created via Smart Job Order'];
+    if (preview.source?.salesOrderId) mainNotesParts.push(`SalesOrder: ${preview.source.salesOrderId}`);
+    if (preview.source?.salesOrderItemId) mainNotesParts.push(`SOItem: ${preview.source.salesOrderItemId}`);
+
+    const main = await this.create(tenantId, userId, {
+      itemId: preview.finishedItem.id,
+      bomId: preview.topBom.id,
+      quantity: preview.quantity,
+      startDate,
+      priority: 'NORMAL',
+      notes: mainNotesParts.join(' | '),
+    });
+
+    return {
+      jobOrder: main,
+      autoCompletedSubJobOrders: completedSubJobOrders,
+      preview,
+    };
   }
 }

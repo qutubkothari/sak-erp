@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 
 @Injectable()
@@ -13,16 +13,111 @@ export class ItemsService {
       return null;
     }
 
-    const parsed = type === 'int'
-      ? parseInt(value, 10)
-      : parseFloat(value);
+    const raw = typeof value === 'string' ? value.trim() : String(value);
+    // Handle common Excel formats: commas, currency symbols, spaces
+    const cleaned = raw
+      .replace(/,/g, '')
+      .replace(/[^0-9.\-]/g, '');
+
+    if (!cleaned) {
+      return null;
+    }
+
+    const parsed = type === 'int' ? parseInt(cleaned, 10) : parseFloat(cleaned);
 
     return Number.isNaN(parsed) ? null : parsed;
   }
 
+  private normalizeAndValidateHsn(value: any, options: { required: boolean }): string | null {
+    if (value === undefined || value === null || value === '') {
+      if (options.required) {
+        throw new BadRequestException('HSN code is required');
+      }
+      return null;
+    }
+
+    const hsnStr = String(value).trim();
+    if (!/^\d{4}$|^\d{6}$|^\d{8}$/.test(hsnStr)) {
+      throw new BadRequestException('Invalid HSN code. Must be 4, 6, or 8 digits.');
+    }
+
+    return hsnStr;
+  }
+
+  private normalizeUidFields(itemData: any): {
+    uid_tracking?: boolean;
+    uid_strategy?: 'SERIALIZED' | 'BATCHED' | 'NONE';
+    batch_uom?: string | null;
+    batch_quantity?: number | null;
+  } {
+    const rawUidTracking = itemData.uid_tracking ?? itemData.uidTracking;
+    const rawUidStrategy = itemData.uid_strategy ?? itemData.uidStrategy;
+    const rawBatchUom = itemData.batch_uom ?? itemData.batchUom;
+    const rawBatchQuantity = itemData.batch_quantity ?? itemData.batchQuantity;
+
+    const anyProvided =
+      rawUidTracking !== undefined ||
+      rawUidStrategy !== undefined ||
+      rawBatchUom !== undefined ||
+      rawBatchQuantity !== undefined;
+
+    if (!anyProvided) {
+      return {};
+    }
+
+    // If tracking is explicitly disabled, force NONE strategy.
+    if (rawUidTracking === false) {
+      return {
+        uid_tracking: false,
+        uid_strategy: 'NONE',
+        batch_uom: null,
+        batch_quantity: null,
+      };
+    }
+
+    const strategy = (rawUidStrategy || 'SERIALIZED') as string;
+    if (strategy !== 'SERIALIZED' && strategy !== 'BATCHED' && strategy !== 'NONE') {
+      throw new BadRequestException('Invalid UID strategy. Must be SERIALIZED, BATCHED, or NONE.');
+    }
+
+    if (strategy === 'NONE') {
+      return {
+        uid_tracking: false,
+        uid_strategy: 'NONE',
+        batch_uom: null,
+        batch_quantity: null,
+      };
+    }
+
+    if (strategy === 'BATCHED') {
+      const batchUom = rawBatchUom ? String(rawBatchUom).trim() : '';
+      const batchQty = this.normalizeNumber(rawBatchQuantity);
+
+      if (!batchUom) {
+        throw new BadRequestException('For BATCHED UID strategy, batch_uom is required.');
+      }
+      if (!batchQty || batchQty <= 0) {
+        throw new BadRequestException('For BATCHED UID strategy, batch_quantity must be > 0.');
+      }
+
+      return {
+        uid_tracking: true,
+        uid_strategy: 'BATCHED',
+        batch_uom: batchUom,
+        batch_quantity: batchQty,
+      };
+    }
+
+    // SERIALIZED
+    return {
+      uid_tracking: true,
+      uid_strategy: 'SERIALIZED',
+      batch_uom: null,
+      batch_quantity: null,
+    };
+  }
+
   async findAll(tenantId: string, search?: string, includeInactive?: boolean) {
-    console.log('[ItemsService] findAll called:', { tenantId, search, includeInactive });
-    
     let query = this.supabase
       .from('items')
       .select('*')
@@ -31,10 +126,7 @@ export class ItemsService {
 
     // Only filter by is_active if we're not including inactive items
     if (!includeInactive) {
-      console.log('[ItemsService] Filtering for active items only');
       query = query.eq('is_active', true);
-    } else {
-      console.log('[ItemsService] Including inactive items');
     }
 
     if (search) {
@@ -47,17 +139,26 @@ export class ItemsService {
       console.error('[ItemsService] Query error:', error);
       throw new Error(`Failed to fetch items: ${error.message}`);
     }
-
-    console.log('[ItemsService] Query successful:', { count: data?.length || 0 });
     
-    // Fetch stock totals for each item
+    // Fetch stock totals using Supabase REST API
     if (data && data.length > 0) {
-      const itemIds = data.map(item => item.id);
-      const { data: stockData } = await this.supabase
+      // IMPORTANT: Do NOT use `.in('item_id', itemIds)` here.
+      // With hundreds of item IDs it produces an enormous URL and can fail at the HTTP layer
+      // (we observed undici HeadersOverflowError / "TypeError: fetch failed").
+      // Instead, fetch only rows with positive stock for the tenant and aggregate in-memory.
+      const { data: stockData, error: stockError } = await this.supabase
         .from('stock_entries')
         .select('item_id, available_quantity')
         .eq('tenant_id', tenantId)
-        .in('item_id', itemIds);
+        .gt('available_quantity', 0);
+
+      if (stockError || !stockData) {
+        console.error('[ItemsService] Stock query error:', stockError);
+        return data.map(item => ({
+          ...item,
+          total_stock: 0
+        }));
+      }
 
       // Sum up stock per item
       const stockTotals = (stockData || []).reduce((acc: any, entry: any) => {
@@ -83,7 +184,7 @@ export class ItemsService {
     const searchTerm = query.trim();
     const { data, error } = await this.supabase
       .from('items')
-      .select('id, code, name, description, uom, category')
+      .select('id, code, name, description, uom, category, standard_cost, selling_price')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .or(`code.ilike.%${searchTerm}%,name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
@@ -113,13 +214,28 @@ export class ItemsService {
   }
 
   async create(tenantId: string, itemData: any) {
-    // Validate HSN code if provided
-    let validatedHsn = null;
-    if (itemData.hsnCode || itemData.hsn_code) {
-      const hsnStr = String(itemData.hsnCode || itemData.hsn_code).trim();
-      if (/^\d{4}$|^\d{6}$|^\d{8}$/.test(hsnStr)) {
-        validatedHsn = hsnStr;
-      }
+    console.log('[ItemsService.create] Creating item with data:', JSON.stringify(itemData, null, 2));
+    
+    // HSN is required unless this is a variant (variants can inherit empty HSN)
+    const isVariant = itemData.is_variant === true;
+    console.log('[ItemsService.create] Is variant:', isVariant);
+    
+    const validatedHsn = this.normalizeAndValidateHsn(
+      itemData.hsnCode ?? itemData.hsn_code,
+      { required: !isVariant },
+    );
+    console.log('[ItemsService.create] Validated HSN:', validatedHsn);
+
+    const uidFields = this.normalizeUidFields(itemData);
+
+    const drawingRequired = itemData.drawing_required ?? itemData.drawingRequired;
+    if (
+      drawingRequired !== undefined &&
+      drawingRequired !== 'OPTIONAL' &&
+      drawingRequired !== 'COMPULSORY' &&
+      drawingRequired !== 'NOT_REQUIRED'
+    ) {
+      throw new BadRequestException('Invalid drawing_required. Must be OPTIONAL, COMPULSORY, or NOT_REQUIRED.');
     }
 
     const standardCost = this.normalizeNumber(itemData.standard_cost ?? itemData.standardCost);
@@ -145,16 +261,32 @@ export class ItemsService {
         reorder_quantity: reorderQuantity,
         lead_time_days: leadTimeDays,
         hsn_code: validatedHsn,
+        drawing_required: drawingRequired,
+        parent_item_id: itemData.parent_item_id || null,
+        is_variant: itemData.is_variant || false,
+        is_default_variant: itemData.is_default_variant || false,
+        variant_name: itemData.variant_name || null,
+        ...uidFields,
         is_active: true,
         metadata: itemData.metadata || {},
       })
       .select()
       .single();
 
+    console.log('[ItemsService.create] Database result:', { data, error });
+
     if (error) {
+      console.error('[ItemsService.create] Database error:', error);
+      
+      // Check for duplicate key constraint violation
+      if (error.code === '23505' && error.message.includes('items_code_key')) {
+        throw new Error(`Item with code '${itemData.code}' already exists`);
+      }
+      
       throw new Error(`Failed to create item: ${error.message}`);
     }
 
+    console.log('[ItemsService.create] Successfully created item:', data?.id);
     return data;
   }
 
@@ -188,16 +320,31 @@ export class ItemsService {
         const rawUom = item['Default Unit of Measure'] || item.uom || item.UOM || item.unit || item.Unit || item['Unit of Measure'];
         const rawHsn = item['HSN/SAC'] || item.hsn || item.HSN || item.hsn_code || item['HSN Code'];
 
-        // Validate HSN code (must be 4, 6, or 8 digits)
-        let validatedHsn = null;
-        if (rawHsn) {
-          const hsnStr = String(rawHsn).trim();
-          if (/^\d{4}$|^\d{6}$|^\d{8}$/.test(hsnStr)) {
-            validatedHsn = hsnStr;
-          } else {
-            console.warn(`Invalid HSN code for row ${i + 1}: ${hsnStr}. Must be 4, 6, or 8 digits.`);
-          }
-        }
+        const rawStandardCost =
+          item.standard_cost ||
+          item.StandardCost ||
+          item['Standard Cost'] ||
+          item['Standard cost'] ||
+          item.cost ||
+          item.Cost ||
+          item['Unit Cost'] ||
+          item['Unit cost'] ||
+          item['Rate'] ||
+          item.rate;
+
+        const rawSellingPrice =
+          item.selling_price ||
+          item.SellingPrice ||
+          item['Selling Price'] ||
+          item['Selling price'] ||
+          item.price ||
+          item.Price ||
+          item['Unit Price'] ||
+          item['Unit price'] ||
+          item['MRP'] ||
+          item.mrp;
+
+        const validatedHsn = this.normalizeAndValidateHsn(rawHsn, { required: true });
 
         // Map category to database format
         let mappedCategory = categoryMap[rawCategory] || rawCategory || 'RAW_MATERIAL';
@@ -212,11 +359,11 @@ export class ItemsService {
           description: item.description || item.Description || item.DESCRIPTION || '',
           category: mappedCategory,
           uom: rawUom || 'PCS',
-          standard_cost: parseFloat(item.standard_cost || item.StandardCost || item.cost || item.Cost || 0),
-          selling_price: parseFloat(item.selling_price || item.SellingPrice || item.price || item.Price || 0),
-          reorder_level: parseInt(item.reorder_level || item.ReorderLevel || item.min_qty || 0),
-          reorder_quantity: parseInt(item.reorder_quantity || item.ReorderQuantity || item.order_qty || 0),
-          lead_time_days: parseInt(item.lead_time_days || item.LeadTimeDays || item.lead_time || 0),
+          standard_cost: this.normalizeNumber(rawStandardCost),
+          selling_price: this.normalizeNumber(rawSellingPrice),
+          reorder_level: this.normalizeNumber(item.reorder_level || item.ReorderLevel || item['Reorder Level'] || item['Reorder level'] || item.min_qty, 'int'),
+          reorder_quantity: this.normalizeNumber(item.reorder_quantity || item.ReorderQuantity || item['Reorder Quantity'] || item['Reorder quantity'] || item.order_qty, 'int'),
+          lead_time_days: this.normalizeNumber(item.lead_time_days || item.LeadTimeDays || item['Lead Time'] || item['Lead time'] || item.lead_time, 'int'),
         };
 
         const { error } = await this.supabase
@@ -264,14 +411,10 @@ export class ItemsService {
   }
 
   async update(tenantId: string, id: string, itemData: any) {
-    // Validate HSN code if provided
-    let validatedHsn = null;
-    if (itemData.hsnCode || itemData.hsn_code) {
-      const hsnStr = String(itemData.hsnCode || itemData.hsn_code).trim();
-      if (/^\d{4}$|^\d{6}$|^\d{8}$/.test(hsnStr)) {
-        validatedHsn = hsnStr;
-      }
-    }
+    const hsnProvided = itemData.hsnCode !== undefined || itemData.hsn_code !== undefined;
+    const validatedHsn = hsnProvided
+      ? this.normalizeAndValidateHsn(itemData.hsnCode ?? itemData.hsn_code, { required: true })
+      : null;
 
     const updateData: any = {
       updated_at: new Date().toISOString(),
@@ -327,6 +470,27 @@ export class ItemsService {
     if (itemData.metadata !== undefined) updateData.metadata = itemData.metadata;
     if (validatedHsn !== null) updateData.hsn_code = validatedHsn;
     if (itemData.is_active !== undefined) updateData.is_active = itemData.is_active;
+    
+    // Variant fields
+    if (itemData.parent_item_id !== undefined) updateData.parent_item_id = itemData.parent_item_id || null;
+    if (itemData.is_variant !== undefined) updateData.is_variant = itemData.is_variant;
+    if (itemData.is_default_variant !== undefined) updateData.is_default_variant = itemData.is_default_variant;
+    if (itemData.variant_name !== undefined) updateData.variant_name = itemData.variant_name || null;
+
+    const drawingRequired = itemData.drawing_required ?? itemData.drawingRequired;
+    if (drawingRequired !== undefined) {
+      if (
+        drawingRequired !== 'OPTIONAL' &&
+        drawingRequired !== 'COMPULSORY' &&
+        drawingRequired !== 'NOT_REQUIRED'
+      ) {
+        throw new BadRequestException('Invalid drawing_required. Must be OPTIONAL, COMPULSORY, or NOT_REQUIRED.');
+      }
+      updateData.drawing_required = drawingRequired;
+    }
+
+    const uidFields = this.normalizeUidFields(itemData);
+    Object.assign(updateData, uidFields);
 
     const { data, error } = await this.supabase
       .from('items')
@@ -375,6 +539,35 @@ export class ItemsService {
   }
 
   async uploadDrawing(tenantId: string, userId: string, itemId: string, drawingData: any) {
+    const documentId = (drawingData?.documentId || drawingData?.document_id || '').toString().trim();
+
+    let resolvedFileName = drawingData?.fileName;
+    let resolvedFileUrl = drawingData?.fileUrl;
+    let resolvedFileType = drawingData?.fileType;
+    let resolvedFileSize = drawingData?.fileSize;
+
+    if (documentId) {
+      const { data: doc, error: docError } = await this.supabase
+        .from('documents')
+        .select('id, file_url, file_name, file_type, file_size, title')
+        .eq('tenant_id', tenantId)
+        .eq('id', documentId)
+        .single();
+
+      if (docError || !doc) {
+        throw new Error(`Failed to link drawing from document: ${docError?.message || 'Document not found'}`);
+      }
+
+      resolvedFileUrl = doc.file_url;
+      resolvedFileName = doc.file_name || doc.title || 'drawing';
+      resolvedFileType = doc.file_type;
+      resolvedFileSize = doc.file_size;
+    }
+
+    if (!resolvedFileUrl) {
+      throw new Error('Missing drawing fileUrl');
+    }
+
     // Get current max version for this item
     const { data: existingDrawings } = await this.supabase
       .from('item_drawings')
@@ -388,25 +581,56 @@ export class ItemsService {
       ? existingDrawings[0].version + 1
       : 1;
 
-    const { data, error } = await this.supabase
-      .from('item_drawings')
-      .insert({
-        tenant_id: tenantId,
-        item_id: itemId,
-        file_name: drawingData.fileName,
-        file_url: drawingData.fileUrl,
-        file_type: drawingData.fileType,
-        file_size: drawingData.fileSize,
-        version: nextVersion,
-        revision_notes: drawingData.revisionNotes,
-        is_active: true,
-        uploaded_by: userId,
-      })
-      .select()
-      .single();
+    const baseInsert: any = {
+      tenant_id: tenantId,
+      item_id: itemId,
+      file_name: resolvedFileName,
+      file_url: resolvedFileUrl,
+      file_type: resolvedFileType,
+      file_size: resolvedFileSize,
+      version: nextVersion,
+      revision_notes: drawingData.revisionNotes,
+      is_active: true,
+      uploaded_by: userId,
+    };
+
+    const tryInsert = async (payload: any) => {
+      return this.supabase
+        .from('item_drawings')
+        .insert(payload)
+        .select()
+        .single();
+    };
+
+    // Prefer to persist the source document reference when available, but tolerate schema drift.
+    let insertResult = documentId
+      ? await tryInsert({ ...baseInsert, document_id: documentId })
+      : await tryInsert(baseInsert);
+
+    if (insertResult.error && documentId) {
+      const message = String((insertResult.error as any)?.message || '').toLowerCase();
+      if (message.includes('document_id') && (message.includes('column') || message.includes('does not exist'))) {
+        insertResult = await tryInsert(baseInsert);
+      }
+    }
+
+    const data = insertResult.data as any;
+    const error = insertResult.error as any;
 
     if (error) {
       throw new Error(`Failed to upload drawing: ${error.message}`);
+    }
+
+    // Ensure only one active drawing per item (latest by default)
+    const { error: deactivateError } = await this.supabase
+      .from('item_drawings')
+      .update({ is_active: false })
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .neq('id', data.id);
+
+    if (deactivateError) {
+      throw new Error(`Failed to finalize drawing upload: ${deactivateError.message}`);
     }
 
     return data;
@@ -428,6 +652,20 @@ export class ItemsService {
 
     if (error) {
       throw new Error(`Failed to update drawing: ${error.message}`);
+    }
+
+    // If activated, deactivate all others to keep exactly one ACTIVE drawing
+    if (drawingData.isActive === true) {
+      const { error: deactivateError } = await this.supabase
+        .from('item_drawings')
+        .update({ is_active: false })
+        .eq('tenant_id', tenantId)
+        .eq('item_id', itemId)
+        .neq('id', drawingId);
+
+      if (deactivateError) {
+        throw new Error(`Failed to activate drawing: ${deactivateError.message}`);
+      }
     }
 
     return data;
@@ -568,5 +806,47 @@ export class ItemsService {
     }
 
     return data && data.length > 0 ? data[0] : { total_quantity: 0, available_quantity: 0, allocated_quantity: 0 };
+  }
+
+  // Get all variants of an item
+  async getItemVariants(tenantId: string, itemId: string) {
+    console.log('[getItemVariants] Fetching variants for item:', itemId, 'tenant:', tenantId);
+    
+    const { data, error } = await this.supabase
+      .from('items')
+      .select('id, code, name, variant_name, is_default_variant, category, uom, hsn_code')
+      .eq('tenant_id', tenantId)
+      .eq('parent_item_id', itemId)
+      .eq('is_variant', true)
+      .eq('is_active', true)
+      .order('is_default_variant', { ascending: false })
+      .order('variant_name', { ascending: true });
+
+    console.log('[getItemVariants] Query result:', { data, error, count: data?.length });
+
+    if (error) {
+      throw new Error(`Failed to get item variants: ${error.message}`);
+    }
+
+    return data || [];
+  }
+
+  // Get default variant for an item
+  async getDefaultVariant(tenantId: string, itemId: string) {
+    const { data, error } = await this.supabase
+      .from('items')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('parent_item_id', itemId)
+      .eq('is_variant', true)
+      .eq('is_default_variant', true)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to get default variant: ${error.message}`);
+    }
+
+    return data;
   }
 }

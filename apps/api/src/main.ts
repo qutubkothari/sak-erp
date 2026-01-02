@@ -4,6 +4,9 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import compression from 'compression';
+import { json, urlencoded, static as serveStatic } from 'express';
+import { mkdirSync } from 'fs';
+import { resolve } from 'path';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 
@@ -14,6 +17,9 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('APP_PORT', 4000);
+
+  // Body size limits (needed for base64 document uploads)
+  const bodySizeLimit = configService.get<string>('BODY_SIZE_LIMIT', '50mb');
 
   // Security
   app.use(helmet());
@@ -27,6 +33,17 @@ async function bootstrap() {
 
   // Compression
   app.use(compression());
+
+  // Increase request payload limits (default is too small for base64 PDFs/images)
+  app.use(json({ limit: bodySizeLimit }));
+  app.use(urlencoded({ extended: true, limit: bodySizeLimit }));
+
+  // Serve uploaded files (local EC2 storage)
+  const uploadsRoot =
+    configService.get<string>('UPLOAD_ROOT_DIR') ||
+    resolve(process.cwd(), '..', '..', 'uploads');
+  mkdirSync(uploadsRoot, { recursive: true });
+  app.use('/uploads', serveStatic(uploadsRoot));
 
   // Global validation pipe
   app.useGlobalPipes(
@@ -65,7 +82,8 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  await app.listen(port);
+  // Bind to 0.0.0.0 for EC2 compatibility
+  await app.listen(port, '0.0.0.0');
   console.log(`🚀 API Server running on: http://localhost:${port}`);
   console.log(`📚 API Documentation: http://localhost:${port}/api/docs`);
   console.log(`🎯 GraphQL Playground: http://localhost:${port}/graphql`);

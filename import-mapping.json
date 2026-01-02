@@ -1,0 +1,170 @@
+{
+  "totalItems": 686,
+  "columnMapping": {
+    "165": "UNIT OF MEASURE",
+    "__EMPTY": "Sl No.",
+    "__EMPTY_1": "whether LifeBuoy?",
+    "__EMPTY_2": "Responsible Person",
+    "__EMPTY_3": "Threshold Stock",
+    "__EMPTY_4": "How Many Crafts can be done from the availbale Stock?",
+    "__EMPTY_5": "quantity to be ordered desired production",
+    "__EMPTY_6": "HSN Codes",
+    "Colum O to T should only Be Copied for Purchase Order": "RAW MATERIAL NAME",
+    "__EMPTY_7": "SAS Part Number",
+    "__EMPTY_8": "OEM Part Number",
+    "__EMPTY_9": "Required Quantity ",
+    "__EMPTY_10": "COST",
+    "__EMPTY_11": "GST Rate",
+    "__EMPTY_12": "Total Stock In",
+    "__EMPTY_13": "Required for Single SaifSeas",
+    "Desired Production: ->": "Order Status",
+    "__EMPTY_14": "SUPPLIER",
+    "__EMPTY_15": "Required in desired no of SS",
+    "__EMPTY_16": "Starting Inventory Mar25"
+  },
+  "databaseMapping": {
+    "part_number": "sas_part_number",
+    "name": "raw_material_name",
+    "description": "raw_material_name",
+    "type": "RAW_MATERIAL",
+    "category": "Based on prefix or manual classification",
+    "hsn_code": "hsn_code",
+    "gst_rate": "gst_rate",
+    "unit": "unit_of_measure",
+    "min_stock_level": "threshold_stock",
+    "reorder_level": "threshold_stock",
+    "manufacturer_part_number": "oem_part_number",
+    "cost_price": "cost",
+    "supplier_name": "supplier"
+  },
+  "sasPartNumberLogic": {
+    "prefixes": {
+      "RAD": 2,
+      "SIC": 3,
+      "MOD": 3,
+      "CON": 9,
+      "CAB": 12
+    },
+    "structures": {
+      "ALPHA-ALPHA-MIXED": 25,
+      "ALPHA-ALPHA-ALPHANUM-MIXED": 3,
+      "ALPHA-ALPHA-ALPHANUM": 1
+    },
+    "examples": [
+      {
+        "sas": "RAD-TRR-QX71W915",
+        "oem": "Robu-866205",
+        "name": "Transmitter with Receiver Module 2.4G0.9k"
+      },
+      {
+        "sas": "RAD-TRR-R9MI1W915",
+        "oem": "Robu-866205",
+        "name": "Receiver Module R9MM (R9MM will come July25)/R9Mini "
+      },
+      {
+        "sas": "SIC-DIO-M7-v100i1",
+        "oem": "Robu-597541",
+        "name": "Free Wheel Diode SMD M7"
+      },
+      {
+        "sas": "SIC-DIO-SS310-v100i1",
+        "oem": "Robu-R193145",
+        "name": "Schottky Diode SS310 100v1A"
+      },
+      {
+        "sas": "SIC-REG-AMS1117-5v",
+        "oem": "Robu-162035",
+        "name": "Voltage Regulator AMS1117 5.0v"
+      },
+      {
+        "sas": " ",
+        "oem": "Neo-6M",
+        "name": "GPS Module NEO-6M"
+      },
+      {
+        "sas": "MOD-GNS-LC86L",
+        "oem": "LC86L",
+        "name": "GPS Module LC86L"
+      },
+      {
+        "sas": "MOD-GNS-HERE3+",
+        "oem": "Here3+",
+        "name": "Here3+ GPS with CAN"
+      },
+      {
+        "sas": "MOD-GNS-BX992",
+        "oem": "BX992",
+        "name": "GPS Module BX992 Trimble"
+      },
+      {
+        "sas": "CON-BUL-55F",
+        "oem": "HV130",
+        "name": "Bullet Connector Female 5.5mm"
+      }
+    ]
+  },
+  "suppliers": [
+    "Robu ",
+    "Roland",
+    "Gadgets Deal",
+    "Pan India Consultants",
+    "Hobbywing",
+    "Rajguru",
+    "RR Innovations",
+    "JLC",
+    "NSK Electronics",
+    "Quartz Components",
+    "Ampower India",
+    "Seutes",
+    "Global Electronics",
+    "Canner Connectors",
+    "Shenzen ISD Technology",
+    "Donor RC",
+    "Synergy",
+    "synergy",
+    "Cable Fort",
+    "Ali Irani - Kolkata ",
+    "Vinod Rai",
+    "Agarwal Aluminium",
+    "Dolphin Rubber",
+    "Janki Die",
+    "In-house",
+    "Local Market",
+    "Marhash Toroid Rings",
+    "Weipu",
+    "Evelta",
+    "Tanveer International",
+    "BlueRobotics",
+    "Premier Electronics",
+    "Dynamic Industrial Supplier",
+    "Sri Venkateswara Timber",
+    "Naveen",
+    "In House",
+    "ARB Accessories",
+    "NDP",
+    "Himalaya Traders",
+    "Ambica Industries",
+    "CaseNfoam Toolfit",
+    "Webel",
+    "PrathameshTechnology & Industries ",
+    "Local Market Kolkata",
+    "Suzhou Volsun Electronics Technology",
+    "Commercial Engineering",
+    "Hi Tech",
+    "Innovine Tech Marketing PVt. Ltd.",
+    "Royal Tools & Hardware",
+    "AliHussain Bharmal",
+    "Bagnan",
+    "Balaji - PB Manufacturing",
+    "D. B. Smelting",
+    "Svtherm Technologies",
+    "Robu 3D print",
+    "Leopard",
+    "Popular Pnuematic / Hydro Pnuematic",
+    "Jain Wire Netting",
+    "Elegant Enterprises",
+    "Attitude Master Vizag",
+    "Toolkit",
+    "Amazon"
+  ]
+}

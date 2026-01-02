@@ -14,17 +14,51 @@ interface Item {
 interface ItemSearchProps {
   value: string;
   onSelect: (item: Item) => void;
+  initialItem?: Pick<Item, 'id' | 'code' | 'name'> | null;
   placeholder?: string;
   className?: string;
+  disabled?: boolean;
 }
 
-export default function ItemSearch({ value, onSelect, placeholder, className }: ItemSearchProps) {
+export default function ItemSearch({ value, onSelect, initialItem, placeholder, className, disabled }: ItemSearchProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [items, setItems] = useState<Item[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Fetch initial item if value prop is provided
+  useEffect(() => {
+    const fetchInitialItem = async () => {
+      if (!value || searchQuery) return; // Skip if no value or already has searchQuery
+
+      if (initialItem && initialItem.id === value && initialItem.code && initialItem.name) {
+        setSearchQuery(`${initialItem.code} - ${initialItem.name}`);
+        setSelectedItem(initialItem as Item);
+        return;
+      }
+      
+      try {
+        const token = localStorage.getItem('accessToken');
+        if (!token) return;
+
+        const response = await fetch(`/api/v1/inventory/items/${value}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        
+        if (response.ok) {
+          const item = await response.json();
+          setSearchQuery(`${item.code} - ${item.name}`);
+          setSelectedItem(item);
+        }
+      } catch (error) {
+        console.error('Error fetching initial item:', error);
+      }
+    };
+    
+    fetchInitialItem();
+  }, [value, searchQuery, initialItem]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -48,7 +82,11 @@ export default function ItemSearch({ value, onSelect, placeholder, className }: 
       setLoading(true);
       try {
         const token = localStorage.getItem('accessToken');
-        const response = await fetch(`http://13.205.17.214:4000/api/v1/inventory/items/search?q=${encodeURIComponent(searchQuery)}`, {
+        if (!token) {
+          setItems([]);
+          return;
+        }
+        const response = await fetch(`/api/v1/inventory/items/search?q=${encodeURIComponent(searchQuery)}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -92,6 +130,7 @@ export default function ItemSearch({ value, onSelect, placeholder, className }: 
         onFocus={() => searchQuery.trim().length >= 2 && setShowDropdown(true)}
         className={className || "w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"}
         placeholder={placeholder || "Type to search items..."}
+        disabled={disabled}
       />
 
       {showDropdown && (

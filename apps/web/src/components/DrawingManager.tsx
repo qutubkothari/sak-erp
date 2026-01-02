@@ -13,6 +13,18 @@ interface Drawing {
   is_active: boolean;
   uploaded_by: string;
   created_at: string;
+  document_id?: string | null;
+}
+
+interface DocumentOption {
+  id: string;
+  title?: string | null;
+  file_name?: string | null;
+  file_url?: string | null;
+  file_type?: string | null;
+  file_size?: number | null;
+  created_at?: string | null;
+  document_type?: string | null;
 }
 
 interface DrawingManagerProps {
@@ -27,30 +39,205 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [updatingActiveId, setUpdatingActiveId] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [revisionNotes, setRevisionNotes] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  const [documents, setDocuments] = useState<DocumentOption[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string>('');
+
+  const dataUrlToBlob = (dataUrl: string) => {
+    const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
+    if (!match) return null;
+
+    const mimeType = match[1];
+    const base64Data = match[2];
+    const byteString = atob(base64Data);
+    const byteArray = new Uint8Array(byteString.length);
+    for (let i = 0; i < byteString.length; i++) {
+      byteArray[i] = byteString.charCodeAt(i);
+    }
+
+    return new Blob([byteArray], { type: mimeType });
+  };
+
+  const openDrawingInNewTab = async (drawing: Drawing) => {
+    try {
+      if (!drawing?.file_url) return;
+
+      // Prefer Blob URLs for reliability (data: URLs can be too long / blocked in some browsers)
+      if (drawing.file_url.startsWith('data:')) {
+        const blob = dataUrlToBlob(drawing.file_url);
+        if (!blob) {
+          window.open(drawing.file_url, '_blank', 'noopener,noreferrer');
+          return;
+        }
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank', 'noopener,noreferrer');
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+        return;
+      }
+
+      window.open(drawing.file_url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error('Error opening drawing:', error);
+      alert('Failed to open drawing');
+    }
+  };
+
+  const downloadDrawing = async (drawing: Drawing) => {
+    try {
+      if (!drawing?.file_url) return;
+
+      if (drawing.file_url.startsWith('data:')) {
+        const blob = dataUrlToBlob(drawing.file_url);
+        if (!blob) {
+          const link = document.createElement('a');
+          link.href = drawing.file_url;
+          link.download = drawing.file_name || 'drawing';
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          return;
+        }
+
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = drawing.file_name || 'drawing';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+        return;
+      }
+
+      const link = document.createElement('a');
+      link.href = drawing.file_url;
+      link.download = drawing.file_name || 'drawing';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error('Error downloading drawing:', error);
+      alert('Failed to download drawing');
+    }
+  };
+
   useEffect(() => {
     fetchDrawings();
+    fetchDocuments();
   }, [itemId]);
 
   const fetchDrawings = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/inventory/items/${itemId}/drawings`, {
+      const response = await fetch(`/api/v1/inventory/items/${itemId}/drawings`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.ok) {
         const data = await response.json();
-        setDrawings(data.filter((d: Drawing) => d.is_active));
+        setDrawings(data);
       }
     } catch (error) {
       console.error('Error fetching drawings:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDocuments = async () => {
+    try {
+      setDocumentsLoading(true);
+      const token = localStorage.getItem('accessToken');
+
+      // We store drawings as Documents of type DRAWING (and sometimes TECHNICAL_DRAWING)
+      const [drawingsRes, technicalRes] = await Promise.all([
+        fetch('/api/v1/documents?document_type=DRAWING', {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch('/api/v1/documents?document_type=TECHNICAL_DRAWING', {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      const results: DocumentOption[] = [];
+      if (drawingsRes.ok) {
+        const data = await drawingsRes.json();
+        if (Array.isArray(data)) results.push(...data);
+      }
+      if (technicalRes.ok) {
+        const data = await technicalRes.json();
+        if (Array.isArray(data)) results.push(...data);
+      }
+
+      // Deduplicate by id, and keep newest first
+      const byId = new Map<string, DocumentOption>();
+      for (const doc of results) {
+        if (doc?.id && !byId.has(doc.id)) byId.set(doc.id, doc);
+      }
+
+      const merged = Array.from(byId.values()).sort((a, b) => {
+        const at = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return bt - at;
+      });
+
+      setDocuments(merged);
+    } catch (error) {
+      console.error('Error fetching documents:', error);
+      setDocuments([]);
+    } finally {
+      setDocumentsLoading(false);
+    }
+  };
+
+  const handleLinkExistingDocument = async () => {
+    if (!selectedDocumentId) {
+      alert('Please select a drawing document');
+      return;
+    }
+
+    if (!revisionNotes.trim() && drawings.length > 0) {
+      alert('Please add revision notes for new versions');
+      return;
+    }
+
+    setLinking(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+
+      const response = await fetch(`/api/v1/inventory/items/${itemId}/drawings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          documentId: selectedDocumentId,
+          revisionNotes: revisionNotes.trim() || (drawings.length > 0 ? 'Linked from Documents' : 'Initial version'),
+        }),
+      });
+
+      if (response.ok) {
+        alert('Drawing linked successfully!');
+        setSelectedDocumentId('');
+        setRevisionNotes('');
+        await fetchDrawings();
+      } else {
+        const error = await response.json().catch(() => ({}));
+        alert(`Failed to link: ${error.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error linking document:', error);
+      alert('Failed to link drawing');
+    } finally {
+      setLinking(false);
     }
   };
 
@@ -104,7 +291,7 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
         const base64 = reader.result as string;
         
         const token = localStorage.getItem('accessToken');
-        const response = await fetch(`http://13.205.17.214:4000/api/v1/inventory/items/${itemId}/drawings`, {
+        const response = await fetch(`/api/v1/inventory/items/${itemId}/drawings`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -139,6 +326,39 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
     }
   };
 
+  const handleSetActive = async (drawing: Drawing) => {
+    if (drawing.is_active) return;
+
+    try {
+      setUpdatingActiveId(drawing.id);
+      const token = localStorage.getItem('accessToken');
+
+      const response = await fetch(`/api/v1/inventory/items/${itemId}/drawings/${drawing.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          revisionNotes: drawing.revision_notes,
+          isActive: true,
+        }),
+      });
+
+      if (response.ok) {
+        await fetchDrawings();
+      } else {
+        const error = await response.json().catch(() => ({}));
+        alert(`Failed to set active drawing: ${error.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error setting active drawing:', error);
+      alert('Failed to set active drawing');
+    } finally {
+      setUpdatingActiveId(null);
+    }
+  };
+
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
@@ -156,6 +376,8 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
   };
 
   const canClose = !mandatory || drawings.length > 0;
+
+  const activeDrawing = drawings.find(d => d.is_active) || null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -193,6 +415,41 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
             </h3>
 
             <div className="space-y-4">
+              {/* Link existing Document */}
+              <div className="bg-white border border-amber-200 rounded-lg p-3">
+                <div className="text-sm font-medium text-amber-900 mb-2">Use Existing Drawing from Documents</div>
+                <div className="flex gap-2 items-center">
+                  <select
+                    value={selectedDocumentId}
+                    onChange={(e) => setSelectedDocumentId(e.target.value)}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    disabled={documentsLoading || linking}
+                  >
+                    <option value="">{documentsLoading ? 'Loading drawings…' : 'Select a drawing document'}</option>
+                    {documents.map((doc) => {
+                      const label = (doc.title || doc.file_name || doc.id || '').toString();
+                      return (
+                        <option key={doc.id} value={doc.id}>
+                          {label}
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={handleLinkExistingDocument}
+                    disabled={!selectedDocumentId || linking}
+                    className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 disabled:bg-gray-400 text-sm"
+                  >
+                    {linking ? 'Linking…' : 'Link'}
+                  </button>
+                </div>
+                <div className="text-xs text-gray-600 mt-2">
+                  This will create a new drawing version for this item using the selected Document.
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Select File (PNG, JPG, PDF - Max 10MB) *
@@ -248,6 +505,12 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
               Drawing History ({drawings.length} versions)
             </h3>
 
+            {activeDrawing && (
+              <div className="mb-3 text-sm bg-green-50 border border-green-200 rounded px-3 py-2 text-green-900">
+                Active drawing: <span className="font-semibold">v{activeDrawing.version}</span> ({activeDrawing.file_name})
+              </div>
+            )}
+
             {loading ? (
               <div className="text-center py-8 text-gray-500">Loading drawings...</div>
             ) : drawings.length === 0 ? (
@@ -275,6 +538,11 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
                               LATEST
                             </span>
                           )}
+                          {drawing.is_active && (
+                            <span className="bg-amber-100 text-amber-900 px-2 py-1 rounded text-xs font-semibold">
+                              ACTIVE
+                            </span>
+                          )}
                         </div>
 
                         <div className="mt-2 text-sm text-gray-600 grid grid-cols-2 gap-x-4">
@@ -291,21 +559,30 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
                       </div>
 
                       <div className="flex gap-2">
-                        <a
-                          href={drawing.file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => openDrawingInNewTab(drawing)}
                           className="bg-blue-100 text-blue-700 px-4 py-2 rounded hover:bg-blue-200 text-sm font-medium"
                         >
                           View
-                        </a>
-                        <a
-                          href={drawing.file_url}
-                          download={drawing.file_name}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => downloadDrawing(drawing)}
                           className="bg-green-100 text-green-700 px-4 py-2 rounded hover:bg-green-200 text-sm font-medium"
                         >
                           Download
-                        </a>
+                        </button>
+                        {!drawing.is_active && (
+                          <button
+                            type="button"
+                            onClick={() => handleSetActive(drawing)}
+                            disabled={updatingActiveId === drawing.id}
+                            className="bg-amber-100 text-amber-900 px-4 py-2 rounded hover:bg-amber-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {updatingActiveId === drawing.id ? 'Applying...' : 'Set Active'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

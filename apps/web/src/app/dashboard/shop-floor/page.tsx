@@ -54,7 +54,7 @@ export default function ShopFloorPage() {
   const fetchWorkStations = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://13.205.17.214:4000/api/v1/production/work-stations?isActive=true', {
+      const response = await fetch('/api/v1/production/work-stations?isActive=true', {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
@@ -69,7 +69,7 @@ export default function ShopFloorPage() {
   const fetchActiveOperation = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://13.205.17.214:4000/api/v1/production/completions/my-active', {
+      const response = await fetch('/api/v1/production/completions/my-active', {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
@@ -82,7 +82,7 @@ export default function ShopFloorPage() {
   const fetchQueue = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/production/work-stations/${selectedStation}/queue`, {
+      const response = await fetch(`/api/v1/production/work-stations/${selectedStation}/queue`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
@@ -98,7 +98,7 @@ export default function ShopFloorPage() {
     setLoading(true);
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://13.205.17.214:4000/api/v1/production/completions/start', {
+      const response = await fetch('/api/v1/production/completions/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -131,7 +131,7 @@ export default function ShopFloorPage() {
     setLoading(true);
     try {
       const token = localStorage.getItem('accessToken');
-      await fetch(`http://13.205.17.214:4000/api/v1/production/completions/${activeOperation.id}/complete`, {
+      await fetch(`/api/v1/production/completions/${activeOperation.id}/complete`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -162,7 +162,7 @@ export default function ShopFloorPage() {
     setLoading(true);
     try {
       const token = localStorage.getItem('accessToken');
-      await fetch(`http://13.205.17.214:4000/api/v1/production/completions/${activeOperation.id}/pause`, {
+      await fetch(`/api/v1/production/completions/${activeOperation.id}/pause`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

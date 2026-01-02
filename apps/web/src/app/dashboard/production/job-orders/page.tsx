@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import SearchableSelect from '../../../../components/SearchableSelect';
 
 interface Item {
   id: string;
@@ -9,7 +11,18 @@ interface Item {
   name: string;
   type?: string;
   category?: string;
+  uom?: string;
+  total_stock?: number;
+  current_stock?: number;
+  stock_in_hand?: number;
+  stock_available?: number;
 }
+
+type ItemStockSummary = {
+  total_quantity: number;
+  available_quantity: number;
+  allocated_quantity: number;
+};
 
 interface Workstation {
   id: string;
@@ -50,6 +63,10 @@ interface Material {
   issuedQuantity?: number;
   warehouseId?: string;
   status?: string;
+  variants?: any[];
+  selectedVariantId?: string;
+  selectedVariantName?: string;
+  variantNotes?: string;
 }
 
 interface JobOrder {
@@ -72,16 +89,40 @@ interface JobOrder {
   createdAt: string;
 }
 
+interface JobOrderUID {
+  uid: string;
+  quality_status?: string;
+  client_part_number?: string;
+  created_at?: string;
+  items?: {
+    id: string;
+    code: string;
+    name: string;
+  };
+}
+
 export default function JobOrdersPage() {
+  const router = useRouter();
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [workstations, setWorkstations] = useState<Workstation[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [boms, setBoms] = useState<any[]>([]);
+  const [allBoms, setAllBoms] = useState<any[]>([]);
+  const [bomSearchTerm, setBomSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedJobOrder, setSelectedJobOrder] = useState<JobOrder | null>(null);
   const [loading, setLoading] = useState(false);
   const [completionPreview, setCompletionPreview] = useState<any>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [stockErrorModal, setStockErrorModal] = useState<{show: boolean, shortages: any[]}>({show: false, shortages: []});
+  const [itemStockSummaryById, setItemStockSummaryById] = useState<Record<string, ItemStockSummary>>({});
+
+  // QC modal state
+  const [showQcModal, setShowQcModal] = useState(false);
+  const [qcLoading, setQcLoading] = useState(false);
+  const [qcUids, setQcUids] = useState<JobOrderUID[]>([]);
+  const [qcIndex, setQcIndex] = useState(0);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -96,14 +137,129 @@ export default function JobOrdersPage() {
 
   const [operations, setOperations] = useState<Operation[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
+  const [baseMaterialQuantities, setBaseMaterialQuantities] = useState<{ [key: string]: number }>({});
 
   useEffect(() => {
     fetchJobOrders();
     fetchItems();
     fetchWorkstations();
     fetchUsers();
+    fetchAllBoms();
     console.log('Initial data fetch triggered');
   }, []);
+
+  const openQcModal = async () => {
+    if (!selectedJobOrder?.id) return;
+
+    setShowQcModal(true);
+    setQcLoading(true);
+    setQcUids([]);
+    setQcIndex(0);
+
+    try {
+      const response = await apiClient.get<any>(
+        `/uid?job_order_id=${selectedJobOrder.id}&limit=5000&sortBy=created_at&sortOrder=asc`,
+      );
+      const data = Array.isArray(response) ? response : response?.data || [];
+      const list = (data || []) as JobOrderUID[];
+
+      setQcUids(list);
+
+      // Jump to first non-PASSED UID
+      const firstPendingIdx = list.findIndex(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED');
+      setQcIndex(firstPendingIdx >= 0 ? firstPendingIdx : 0);
+    } catch (error) {
+      console.error('Error fetching job order UIDs for QC:', error);
+      alert('Failed to load UIDs for QC');
+      setShowQcModal(false);
+    } finally {
+      setQcLoading(false);
+    }
+  };
+
+  const setCurrentUidQc = async (qualityStatus: 'PASSED' | 'ON_HOLD', targetUid?: string) => {
+    const uidToUpdate = targetUid || qcUids[qcIndex]?.uid;
+    if (!uidToUpdate) return;
+
+    try {
+      await apiClient.put(`/uid/${encodeURIComponent(uidToUpdate)}/quality-status`, {
+        quality_status: qualityStatus,
+      });
+
+      const updated = qcUids.map((u) => 
+        u.uid === uidToUpdate ? { ...u, quality_status: qualityStatus } : u
+      );
+      setQcUids(updated);
+
+      // If no targetUid specified (old sequential behavior), advance to next pending
+      if (!targetUid) {
+        const nextPendingIdx = updated.findIndex(
+          (u, idx) => idx > qcIndex && String(u?.quality_status || '').toUpperCase() !== 'PASSED',
+        );
+
+        if (nextPendingIdx >= 0) {
+          setQcIndex(nextPendingIdx);
+          return;
+        }
+
+        // If none after current, try from start
+        const firstPendingIdx = updated.findIndex(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED');
+        if (firstPendingIdx >= 0) {
+          setQcIndex(firstPendingIdx);
+          return;
+        }
+
+        alert('✅ All UIDs are QC PASSED');
+        setShowQcModal(false);
+      }
+    } catch (error: any) {
+      console.error('Error updating QC status:', error);
+      const msg = error?.response?.data?.message || error?.message || 'Failed to update QC status';
+      alert(msg);
+    }
+  };
+
+  const fetchItemStockSummary = async (itemId: string) => {
+    const id = String(itemId || '').trim();
+    if (!id) return;
+
+    // Avoid refetch if we already have it.
+    if (itemStockSummaryById[id]) return;
+
+    try {
+      // Source of truth for stock in this ERP is `stock_entries` via the RPC-backed endpoint.
+      const summary = await apiClient.get(`/items/${id}/stock`);
+
+      const normalized: ItemStockSummary = {
+        total_quantity: Number(summary?.total_quantity) || 0,
+        available_quantity: Number(summary?.available_quantity) || 0,
+        allocated_quantity: Number(summary?.allocated_quantity) || 0,
+      };
+
+      setItemStockSummaryById(prev => ({ ...prev, [id]: normalized }));
+    } catch (error) {
+      console.error('Error fetching item stock summary:', { itemId: id, error });
+      // Store a safe default so we don't spam retries.
+      setItemStockSummaryById(prev => ({
+        ...prev,
+        [id]: { total_quantity: 0, available_quantity: 0, allocated_quantity: 0 },
+      }));
+    }
+  };
+
+  // When BOM loads materials (or user edits materials), ensure we have stock summaries
+  // for all referenced item IDs.
+  useEffect(() => {
+    const ids = Array.from(
+      new Set(materials.map(m => String(m.itemId || '').trim()).filter(Boolean))
+    );
+    ids.forEach(id => {
+      if (!itemStockSummaryById[id]) {
+        fetchItemStockSummary(id);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materials]);
 
   const fetchJobOrders = async () => {
     try {
@@ -131,8 +287,15 @@ export default function JobOrdersPage() {
   const fetchItems = async () => {
     try {
       const data = await apiClient.get('/items');
-      console.log('Fetched items:', data?.length || 0, 'items');
-      setItems(data || []);
+
+      // Keep the list lightweight; stock is fetched on-demand per material via /items/:id/stock.
+      // Some API responses include `total_stock` (available) already; keep it for fallback.
+      const itemsWithOptionalStock = (data || []).map((item: any) => ({
+        ...item,
+        total_stock: Number(item?.total_stock) || 0,
+      }));
+
+      setItems(itemsWithOptionalStock || []);
     } catch (error) {
       console.error('Error fetching items:', error);
       setItems([]);
@@ -163,73 +326,132 @@ export default function JobOrdersPage() {
     }
   };
 
-  // Store base BOM quantities for recalculation
-  const [baseMaterialQuantities, setBaseMaterialQuantities] = useState<{ [key: string]: number }>({});
-
-  const fetchBOMData = async (itemId: string) => {
-    console.log('fetchBOMData called with itemId:', itemId);
+  // Fetch all BOMs on page load
+  const fetchAllBoms = async () => {
     try {
-      // Get BOM header for this item
-      console.log('Fetching BOM for itemId:', itemId);
-      const boms = await apiClient.get(`/bom?itemId=${itemId}`);
-      console.log('BOM response:', boms);
+      console.log('Fetching all BOMs...');
+      const bomsData = await apiClient.get('/bom');
+      console.log('All BOMs loaded:', bomsData?.length || 0, 'First BOM:', bomsData?.[0]);
+      const bomsArray = Array.isArray(bomsData) ? bomsData : [];
+      setAllBoms(bomsArray);
+      setBoms(bomsArray);
+    } catch (error) {
+      console.error('Error fetching BOMs:', error);
+      alert('Failed to load BOMs. Please check console for details.');
+      setAllBoms([]);
+      setBoms([]);
+    }
+  };
+
+  // Filter BOMs based on search term
+  useEffect(() => {
+    if (!bomSearchTerm.trim()) {
+      setBoms(allBoms);
+      return;
+    }
+    
+    const searchLower = bomSearchTerm.toLowerCase();
+    const filtered = allBoms.filter(bom => {
+      const itemCode = (bom.item?.code || '').toLowerCase();
+      const itemName = (bom.item?.name || '').toLowerCase();
+      const version = String(bom.version || '').toLowerCase();
+      return itemCode.includes(searchLower) || 
+             itemName.includes(searchLower) ||
+             version.includes(searchLower);
+    });
+    setBoms(filtered);
+  }, [bomSearchTerm, allBoms]);
+
+  const fetchBOMData = async (bomId: string) => {
+    if (!bomId) return;
+    
+    console.log('fetchBOMData called with bomId:', bomId);
+    try {
+      // Get BOM details to auto-populate item
+      const selectedBom = allBoms.find(b => b.id === bomId);
+      if (selectedBom && selectedBom.item_id) {
+        setFormData(prev => ({ ...prev, itemId: selectedBom.item_id }));
+        console.log('Auto-populated item from BOM:', selectedBom.item_id);
+      }
+
+      console.log('Loading BOM details for bomId:', bomId);
+
+      // Fetch BOM items (materials)
+      console.log('Fetching BOM items for bomId:', bomId);
+      const bomItems = await apiClient.get(`/bom/${bomId}/items`);
+      console.log('BOM items response:', bomItems);
+      console.log('First BOM item structure:', bomItems[0]);
       
-      if (boms && boms.length > 0) {
-        const bom = boms[0];
-        console.log('Found BOM:', bom);
-        setFormData(prev => ({ ...prev, bomId: bom.id }));
-
-        // Fetch BOM items (materials)
-        console.log('Fetching BOM items for bomId:', bom.id);
-        const bomItems = await apiClient.get(`/bom/${bom.id}/items`);
-        console.log('BOM items response:', bomItems);
-        console.log('First BOM item structure:', bomItems[0]);
-        
-        // Store base quantities from BOM (per 1 unit)
-        const baseQuantities: { [key: string]: number } = {};
-        const materials = bomItems.map((item: any) => {
-          console.log('Processing BOM item:', {
-            component_id: item.component_id,
-            item_id: item.item_id,
-            component_code: item.component_code,
-            component_name: item.component_name,
-            quantity: item.quantity
-          });
-          const itemId = item.component_id || item.item_id;
-          baseQuantities[itemId] = item.quantity;
-          return {
-            itemId: itemId,
-            itemCode: item.component_code,
-            itemName: item.component_name,
-            requiredQuantity: item.quantity * formData.quantity, // Multiply by current quantity
-          };
+      // Store base quantities from BOM (per 1 unit)
+      const baseQuantities: { [key: string]: number } = {};
+      const materialsWithVariants = await Promise.all(bomItems.map(async (item: any) => {
+        console.log('Processing BOM item:', {
+          component_id: item.component_id,
+          item_id: item.item_id,
+          component_code: item.component_code,
+          component_name: item.component_name,
+          quantity: item.quantity
         });
-        setBaseMaterialQuantities(baseQuantities);
-        setMaterials(materials);
-        console.log('Materials set:', materials);
-        console.log('Base quantities:', baseQuantities);
-
-        // Fetch routing (operations)
-        console.log('Fetching routing for bomId:', bom.id);
-        const routing = await apiClient.get(`/production/routing/bom/${bom.id}?withStations=true`);
-        console.log('Routing response:', routing);
+        const itemId = item.component_id || item.item_id;
+        baseQuantities[itemId] = item.quantity;
         
-        if (routing && routing.length > 0) {
-          const operations = routing.map((route: any) => ({
-            sequenceNumber: route.sequence_no,
-            operationName: route.operation_name,
-            workstationId: route.work_station_id,
-            acceptedVariationPercent: 5,
-          }));
-          setOperations(operations);
-          console.log('Operations set:', operations);
+        // Fetch variants for this item
+        let variants = [];
+        let selectedVariantId = itemId;
+        let selectedVariantName = item.component_name;
+        
+        try {
+          variants = await apiClient.get(`/items/${itemId}/variants`);
+          if (variants && variants.length > 0) {
+            const defaultVariant = variants.find((v: any) => v.is_default_variant) || variants[0];
+            selectedVariantId = defaultVariant.id;
+            selectedVariantName = defaultVariant.variant_name || defaultVariant.name;
+          }
+        } catch (error) {
+          console.log('No variants found for item:', itemId);
         }
         
-        alert('BOM data loaded! Materials and operations have been added.');
-      } else {
-        console.log('No BOM found for this item');
-        alert('No BOM found for this item');
+        return {
+          itemId: itemId,
+          itemCode: item.component_code,
+          itemName: item.component_name,
+          requiredQuantity: item.quantity * formData.quantity,
+          variants: variants,
+          selectedVariantId: selectedVariantId,
+          selectedVariantName: selectedVariantName,
+        };
+      }));
+      
+      setBaseMaterialQuantities(baseQuantities);
+      setMaterials(materialsWithVariants);
+      console.log('Materials with variants set:', materialsWithVariants);
+      console.log('Base quantities:', baseQuantities);
+
+      // Fetch routing (operations)
+      console.log('Fetching routing for bomId:', bomId);
+      const routing = await apiClient.get(`/production/routing/bom/${bomId}?withStations=true`);
+      console.log('Routing response:', routing);
+      
+      if (routing && routing.length > 0) {
+        const operations = routing.map((route: any) => ({
+          sequenceNumber: route.sequence_no,
+          operationName: route.operation_name,
+          workstationId: route.work_station_id,
+          acceptedVariationPercent: 5,
+        }));
+        setOperations(operations);
+        console.log('Operations set:', operations);
       }
+      
+      alert('BOM data loaded! Materials and operations have been added.');
+      
+      // Scroll to materials section after a short delay to show what was loaded
+      setTimeout(() => {
+        const materialsSection = document.getElementById('materials-section');
+        if (materialsSection) {
+          materialsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 500);
     } catch (error) {
       console.error('Error fetching BOM data:', error);
       alert('Error loading BOM data. Check console for details.');
@@ -257,6 +479,17 @@ export default function JobOrdersPage() {
 
   const removeOperation = (index: number) => {
     setOperations(operations.filter((_, i) => i !== index));
+  };
+
+  const updateMaterialVariant = (index: number, variantId: string) => {
+    const updated = [...materials];
+    const variant = updated[index].variants?.find((v: any) => v.id === variantId);
+    updated[index] = {
+      ...updated[index],
+      selectedVariantId: variantId,
+      selectedVariantName: variant?.variant_name || variant?.name || '',
+    };
+    setMaterials(updated);
   };
 
   const addMaterial = () => {
@@ -308,12 +541,14 @@ export default function JobOrdersPage() {
         payload.endDate = formData.endDate;
       }
       
-      // Clean materials - only send itemId and requiredQuantity
+      // Clean materials - include selectedVariantId if present
       if (materials.length > 0) {
         payload.materials = materials.map(m => ({
           itemId: m.itemId,
           requiredQuantity: m.requiredQuantity,
           warehouseId: m.warehouseId || undefined,
+          selectedVariantId: m.selectedVariantId || undefined,
+          variantNotes: m.variantNotes || undefined,
         }));
       }
       
@@ -337,9 +572,34 @@ export default function JobOrdersPage() {
       resetForm();
       fetchJobOrders();
       alert('Job Order created successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating job order:', error);
-      alert('Failed to create job order');
+      
+      // Check if it's an inventory shortage error
+      const errorMessage = error?.message || '';
+      if (errorMessage.includes('Insufficient materials')) {
+        // Parse the error message to extract shortage details
+        const lines = errorMessage.split('\n');
+        const shortageLines = lines.slice(1).filter((line: string) => line.trim()); // Skip the first line and empty lines
+
+        const shortages = shortageLines.map((line: string) => {
+          // Parse lines like "SG1 - L80 GPS: Need 1, Available 0, Short 1"
+          const match = line.match(/^(.+?):\s*Need\s+(\d+(?:\.\d+)?),\s*Available\s+(\d+(?:\.\d+)?),\s*Short\s+(\d+(?:\.\d+)?)$/);
+          if (match) {
+            return {
+              material: match[1].trim(),
+              needed: parseFloat(match[2]),
+              available: parseFloat(match[3]),
+              short: parseFloat(match[4])
+            };
+          }
+          return null;
+        }).filter(Boolean);
+        
+        setStockErrorModal({show: true, shortages});
+      } else {
+        alert('Failed to create job order: ' + errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -404,6 +664,8 @@ export default function JobOrdersPage() {
     });
     setOperations([]);
     setMaterials([]);
+    setBomSearchTerm('');
+    setBoms(allBoms);
   };
 
   const getStatusColor = (status: string) => {
@@ -419,34 +681,44 @@ export default function JobOrdersPage() {
   };
 
   return (
-    <div className="p-6">
+    <div className="p-6 min-h-screen bg-gradient-to-br from-[#FAF9F6] to-[#E8DCC4]">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Job Orders</h1>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          + Create Job Order
-        </button>
+        <h1 className="text-2xl font-bold text-[#36454F]">Job Orders</h1>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push('/dashboard/production/job-orders/smart')}
+            className="px-4 py-2 bg-[#8B6F47] text-white rounded hover:bg-[#6F4E37]"
+            title="Smart Job Order: select FG + preview BOM explosion + create"
+          >
+            + Create Job Order
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-3 py-2 border border-[#E8DCC4] text-[#6F4E37] rounded hover:bg-[#E8DCC4]"
+            title="Legacy Create Job Order (backup)"
+          >
+            Legacy Create
+          </button>
+        </div>
       </div>
 
       {/* Job Orders List */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      <div className="bg-[#FAF9F6] rounded-lg shadow-lg border border-[#E8DCC4] overflow-hidden">
+        <table className="min-w-full divide-y divide-[#E8DCC4]">
+          <thead className="bg-[#E8DCC4]">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Job Order #</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Start Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Priority</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Job Order #</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Item</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Quantity</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Start Date</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Priority</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Actions</th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="bg-[#FAF9F6] divide-y divide-[#E8DCC4]">
             {jobOrders.map((jo) => (
-              <tr key={jo.id} className="hover:bg-gray-50">
+              <tr key={jo.id} className="hover:bg-[#E8DCC4]">
                 <td className="px-6 py-4 whitespace-nowrap font-medium">{jo.jobOrderNumber}</td>
                 <td className="px-6 py-4">
                   <div>{jo.itemCode}</div>
@@ -521,29 +793,73 @@ export default function JobOrdersPage() {
             {/* Basic Information */}
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div>
-                <label className="block text-sm font-medium mb-1">Item *</label>
+                <label className="block text-sm font-medium mb-1">🔍 BOM (Bill of Materials) *</label>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Search BOM by number, item code, or item name..."
+                    value={bomSearchTerm}
+                    onChange={(e) => setBomSearchTerm(e.target.value)}
+                    className="w-full border rounded px-3 py-2 text-sm"
+                  />
+                  <select
+                    value={formData.bomId}
+                    onChange={(e) => {
+                      const bomId = e.target.value;
+                      setFormData({...formData, bomId});
+                      if (bomId) {
+                        fetchBOMData(bomId);
+                      } else {
+                        setFormData({...formData, itemId: ''});
+                        setMaterials([]);
+                        setOperations([]);
+                      }
+                    }}
+                    className="w-full border rounded px-3 py-2 text-sm"
+                    size={Math.min(boms.length + 1, 8)}
+                    required
+                  >
+                    <option value="">-- Select a BOM to manufacture --</option>
+                    {boms.map(bom => {
+                      const itemCode = bom.item?.code || 'N/A';
+                      const itemName = bom.item?.name || 'Unknown Item';
+                      const version = bom.version || '1';
+                      const status = bom.is_active ? '✓ Active' : 'Inactive';
+                      return (
+                        <option key={bom.id} value={bom.id}>
+                          BOM for: {itemCode} - {itemName} (v{version}) | {status}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  {bomSearchTerm && boms.length === 0 && (
+                    <p className="text-xs text-amber-600">⚠ No BOMs match your search</p>
+                  )}
+                  {!bomSearchTerm && allBoms.length === 0 && (
+                    <p className="text-xs text-red-600">⚠ No BOMs found in system. Create a BOM first.</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  📦 Final Product (What you&apos;ll manufacture)
+                </label>
                 <select
                   value={formData.itemId}
-                  onChange={(e) => {
-                    console.log('Item dropdown changed, value:', e.target.value);
-                    setFormData({...formData, itemId: e.target.value});
-                    if (e.target.value) {
-                      console.log('Calling fetchBOMData...');
-                      fetchBOMData(e.target.value);
-                    } else {
-                      console.log('No item selected, skipping BOM fetch');
-                    }
-                  }}
-                  className="w-full border rounded px-3 py-2 text-sm"
-                  required
+                  onChange={(e) => setFormData({...formData, itemId: e.target.value})}
+                  className="w-full border rounded px-3 py-2 text-sm bg-gray-100 cursor-not-allowed"
+                  disabled
+                  title="This is automatically set based on the BOM you select"
                 >
-                  <option value="">Select Item...</option>
+                  <option value="">-- Select BOM first --</option>
                   {items.map(item => (
                     <option key={item.id} value={item.id}>
-                      {item.code} - {item.name} {item.type && `(${item.type})`}
+                      {item.code} - {item.name}
                     </option>
                   ))}
                 </select>
+                <p className="text-xs text-gray-500 mt-1">ℹ️ Item is automatically set when you select a BOM</p>
               </div>
 
               <div>
@@ -631,7 +947,7 @@ export default function JobOrdersPage() {
 
               <div className="space-y-3">
                 {operations.map((op, idx) => (
-                  <div key={idx} className="border rounded p-4 bg-gray-50">
+                  <div key={idx} className="border border-[#E8DCC4] rounded p-4 bg-white">
                     <div className="grid grid-cols-4 gap-3 mb-2">
                       <div>
                         <label className="block text-xs font-medium mb-1">Sequence #</label>
@@ -735,7 +1051,7 @@ export default function JobOrdersPage() {
             </div>
 
             {/* Materials */}
-            <div className="mb-6">
+            <div className="mb-6" id="materials-section">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-lg font-semibold">Materials Required</h3>
                 <button
@@ -750,27 +1066,57 @@ export default function JobOrdersPage() {
                 {materials.length === 0 && (
                   <p className="text-sm text-gray-500 italic">No materials added. Click &quot;+ Add Material&quot; or select an item with BOM to auto-load materials.</p>
                 )}
-                {materials.map((mat, idx) => (
-                  <div key={idx} className="flex gap-3 items-center border rounded p-3 bg-gray-50">
+                {materials.map((mat, idx) => {
+                  // Find item details including current stock
+                  const selectedItem = items.find(i => String(i.id) === String(mat.itemId));
+                  const summary = itemStockSummaryById[String(mat.itemId || '').trim()];
+                  const stockInHand = summary?.total_quantity ?? 0;
+                  const stockAvailable = summary?.available_quantity ?? selectedItem?.total_stock ?? 0;
+                  const isShort = stockAvailable < mat.requiredQuantity;
+                  
+                  return (
+                  <div key={idx} className="flex gap-3 items-center border border-[#E8DCC4] rounded p-3 bg-white">
                     <div className="flex-1">
-                      <select
+                      <label className="block text-xs font-medium mb-1">Item</label>
+                      <SearchableSelect
+                        options={items.map(item => ({
+                          value: item.id,
+                          label: `${item.code} - ${item.name}`,
+                          subtitle: item.type || undefined
+                        }))}
                         value={mat.itemId}
-                        onChange={(e) => {
-                          console.log('Material changed to:', e.target.value);
-                          updateMaterial(idx, 'itemId', e.target.value);
+                        onChange={(value) => {
+                          console.log('Material changed to:', value);
+                          updateMaterial(idx, 'itemId', value);
+                          fetchItemStockSummary(value);
                         }}
-                        className="w-full border rounded px-2 py-1 text-sm"
-                      >
-                        <option value="">Select Item... ({items.length} available)</option>
-                        {items.map(item => (
-                          <option key={item.id} value={item.id}>
-                            {item.code} - {item.name} {item.type && `(${item.type})`}
-                          </option>
-                        ))}
-                      </select>
+                        placeholder="Search item by code or name..."
+                        className="text-sm"
+                      />
                     </div>
 
+                    {mat.variants && mat.variants.length > 0 && (
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium mb-1">
+                          Variant/Brand {mat.variants.find((v: any) => v.is_default_variant) && <span className="text-green-600">(Default)</span>}
+                        </label>
+                        <select
+                          value={mat.selectedVariantId || mat.itemId}
+                          onChange={(e) => updateMaterialVariant(idx, e.target.value)}
+                          className="w-full border rounded px-2 py-1 text-sm bg-yellow-50"
+                        >
+                          {mat.variants.map((variant: any) => (
+                            <option key={variant.id} value={variant.id}>
+                              {variant.variant_name || variant.name} 
+                              {variant.is_default_variant && ' ⭐'}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
                     <div className="w-32">
+                      <label className="block text-xs font-medium mb-1">Quantity</label>
                       <input
                         type="number"
                         value={mat.requiredQuantity}
@@ -781,6 +1127,15 @@ export default function JobOrdersPage() {
                         step="0.01"
                       />
                     </div>
+                    
+                    <div className="w-32 text-sm">
+                      <div className="text-gray-600">Stock in Hand:</div>
+                      <div className={`font-semibold ${isShort ? 'text-red-600' : 'text-green-600'}`}>
+                        {stockInHand} {selectedItem?.uom || ''}
+                        <span className="text-xs block text-gray-600">Available: {stockAvailable}</span>
+                        {isShort && <span className="text-xs block text-red-500">Short: {mat.requiredQuantity - stockAvailable}</span>}
+                      </div>
+                    </div>
 
                     <button
                       onClick={() => removeMaterial(idx)}
@@ -789,7 +1144,8 @@ export default function JobOrdersPage() {
                       Remove
                     </button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -842,6 +1198,16 @@ export default function JobOrdersPage() {
                 <strong>Status:</strong> <span className={`px-2 py-1 text-xs rounded ${getStatusColor(selectedJobOrder.status)}`}>
                   {selectedJobOrder.status}
                 </span>
+              </div>
+
+              <div className="col-span-2 flex justify-end">
+                <button
+                  onClick={openQcModal}
+                  disabled={selectedJobOrder.status !== 'COMPLETED'}
+                  className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50"
+                >
+                  Complete QC
+                </button>
               </div>
             </div>
 
@@ -965,6 +1331,148 @@ export default function JobOrdersPage() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* QC Modal */}
+      {showQcModal && selectedJobOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 max-w-3xl w-full mx-4 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Complete QC</h2>
+              <button
+                onClick={() => setShowQcModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mb-4 p-3 bg-white rounded border border-[#E8DCC4]">
+              <div className="text-sm text-gray-600">Job Order</div>
+              <div className="font-semibold">{selectedJobOrder.jobOrderNumber}</div>
+              <div className="text-sm text-gray-600 mt-2">Item</div>
+              <div className="font-semibold">{selectedJobOrder.itemCode} - {selectedJobOrder.itemName}</div>
+            </div>
+
+            {qcLoading ? (
+              <div className="p-6 text-center text-gray-600">Loading UIDs...</div>
+            ) : qcUids.length === 0 ? (
+              <div className="p-6 text-center text-gray-600">No UIDs found for this job order.</div>
+            ) : (
+              <>
+                <div className="mb-4 flex justify-between items-center">
+                  <div className="text-sm text-gray-600">
+                    Total UIDs: <span className="font-semibold">{qcUids.length}</span> | 
+                    Pending: <span className="font-semibold text-orange-600">
+                      {qcUids.filter(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED').length}
+                    </span> | 
+                    Passed: <span className="font-semibold text-green-600">
+                      {qcUids.filter(u => String(u?.quality_status || '').toUpperCase() === 'PASSED').length}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        const pendingUids = qcUids.filter(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED');
+                        if (pendingUids.length === 0) return;
+                        
+                        if (!confirm(`Mark ${pendingUids.length} UIDs as PASSED?`)) return;
+                        
+                        setQcLoading(true);
+                        try {
+                          // Process all UIDs in parallel
+                          await Promise.all(
+                            pendingUids.map(uid =>
+                              apiClient.put(`/uid/${encodeURIComponent(uid.uid)}/quality-status`, {
+                                quality_status: 'PASSED',
+                              })
+                            )
+                          );
+                          
+                          // Update local state after all are complete
+                          const updated = qcUids.map(u => 
+                            pendingUids.some(p => p.uid === u.uid) 
+                              ? { ...u, quality_status: 'PASSED' } 
+                              : u
+                          );
+                          setQcUids(updated);
+                          alert(`✅ ${pendingUids.length} UIDs marked as PASSED`);
+                        } catch (error: any) {
+                          console.error('Error marking all as passed:', error);
+                          alert('Failed to mark all UIDs. Please try again.');
+                        } finally {
+                          setQcLoading(false);
+                        }
+                      }}
+                      className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                      disabled={qcLoading}
+                    >
+                      Mark All PASS
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border rounded overflow-hidden">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">UID</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Part Number</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">QC Status</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {qcUids.map((uid) => {
+                        const currentStatus = String(uid?.quality_status || '').toUpperCase() || 'PENDING';
+                        return (
+                          <tr key={uid.uid} className={currentStatus === 'PASSED' ? 'bg-green-50' : ''}>
+                            <td className="px-4 py-3 text-sm font-mono break-all">{uid.uid}</td>
+                            <td className="px-4 py-3 text-sm">{uid.client_part_number || '—'}</td>
+                            <td className="px-4 py-3 text-sm">
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
+                                currentStatus === 'PASSED' 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : currentStatus === 'ON_HOLD' 
+                                  ? 'bg-orange-100 text-orange-800'
+                                  : 'bg-gray-100 text-gray-800'
+                              }`}>
+                                {currentStatus}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-center">
+                              {currentStatus !== 'PASSED' && (
+                                <div className="flex justify-center gap-2">
+                                  <button
+                                    onClick={() => setCurrentUidQc('ON_HOLD', uid.uid)}
+                                    className="px-3 py-1 bg-orange-600 text-white text-xs rounded hover:bg-orange-700"
+                                    title="Mark as Failed / On Hold"
+                                  >
+                                    FAIL
+                                  </button>
+                                  <button
+                                    onClick={() => setCurrentUidQc('PASSED', uid.uid)}
+                                    className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+                                    title="Mark as Passed"
+                                  >
+                                    PASS
+                                  </button>
+                                </div>
+                              )}
+                              {currentStatus === 'PASSED' && (
+                                <span className="text-green-600 font-semibold">✓ Passed</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1100,6 +1608,110 @@ export default function JobOrdersPage() {
                 }`}
               >
                 {loading ? 'Completing...' : 'Confirm & Complete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stock Shortage Error Modal */}
+      {stockErrorModal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                  <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">Insufficient Stock</h3>
+                  <p className="text-sm text-gray-600 mt-1">Cannot create job order due to material shortages</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="mb-4">
+                <p className="text-sm text-gray-700 mb-4">
+                  The following materials are not available in sufficient quantities:
+                </p>
+                
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Material
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Required
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Available
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Shortage
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {stockErrorModal.shortages.map((shortage: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {shortage.material}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-center text-gray-700 font-medium">
+                            {shortage.needed}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-center">
+                            <span className="text-orange-600 font-semibold">
+                              {shortage.available}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-center">
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              {shortage.short} short
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex gap-3">
+                  <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  <div>
+                    <h4 className="text-sm font-semibold text-blue-900">Next Steps</h4>
+                    <p className="text-sm text-blue-800 mt-1">
+                      Please add inventory for these materials before creating the job order. You can do this from the Inventory module.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={() => setStockErrorModal({show: false, shortages: []})}
+                className="px-6 py-2.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  setStockErrorModal({show: false, shortages: []});
+                  window.location.href = '/dashboard/inventory/items';
+                }}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+              >
+                Go to Inventory
               </button>
             </div>
           </div>

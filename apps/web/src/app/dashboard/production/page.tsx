@@ -138,7 +138,7 @@ export default function ProductionPage() {
   const fetchBOMsForItem = async (itemId: string) => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/bom?productId=${itemId}`, {
+      const response = await fetch(`/api/v1/bom?productId=${itemId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       
@@ -159,7 +159,7 @@ export default function ProductionPage() {
   const fetchAvailableUIDsForBOM = async (bomId: string) => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/production/available-uids/${bomId}`, {
+      const response = await fetch(`/api/v1/production/available-uids/${bomId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       
@@ -208,7 +208,7 @@ export default function ProductionPage() {
       const params = new URLSearchParams();
       if (filterStatus !== 'ALL') params.append('status', filterStatus);
 
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/production?${params}`, {
+      const response = await fetch(`/api/v1/production?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.status === 401) {
@@ -235,7 +235,7 @@ export default function ProductionPage() {
   const fetchOrderCompletions = async (orderId: string) => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://13.205.17.214:4000/api/v1/production/completions/order/${orderId}`, {
+      const response = await fetch(`/api/v1/production/completions/order/${orderId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -265,7 +265,7 @@ export default function ProductionPage() {
   const handleCreate = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://13.205.17.214:4000/api/v1/production', {
+      const response = await fetch('/api/v1/production', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -306,7 +306,7 @@ export default function ProductionPage() {
   const handleStartProduction = async (orderId: string) => {
     try {
       const token = localStorage.getItem('accessToken');
-      await fetch(`http://13.205.17.214:4000/api/v1/production/${orderId}/start`, {
+      await fetch(`/api/v1/production/${orderId}/start`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -347,7 +347,7 @@ export default function ProductionPage() {
       }
 
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://13.205.17.214:4000/api/v1/production/assembly/complete', {
+      const response = await fetch('/api/v1/production/assembly/complete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -421,6 +421,12 @@ export default function ProductionPage() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="text-orange-800 hover:text-orange-900 mb-4 flex items-center gap-2"
+          >
+            ← Back to Dashboard
+          </button>
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-4xl font-bold text-orange-900 mb-2">Production Management</h1>
@@ -550,14 +556,14 @@ export default function ProductionPage() {
                               
                               // Fetch the production order's BOM details
                               const token = localStorage.getItem('accessToken');
-                              const response = await fetch(`http://13.205.17.214:4000/api/v1/production/${order.id}`, {
+                              const response = await fetch(`/api/v1/production/${order.id}`, {
                                 headers: { Authorization: `Bearer ${token}` },
                               });
                               if (response.ok) {
                                 const orderDetails = await response.json();
                                 if (orderDetails.bomId) {
                                   // Fetch BOM details
-                                  const bomResponse = await fetch(`http://13.205.17.214:4000/api/v1/bom/${orderDetails.bomId}`, {
+                                  const bomResponse = await fetch(`/api/v1/bom/${orderDetails.bomId}`, {
                                     headers: { Authorization: `Bearer ${token}` },
                                   });
                                   if (bomResponse.ok) {

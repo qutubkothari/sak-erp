@@ -104,4 +104,20 @@ export class ItemsController {
   ) {
     return this.itemsService.getItemStock(itemId, req.user.tenantId);
   }
+
+  @Get(':id/variants')
+  async getItemVariants(
+    @Request() req: any,
+    @Param('id') itemId: string
+  ) {
+    return this.itemsService.getItemVariants(req.user.tenantId, itemId);
+  }
+
+  @Get(':id/default-variant')
+  async getDefaultVariant(
+    @Request() req: any,
+    @Param('id') itemId: string
+  ) {
+    return this.itemsService.getDefaultVariant(req.user.tenantId, itemId);
+  }
 }

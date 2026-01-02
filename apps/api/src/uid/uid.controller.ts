@@ -27,8 +27,29 @@ export class UidController {
     @Query('status') status?: string,
     @Query('entityType') entityType?: string,
     @Query('item_id') itemId?: string,
+    @Query('quality_status') qualityStatus?: string,
+    @Query('job_order_id') jobOrderId?: string,
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
   ) {
-    return this.uidSupabaseService.getAllUIDs(req, status, entityType, itemId);
+    const parsedLimit = limit ? parseInt(limit) : undefined;
+    const parsedOffset = offset ? parseInt(offset) : undefined;
+    return this.uidSupabaseService.getAllUIDs(
+      req, 
+      status, 
+      entityType, 
+      itemId, 
+      qualityStatus,
+      search,
+      parsedLimit,
+      parsedOffset,
+      sortBy,
+      sortOrder,
+      jobOrderId,
+    );
   }
 
   @Get(':uid')
@@ -61,7 +82,7 @@ export class UidController {
     @Body() dto: UpdatePartNumberDto,
     @Request() req: any,
   ) {
-    await this.uidService.updatePartNumber(uid, dto.client_part_number, req.user.userId);
+    await this.uidSupabaseService.updatePartNumber(req, uid, dto.client_part_number);
     return {
       message: 'Part number updated successfully',
       uid,

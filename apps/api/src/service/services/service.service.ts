@@ -1,5 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { extname } from 'path';
+import { randomUUID } from 'crypto';
+import { promises as fs } from 'fs';
+import { join, resolve } from 'path';
 
 @Injectable()
 export class ServiceService {
@@ -10,6 +14,63 @@ export class ServiceService {
       process.env.SUPABASE_URL || '',
       process.env.SUPABASE_KEY || '',
     );
+  }
+
+  async uploadServiceAttachments(
+    tenantId: string,
+    userId: string,
+    files: Array<Express.Multer.File>,
+  ): Promise<string[]> {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No files uploaded');
+    }
+
+    const maxSizeBytes = 50 * 1024 * 1024;
+
+    // Store uploads locally on the server (EC2). This avoids Supabase Storage.
+    // Default: <repo>/uploads (on EC2: /home/ubuntu/sak-erp/uploads)
+    const uploadsRoot =
+      process.env.UPLOAD_ROOT_DIR || resolve(process.cwd(), '..', '..', 'uploads');
+
+    const today = new Date().toISOString().split('T')[0];
+    const uploads: string[] = [];
+
+    for (const file of files) {
+      const isAllowedType =
+        file.mimetype?.startsWith('image/') || file.mimetype?.startsWith('video/');
+
+      if (!isAllowedType) {
+        throw new BadRequestException(
+          `Unsupported file type: ${file.mimetype || 'unknown'}`,
+        );
+      }
+
+      if (file.size > maxSizeBytes) {
+        throw new BadRequestException(
+          `File too large: ${file.originalname} exceeds 50MB`,
+        );
+      }
+
+      const extensionFromName = extname(file.originalname || '').toLowerCase();
+      const safeExtension =
+        extensionFromName && extensionFromName.length <= 10
+          ? extensionFromName
+          : '';
+
+      const relativeDir = `service/${today}/${tenantId}/${userId}`;
+      const fileName = `${randomUUID()}${safeExtension}`;
+
+      const targetDir = join(uploadsRoot, relativeDir);
+      await fs.mkdir(targetDir, { recursive: true });
+
+      const targetPath = join(targetDir, fileName);
+      await fs.writeFile(targetPath, file.buffer);
+
+      // Served by the API as /uploads/* (and proxied by Next.js)
+      uploads.push(`/uploads/${relativeDir}/${fileName}`);
+    }
+
+    return uploads;
   }
 
   // ==================== Service Tickets ====================
@@ -29,6 +90,8 @@ export class ServiceService {
       ticket_number: ticketNumber,
       customer_id: data.customer_id,
       uid: data.uid || null,
+      ship_name: data.ship_name || null,
+      location: data.location || null,
       warranty_id: warrantyValidation?.warranty?.id || null,
       service_type: warrantyValidation?.is_valid ? 'WARRANTY' : data.service_type || 'PAID',
       priority: data.priority || 'MEDIUM',
@@ -47,6 +110,7 @@ export class ServiceService {
       warranty_valid_until: warrantyValidation?.warranty?.warranty_end_date || null,
       expected_completion_date: data.expected_completion_date,
       estimated_cost: warrantyValidation?.is_valid ? 0 : data.estimated_cost || 0,
+      attachments: data.attachments || [],
       created_by: userId,
     };
 
@@ -213,10 +277,39 @@ export class ServiceService {
       .single();
 
     if (error || !warranty) {
+      // Fallback: deployment tracking (supports part-number based workflows)
+      const { data: deploymentStatus } = await this.supabase
+        .from('v_uid_deployment_status')
+        .select('warranty_expiry_date')
+        .eq('tenant_id', tenantId)
+        .eq('uid', uid)
+        .single();
+
+      const warrantyExpiryDate = deploymentStatus?.warranty_expiry_date;
+      if (!warrantyExpiryDate) {
+        return {
+          is_valid: false,
+          warranty: null,
+          message: 'No active warranty found for this UID',
+        };
+      }
+
+      const today = new Date();
+      const warrantyEndDate = new Date(warrantyExpiryDate);
+      const isValid = today <= warrantyEndDate;
+
       return {
-        is_valid: false,
-        warranty: null,
-        message: 'No active warranty found for this UID',
+        is_valid: isValid,
+        warranty: {
+          warranty_end_date: warrantyExpiryDate,
+          source: 'deployment',
+        },
+        message: isValid
+          ? 'Warranty is valid'
+          : `Warranty expired on ${warrantyExpiryDate}`,
+        days_remaining: isValid
+          ? Math.ceil((warrantyEndDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+          : 0,
       };
     }
 
