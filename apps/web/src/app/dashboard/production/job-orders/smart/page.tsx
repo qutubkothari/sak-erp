@@ -3,12 +3,22 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../../lib/api-client';
-import ItemSearch from '../../../../../components/ItemSearch';
+import SearchableSelect from '../../../../../components/SearchableSelect';
 
 type FinishedItem = {
   id: string;
   code: string;
   name: string;
+  category?: string | null;
+};
+
+type RawItem = {
+  id?: string | number;
+  item_id?: string | number;
+  code?: string;
+  item_code?: string;
+  name?: string;
+  item_name?: string;
   category?: string | null;
 };
 
@@ -78,6 +88,10 @@ function SmartJobOrdersPageContent() {
   const [itemId, setItemId] = useState<string>(prefillItemId);
   const [quantity, setQuantity] = useState<number>(prefillQuantity);
 
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsError, setItemsError] = useState<string>('');
+  const [items, setItems] = useState<FinishedItem[]>([]);
+
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState('');
@@ -92,6 +106,40 @@ function SmartJobOrdersPageContent() {
     if (salesOrderId) return `From Sales Order: ${salesOrderId}`;
     return 'Create a Job Order in one click from BOM + stock';
   }, [salesOrderId]);
+
+  const itemOptions = useMemo(
+    () =>
+      items.map((i) => ({
+        value: i.id,
+        label: i.code,
+        subtitle: i.name,
+      })),
+    [items],
+  );
+
+  const fetchItems = async () => {
+    setItemsError('');
+    setItemsLoading(true);
+    try {
+      const response = await apiClient.get('/inventory/items');
+      const list = Array.isArray(response) ? (response as RawItem[]) : [];
+      const normalized: FinishedItem[] = list
+        .map((raw) => ({
+          id: String(raw.id ?? raw.item_id ?? ''),
+          code: String(raw.code ?? raw.item_code ?? ''),
+          name: String(raw.name ?? raw.item_name ?? ''),
+          category: raw.category ?? null,
+        }))
+        .filter((i) => i.id && i.code && i.name);
+
+      setItems(normalized);
+    } catch (err: any) {
+      setItems([]);
+      setItemsError(err?.message || 'Failed to load items');
+    } finally {
+      setItemsLoading(false);
+    }
+  };
 
   const fetchPreview = async () => {
     if (!canPreview) return;
@@ -144,6 +192,8 @@ function SmartJobOrdersPageContent() {
   };
 
   useEffect(() => {
+    fetchItems();
+
     // auto-preview on first load if prefilled
     if (prefillItemId) {
       fetchPreview();
@@ -236,14 +286,20 @@ function SmartJobOrdersPageContent() {
           <div className="grid grid-cols-12 gap-4 items-end">
             <div className="col-span-8">
               <label className="block text-sm font-medium text-gray-700 mb-2">Finished Goods Item *</label>
-              <ItemSearch
+              <SearchableSelect
+                options={itemOptions}
                 value={itemId}
-                onSelect={(item) => {
-                  setItemId(item.id);
+                onChange={(value) => {
+                  setItemId(value);
                   setPreview(null);
                 }}
-                placeholder="Search finished good item…"
+                placeholder={itemsLoading ? 'Loading items…' : 'Select finished good item…'}
+                required
+                disabled={itemsLoading}
               />
+              {itemsError ? (
+                <div className="mt-2 text-xs text-red-700">{itemsError}</div>
+              ) : null}
             </div>
             <div className="col-span-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">Quantity *</label>
