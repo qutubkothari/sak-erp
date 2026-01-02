@@ -94,6 +94,7 @@ Run "Create artifact archive ($archive)" {
     'apps/web/next.config.js',
     'apps/api/dist',
     'apps/api/package.json',
+    'packages/database/prisma',
     'packages/hr-module/dist',
     'packages/hr-module/package.json',
     'package.json',
@@ -137,6 +138,7 @@ Run "Deploy on EC2 (extract, install prod deps, restart PM2)" {
      'tar -xzf "$ARCHIVE" -C "$DEPLOY_DIR"; ' +
      'rm -f "$ARCHIVE"; ' +
      'pnpm install --prod --frozen-lockfile; ' +
+     'pnpm dlx prisma@5.22.0 generate --schema packages/database/prisma/schema.prisma; ' +
     'pm2 delete ' + $PM2_API_NAME + ' 2>/dev/null || true; ' +
     'cd apps/api; pm2 start npm --name ' + $PM2_API_NAME + ' -- run start:prod; cd "$DEPLOY_DIR"; ' +
      'pm2 delete ' + $PM2_WEB_NAME + ' 2>/dev/null || true; ' +
