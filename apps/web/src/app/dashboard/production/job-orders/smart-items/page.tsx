@@ -516,7 +516,10 @@ function SmartJobOrdersItemsPageContent() {
                         const short = Math.max(0, Number(node.requiredQuantity || 0) - Number(available || 0));
 
                         return (
-                          <tr key={`${node.bomId}:${node.itemId}:${idx}`}>
+                          <tr
+                            key={`${node.bomId}:${node.itemId}:${idx}`}
+                            className={`border-b ${node.componentType === 'BOM' ? 'bg-amber-50' : ''}`}
+                          >
                             <td className="px-4 py-2 text-sm text-gray-700">{node.level}</td>
                             <td className="px-4 py-2 text-sm text-gray-700">{node.componentType}</td>
                             <td className="px-4 py-2 text-sm text-gray-900">
