@@ -347,13 +347,13 @@ importers:
       '@prisma/client':
         specifier: ^5.19.0
         version: 5.22.0(prisma@5.22.0)
+      prisma:
+        specifier: ^5.19.0
+        version: 5.22.0
     devDependencies:
       '@faker-js/faker':
         specifier: ^8.4.1
         version: 8.4.1
-      prisma:
-        specifier: ^5.19.0
-        version: 5.22.0
       tsx:
         specifier: ^4.20.6
         version: 4.20.6
