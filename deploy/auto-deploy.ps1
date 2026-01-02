@@ -13,6 +13,14 @@ $SERVER = "ubuntu@13.205.17.214"
 $SSH_KEY = "saif-erp.pem"  # Update path if needed
 $APP_DIR = "/home/ubuntu/sak-erp"
 
+# Optional overrides via environment variables
+#   $env:SAK_SERVER  = "ubuntu@3.110.100.60"
+#   $env:SAK_SSH_KEY = "C:\\path\\to\\saif-erp.pem"
+#   $env:SAK_APP_DIR = "/home/ubuntu/sak-erp"
+if ($env:SAK_SERVER) { $SERVER = $env:SAK_SERVER }
+if ($env:SAK_SSH_KEY) { $SSH_KEY = $env:SAK_SSH_KEY }
+if ($env:SAK_APP_DIR) { $APP_DIR = $env:SAK_APP_DIR }
+
 $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -26,6 +34,9 @@ if (Test-Path $SSH_KEY) {
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  SAK ERP - Automated Deployment" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
+Write-Host ("Target server: {0}" -f $SERVER) -ForegroundColor Gray
+Write-Host ("App dir:       {0}" -f $APP_DIR) -ForegroundColor Gray
+Write-Host ("SSH key:       {0}" -f $SSH_KEY) -ForegroundColor Gray
 Write-Host ""
 
 # Function to execute SSH commands
@@ -118,8 +129,10 @@ Write-Host "  Deployment Complete!" -ForegroundColor Green
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Application URLs:" -ForegroundColor Yellow
-Write-Host "  - Frontend: http://13.205.17.214:3000"
-Write-Host "  - API: http://13.205.17.214:4000"
+$hostOnly = $SERVER
+if ($hostOnly -match "@") { $hostOnly = $hostOnly.Split('@')[-1] }
+Write-Host ("  - Frontend: http://{0}:3000" -f $hostOnly)
+Write-Host ("  - API: http://{0}:4000" -f $hostOnly)
 Write-Host ""
 Write-Host "View logs:" -ForegroundColor Yellow
 Write-Host "  pm2 logs sak-web --lines 50"
