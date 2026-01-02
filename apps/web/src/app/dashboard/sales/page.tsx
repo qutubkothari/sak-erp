@@ -1216,7 +1216,7 @@ export default function SalesPage() {
       {/* Customers Tab */}
       {activeTab === 'customers' && (
         <div>
-          <div className="mb-4 flex justify-between items-center">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Customer List</h2>
             <button
               onClick={() => {
@@ -1232,7 +1232,7 @@ export default function SalesPage() {
           {loading ? (
             <p className="text-gray-600">Loading customers...</p>
           ) : (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="bg-white rounded-lg shadow overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -1273,7 +1273,7 @@ export default function SalesPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={() => handleEditCustomer(customer)}
@@ -1462,7 +1462,7 @@ export default function SalesPage() {
       {/* Quotations Tab */}
       {activeTab === 'quotations' && (
         <div>
-          <div className="mb-4 flex justify-between items-center">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Quotations</h2>
             <button
               onClick={() => {
@@ -1478,7 +1478,7 @@ export default function SalesPage() {
           {loading ? (
             <p className="text-gray-600">Loading quotations...</p>
           ) : (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="bg-white rounded-lg shadow overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -1514,71 +1514,73 @@ export default function SalesPage() {
                           {quotation.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                        <button
-                          onClick={() => handleViewQuotation(quotation.id)}
-                          className="text-blue-600 hover:text-blue-900"
-                        >
-                          View
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleEditQuotation(quotation.id)}
-                          disabled={quotation.status !== 'DRAFT'}
-                          title={quotation.status !== 'DRAFT' ? 'Only DRAFT quotations can be edited' : 'Edit quotation'}
-                          className={
-                            quotation.status === 'DRAFT'
-                              ? 'text-amber-600 hover:text-amber-900'
-                              : 'text-gray-400 cursor-not-allowed'
-                          }
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteQuotation(quotation)}
-                          disabled={quotation.status !== 'DRAFT'}
-                          title={quotation.status !== 'DRAFT' ? 'Only DRAFT quotations can be deleted' : 'Delete quotation'}
-                          className={
-                            quotation.status === 'DRAFT'
-                              ? 'text-red-600 hover:text-red-900'
-                              : 'text-gray-400 cursor-not-allowed'
-                          }
-                        >
-                          Delete
-                        </button>
-                        {quotation.status === 'DRAFT' && (
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
-                            onClick={async () => {
-                              try {
-                                await apiClient.put(`/sales/quotations/${quotation.id}/approve`);
-                                alert('Quotation approved!');
-                                fetchQuotations();
-                              } catch (err: any) {
-                                alert('Failed to approve: ' + err.message);
-                              }
-                            }}
-                            className="text-green-600 hover:text-green-900"
-                          >
-                            Approve
-                          </button>
-                        )}
-                        {quotation.status === 'APPROVED' && (
-                          <button
-                            onClick={() => handleOpenSOConversion(quotation)}
-                            className="text-amber-600 hover:text-amber-900"
-                          >
-                            Convert to SO
-                          </button>
-                        )}
-                        {quotation.status === 'PARTIALLY_CONVERTED' && (
-                          <button
-                            onClick={() => handleOpenSOConversion(quotation)}
+                            onClick={() => handleViewQuotation(quotation.id)}
                             className="text-blue-600 hover:text-blue-900"
                           >
-                            Convert Remaining
+                            View
                           </button>
-                        )}
+                          <button
+                            type="button"
+                            onClick={() => handleEditQuotation(quotation.id)}
+                            disabled={quotation.status !== 'DRAFT'}
+                            title={quotation.status !== 'DRAFT' ? 'Only DRAFT quotations can be edited' : 'Edit quotation'}
+                            className={
+                              quotation.status === 'DRAFT'
+                                ? 'text-amber-600 hover:text-amber-900'
+                                : 'text-gray-400 cursor-not-allowed'
+                            }
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteQuotation(quotation)}
+                            disabled={quotation.status !== 'DRAFT'}
+                            title={quotation.status !== 'DRAFT' ? 'Only DRAFT quotations can be deleted' : 'Delete quotation'}
+                            className={
+                              quotation.status === 'DRAFT'
+                                ? 'text-red-600 hover:text-red-900'
+                                : 'text-gray-400 cursor-not-allowed'
+                            }
+                          >
+                            Delete
+                          </button>
+                          {quotation.status === 'DRAFT' && (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await apiClient.put(`/sales/quotations/${quotation.id}/approve`);
+                                  alert('Quotation approved!');
+                                  fetchQuotations();
+                                } catch (err: any) {
+                                  alert('Failed to approve: ' + err.message);
+                                }
+                              }}
+                              className="text-green-600 hover:text-green-900"
+                            >
+                              Approve
+                            </button>
+                          )}
+                          {quotation.status === 'APPROVED' && (
+                            <button
+                              onClick={() => handleOpenSOConversion(quotation)}
+                              className="text-amber-600 hover:text-amber-900"
+                            >
+                              Convert to SO
+                            </button>
+                          )}
+                          {quotation.status === 'PARTIALLY_CONVERTED' && (
+                            <button
+                              onClick={() => handleOpenSOConversion(quotation)}
+                              className="text-blue-600 hover:text-blue-900"
+                            >
+                              Convert Remaining
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1613,7 +1615,7 @@ export default function SalesPage() {
                     {/* Items to Convert */}
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-3">Select Items & Quantities to Convert</h4>
-                      <div className="border rounded-lg overflow-hidden">
+                      <div className="border rounded-lg overflow-x-auto">
                         <table className="min-w-full divide-y divide-gray-200">
                           <thead className="bg-gray-50">
                             <tr>
@@ -1829,7 +1831,7 @@ export default function SalesPage() {
 
                 <div>
                   <h4 className="text-sm font-semibold text-gray-700 mb-2">Items</h4>
-                  <div className="border rounded-lg overflow-hidden">
+                  <div className="border rounded-lg overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-100">
                         <tr>
@@ -2527,7 +2529,7 @@ export default function SalesPage() {
           {loading ? (
             <p className="text-gray-600">Loading dispatch notes...</p>
           ) : (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="bg-white rounded-lg shadow overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -2562,7 +2564,7 @@ export default function SalesPage() {
                         {dispatch.vehicle_number || '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={() => handleEditDispatch(dispatch)}
@@ -2691,7 +2693,7 @@ export default function SalesPage() {
       {/* Warranties Tab */}
       {activeTab === 'warranties' && (
         <div>
-          <div className="flex justify-between items-center mb-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Warranties</h2>
             <button
               onClick={() => setShowWarrantyForm(true)}
@@ -2703,7 +2705,7 @@ export default function SalesPage() {
           {loading ? (
             <p className="text-gray-600">Loading warranties...</p>
           ) : (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="bg-white rounded-lg shadow overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -2748,7 +2750,7 @@ export default function SalesPage() {
                         {warranty.claim_count}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={() => handlePrintWarranty(warranty.id)}
