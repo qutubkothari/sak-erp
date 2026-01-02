@@ -23,9 +23,17 @@ async function bootstrap() {
   app.use(helmet());
   
   // CORS - allow both localhost and production frontend
-  const corsOrigins = configService.get('CORS_ORIGIN', 'http://localhost:3000').split(',');
+  const corsOriginEnv = configService.get<string>('CORS_ORIGIN');
+  const corsOrigins = (corsOriginEnv || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  // If CORS_ORIGIN is not configured, reflect the request origin.
+  // This avoids production breakage when deploying to a new host/IP.
+  // For tighter security in production, set CORS_ORIGIN explicitly.
   app.enableCors({
-    origin: corsOrigins,
+    origin: corsOrigins.length > 0 ? corsOrigins : true,
     credentials: true,
   });
 

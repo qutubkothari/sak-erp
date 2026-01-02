@@ -63,3 +63,9 @@ yarn-error.log*
 .cache
 temp/
 tmp/
+
+# Local deploy artifacts
+deploy/*.tar.gz
+deploy/*.tgz
+deploy-*.tar.gz
+sak-erp-deploy.tgz
