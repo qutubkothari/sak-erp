@@ -60,10 +60,10 @@ interface Alert {
   message: string;
   acknowledged: boolean;
   created_at: string;
-  items: {
-    item_code: string;
-    item_name: string;
-  };
+  items?: {
+    item_code?: string | null;
+    item_name?: string | null;
+  } | null;
   warehouses?: {
     warehouse_code: string;
     warehouse_name: string;
@@ -80,10 +80,10 @@ interface DemoItem {
   expected_return_date?: string;
   status: string;
   demo_expenses: number;
-  items: {
-    item_code: string;
-    item_name: string;
-  };
+  items?: {
+    item_code?: string | null;
+    item_name?: string | null;
+  } | null;
 }
 
 export default function InventoryPage() {
@@ -542,7 +542,8 @@ function InventoryPageContent() {
                         </div>
                         <p className="text-gray-900 mb-2">{alert.message}</p>
                         <div className="text-sm text-gray-500">
-                          {alert.items.item_name} ({alert.items.item_code})
+                          {alert.items?.item_name || 'Unknown Item'}
+                          {alert.items?.item_code ? ` (${alert.items.item_code})` : ''}
                           {alert.warehouses && ` - ${alert.warehouses.warehouse_name}`}
                         </div>
                         <div className="text-xs text-gray-400 mt-2">
@@ -642,8 +643,8 @@ function InventoryPageContent() {
                       {demo.demo_id}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">{demo.items.item_name}</div>
-                      <div className="text-sm text-gray-500">{demo.items.item_code}</div>
+                      <div className="text-sm text-gray-900">{demo.items?.item_name || 'Unknown Item'}</div>
+                      <div className="text-sm text-gray-500">{demo.items?.item_code || '-'}</div>
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-sm font-mono text-amber-600">{demo.uid}</span>
