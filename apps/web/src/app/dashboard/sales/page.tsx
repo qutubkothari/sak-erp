@@ -1190,7 +1190,7 @@ export default function SalesPage() {
 
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
+        <nav className="-mb-px flex flex-wrap gap-x-8 gap-y-2">
           {[
             { id: 'customers', label: 'Customers' },
             { id: 'quotations', label: 'Quotations' },
@@ -2088,7 +2088,7 @@ export default function SalesPage() {
           {loading ? (
             <p className="text-gray-600">Loading sales orders...</p>
           ) : (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="bg-white rounded-lg shadow overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -2129,7 +2129,7 @@ export default function SalesPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
                             onClick={() => openSmartJOForSO(order)}
                             className="text-amber-600 hover:text-amber-900 disabled:opacity-50"
