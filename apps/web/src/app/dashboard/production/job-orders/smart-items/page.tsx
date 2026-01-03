@@ -143,13 +143,15 @@ function SmartJobOrdersItemsPageContent() {
       const itemDataMap = new Map<string, { code: string; name: string; category?: string | null }>();
       
       bomsList.forEach((bom: any) => {
-        if (bom.item?.id) {
-          const itemId = String(bom.item.id);
-          itemsWithBoms.add(itemId);
-          itemDataMap.set(itemId, {
-            code: bom.item.code || '',
-            name: bom.item.name || '',
-            category: bom.item.category ?? null,
+        // Try multiple field patterns for item ID
+        const itemId = bom.item?.id || bom.item_id || bom.itemId;
+        if (itemId) {
+          const id = String(itemId);
+          itemsWithBoms.add(id);
+          itemDataMap.set(id, {
+            code: bom.item?.code || bom.item?.item_code || '',
+            name: bom.item?.name || bom.item?.item_name || '',
+            category: bom.item?.category ?? null,
           });
         }
       });
@@ -167,8 +169,10 @@ function SmartJobOrdersItemsPageContent() {
         })
         .filter((i) => i.id && i.code && i.name);
 
+      console.log('[Job Orders] Loaded items with BOMs:', normalized.length, normalized);
       setItems(normalized);
     } catch (err: any) {
+      console.error('[Job Orders] Error loading items with BOMs:', err);
       setItems([]);
       setItemsError(err?.message || 'Failed to load items with BOMs');
     } finally {
