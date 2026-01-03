@@ -78,11 +78,11 @@ export default function DashboardPage() {
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           {[
-            { title: 'Active Orders', value: loading ? '...' : stats.activeOrders.toString(), color: '#8B6F47', link: null },
-            { title: 'Pending POs', value: loading ? '...' : stats.pendingPOs.toString(), color: '#6F4E37', link: null },
-            { title: 'In Production', value: loading ? '...' : stats.inProduction.toString(), color: '#6B8E23', link: null },
-            { title: 'Ready to Ship', value: loading ? '...' : stats.readyToShip.toString(), color: '#4682B4', link: null },
-            { title: 'Low Stock Alerts', value: loading ? '...' : stats.lowStockCount.toString(), color: stats.lowStockCount > 0 ? '#DC2626' : '#10B981', link: '/dashboard/inventory?tab=alerts', alert: stats.lowStockCount > 0 },
+            { title: 'Active Orders', value: loading ? '...' : String(stats?.activeOrders ?? 0), color: '#8B6F47', link: null },
+            { title: 'Pending POs', value: loading ? '...' : String(stats?.pendingPOs ?? 0), color: '#6F4E37', link: null },
+            { title: 'In Production', value: loading ? '...' : String(stats?.inProduction ?? 0), color: '#6B8E23', link: null },
+            { title: 'Ready to Ship', value: loading ? '...' : String(stats?.readyToShip ?? 0), color: '#4682B4', link: null },
+            { title: 'Low Stock Alerts', value: loading ? '...' : String(stats?.lowStockCount ?? 0), color: (stats?.lowStockCount ?? 0) > 0 ? '#DC2626' : '#10B981', link: '/dashboard/inventory?tab=alerts', alert: (stats?.lowStockCount ?? 0) > 0 },
           ].map((kpi, index) => (
             <div
               key={index}
