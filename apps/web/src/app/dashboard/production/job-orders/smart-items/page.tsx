@@ -564,24 +564,33 @@ function SmartJobOrdersItemsPageContent() {
                         return Number(item.requiredQuantity || 0) > Number(available || 0);
                       });
 
+                      // Determine background color based on level
+                      const getBgColor = () => {
+                        if (group.bom.level === 0) return 'bg-amber-100 hover:bg-amber-200';
+                        if (group.bom.level === 1) return 'bg-amber-50 hover:bg-amber-100';
+                        if (group.bom.level === 2) return 'bg-orange-50 hover:bg-orange-100';
+                        return 'bg-yellow-50 hover:bg-yellow-100';
+                      };
+
                       return (
                         <div key={group.bom.bomId} className={groupIdx > 0 ? 'border-t border-gray-200' : ''}>
                           {/* BOM Header - Collapsible */}
                           <div
                             onClick={() => toggleBom(group.bom.bomId)}
-                            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                              group.bom.level === 0
-                                ? 'bg-amber-100 hover:bg-amber-200'
-                                : 'bg-amber-50 hover:bg-amber-100'
-                            }`}
-                            style={{ paddingLeft: `${16 + group.bom.level * 20}px` }}
+                            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${getBgColor()}`}
+                            style={{ paddingLeft: `${16 + group.bom.level * 24}px` }}
                           >
                             <span className="text-amber-700">
                               {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                             </span>
                             <Layers size={16} className="text-amber-600" />
-                            <span className="font-semibold text-amber-900">
+                            <span className="font-semibold text-amber-900 flex items-center gap-2">
                               {group.bom.itemCode} - {group.bom.itemName}
+                              {group.bom.level > 0 && (
+                                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
+                                  Level {group.bom.level} Sub-BOM
+                                </span>
+                              )}
                             </span>
                             <span className="ml-auto flex items-center gap-4 text-sm">
                               <span className="text-amber-700">
@@ -601,7 +610,7 @@ function SmartJobOrdersItemsPageContent() {
                               <table className="min-w-full">
                                 <thead className="bg-gray-50 border-b border-gray-200">
                                   <tr>
-                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase" style={{ paddingLeft: `${36 + group.bom.level * 20}px` }}>Item</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase" style={{ paddingLeft: `${40 + group.bom.level * 24}px` }}>Item</th>
                                     <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">Required</th>
                                     <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">In Stock</th>
                                     <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">Short</th>
@@ -618,7 +627,7 @@ function SmartJobOrdersItemsPageContent() {
 
                                     return (
                                       <tr key={`${node.bomId}:${node.itemId}:${idx}`} className="hover:bg-gray-50">
-                                        <td className="px-4 py-2" style={{ paddingLeft: `${36 + group.bom.level * 20}px` }}>
+                                        <td className="px-4 py-2" style={{ paddingLeft: `${40 + group.bom.level * 24}px` }}>
                                           <div className="flex items-center gap-2">
                                             <Package size={14} className="text-gray-400 flex-shrink-0" />
                                             <div className="min-w-[280px]">
