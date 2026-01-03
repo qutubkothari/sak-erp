@@ -134,21 +134,43 @@ function SmartJobOrdersItemsPageContent() {
     setItemsError('');
     setItemsLoading(true);
     try {
-      const response = await apiClient.get('/inventory/items');
-      const list = Array.isArray(response) ? (response as RawItem[]) : [];
-      const normalized: FinishedItem[] = list
-        .map((raw) => ({
-          id: String(raw.id ?? raw.item_id ?? ''),
-          code: String(raw.code ?? raw.item_code ?? ''),
-          name: String(raw.name ?? raw.item_name ?? ''),
-          category: raw.category ?? null,
-        }))
+      // Fetch all BOMs to get items that have BOMs
+      const bomsResponse = await apiClient.get('/bom');
+      const bomsList = Array.isArray(bomsResponse) ? bomsResponse : [];
+      
+      // Extract unique item IDs from BOMs
+      const itemsWithBoms = new Set<string>();
+      const itemDataMap = new Map<string, { code: string; name: string; category?: string | null }>();
+      
+      bomsList.forEach((bom: any) => {
+        if (bom.item?.id) {
+          const itemId = String(bom.item.id);
+          itemsWithBoms.add(itemId);
+          itemDataMap.set(itemId, {
+            code: bom.item.code || '',
+            name: bom.item.name || '',
+            category: bom.item.category ?? null,
+          });
+        }
+      });
+
+      // Create normalized list of items that have BOMs
+      const normalized: FinishedItem[] = Array.from(itemsWithBoms)
+        .map((id) => {
+          const data = itemDataMap.get(id);
+          return {
+            id,
+            code: data?.code || '',
+            name: data?.name || '',
+            category: data?.category ?? null,
+          };
+        })
         .filter((i) => i.id && i.code && i.name);
 
       setItems(normalized);
     } catch (err: any) {
       setItems([]);
-      setItemsError(err?.message || 'Failed to load items');
+      setItemsError(err?.message || 'Failed to load items with BOMs');
     } finally {
       setItemsLoading(false);
     }
