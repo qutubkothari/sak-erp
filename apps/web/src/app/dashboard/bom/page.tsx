@@ -126,6 +126,7 @@ export default function BOMPage() {
   const router = useRouter();
   const [boms, setBoms] = useState<BOM[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingBomId, setEditingBomId] = useState<string | null>(null);
   const [selectedBom, setSelectedBom] = useState<BOM | null>(null);
@@ -531,6 +532,40 @@ export default function BOMPage() {
           </button>
         </div>
 
+        {/* Search Bar */}
+        <div className="mb-6">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search BOMs by item code, item name, or version..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-4 py-3 pl-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+            />
+            <svg
+              className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* BOM List */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {loading ? (
@@ -541,8 +576,27 @@ export default function BOMPage() {
               <h3 className="text-xl font-semibold text-gray-700 mb-2">No BOMs Found</h3>
               <p className="text-gray-500">Create your first BOM to define product structure</p>
             </div>
-          ) : (
-            boms.map((bom) => (
+          ) : (() => {
+            const filteredBoms = boms.filter((bom) => {
+              if (!searchQuery) return true;
+              const query = searchQuery.toLowerCase();
+              const itemName = bom.item?.name?.toLowerCase() || '';
+              const itemCode = bom.item?.code?.toLowerCase() || '';
+              const version = String(bom.version);
+              return itemName.includes(query) || itemCode.includes(query) || version.includes(query);
+            });
+
+            if (filteredBoms.length === 0) {
+              return (
+                <div className="col-span-full text-center py-12">
+                  <div className="text-6xl mb-4">🔍</div>
+                  <h3 className="text-xl font-semibold text-gray-700 mb-2">No BOMs Match Your Search</h3>
+                  <p className="text-gray-500">Try different keywords or clear the search</p>
+                </div>
+              );
+            }
+
+            return filteredBoms.map((bom) => (
               <div key={bom.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
                 <div className="flex justify-between items-start mb-4">
                   <div>
@@ -630,8 +684,8 @@ export default function BOMPage() {
                   </button>
                 </div>
               </div>
-            ))
-          )}
+            ));
+          })()}
         </div>
       </div>
 
