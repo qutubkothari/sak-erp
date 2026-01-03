@@ -97,7 +97,8 @@ function SmartJobOrdersItemsPageContent() {
 
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState<string>('');
-  const [items, setItems] = useState<FinishedItem[]>([]);
+  const [finishedGoodsItems, setFinishedGoodsItems] = useState<FinishedItem[]>([]);
+  const [allItems, setAllItems] = useState<FinishedItem[]>([]);
 
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -120,21 +121,31 @@ function SmartJobOrdersItemsPageContent() {
     return 'Swap BOM items (brand) using dropdowns, then create JO';
   }, [salesOrderId]);
 
-  const itemOptions = useMemo(
+  const finishedGoodsOptions = useMemo(
     () =>
-      items.map((i) => ({
+      finishedGoodsItems.map((i) => ({
         value: i.id,
         label: i.code,
         subtitle: i.name,
       })),
-    [items],
+    [finishedGoodsItems],
+  );
+
+  const allItemOptions = useMemo(
+    () =>
+      allItems.map((i) => ({
+        value: i.id,
+        label: i.code,
+        subtitle: i.name,
+      })),
+    [allItems],
   );
 
   const fetchItems = async () => {
     setItemsError('');
     setItemsLoading(true);
     try {
-      // Fetch all BOMs to get items that have BOMs
+      // Fetch all BOMs to get items that have BOMs (for finished goods dropdown)
       const bomsResponse = await apiClient.get('/bom');
       const bomsList = Array.isArray(bomsResponse) ? bomsResponse : [];
       
@@ -156,25 +167,49 @@ function SmartJobOrdersItemsPageContent() {
         }
       });
 
-      // Create normalized list of items that have BOMs
-      const normalized: FinishedItem[] = Array.from(itemsWithBoms)
+      // Create normalized list of finished goods items (items that have BOMs)
+      const finishedGoods: FinishedItem[] = Array.from(itemsWithBoms)
         .map((id) => {
           const data = itemDataMap.get(id);
+          if (!data?.code || !data?.name) return null;
           return {
             id,
-            code: data?.code || '',
-            name: data?.name || '',
-            category: data?.category ?? null,
-          };
+            code: data.code,
+            name: data.name,
+            category: data.category,
+          } as FinishedItem;
         })
-        .filter((i) => i.id && i.code && i.name);
+        .filter((i) => i !== null) as FinishedItem[];
 
-      console.log('[Job Orders] Loaded items with BOMs:', normalized.length, normalized);
-      setItems(normalized);
+      console.log('[Job Orders] Loaded finished goods with BOMs:', finishedGoods.length, finishedGoods);
+      setFinishedGoodsItems(finishedGoods);
+
+      // Fetch ALL items for component selection dropdowns
+      const allItemsResponse = await apiClient.get('/inventory/items');
+      const allItemsList = Array.isArray(allItemsResponse) ? allItemsResponse : [];
+      
+      const allItemsNormalized: FinishedItem[] = allItemsList
+        .map((raw: RawItem) => {
+          const id = raw.id || raw.item_id;
+          const code = raw.code || raw.item_code;
+          const name = raw.name || raw.item_name;
+          if (!id || !code || !name) return null;
+          return {
+            id: String(id),
+            code: String(code),
+            name: String(name),
+            category: raw.category,
+          } as FinishedItem;
+        })
+        .filter((i) => i !== null) as FinishedItem[];
+
+      console.log('[Job Orders] Loaded all items for component dropdowns:', allItemsNormalized.length);
+      setAllItems(allItemsNormalized);
     } catch (err: any) {
-      console.error('[Job Orders] Error loading items with BOMs:', err);
-      setItems([]);
-      setItemsError(err?.message || 'Failed to load items with BOMs');
+      console.error('[Job Orders] Error loading items:', err);
+      setFinishedGoodsItems([]);
+      setAllItems([]);
+      setItemsError(err?.message || 'Failed to load items');
     } finally {
       setItemsLoading(false);
     }
@@ -407,7 +442,7 @@ function SmartJobOrdersItemsPageContent() {
             <div className="col-span-8">
               <label className="block text-sm font-medium text-gray-700 mb-2">Finished Goods Item *</label>
               <SearchableSelect
-                options={itemOptions}
+                options={finishedGoodsOptions}
                 value={itemId}
                 onChange={(value) => {
                   setItemId(value);
@@ -568,6 +603,24 @@ function SmartJobOrdersItemsPageContent() {
                       bomGroups.push({ bom: currentBom, items: currentItems });
                     }
 
+                    // Handle case where there are only ITEM nodes (no BOM nodes)
+                    // Create a virtual BOM group using the top-level BOM info
+                    if (bomGroups.length === 0 && currentItems.length > 0) {
+                      const virtualBom: SmartExplosionNode = {
+                        level: 0,
+                        componentType: 'BOM',
+                        bomId: preview.topBom.id,
+                        itemId: preview.finishedItem.id,
+                        itemCode: preview.finishedItem.code,
+                        itemName: preview.finishedItem.name,
+                        requiredQuantity: preview.quantity,
+                        availableQuantity: 0,
+                        toMakeQuantity: 0,
+                        shortageQuantity: 0,
+                      };
+                      bomGroups.push({ bom: virtualBom, items: currentItems });
+                    }
+
                     const toggleBom = (bomId: string) => {
                       setExpandedBoms((prev) => {
                         const next = new Set(prev);
@@ -658,7 +711,7 @@ function SmartJobOrdersItemsPageContent() {
                                             <Package size={14} className="text-gray-400 flex-shrink-0" />
                                             <div className="min-w-[280px]">
                                               <SearchableSelect
-                                                options={itemOptions}
+                                                options={allItemOptions}
                                                 value={selectedItemId}
                                                 onChange={async (value) => {
                                                   const next = String(value || '');
@@ -666,7 +719,7 @@ function SmartJobOrdersItemsPageContent() {
                                                   await fetchItemStockAvailable(next);
                                                 }}
                                                 placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
-                                                disabled={itemsLoading || itemOptions.length === 0}
+                                                disabled={itemsLoading || allItemOptions.length === 0}
                                               />
                                             </div>
                                           </div>
