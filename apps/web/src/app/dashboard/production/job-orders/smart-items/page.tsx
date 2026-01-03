@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../../lib/api-client';
 import SearchableSelect from '../../../../../components/SearchableSelect';
+import { ChevronDown, ChevronRight, Package, Layers } from 'lucide-react';
 
 type FinishedItem = {
   id: string;
@@ -108,6 +109,7 @@ function SmartJobOrdersItemsPageContent() {
   const [stockByItemId, setStockByItemId] = useState<
     Record<string, { available: number; loading: boolean; error?: string }>
   >({});
+  const [expandedBoms, setExpandedBoms] = useState<Set<string>>(new Set());
 
   const [creating, setCreating] = useState(false);
 
@@ -247,10 +249,15 @@ function SmartJobOrdersItemsPageContent() {
     if (!preview?.nodes?.length) {
       setSelectedItemByNodeKey({});
       setStockByItemId({});
+      setExpandedBoms(new Set());
       return;
     }
 
     const itemNodes = preview.nodes.filter((n) => n.componentType === 'ITEM' && n.itemId);
+    const bomNodes = preview.nodes.filter((n) => n.componentType === 'BOM');
+    
+    // Expand all BOMs by default
+    setExpandedBoms(new Set(bomNodes.map((b) => b.bomId)));
 
     let cancelled = false;
 
@@ -492,69 +499,161 @@ function SmartJobOrdersItemsPageContent() {
               ) : null}
 
               <div className="mt-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">BOM Explosion</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-lg font-semibold text-gray-900">BOM Explosion</h3>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        const allBomIds = preview.nodes.filter((n) => n.componentType === 'BOM').map((n) => n.bomId);
+                        setExpandedBoms(new Set(allBomIds));
+                      }}
+                      className="px-3 py-1 text-xs rounded border border-amber-300 text-amber-700 hover:bg-amber-50"
+                    >
+                      Expand All
+                    </button>
+                    <button
+                      onClick={() => setExpandedBoms(new Set())}
+                      className="px-3 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+                    >
+                      Collapse All
+                    </button>
+                  </div>
+                </div>
                 <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Level</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Required</th>
-                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">In Stock</th>
-                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Short</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {preview.nodes.map((node, idx) => {
-                        const key = nodeKey(node);
-                        const isItem = node.componentType === 'ITEM';
-                        const selectedItemId = isItem ? selectedItemByNodeKey[key] || node.itemId : '';
-                        const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
-                        const available = stockState?.available ?? node.availableQuantity;
-                        const inStockLabel = stockState?.loading ? '…' : String(available);
-                        const short = Math.max(0, Number(node.requiredQuantity || 0) - Number(available || 0));
+                  {/* Group nodes by BOM */}
+                  {(() => {
+                    // Build hierarchical structure
+                    const bomGroups: { bom: SmartExplosionNode; items: SmartExplosionNode[] }[] = [];
+                    let currentBom: SmartExplosionNode | null = null;
+                    let currentItems: SmartExplosionNode[] = [];
 
-                        return (
-                          <tr
-                            key={`${node.bomId}:${node.itemId}:${idx}`}
-                            className={`border-b ${node.componentType === 'BOM' ? 'bg-amber-50' : ''}`}
+                    for (const node of preview.nodes) {
+                      if (node.componentType === 'BOM') {
+                        if (currentBom) {
+                          bomGroups.push({ bom: currentBom, items: currentItems });
+                        }
+                        currentBom = node;
+                        currentItems = [];
+                      } else if (node.componentType === 'ITEM') {
+                        currentItems.push(node);
+                      }
+                    }
+                    if (currentBom) {
+                      bomGroups.push({ bom: currentBom, items: currentItems });
+                    }
+
+                    const toggleBom = (bomId: string) => {
+                      setExpandedBoms((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(bomId)) {
+                          next.delete(bomId);
+                        } else {
+                          next.add(bomId);
+                        }
+                        return next;
+                      });
+                    };
+
+                    return bomGroups.map((group, groupIdx) => {
+                      const isExpanded = expandedBoms.has(group.bom.bomId);
+                      const hasShortage = group.items.some((item) => {
+                        const key = nodeKey(item);
+                        const selectedItemId = selectedItemByNodeKey[key] || item.itemId;
+                        const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+                        const available = stockState?.available ?? item.availableQuantity;
+                        return Number(item.requiredQuantity || 0) > Number(available || 0);
+                      });
+
+                      return (
+                        <div key={group.bom.bomId} className={groupIdx > 0 ? 'border-t border-gray-200' : ''}>
+                          {/* BOM Header - Collapsible */}
+                          <div
+                            onClick={() => toggleBom(group.bom.bomId)}
+                            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                              group.bom.level === 0
+                                ? 'bg-amber-100 hover:bg-amber-200'
+                                : 'bg-amber-50 hover:bg-amber-100'
+                            }`}
+                            style={{ paddingLeft: `${16 + group.bom.level * 20}px` }}
                           >
-                            <td className="px-4 py-2 text-sm text-gray-700">{node.level}</td>
-                            <td className="px-4 py-2 text-sm text-gray-700">{node.componentType}</td>
-                            <td className="px-4 py-2 text-sm text-gray-900">
-                              {isItem ? (
-                                <div className="min-w-[280px]">
-                                  <SearchableSelect
-                                    options={itemOptions}
-                                    value={selectedItemId}
-                                    onChange={async (value) => {
-                                      const next = String(value || '');
-                                      setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
-                                      await fetchItemStockAvailable(next);
-                                    }}
-                                    placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
-                                    disabled={itemsLoading || itemOptions.length === 0}
-                                  />
-                                </div>
-                              ) : (
-                                <span className="text-gray-700">
-                                  {node.itemCode && node.itemName
-                                    ? `${node.itemCode} - ${node.itemName}`
-                                    : node.itemName || node.itemCode || 'BOM'}
+                            <span className="text-amber-700">
+                              {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                            </span>
+                            <Layers size={16} className="text-amber-600" />
+                            <span className="font-semibold text-amber-900">
+                              {group.bom.itemCode} - {group.bom.itemName}
+                            </span>
+                            <span className="ml-auto flex items-center gap-4 text-sm">
+                              <span className="text-amber-700">
+                                {group.items.length} item{group.items.length !== 1 ? 's' : ''}
+                              </span>
+                              {hasShortage && (
+                                <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
+                                  Shortage
                                 </span>
                               )}
-                            </td>
-                            <td className="px-4 py-2 text-sm text-right text-gray-900">{node.requiredQuantity}</td>
-                            <td className="px-4 py-2 text-sm text-right text-gray-900" title={stockState?.error || ''}>
-                              {isItem ? inStockLabel : node.availableQuantity}
-                            </td>
-                            <td className="px-4 py-2 text-sm text-right font-semibold text-red-700">{isItem ? short : node.shortageQuantity}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                            </span>
+                          </div>
+
+                          {/* Child Items - Collapsible Content */}
+                          {isExpanded && group.items.length > 0 && (
+                            <div className="bg-white">
+                              <table className="min-w-full">
+                                <thead className="bg-gray-50 border-b border-gray-200">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase" style={{ paddingLeft: `${36 + group.bom.level * 20}px` }}>Item</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">Required</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">In Stock</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">Short</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {group.items.map((node, idx) => {
+                                    const key = nodeKey(node);
+                                    const selectedItemId = selectedItemByNodeKey[key] || node.itemId;
+                                    const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+                                    const available = stockState?.available ?? node.availableQuantity;
+                                    const inStockLabel = stockState?.loading ? '…' : String(available);
+                                    const short = Math.max(0, Number(node.requiredQuantity || 0) - Number(available || 0));
+
+                                    return (
+                                      <tr key={`${node.bomId}:${node.itemId}:${idx}`} className="hover:bg-gray-50">
+                                        <td className="px-4 py-2" style={{ paddingLeft: `${36 + group.bom.level * 20}px` }}>
+                                          <div className="flex items-center gap-2">
+                                            <Package size={14} className="text-gray-400 flex-shrink-0" />
+                                            <div className="min-w-[280px]">
+                                              <SearchableSelect
+                                                options={itemOptions}
+                                                value={selectedItemId}
+                                                onChange={async (value) => {
+                                                  const next = String(value || '');
+                                                  setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
+                                                  await fetchItemStockAvailable(next);
+                                                }}
+                                                placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
+                                                disabled={itemsLoading || itemOptions.length === 0}
+                                              />
+                                            </div>
+                                          </div>
+                                        </td>
+                                        <td className="px-4 py-2 text-sm text-right text-gray-900">{node.requiredQuantity}</td>
+                                        <td className="px-4 py-2 text-sm text-right text-gray-900" title={stockState?.error || ''}>
+                                          {inStockLabel}
+                                        </td>
+                                        <td className={`px-4 py-2 text-sm text-right font-semibold ${short > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                          {short > 0 ? short : '✓'}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </>

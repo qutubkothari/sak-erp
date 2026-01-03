@@ -755,7 +755,7 @@ export default function JobOrdersPage() {
         <h1 className="text-2xl font-bold text-[#36454F]">Job Orders</h1>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push('/dashboard/production/job-orders/smart')}
+            onClick={() => router.push('/dashboard/production/job-orders/smart-items')}
             className="px-4 py-2 bg-[#8B6F47] text-white rounded hover:bg-[#6F4E37]"
             title="Smart Job Order: select FG + preview BOM explosion + create"
           >

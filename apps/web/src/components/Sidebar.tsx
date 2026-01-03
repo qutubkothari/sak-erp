@@ -55,10 +55,10 @@ const navigation = [
   },
   {
     name: 'Production',
-    href: '/dashboard/production/job-orders/smart',
+    href: '/dashboard/production/job-orders/smart-items',
     icon: Factory,
     children: [
-      { name: 'Job Orders', href: '/dashboard/production/job-orders/smart' },
+      { name: 'Job Orders', href: '/dashboard/production/job-orders/smart-items' },
       { name: 'BOM', href: '/dashboard/bom' },
       { name: 'Work Stations', href: '/dashboard/work-stations' },
     ],
