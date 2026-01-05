@@ -86,6 +86,8 @@ export default function PurchaseRequisitionsPage() {
   const [selectedPR, setSelectedPR] = useState<PRDetail | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingPRId, setEditingPRId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     department: '',
     requiredDate: '',
@@ -348,6 +350,64 @@ export default function PurchaseRequisitionsPage() {
     setItems((prev) => prev.filter((item) => item.id !== id));
   };
 
+  const editItem = (id: string) => {
+    const item = items.find(it => it.id === id);
+    if (!item) return;
+
+    setEditingItemId(id);
+    setItemForm({
+      itemName: item.itemName,
+      vendorId: item.vendorId || '',
+      vendorName: item.vendorName || '',
+      quantity: item.quantity.toString(),
+      estimatedPrice: item.estimatedPrice?.toString() || '',
+      specifications: item.specifications || '',
+    });
+    setSearchTerm(item.itemName);
+    const matchedItem = masterItems.find(mi => mi.code === item.itemCode);
+    if (matchedItem) {
+      setSelectedItemId(matchedItem.id);
+    }
+  };
+
+  const updateItem = () => {
+    if (!editingItemId) return;
+    
+    if (!itemForm.quantity) {
+      alert('Please enter quantity');
+      return;
+    }
+    
+    if (!itemForm.itemName && !searchTerm) {
+      alert('Please search and select an item, or enter item name');
+      return;
+    }
+
+    const selectedItem = masterItems.find(item => item.id === selectedItemId);
+
+    setItems(prev => prev.map(item => 
+      item.id === editingItemId ? {
+        ...item,
+        itemCode: selectedItem?.code || item.itemCode,
+        itemName: useManualEntry ? itemForm.itemName : searchTerm,
+        uom: selectedItem?.uom || item.uom,
+        vendorId: itemForm.vendorId || undefined,
+        vendorName: itemForm.vendorName || undefined,
+        quantity: parseFloat(itemForm.quantity),
+        estimatedPrice: itemForm.estimatedPrice ? parseFloat(itemForm.estimatedPrice) : undefined,
+        specifications: itemForm.specifications,
+      } : item
+    ));
+
+    setEditingItemId(null);
+    resetItemEntry();
+  };
+
+  const cancelEdit = () => {
+    setEditingItemId(null);
+    resetItemEntry();
+  };
+
   const handleViewDetails = async (prId: string) => {
     setSelectedPR(null);
     setLoadingDetail(true);
@@ -365,6 +425,40 @@ export default function PurchaseRequisitionsPage() {
       setShowDetailModal(false);
     } finally {
       setLoadingDetail(false);
+    }
+  };
+
+  const handleEditPR = async (prId: string) => {
+    try {
+      const data = await apiClient.get(`/purchase/requisitions/${prId}`);
+      
+      // Populate form with existing PR data
+      setFormData({
+        department: data.department,
+        requiredDate: data.required_date.split('T')[0],
+        priority: data.priority,
+        notes: data.notes || '',
+      });
+
+      // Populate items
+      const prItems: PRItem[] = data.items.map((item: any) => ({
+        id: item.id.toString(),
+        itemCode: item.item_code || '',
+        itemName: item.item_name,
+        uom: item.uom || undefined,
+        vendorId: item.vendor_id || undefined,
+        vendorName: item.vendor_name || undefined,
+        quantity: item.quantity,
+        estimatedPrice: item.estimated_price || undefined,
+        specifications: item.specifications || '',
+      }));
+      setItems(prItems);
+
+      setEditingPRId(prId);
+      setShowCreateForm(true);
+    } catch (error) {
+      console.error('Error loading PR for edit:', error);
+      alert('Failed to load PR for editing');
     }
   };
 
@@ -551,15 +645,22 @@ export default function PurchaseRequisitionsPage() {
         })),
       };
       
-      await apiClient.post('/purchase/requisitions', prData);
-      alert(`Purchase Requisition ${status === 'DRAFT' ? 'saved as draft' : 'submitted'} successfully!`);
+      if (editingPRId) {
+        await apiClient.put(`/purchase/requisitions/${editingPRId}`, prData);
+        alert(`Purchase Requisition ${status === 'DRAFT' ? 'saved as draft' : 'updated'} successfully!`);
+      } else {
+        await apiClient.post('/purchase/requisitions', prData);
+        alert(`Purchase Requisition ${status === 'DRAFT' ? 'saved as draft' : 'submitted'} successfully!`);
+      }
+      
       setShowCreateForm(false);
       setItems([]);
       setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', notes: '' });
+      setEditingPRId(null);
       fetchRequisitions(); // Refresh the list
     } catch (error: any) {
-      console.error('Error creating PR:', error);
-      alert('Failed to create purchase requisition. Please try again.');
+      console.error('Error saving PR:', error);
+      alert('Failed to save purchase requisition. Please try again.');
     }
   };
 
@@ -593,10 +694,17 @@ export default function PurchaseRequisitionsPage() {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
               <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-amber-900">New Purchase Requisition</h2>
+                <h2 className="text-2xl font-bold text-amber-900">
+                  {editingPRId ? 'Edit Purchase Requisition' : 'New Purchase Requisition'}
+                </h2>
                 <button
                   type="button"
-                  onClick={() => setShowCreateForm(false)}
+                  onClick={() => {
+                    setShowCreateForm(false);
+                    setEditingPRId(null);
+                    setItems([]);
+                    setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', notes: '' });
+                  }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
                   ×
@@ -823,13 +931,32 @@ export default function PurchaseRequisitionsPage() {
                           </div>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={addItem}
-                        className="bg-amber-800 text-white px-4 py-2 rounded-lg hover:bg-amber-900 transition-colors"
-                      >
-                        + Add
-                      </button>
+                      {editingItemId ? (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={updateItem}
+                            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                          >
+                            Update
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEdit}
+                            className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={addItem}
+                          className="bg-amber-800 text-white px-4 py-2 rounded-lg hover:bg-amber-900 transition-colors"
+                        >
+                          + Add
+                        </button>
+                      )}
                     </div>
                     <input
                       type="text"
@@ -904,13 +1031,22 @@ export default function PurchaseRequisitionsPage() {
                                 {item.specifications || '-'}
                               </td>
                               <td className="px-4 py-2">
-                                <button
-                                  type="button"
-                                  onClick={() => removeItem(item.id)}
-                                  className="text-red-600 hover:text-red-800"
-                                >
-                                  Remove
-                                </button>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => editItem(item.id)}
+                                    className="text-blue-600 hover:text-blue-800 font-medium"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeItem(item.id)}
+                                    className="text-red-600 hover:text-red-800 font-medium"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -968,7 +1104,7 @@ export default function PurchaseRequisitionsPage() {
                     disabled={items.length === 0 || !formData.department || !formData.requiredDate}
                     className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Submit for Approval
+                    {editingPRId ? 'Update Requisition' : 'Submit for Approval'}
                   </button>
                 </div>
               </div>
@@ -1063,6 +1199,15 @@ export default function PurchaseRequisitionsPage() {
                             >
                               View Details
                             </button>
+                            {req.status === 'DRAFT' && (
+                              <button
+                                type="button"
+                                onClick={() => handleEditPR(req.id)}
+                                className="text-blue-600 hover:text-blue-900 font-medium"
+                              >
+                                Edit
+                              </button>
+                            )}
                             {(req.status === 'DRAFT' || req.status === 'SUBMITTED') && (
                               <>
                                 <button
