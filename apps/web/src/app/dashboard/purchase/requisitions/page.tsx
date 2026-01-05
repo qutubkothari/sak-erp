@@ -294,19 +294,18 @@ export default function PurchaseRequisitionsPage() {
 
     const selectedItem = masterItems.find(item => item.id === selectedItemId);
 
-    setItems([
-      ...items,
-      {
-        id: Date.now().toString(),
-        itemCode: selectedItem?.code || '',
-        itemName: useManualEntry ? itemForm.itemName : searchTerm,
-        vendorId: itemForm.vendorId || undefined,
-        vendorName: itemForm.vendorName || undefined,
-        quantity: parseFloat(itemForm.quantity),
-        estimatedPrice: itemForm.estimatedPrice ? parseFloat(itemForm.estimatedPrice) : undefined,
-        specifications: itemForm.specifications,
-      },
-    ]);
+    const nextItem = {
+      id: Date.now().toString(),
+      itemCode: selectedItem?.code || '',
+      itemName: useManualEntry ? itemForm.itemName : searchTerm,
+      vendorId: itemForm.vendorId || undefined,
+      vendorName: itemForm.vendorName || undefined,
+      quantity: parseFloat(itemForm.quantity),
+      estimatedPrice: itemForm.estimatedPrice ? parseFloat(itemForm.estimatedPrice) : undefined,
+      specifications: itemForm.specifications,
+    };
+
+    setItems((prev) => [...prev, nextItem]);
 
     setItemForm({
       itemName: '',
@@ -322,8 +321,24 @@ export default function PurchaseRequisitionsPage() {
     setLastPurchasePrice(null);
   };
 
+  const resetItemEntry = () => {
+    setItemForm({
+      itemName: '',
+      vendorId: '',
+      vendorName: '',
+      quantity: '',
+      estimatedPrice: '',
+      specifications: '',
+    });
+    setSearchTerm('');
+    setSelectedItemId(null);
+    setShowDropdown(false);
+    setUseManualEntry(false);
+    setLastPurchasePrice(null);
+  };
+
   const removeItem = (id: string) => {
-    setItems(items.filter(item => item.id !== id));
+    setItems((prev) => prev.filter((item) => item.id !== id));
   };
 
   const handleViewDetails = async (prId: string) => {
@@ -548,6 +563,7 @@ export default function PurchaseRequisitionsPage() {
         <div className="mb-8 flex justify-between items-center">
           <div>
             <button
+              type="button"
               onClick={() => router.push('/dashboard/purchase')}
               className="text-amber-800 hover:text-amber-900 mb-4 flex items-center gap-2"
             >
@@ -557,6 +573,7 @@ export default function PurchaseRequisitionsPage() {
             <p className="text-amber-700">Create and manage purchase requisition requests</p>
           </div>
           <button
+            type="button"
             onClick={() => setShowCreateForm(true)}
             className="bg-amber-800 text-white px-6 py-3 rounded-lg hover:bg-amber-900 transition-colors font-semibold"
           >
@@ -571,6 +588,7 @@ export default function PurchaseRequisitionsPage() {
               <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-amber-900">New Purchase Requisition</h2>
                 <button
+                  type="button"
                   onClick={() => setShowCreateForm(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
@@ -643,6 +661,7 @@ export default function PurchaseRequisitionsPage() {
                   {/* Toggle between search and manual entry */}
                   <div className="flex gap-2 mb-4">
                     <button
+                      type="button"
                       onClick={() => setUseManualEntry(false)}
                       className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                         !useManualEntry
@@ -653,6 +672,7 @@ export default function PurchaseRequisitionsPage() {
                       Search Existing Items
                     </button>
                     <button
+                      type="button"
                       onClick={() => setUseManualEntry(true)}
                       className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                         useManualEntry
@@ -689,6 +709,7 @@ export default function PurchaseRequisitionsPage() {
                               />
                               {searchTerm && (
                                 <button
+                                  type="button"
                                   onClick={() => {
                                     setSearchTerm('');
                                     setSelectedItemId(null);
@@ -712,6 +733,7 @@ export default function PurchaseRequisitionsPage() {
                                   <div className="px-4 py-6 text-center">
                                     <div className="text-red-600 font-semibold mb-2">⚠️ {itemsLoadError}</div>
                                     <button
+                                      type="button"
                                       onClick={() => window.location.href = '/login'}
                                       className="mt-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm"
                                     >
@@ -725,6 +747,7 @@ export default function PurchaseRequisitionsPage() {
                                     </div>
                                     {filteredItems.map((item) => (
                                       <button
+                                        type="button"
                                         key={item.id}
                                         onClick={() => selectItem(item)}
                                         className={`w-full text-left px-4 py-3 hover:bg-amber-50 border-b last:border-b-0 transition-colors ${
@@ -793,6 +816,7 @@ export default function PurchaseRequisitionsPage() {
                         )}
                       </div>
                       <button
+                        type="button"
                         onClick={addItem}
                         className="bg-amber-800 text-white px-4 py-2 rounded-lg hover:bg-amber-900 transition-colors"
                       >
@@ -865,6 +889,7 @@ export default function PurchaseRequisitionsPage() {
                               </td>
                               <td className="px-4 py-2">
                                 <button
+                                  type="button"
                                   onClick={() => removeItem(item.id)}
                                   className="text-red-600 hover:text-red-800"
                                 >
@@ -878,7 +903,8 @@ export default function PurchaseRequisitionsPage() {
                       {items.length > 0 && (
                         <div className="mt-4 flex justify-center">
                           <button
-                            onClick={addItem}
+                            type="button"
+                            onClick={resetItemEntry}
                             className="px-6 py-2 text-amber-600 hover:text-amber-800 font-medium border-2 border-dashed border-amber-300 hover:border-amber-500 rounded-lg transition-colors"
                           >
                             + Add Another Item
@@ -906,12 +932,14 @@ export default function PurchaseRequisitionsPage() {
                 {/* Actions */}
                 <div className="flex justify-end gap-3">
                   <button
+                    type="button"
                     onClick={() => setShowCreateForm(false)}
                     className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
+                    type="button"
                     onClick={() => handleSubmit('DRAFT')}
                     disabled={items.length === 0}
                     className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -919,6 +947,7 @@ export default function PurchaseRequisitionsPage() {
                     Save as Draft
                   </button>
                   <button
+                    type="button"
                     onClick={() => handleSubmit('SUBMITTED')}
                     disabled={items.length === 0 || !formData.department || !formData.requiredDate}
                     className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1012,6 +1041,7 @@ export default function PurchaseRequisitionsPage() {
                         <td className="px-6 py-4 text-sm">
                           <div className="flex gap-2">
                             <button 
+                              type="button"
                               onClick={() => handleViewDetails(req.id)}
                               className="text-amber-600 hover:text-amber-900 font-medium"
                             >
@@ -1020,12 +1050,14 @@ export default function PurchaseRequisitionsPage() {
                             {(req.status === 'DRAFT' || req.status === 'SUBMITTED') && (
                               <>
                                 <button
+                                  type="button"
                                   onClick={() => handleApprove(req.id)}
                                   className="text-green-600 hover:text-green-900 font-medium"
                                 >
                                   Approve
                                 </button>
                                 <button
+                                  type="button"
                                   onClick={() => handleReject(req.id)}
                                   className="text-red-600 hover:text-red-900 font-medium"
                                 >
@@ -1034,6 +1066,7 @@ export default function PurchaseRequisitionsPage() {
                               </>
                             )}
                             <button
+                              type="button"
                               onClick={() => handleDelete(req.id)}
                               className="text-gray-600 hover:text-gray-900 font-medium"
                             >
@@ -1070,6 +1103,7 @@ export default function PurchaseRequisitionsPage() {
                       <p className="text-gray-600 mt-1">PR Number: {selectedPR.pr_number}</p>
                     </div>
                     <button
+                      type="button"
                       onClick={() => setShowDetailModal(false)}
                       className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
                     >

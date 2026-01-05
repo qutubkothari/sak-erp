@@ -800,10 +800,10 @@ function PurchaseOrdersContent() {
   };
 
   const handleAddItem = () => {
-    setFormData({
-      ...formData,
+    setFormData((prev) => ({
+      ...prev,
       items: [
-        ...formData.items,
+        ...prev.items,
         {
           itemId: '',
           itemCode: '',
@@ -816,7 +816,7 @@ function PurchaseOrdersContent() {
           specifications: '',
         },
       ],
-    });
+    }));
   };
 
   const handleUpdateItem = async (index: number, field: string, value: any) => {
