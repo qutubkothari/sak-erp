@@ -8,6 +8,7 @@ interface PRItem {
   id: string;
   itemCode?: string;
   itemName: string;
+  uom?: string;
   vendorId?: string;
   vendorName?: string;
   quantity: number;
@@ -298,6 +299,7 @@ export default function PurchaseRequisitionsPage() {
       id: Date.now().toString(),
       itemCode: selectedItem?.code || '',
       itemName: useManualEntry ? itemForm.itemName : searchTerm,
+      uom: selectedItem?.uom || undefined,
       vendorId: itemForm.vendorId || undefined,
       vendorName: itemForm.vendorName || undefined,
       quantity: parseFloat(itemForm.quantity),
@@ -798,7 +800,7 @@ export default function PurchaseRequisitionsPage() {
                         type="number"
                         value={itemForm.quantity}
                         onChange={(e) => setItemForm({ ...itemForm, quantity: e.target.value })}
-                        placeholder="Quantity *"
+                        placeholder={`Quantity${selectedItemId ? ` (${masterItems.find((i) => i.id === selectedItemId)?.uom || ''})` : ''} *`}
                         className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                       />
                       <div>
@@ -806,7 +808,8 @@ export default function PurchaseRequisitionsPage() {
                           type="number"
                           value={itemForm.estimatedPrice}
                           onChange={(e) => setItemForm({ ...itemForm, estimatedPrice: e.target.value })}
-                          placeholder="Est. Price"
+                          placeholder="Est. Unit Price"
+                          title="Estimated unit price. Extended price = Qty × unit price."
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                         />
                         {lastPurchasePrice && (
@@ -841,7 +844,12 @@ export default function PurchaseRequisitionsPage() {
                             <th className="px-4 py-2 text-left text-sm font-semibold">Item</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Vendor</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Qty</th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold">Est. Price</th>
+                            <th
+                              className="px-4 py-2 text-left text-sm font-semibold"
+                              title="Estimated unit price. Extended price = Qty × unit price."
+                            >
+                              Est. Unit Price
+                            </th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Specifications</th>
                             <th className="px-4 py-2"></th>
                           </tr>
@@ -880,7 +888,10 @@ export default function PurchaseRequisitionsPage() {
                                   ))}
                                 </select>
                               </td>
-                              <td className="px-4 py-2">{item.quantity}</td>
+                              <td className="px-4 py-2">
+                                {item.quantity}
+                                {item.uom ? <span className="ml-1 text-xs text-gray-600">{item.uom}</span> : null}
+                              </td>
                               <td className="px-4 py-2">
                                 {item.estimatedPrice ? `₹${item.estimatedPrice.toFixed(2)}` : '-'}
                               </td>
