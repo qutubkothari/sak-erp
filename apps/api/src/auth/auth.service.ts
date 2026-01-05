@@ -283,30 +283,27 @@ export class AuthService {
     
     // PRIORITY 1: First, try to get tenant from user's record (most reliable)
     if (!tenantId) {
-      const { data: userTenant, error: userTenantError } = await this.supabase
+      const { data: userTenant } = await this.supabase
         .from('users')
         .select('tenant_id')
         .eq('email', dto.email)
         .limit(1)
         .maybeSingle();
 
-      console.log('User tenant lookup:', { email: dto.email, userTenant, error: userTenantError });
       tenantId = (userTenant as any)?.tenant_id;
     }
     
     // PRIORITY 2: Fallback to default active tenant
     if (!tenantId) {
-      const { data: defaultTenant, error: tenantError } = await this.supabase
+      const { data: defaultTenant } = await this.supabase
         .from('tenants')
         .select('id')
         .eq('is_active', true)
         .limit(1)
         .single();
-      console.log('Default tenant lookup:', { defaultTenant, error: tenantError });
       tenantId = defaultTenant?.id;
     }
 
-    console.log('Final tenant ID:', tenantId);
     if (!tenantId) {
       throw new UnauthorizedException('No active tenant found');
     }
