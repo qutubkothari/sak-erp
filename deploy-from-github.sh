@@ -2,26 +2,28 @@
 # Deploy SAK ERP from GitHub to Hostinger VPS
 set -e
 
+SUDO_PASS="515253"
+
 echo "=== SAK ERP Hostinger Deployment from GitHub ==="
 
 # Install Node.js 20
 if ! command -v node &> /dev/null; then
     echo "Installing Node.js 20..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -S bash -
-    sudo apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_20.x | echo "$SUDO_PASS" | sudo -S bash -
+    echo "$SUDO_PASS" | sudo -S apt-get install -y nodejs
 fi
 
 # Install pnpm
 if ! command -v pnpm &> /dev/null; then
     echo "Installing pnpm..."
-    sudo npm install -g pnpm
+    echo "$SUDO_PASS" | sudo -S npm install -g pnpm
 fi
 
 # Install PM2
 if ! command -v pm2 &> /dev/null; then
     echo "Installing PM2..."
-    sudo npm install -g pm2
-    pm2 startup
+    echo "$SUDO_PASS" | sudo -S npm install -g pm2
+    pm2 startup | grep -oP 'sudo.*' | echo "$SUDO_PASS" | sudo -S bash || true
 fi
 
 # Clone/pull repository
@@ -32,9 +34,9 @@ if [ -d "$DEPLOY_DIR" ]; then
     git pull origin main
 else
     echo "Cloning repository..."
-    sudo mkdir -p /var/www
-    sudo chown -R $USER:$USER /var/www
-    git clone https://github.com/qutubk/sak-erp.git "$DEPLOY_DIR"
+    echo "$SUDO_PASS" | sudo -S mkdir -p /var/www
+    echo "$SUDO_PASS" | sudo -S chown -R $USER:$USER /var/www
+    git clone https://github.com/qutubkothari/sak-erp.git "$DEPLOY_DIR"
     cd "$DEPLOY_DIR"
 fi
 
@@ -90,11 +92,11 @@ pm2 status
 # Install Nginx if needed
 if ! command -v nginx &> /dev/null; then
     echo "Installing Nginx..."
-    sudo apt-get update
-    sudo apt-get install -y nginx
+    echo "$SUDO_PASS" | sudo -S apt-get update
+    echo "$SUDO_PASS" | sudo -S apt-get install -y nginx
     
     # Create Nginx config
-    sudo tee /etc/nginx/sites-available/sak-erp > /dev/null << 'NGINXEOF'
+    echo "$SUDO_PASS" | sudo -S tee /etc/nginx/sites-available/sak-erp > /dev/null << 'NGINXEOF'
 server {
     listen 80;
     server_name 72.62.192.228;
@@ -118,10 +120,10 @@ server {
 }
 NGINXEOF
     
-    sudo ln -sf /etc/nginx/sites-available/sak-erp /etc/nginx/sites-enabled/
-    sudo rm -f /etc/nginx/sites-enabled/default
-    sudo nginx -t
-    sudo systemctl restart nginx
+    echo "$SUDO_PASS" | sudo -S ln -sf /etc/nginx/sites-available/sak-erp /etc/nginx/sites-enabled/
+    echo "$SUDO_PASS" | sudo -S rm -f /etc/nginx/sites-enabled/default
+    echo "$SUDO_PASS" | sudo -S nginx -t
+    echo "$SUDO_PASS" | sudo -S systemctl restart nginx
     
     echo "Nginx configured and started"
 fi
