@@ -280,18 +280,8 @@ export class AuthService {
   async login(dto: LoginDto) {
     // Get or use default tenant if not provided
     let tenantId = dto.tenantId;
-    if (!tenantId) {
-      const { data: defaultTenant } = await this.supabase
-        .from('tenants')
-        .select('id')
-        .eq('is_active', true)
-        .limit(1)
-        .single();
-      tenantId = defaultTenant?.id;
-    }
-
-    // Fallback: if no active tenant is configured, infer tenant from the user record.
-    // This helps local/dev environments where tenants.is_active may not be set.
+    
+    // PRIORITY 1: First, try to get tenant from user's record (most reliable)
     if (!tenantId) {
       const { data: userTenant } = await this.supabase
         .from('users')
@@ -301,6 +291,17 @@ export class AuthService {
         .maybeSingle();
 
       tenantId = (userTenant as any)?.tenant_id;
+    }
+    
+    // PRIORITY 2: Fallback to default active tenant
+    if (!tenantId) {
+      const { data: defaultTenant } = await this.supabase
+        .from('tenants')
+        .select('id')
+        .eq('is_active', true)
+        .limit(1)
+        .single();
+      tenantId = defaultTenant?.id;
     }
 
     if (!tenantId) {
