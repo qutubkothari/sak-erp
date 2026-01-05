@@ -118,15 +118,18 @@ export default function PurchaseRequisitionsPage() {
 
   const [rfqPanelOpen, setRfqPanelOpen] = useState(false);
   const [rfqVendors, setRfqVendors] = useState<Vendor[]>([]);
-  const [rfqItemVendors, setRfqItemVendors] = useState<Record<string, string>>({});
+  const [rfqItemVendors, setRfqItemVendors] = useState<Record<string, string[]>>({});
   const [rfqLoadingVendors, setRfqLoadingVendors] = useState(false);
   const [rfqSending, setRfqSending] = useState(false);
   const [rfqResponseDate, setRfqResponseDate] = useState('');
   const [rfqRemarks, setRfqRemarks] = useState('');
+  const [showRfqPreview, setShowRfqPreview] = useState(false);
+  const [rfqPreviewData, setRfqPreviewData] = useState<any>(null);
 
   // Helper to get selected vendor IDs
   const getSelectedVendorIds = () => {
-    return Array.from(new Set(Object.values(rfqItemVendors).filter(Boolean)));
+    const allVendorIds = Object.values(rfqItemVendors).flat().filter(Boolean);
+    return Array.from(new Set(allVendorIds));
   };
 
   useEffect(() => {
@@ -496,12 +499,12 @@ export default function PurchaseRequisitionsPage() {
     if (items.length === 0) return;
 
     const itemIdCache = new Map<string, string | null>();
-    const itemVendorMap: Record<string, string> = {};
+    const itemVendorMap: Record<string, string[]> = {};
 
     for (const prItem of items) {
       // If a vendor was already selected and saved with the PR item, prefer it.
       if (prItem.vendor_id) {
-        itemVendorMap[prItem.id] = prItem.vendor_id;
+        itemVendorMap[prItem.id] = [prItem.vendor_id];
         continue;
       }
 
@@ -518,7 +521,7 @@ export default function PurchaseRequisitionsPage() {
         const pref = await apiClient.get(`/items/${itemId}/vendors/preferred`);
         const vendorId = pref?.vendor_id;
         if (vendorId) {
-          itemVendorMap[prItem.id] = vendorId;
+          itemVendorMap[prItem.id] = [vendorId];
         }
       } catch (error) {
         console.error('Error fetching preferred vendor for item:', error);
@@ -544,11 +547,42 @@ export default function PurchaseRequisitionsPage() {
     }
   };
 
-  const setItemVendor = (itemId: string, vendorId: string) => {
-    setRfqItemVendors((prev) => ({
-      ...prev,
-      [itemId]: vendorId
-    }));
+  const toggleItemVendor = (itemId: string, vendorId: string) => {
+    setRfqItemVendors((prev) => {
+      const currentVendors = prev[itemId] || [];
+      const isSelected = currentVendors.includes(vendorId);
+      
+      return {
+        ...prev,
+        [itemId]: isSelected 
+          ? currentVendors.filter(v => v !== vendorId)
+          : [...currentVendors, vendorId]
+      };
+    });
+  };
+
+  const handlePreviewRFQ = () => {
+    if (!selectedPR) return;
+    const selectedVendors = getSelectedVendorIds();
+    if (selectedVendors.length === 0) {
+      alert('Please select at least one vendor for the items');
+      return;
+    }
+
+    // Create item-vendor assignments
+    const itemVendorAssignments = selectedPR.purchase_requisition_items?.map((item) => ({
+      item: item,
+      vendorIds: rfqItemVendors[item.id] || []
+    })) || [];
+
+    setRfqPreviewData({
+      pr: selectedPR,
+      vendors: rfqVendors.filter(v => selectedVendors.includes(v.id)),
+      itemVendors: itemVendorAssignments,
+      responseDate: rfqResponseDate,
+      remarks: rfqRemarks
+    });
+    setShowRfqPreview(true);
   };
 
   const handleSendRFQ = async () => {
@@ -559,10 +593,10 @@ export default function PurchaseRequisitionsPage() {
       return;
     }
 
-    // Create item-vendor assignments
+    // Create item-vendor assignments for API
     const itemVendorAssignments = selectedPR.purchase_requisition_items?.map((item) => ({
       itemId: item.id,
-      vendorId: rfqItemVendors[item.id] || null
+      vendorIds: rfqItemVendors[item.id] || []
     })) || [];
 
     try {
@@ -575,6 +609,7 @@ export default function PurchaseRequisitionsPage() {
       });
 
       alert(`RFQ sent: ${result?.sent_count ?? 0}, failed: ${result?.failed_count ?? 0}`);
+      setShowRfqPreview(false);
       setRfqPanelOpen(false);
       setRfqItemVendors({});
       setRfqResponseDate('');
@@ -1330,7 +1365,7 @@ export default function PurchaseRequisitionsPage() {
                           <tr>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Item Code</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Item Name</th>
-                            {rfqPanelOpen && <th className="px-4 py-2 text-left text-sm font-semibold">Vendor</th>}
+                            {rfqPanelOpen && <th className="px-4 py-2 text-left text-sm font-semibold">Vendors (Select Multiple)</th>}
                             <th className="px-4 py-2 text-right text-sm font-semibold">Quantity</th>
                             <th className="px-4 py-2 text-right text-sm font-semibold">Est. Rate</th>
                             <th className="px-4 py-2 text-right text-sm font-semibold">Total</th>
@@ -1345,18 +1380,26 @@ export default function PurchaseRequisitionsPage() {
                                 <td className="px-4 py-2 text-sm">{item.item_name}</td>
                                 {rfqPanelOpen && (
                                   <td className="px-4 py-2">
-                                    <select
-                                      value={rfqItemVendors[item.id] || ''}
-                                      onChange={(e) => setItemVendor(item.id, e.target.value)}
-                                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                                    >
-                                      <option value="">Select Vendor</option>
-                                      {rfqVendors.map((vendor) => (
-                                        <option key={vendor.id} value={vendor.id}>
-                                          {vendor.name}
-                                        </option>
-                                      ))}
-                                    </select>
+                                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                                      {rfqVendors.map((vendor) => {
+                                        const isSelected = (rfqItemVendors[item.id] || []).includes(vendor.id);
+                                        const isPreferred = item.vendor_id === vendor.id;
+                                        return (
+                                          <label key={vendor.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 px-2 py-1 rounded">
+                                            <input
+                                              type="checkbox"
+                                              checked={isSelected}
+                                              onChange={() => toggleItemVendor(item.id, vendor.id)}
+                                              className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                                            />
+                                            <span className={isPreferred ? 'font-semibold text-amber-700' : ''}>
+                                              {vendor.name}
+                                              {isPreferred && <span className="ml-1 text-xs">(Preferred)</span>}
+                                            </span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
                                   </td>
                                 )}
                                 <td className="px-4 py-2 text-sm text-right">{item.requested_qty}</td>
@@ -1464,7 +1507,7 @@ export default function PurchaseRequisitionsPage() {
                       </div>
 
                       <div className="mb-3 text-sm text-gray-600">
-                        💡 Select vendors for each item in the table above. Preferred vendors are auto-selected.
+                        💡 Select multiple vendors for each item using checkboxes. Preferred vendors are auto-selected and marked.
                       </div>
 
                       {rfqLoadingVendors && (
@@ -1493,17 +1536,17 @@ export default function PurchaseRequisitionsPage() {
                         </div>
                       </div>
 
-                      <div className="flex justify-end mt-3">
+                      <div className="flex justify-end gap-3 mt-3">
                         <button
-                          onClick={handleSendRFQ}
-                          disabled={rfqSending || rfqLoadingVendors}
+                          onClick={handlePreviewRFQ}
+                          disabled={rfqLoadingVendors}
                           className={`px-6 py-2 rounded-lg transition-colors ${
-                            rfqSending || rfqLoadingVendors
+                            rfqLoadingVendors
                               ? 'bg-gray-300 text-gray-600'
-                              : 'bg-green-600 text-white hover:bg-green-700'
+                              : 'bg-blue-600 text-white hover:bg-blue-700'
                           }`}
                         >
-                          {rfqSending ? 'Sending...' : 'Send RFQ Email'}
+                          Preview Email
                         </button>
                       </div>
                     </div>
@@ -1520,6 +1563,182 @@ export default function PurchaseRequisitionsPage() {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* RFQ Email Preview Modal */}
+        {showRfqPreview && rfqPreviewData && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-amber-900">RFQ Email Preview</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowRfqPreview(false)}
+                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Email Recipients */}
+                <div>
+                  <h3 className="text-lg font-bold mb-2">Recipients</h3>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <p className="text-sm font-semibold mb-2">To: Vendors</p>
+                    <div className="space-y-1">
+                      {rfqPreviewData.vendors.map((vendor: Vendor) => (
+                        <div key={vendor.id} className="text-sm">
+                          <span className="font-medium">{vendor.name}</span> - {vendor.email}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Email Subject */}
+                <div>
+                  <h3 className="text-lg font-bold mb-2">Subject</h3>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <p className="text-sm">Request for Quotation - PR #{rfqPreviewData.pr.pr_number}</p>
+                  </div>
+                </div>
+
+                {/* Email Body */}
+                <div>
+                  <h3 className="text-lg font-bold mb-2">Email Content</h3>
+                  <div className="bg-gray-50 p-6 rounded-lg space-y-4 border">
+                    <div>
+                      <p className="text-sm mb-4">Dear Vendor,</p>
+                      <p className="text-sm mb-4">
+                        We are requesting quotations for the following items as per our Purchase Requisition #{rfqPreviewData.pr.pr_number}.
+                      </p>
+                    </div>
+
+                    {/* PR Details */}
+                    <div className="grid grid-cols-2 gap-4 text-sm bg-white p-4 rounded border">
+                      <div>
+                        <p className="text-gray-600">PR Number:</p>
+                        <p className="font-semibold">{rfqPreviewData.pr.pr_number}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Department:</p>
+                        <p className="font-semibold">{rfqPreviewData.pr.department}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Required Date:</p>
+                        <p className="font-semibold">{new Date(rfqPreviewData.pr.required_date).toLocaleDateString()}</p>
+                      </div>
+                      {rfqPreviewData.responseDate && (
+                        <div>
+                          <p className="text-gray-600">Response Required By:</p>
+                          <p className="font-semibold">{new Date(rfqPreviewData.responseDate).toLocaleDateString()}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Items Table - Show which items each vendor will receive */}
+                    <div>
+                      <p className="text-sm font-semibold mb-2">Items for Quotation:</p>
+                      <div className="border rounded-lg overflow-hidden bg-white">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-100">
+                            <tr>
+                              <th className="px-3 py-2 text-left">Item Code</th>
+                              <th className="px-3 py-2 text-left">Item Name</th>
+                              <th className="px-3 py-2 text-right">Quantity</th>
+                              <th className="px-3 py-2 text-left">Remarks</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rfqPreviewData.itemVendors
+                              .filter((iv: any) => iv.vendorIds.length > 0)
+                              .map((iv: any) => (
+                                <tr key={iv.item.id} className="border-t">
+                                  <td className="px-3 py-2">{iv.item.item_code || '-'}</td>
+                                  <td className="px-3 py-2">{iv.item.item_name}</td>
+                                  <td className="px-3 py-2 text-right">{iv.item.requested_qty}</td>
+                                  <td className="px-3 py-2 text-gray-600">{iv.item.remarks || '-'}</td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-xs text-gray-600 mt-2">
+                        * Each vendor will receive an email with only the items they were selected for
+                      </p>
+                    </div>
+
+                    {rfqPreviewData.remarks && (
+                      <div className="bg-amber-50 p-3 rounded border border-amber-200">
+                        <p className="text-sm font-semibold mb-1">Additional Notes:</p>
+                        <p className="text-sm">{rfqPreviewData.remarks}</p>
+                      </div>
+                    )}
+
+                    <div className="text-sm">
+                      <p className="mb-2">Please provide your quotation with the following details:</p>
+                      <ul className="list-disc list-inside space-y-1 ml-4 text-gray-700">
+                        <li>Unit price per item</li>
+                        <li>Total price including taxes</li>
+                        <li>Delivery lead time</li>
+                        <li>Payment terms</li>
+                        <li>Validity of the quotation</li>
+                      </ul>
+                    </div>
+
+                    <div className="text-sm">
+                      <p>Best regards,</p>
+                      <p className="font-semibold mt-1">Purchase Department</p>
+                      <p className="text-gray-600">SAK ERP System</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Vendor-Item Assignment Summary */}
+                <div>
+                  <h3 className="text-lg font-bold mb-2">Vendor Assignment Summary</h3>
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    {rfqPreviewData.vendors.map((vendor: Vendor) => {
+                      const vendorItems = rfqPreviewData.itemVendors.filter((iv: any) => 
+                        iv.vendorIds.includes(vendor.id)
+                      );
+                      return (
+                        <div key={vendor.id} className="mb-3 last:mb-0">
+                          <p className="font-semibold text-sm">{vendor.name}:</p>
+                          <ul className="ml-4 text-sm text-gray-700">
+                            {vendorItems.map((iv: any) => (
+                              <li key={iv.item.id}>• {iv.item.item_name} (Qty: {iv.item.requested_qty})</li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowRfqPreview(false)}
+                  className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSendRFQ}
+                  disabled={rfqSending}
+                  className={`px-6 py-2 rounded-lg transition-colors ${
+                    rfqSending
+                      ? 'bg-gray-300 text-gray-600'
+                      : 'bg-green-600 text-white hover:bg-green-700'
+                  }`}
+                >
+                  {rfqSending ? 'Sending...' : 'Confirm & Send RFQ Email'}
+                </button>
+              </div>
             </div>
           </div>
         )}
