@@ -288,8 +288,13 @@ export default function PurchaseRequisitionsPage() {
   };
 
   const addItem = () => {
-    if ((!itemForm.itemName && !searchTerm) || !itemForm.quantity) {
-      alert('Please fill in required fields');
+    if (!itemForm.quantity) {
+      alert('Please enter quantity');
+      return;
+    }
+    
+    if (!itemForm.itemName && !searchTerm) {
+      alert('Please search and select an item, or enter item name');
       return;
     }
 
