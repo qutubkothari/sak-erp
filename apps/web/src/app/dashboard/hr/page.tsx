@@ -248,7 +248,12 @@ function hasModulePermission(
 }
 
 function userCanAccessManagement(user: StoredUser | null): boolean {
-  if (!user) return false;
+  if (!user) {
+    console.log('[HR Access Check] No user found');
+    return false;
+  }
+
+  console.log('[HR Access Check] User:', user.email);
 
   // Prefer permissions-based check (works for multi-role and custom role names)
   if (
@@ -257,14 +262,19 @@ function userCanAccessManagement(user: StoredUser | null): boolean {
     hasModulePermission(user, 'HR Management', 'create') ||
     hasModulePermission(user, 'HR Management', 'delete')
   ) {
+    console.log('[HR Access Check] ✅ Access granted via permissions');
     return true;
   }
 
   // Fallback: allow known admin/owner patterns by role name
   const roleNames = getUserRoleNames(user);
-  return roleNames.some((name) =>
+  console.log('[HR Access Check] User roles:', roleNames);
+  console.log('[HR Access Check] Role names as strings:', JSON.stringify(roleNames));
+  
+  const hasAdminRole = roleNames.some((name) =>
     [
       'ADMIN',
+      'ADMINISTRATOR',
       'SUPER ADMIN',
       'SUPER_ADMIN',
       'SUPERADMIN',
@@ -274,8 +284,18 @@ function userCanAccessManagement(user: StoredUser | null): boolean {
       'MANAGER HR',
       'MANAGER_HR',
       'HR',
+      'HR MANAGER',
+      'MANAGER',
     ].includes(name),
   );
+  
+  if (hasAdminRole) {
+    console.log('[HR Access Check] ✅ Access granted via role name');
+  } else {
+    console.log('[HR Access Check] ❌ Access denied - no matching role');
+  }
+  
+  return hasAdminRole;
 }
 
 export default function HrPage() {
@@ -3575,7 +3595,19 @@ function HrPageContent() {
                   <input
                     type="date"
                     value={leaveForm.start_date}
-                    onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })}
+                    onChange={(e) => {
+                      const newStartDate = e.target.value;
+                      const updatedForm = { ...leaveForm, start_date: newStartDate };
+                      // Auto-calculate days if both dates are present
+                      if (newStartDate && leaveForm.end_date) {
+                        const start = new Date(newStartDate);
+                        const end = new Date(leaveForm.end_date);
+                        const diffTime = Math.abs(end.getTime() - start.getTime());
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end day
+                        updatedForm.total_days = diffDays;
+                      }
+                      setLeaveForm(updatedForm);
+                    }}
                     className="w-full border rounded px-3 py-2"
                     required
                   />
@@ -3585,7 +3617,19 @@ function HrPageContent() {
                   <input
                     type="date"
                     value={leaveForm.end_date}
-                    onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })}
+                    onChange={(e) => {
+                      const newEndDate = e.target.value;
+                      const updatedForm = { ...leaveForm, end_date: newEndDate };
+                      // Auto-calculate days if both dates are present
+                      if (leaveForm.start_date && newEndDate) {
+                        const start = new Date(leaveForm.start_date);
+                        const end = new Date(newEndDate);
+                        const diffTime = Math.abs(end.getTime() - start.getTime());
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end day
+                        updatedForm.total_days = diffDays;
+                      }
+                      setLeaveForm(updatedForm);
+                    }}
                     className="w-full border rounded px-3 py-2"
                     required
                   />
@@ -3928,8 +3972,8 @@ function HrPageContent() {
             <form onSubmit={async (e) => { e.preventDefault(); setLoading(true); try { await apiClient.put(`/hr/leaves/${selectedLeave.id}`, leaveForm); setShowEditLeave(false); fetchData(); alert('Leave updated successfully'); } catch (err: any) { alert('Failed to update leave'); } finally { setLoading(false); } }} className="space-y-4">
               <div><label className="block text-sm font-medium mb-1">Leave Type</label><select value={leaveForm.leave_type} onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })} className="w-full border rounded px-3 py-2" required><option value="CASUAL">Casual Leave</option><option value="SICK">Sick Leave</option><option value="EARNED">Earned Leave</option><option value="UNPAID">Unpaid Leave</option><option value="MATERNITY">Maternity Leave</option><option value="PATERNITY">Paternity Leave</option><option value="COMP_OFF">Compensatory Off</option></select></div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Start Date</label><input type="date" value={leaveForm.start_date} onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })} className="w-full border rounded px-3 py-2" required /></div>
-                <div><label className="block text-sm font-medium mb-1">End Date</label><input type="date" value={leaveForm.end_date} onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })} className="w-full border rounded px-3 py-2" required /></div>
+                <div><label className="block text-sm font-medium mb-1">Start Date</label><input type="date" value={leaveForm.start_date} onChange={(e) => { const newStartDate = e.target.value; const updatedForm = { ...leaveForm, start_date: newStartDate }; if (newStartDate && leaveForm.end_date) { const start = new Date(newStartDate); const end = new Date(leaveForm.end_date); const diffTime = Math.abs(end.getTime() - start.getTime()); const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; updatedForm.total_days = diffDays; } setLeaveForm(updatedForm); }} className="w-full border rounded px-3 py-2" required /></div>
+                <div><label className="block text-sm font-medium mb-1">End Date</label><input type="date" value={leaveForm.end_date} onChange={(e) => { const newEndDate = e.target.value; const updatedForm = { ...leaveForm, end_date: newEndDate }; if (leaveForm.start_date && newEndDate) { const start = new Date(leaveForm.start_date); const end = new Date(newEndDate); const diffTime = Math.abs(end.getTime() - start.getTime()); const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; updatedForm.total_days = diffDays; } setLeaveForm(updatedForm); }} className="w-full border rounded px-3 py-2" required /></div>
               </div>
               <div><label className="block text-sm font-medium mb-1">Total Days</label><input type="number" value={leaveForm.total_days} onChange={(e) => setLeaveForm({ ...leaveForm, total_days: parseInt(e.target.value) })} className="w-full border rounded px-3 py-2" min="1" required /></div>
               <div><label className="block text-sm font-medium mb-1">Reason</label><textarea value={leaveForm.reason} onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })} className="w-full border rounded px-3 py-2" rows={3} required /></div>

@@ -36,6 +36,8 @@
   },
   "packageManager": "pnpm@9.0.0",
   "dependencies": {
+    "@supabase/supabase-js": "^2.86.0",
+    "dotenv": "^17.2.3",
     "pdf-parse": "^1.1.1",
     "xlsx": "^0.18.5"
   }
