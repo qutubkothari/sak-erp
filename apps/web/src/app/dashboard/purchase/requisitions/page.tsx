@@ -1199,7 +1199,7 @@ export default function PurchaseRequisitionsPage() {
                             >
                               View Details
                             </button>
-                            {req.status === 'DRAFT' && (
+                            {(req.status === 'DRAFT' || req.status === 'SUBMITTED') && (
                               <button
                                 type="button"
                                 onClick={() => handleEditPR(req.id)}
@@ -1392,6 +1392,15 @@ export default function PurchaseRequisitionsPage() {
                   <div className="flex justify-end gap-3">
                     {selectedPR.status === 'SUBMITTED' && (
                       <>
+                        <button
+                          onClick={() => {
+                            handleEditPR(selectedPR.id);
+                            setShowDetailModal(false);
+                          }}
+                          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          Edit
+                        </button>
                         <button
                           onClick={() => handleReject(selectedPR.id)}
                           className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
