@@ -100,6 +100,14 @@ export default function ItemsPage() {
   const [variants, setVariants] = useState<Item[]>([]);
   const [newVariant, setNewVariant] = useState({ code: '', name: '', variant_name: '', is_default: false });
   
+  // Drawing upload state
+  const [drawingFile, setDrawingFile] = useState<File | null>(null);
+  const [uploadingDrawing, setUploadingDrawing] = useState(false);
+  
+  // Bulk inventory state
+  const [showBulkInventory, setShowBulkInventory] = useState(false);
+  const [bulkInventoryItems, setBulkInventoryItems] = useState<Array<{itemId: string, itemCode: string, itemName: string, quantity: string, location: string}>>([]);
+  
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
@@ -153,6 +161,8 @@ export default function ItemsPage() {
     is_variant: false,
     is_default_variant: false,
     variant_name: '',
+    drawing_url: '',
+    drawing_file_name: '',
   });
 
   const addCategory = async () => {
@@ -286,8 +296,22 @@ export default function ItemsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      // Upload drawing if file is selected
+      let drawingData = {
+        drawing_url: formData.drawing_url,
+        drawing_file_name: formData.drawing_file_name
+      };
+      
+      if (drawingFile) {
+        const uploadResult = await handleDrawingUpload(drawingFile);
+        if (uploadResult) {
+          drawingData = uploadResult;
+        }
+      }
+      
       const payload = {
         ...formData,
+        ...drawingData,
         hsn_code: (formData.hsn_code || '').replace(/[^0-9]/g, ''),
         standard_cost: formData.standard_cost ? parseFloat(formData.standard_cost) : null,
         selling_price: formData.selling_price ? parseFloat(formData.selling_price) : null,
@@ -344,6 +368,8 @@ export default function ItemsPage() {
       is_variant: item.is_variant || false,
       is_default_variant: item.is_default_variant || false,
       variant_name: item.variant_name || '',
+      drawing_url: (item as any).drawing_url || '',
+      drawing_file_name: (item as any).drawing_file_name || '',
     });
     setShowForm(true);
     fetchItemVendors(item.id);
@@ -516,6 +542,82 @@ export default function ItemsPage() {
     }
   };
 
+  const handleDrawingUpload = async (file: File) => {
+    if (!file) return null;
+    
+    setUploadingDrawing(true);
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append('file', file);
+      formDataUpload.append('bucket', 'drawings');
+      formDataUpload.append('folder', 'item-drawings');
+      
+      const result = await apiClient.post('/upload', formDataUpload, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      return {
+        drawing_url: result.url,
+        drawing_file_name: file.name
+      };
+    } catch (error) {
+      console.error('Error uploading drawing:', error);
+      alert('Failed to upload drawing');
+      return null;
+    } finally {
+      setUploadingDrawing(false);
+    }
+  };
+
+  const initBulkInventory = () => {
+    // Initialize with all active items with zero quantity
+    const bulkItems = items
+      .filter(item => item.is_active)
+      .map(item => ({
+        itemId: item.id,
+        itemCode: item.code,
+        itemName: item.name,
+        quantity: '',
+        location: 'MAIN_WAREHOUSE'
+      }));
+    setBulkInventoryItems(bulkItems);
+    setShowBulkInventory(true);
+  };
+
+  const handleBulkInventorySubmit = async () => {
+    // Filter items with quantity entered
+    const itemsWithQty = bulkInventoryItems.filter(item => item.quantity && parseFloat(item.quantity) > 0);
+    
+    if (itemsWithQty.length === 0) {
+      alert('Please enter quantities for at least one item');
+      return;
+    }
+
+    if (!confirm(`Add inventory for ${itemsWithQty.length} items?`)) return;
+
+    try {
+      // Create inventory entries for each item
+      const promises = itemsWithQty.map(item =>
+        apiClient.post('/inventory', {
+          item_id: item.itemId,
+          quantity: parseFloat(item.quantity),
+          transaction_type: 'STOCK_IN',
+          location: item.location,
+          notes: 'Bulk inventory entry'
+        })
+      );
+
+      await Promise.all(promises);
+      alert(`Successfully added inventory for ${itemsWithQty.length} items!`);
+      setShowBulkInventory(false);
+      setBulkInventoryItems([]);
+      fetchItems();
+    } catch (error) {
+      console.error('Error adding bulk inventory:', error);
+      alert('Failed to add bulk inventory');
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       code: '',
@@ -538,6 +640,12 @@ export default function ItemsPage() {
       parent_item_id: '',
       is_variant: false,
       is_default_variant: false,
+      variant_name: '',
+      drawing_url: '',
+      drawing_file_name: '',
+    });
+    setDrawingFile(null);
+  };
       variant_name: '',
     });
   };
@@ -705,6 +813,12 @@ export default function ItemsPage() {
             className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium flex items-center gap-2"
           >
             📊 Import Excel
+          </button>
+          <button
+            onClick={initBulkInventory}
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
+          >
+            📦 Bulk Inventory
           </button>
           <button
             onClick={() => {
@@ -1477,20 +1591,39 @@ export default function ItemsPage() {
                 </div>
 
                 {/* Drawing Required Section */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Drawing Required
-                    </label>
-                    <select
-                      value={formData.drawing_required}
-                      onChange={(e) => setFormData({ ...formData, drawing_required: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    >
-                      <option value="OPTIONAL">Optional</option>
-                      <option value="COMPULSORY">Compulsory</option>
-                      <option value="NOT_REQUIRED">Not Required</option>
-                    </select>
+                <div className="border-t pt-4 mt-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">📐 Drawing & Documentation</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Drawing Required
+                      </label>
+                      <select
+                        value={formData.drawing_required}
+                        onChange={(e) => setFormData({ ...formData, drawing_required: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="OPTIONAL">Optional</option>
+                        <option value="COMPULSORY">Compulsory</option>
+                        <option value="NOT_REQUIRED">Not Required</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Upload Drawing/Spec
+                      </label>
+                      <input
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf"
+                        onChange={(e) => setDrawingFile(e.target.files?.[0] || null)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                      />
+                      {(formData.drawing_file_name || drawingFile) && (
+                        <p className="text-xs text-green-600 mt-1">
+                          📎 {drawingFile?.name || formData.drawing_file_name}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1946,6 +2079,86 @@ export default function ItemsPage() {
                 className="w-full px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-medium"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Inventory Modal */}
+      {showBulkInventory && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-2xl font-bold text-gray-900">📦 Bulk Inventory Entry</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Enter quantities for items you want to add to inventory. Leave blank to skip.
+              </p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="space-y-1">
+                <div className="grid grid-cols-5 gap-4 text-sm font-semibold text-gray-700 pb-2 border-b">
+                  <div>Item Code</div>
+                  <div className="col-span-2">Item Name</div>
+                  <div>Quantity</div>
+                  <div>Location</div>
+                </div>
+                
+                {bulkInventoryItems.map((item, index) => (
+                  <div key={item.itemId} className="grid grid-cols-5 gap-4 py-2 border-b border-gray-100 hover:bg-gray-50">
+                    <div className="text-sm font-medium text-gray-700">{item.itemCode}</div>
+                    <div className="col-span-2 text-sm text-gray-600">{item.itemName}</div>
+                    <div>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={item.quantity}
+                        onChange={(e) => {
+                          const newItems = [...bulkInventoryItems];
+                          newItems[index].quantity = e.target.value;
+                          setBulkInventoryItems(newItems);
+                        }}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <select
+                        value={item.location}
+                        onChange={(e) => {
+                          const newItems = [...bulkInventoryItems];
+                          newItems[index].location = e.target.value;
+                          setBulkInventoryItems(newItems);
+                        }}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="MAIN_WAREHOUSE">Main Warehouse</option>
+                        <option value="PRODUCTION_FLOOR">Production Floor</option>
+                        <option value="QC_AREA">QC Area</option>
+                        <option value="FINISHED_GOODS">Finished Goods</option>
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex gap-4">
+              <button
+                onClick={() => {
+                  setShowBulkInventory(false);
+                  setBulkInventoryItems([]);
+                }}
+                className="flex-1 px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkInventorySubmit}
+                className="flex-1 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+              >
+                Add Inventory
               </button>
             </div>
           </div>
