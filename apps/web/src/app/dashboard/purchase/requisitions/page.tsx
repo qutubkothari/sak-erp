@@ -1082,8 +1082,6 @@ export default function PurchaseRequisitionsPage() {
                                               vendorId: vendorId || undefined,
                                               vendorName: vendor ? vendor.name : undefined,
                                             }
-                                            <td className="px-4 py-2">{item.paymentTerms || '-'}</td>
-                                            <td className="px-4 py-2">{item.deliveryTerms || '-'}</td>
                                           : it,
                                       ),
                                     );
