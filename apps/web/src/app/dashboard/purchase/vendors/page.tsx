@@ -16,6 +16,16 @@ interface Vendor {
   email: string;
   phone: string;
   address: string;
+  street?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  pincode?: string;
+  shipping_street?: string;
+  shipping_city?: string;
+  shipping_state?: string;
+  shipping_country?: string;
+  shipping_pincode?: string;
   payment_terms: string;
   credit_limit: number;
   rating: number;
@@ -42,10 +52,21 @@ export default function VendorsPage() {
     email: '',
     phone: '',
     address: '',
+    street: '',
+    city: '',
+    state: '',
+    country: 'India',
+    pincode: '',
+    shippingStreet: '',
+    shippingCity: '',
+    shippingState: '',
+    shippingCountry: 'India',
+    shippingPincode: '',
     paymentTerms: 'NET_30',
     creditLimit: 0,
     rating: 0,
     isActive: true,
+    sameAsbilling: true,
   });
 
   useEffect(() => {
@@ -94,10 +115,21 @@ export default function VendorsPage() {
       email: vendor.email || '',
       phone: vendor.phone || '',
       address: vendor.address || '',
+      street: vendor.street || '',
+      city: vendor.city || '',
+      state: vendor.state || '',
+      country: vendor.country || 'India',
+      pincode: vendor.pincode || '',
+      shippingStreet: vendor.shipping_street || '',
+      shippingCity: vendor.shipping_city || '',
+      shippingState: vendor.shipping_state || '',
+      shippingCountry: vendor.shipping_country || 'India',
+      shippingPincode: vendor.shipping_pincode || '',
       paymentTerms: vendor.payment_terms,
       creditLimit: vendor.credit_limit || 0,
       rating: vendor.rating || 0,
       isActive: vendor.is_active,
+      sameAsbilling: !vendor.shipping_street && !vendor.shipping_city,
     });
     setShowModal(true);
   };
@@ -138,10 +170,21 @@ export default function VendorsPage() {
       email: '',
       phone: '',
       address: '',
+      street: '',
+      city: '',
+      state: '',
+      country: 'India',
+      pincode: '',
+      shippingStreet: '',
+      shippingCity: '',
+      shippingState: '',
+      shippingCountry: 'India',
+      shippingPincode: '',
       paymentTerms: 'NET_30',
       creditLimit: 0,
       rating: 0,
       isActive: true,
+      sameAsbilling: true,
     });
   };
 
@@ -298,6 +341,14 @@ export default function VendorsPage() {
                       <span>{vendor.phone}</span>
                     </div>
                   )}
+                  {(vendor.city || vendor.state) && (
+                    <div className="flex items-start text-sm text-gray-600">
+                      <span className="font-medium w-24">Location:</span>
+                      <span>
+                        {[vendor.city, vendor.state, vendor.pincode].filter(Boolean).join(', ')}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center text-sm text-gray-600">
                     <span className="font-medium w-24">Terms:</span>
                     <span>{vendor.payment_terms}</span>
@@ -447,13 +498,145 @@ export default function VendorsPage() {
                 </div>
               </div>
 
+              {/* Billing Address Section */}
+              <div className="border-t pt-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Billing Address</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Street</label>
+                    <input
+                      type="text"
+                      value={formData.street}
+                      onChange={(e) => setFormData({ ...formData, street: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                      placeholder="Street address, building name, floor, etc."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
+                    <input
+                      type="text"
+                      value={formData.city}
+                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
+                    <input
+                      type="text"
+                      value={formData.state}
+                      onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">PIN Code</label>
+                    <input
+                      type="text"
+                      value={formData.pincode}
+                      onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
+                    <input
+                      type="text"
+                      value={formData.country}
+                      onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Shipping Address Section */}
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Shipping Address</h3>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.sameAsbilling}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setFormData({ 
+                          ...formData, 
+                          sameAsbilling: checked,
+                          shippingStreet: checked ? formData.street : formData.shippingStreet,
+                          shippingCity: checked ? formData.city : formData.shippingCity,
+                          shippingState: checked ? formData.state : formData.shippingState,
+                          shippingCountry: checked ? formData.country : formData.shippingCountry,
+                          shippingPincode: checked ? formData.pincode : formData.shippingPincode,
+                        });
+                      }}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-gray-700">Same as Billing</span>
+                  </label>
+                </div>
+                
+                {!formData.sameAsbilling && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Street</label>
+                      <input
+                        type="text"
+                        value={formData.shippingStreet}
+                        onChange={(e) => setFormData({ ...formData, shippingStreet: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                        placeholder="Street address, building name, floor, etc."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
+                      <input
+                        type="text"
+                        value={formData.shippingCity}
+                        onChange={(e) => setFormData({ ...formData, shippingCity: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
+                      <input
+                        type="text"
+                        value={formData.shippingState}
+                        onChange={(e) => setFormData({ ...formData, shippingState: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">PIN Code</label>
+                      <input
+                        type="text"
+                        value={formData.shippingPincode}
+                        onChange={(e) => setFormData({ ...formData, shippingPincode: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
+                      <input
+                        type="text"
+                        value={formData.shippingCountry}
+                        onChange={(e) => setFormData({ ...formData, shippingCountry: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Address (Legacy - will be migrated)</label>
                 <textarea
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  rows={3}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-gray-50"
+                  disabled
                 />
               </div>
 
