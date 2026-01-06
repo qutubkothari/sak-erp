@@ -377,6 +377,8 @@ export default function PurchaseRequisitionsPage() {
       quantity: item.quantity.toString(),
       estimatedPrice: item.estimatedPrice?.toString() || '',
       specifications: item.specifications || '',
+      paymentTerms: item.paymentTerms || '',
+      deliveryTerms: item.deliveryTerms || '',
     });
     setSearchTerm(item.itemName);
     const matchedItem = masterItems.find(mi => mi.code === item.itemCode);
