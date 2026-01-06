@@ -764,12 +764,12 @@ export default function GRNPage() {
     // Auto-calculate accepted/rejected based on received
     if (field === 'receivedQuantity') {
       const ordered = Math.max(0, toNum(updatedItems[index].orderedQuantity));
-      const receivedInput = Math.max(0, toNum(value));
+      let receivedInput = Math.max(0, toNum(value));
       
       // Validate: Received cannot exceed Ordered
       if (receivedInput > ordered) {
         alert(`Received quantity (${receivedInput}) cannot exceed ordered quantity (${ordered})`);
-        return;
+        receivedInput = ordered; // Cap at ordered quantity
       }
       
       const received = receivedInput;
