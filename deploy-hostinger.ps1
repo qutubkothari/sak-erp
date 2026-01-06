@@ -159,7 +159,8 @@ Run "Deploy on Hostinger (extract, install prod deps, restart PM2)" {
      'pm2 list')
 
   # Execute via bash -lc using single quotes (no CRLF issues)
-  Invoke-Ssh "bash -lc '$($remoteCmd.Replace("'","'\\'''))' " | Out-Host
+  $escapedCmd = $remoteCmd.Replace("'", "'\\''")
+  Invoke-Ssh "bash -lc '$escapedCmd'" | Out-Host
 }
 
 Run "Done" {
