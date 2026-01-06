@@ -46,13 +46,20 @@ interface PRDetailItem {
   item_id?: string;
   item_code: string;
   item_name: string;
+  uom?: string;
+  serial_no?: number;
   vendor_id?: string | null;
   requested_qty: number;
   estimated_rate: number;
   total_amount: number;
+  total_ordered_qty?: number;
+  remaining_qty?: number;
+  po_conversion_status?: string;
   remarks?: string;
   payment_terms?: string;
   delivery_terms?: string;
+  updated_at?: string;
+  updated_by?: string;
 }
 
 interface PRDetail {
@@ -67,6 +74,9 @@ interface PRDetail {
   requested_by: string;
   approved_by?: string;
   approved_at?: string;
+  updated_by?: string;
+  edit_count?: number;
+  last_edited_at?: string;
   purchase_requisition_items: PRDetailItem[];
 }
 
@@ -104,6 +114,7 @@ export default function PurchaseRequisitionsPage() {
     vendorId: '',
     vendorName: '',
     quantity: '',
+    uom: '',
     estimatedPrice: '',
     specifications: '',
     paymentTerms: '',
@@ -266,6 +277,7 @@ export default function PurchaseRequisitionsPage() {
         setItemForm((prev) => ({
           ...prev,
           itemName: `${item.code} - ${item.name}`,
+          uom: item.uom || '',
           vendorId: preferredVendorId ? String(preferredVendorId) : '',
           vendorName: preferredVendorName || '',
           estimatedPrice:
@@ -279,6 +291,7 @@ export default function PurchaseRequisitionsPage() {
         setItemForm((prev) => ({
           ...prev,
           itemName: `${item.code} - ${item.name}`,
+          uom: item.uom || '',
           vendorId: '',
           vendorName: '',
           estimatedPrice: item.standard_cost?.toString() || '',
@@ -291,6 +304,7 @@ export default function PurchaseRequisitionsPage() {
       setItemForm((prev) => ({
         ...prev,
         itemName: `${item.code} - ${item.name}`,
+        uom: item.uom || '',
         vendorId: '',
         vendorName: '',
         estimatedPrice: item.standard_cost?.toString() || '',
@@ -315,7 +329,7 @@ export default function PurchaseRequisitionsPage() {
       id: Date.now().toString(),
       itemCode: selectedItem?.code || '',
       itemName: useManualEntry ? itemForm.itemName : searchTerm,
-      uom: selectedItem?.uom || undefined,
+      uom: useManualEntry ? (itemForm.uom || undefined) : (selectedItem?.uom || undefined),
       vendorId: itemForm.vendorId || undefined,
       vendorName: itemForm.vendorName || undefined,
       quantity: parseFloat(itemForm.quantity),
@@ -332,6 +346,7 @@ export default function PurchaseRequisitionsPage() {
       vendorId: '',
       vendorName: '',
       quantity: '',
+      uom: '',
       estimatedPrice: '',
       specifications: '',
       paymentTerms: '',
@@ -349,6 +364,7 @@ export default function PurchaseRequisitionsPage() {
       vendorId: '',
       vendorName: '',
       quantity: '',
+      uom: '',
       estimatedPrice: '',
       specifications: '',
       paymentTerms: '',
@@ -375,6 +391,7 @@ export default function PurchaseRequisitionsPage() {
       vendorId: item.vendorId || '',
       vendorName: item.vendorName || '',
       quantity: item.quantity.toString(),
+      uom: item.uom || '',
       estimatedPrice: item.estimatedPrice?.toString() || '',
       specifications: item.specifications || '',
       paymentTerms: item.paymentTerms || '',
@@ -407,7 +424,7 @@ export default function PurchaseRequisitionsPage() {
         ...item,
         itemCode: selectedItem?.code || item.itemCode,
         itemName: useManualEntry ? itemForm.itemName : searchTerm,
-        uom: selectedItem?.uom || item.uom,
+        uom: useManualEntry ? (itemForm.uom || item.uom) : (selectedItem?.uom || item.uom),
         vendorId: itemForm.vendorId || undefined,
         vendorName: itemForm.vendorName || undefined,
         quantity: parseFloat(itemForm.quantity),
@@ -860,7 +877,7 @@ export default function PurchaseRequisitionsPage() {
                   
                   {/* Add Item Form */}
                   <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                    <div className="grid grid-cols-4 gap-3 mb-3">
+                    <div className="grid grid-cols-5 gap-3 mb-3">
                       {/* Item Name/Search */}
                       <div className="relative" ref={dropdownRef}>
                         {!useManualEntry ? (
@@ -972,8 +989,17 @@ export default function PurchaseRequisitionsPage() {
                         type="number"
                         value={itemForm.quantity}
                         onChange={(e) => setItemForm({ ...itemForm, quantity: e.target.value })}
-                        placeholder={`Quantity${selectedItemId ? ` (${masterItems.find((i) => i.id === selectedItemId)?.uom || ''})` : ''} *`}
+                        placeholder="Quantity *"
                         className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                      />
+                      <input
+                        type="text"
+                        value={itemForm.uom || ''}
+                        onChange={(e) => setItemForm({ ...itemForm, uom: e.target.value })}
+                        placeholder="UOM"
+                        readOnly={!useManualEntry}
+                        className={`px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 ${!useManualEntry ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                        title={!useManualEntry ? 'UOM is auto-filled from master item' : 'Enter unit of measurement (e.g., PCS, KG, MTR)'}
                       />
                       <div>
                         <input
@@ -1397,6 +1423,18 @@ export default function PurchaseRequisitionsPage() {
                         <p className="font-semibold">{new Date(selectedPR.approved_at).toLocaleDateString()}</p>
                       </div>
                     )}
+                    {selectedPR.edit_count && selectedPR.edit_count > 0 && (
+                      <div>
+                        <p className="text-sm text-gray-600">Edits</p>
+                        <p className="font-semibold">{selectedPR.edit_count} time{selectedPR.edit_count !== 1 ? 's' : ''}</p>
+                      </div>
+                    )}
+                    {selectedPR.last_edited_at && (
+                      <div>
+                        <p className="text-sm text-gray-600">Last Edited</p>
+                        <p className="font-semibold">{new Date(selectedPR.last_edited_at).toLocaleDateString()} {new Date(selectedPR.last_edited_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Items Table */}
@@ -1406,10 +1444,15 @@ export default function PurchaseRequisitionsPage() {
                       <table className="w-full">
                         <thead className="bg-gray-100">
                           <tr>
+                            <th className="px-4 py-2 text-center text-sm font-semibold">S.No</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Item Code</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Item Name</th>
                             {rfqPanelOpen && <th className="px-4 py-2 text-left text-sm font-semibold">Vendors (Select Multiple)</th>}
-                            <th className="px-4 py-2 text-right text-sm font-semibold">Quantity</th>
+                            <th className="px-4 py-2 text-right text-sm font-semibold">Requested</th>
+                            <th className="px-4 py-2 text-center text-sm font-semibold">UOM</th>
+                            <th className="px-4 py-2 text-right text-sm font-semibold">Ordered</th>
+                            <th className="px-4 py-2 text-right text-sm font-semibold">Remaining</th>
+                            <th className="px-4 py-2 text-center text-sm font-semibold">Status</th>
                             <th className="px-4 py-2 text-right text-sm font-semibold">Est. Rate</th>
                             <th className="px-4 py-2 text-right text-sm font-semibold">Total</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Remarks</th>
@@ -1417,8 +1460,9 @@ export default function PurchaseRequisitionsPage() {
                         </thead>
                         <tbody>
                           {selectedPR.purchase_requisition_items && selectedPR.purchase_requisition_items.length > 0 ? (
-                            selectedPR.purchase_requisition_items.map((item) => (
+                            selectedPR.purchase_requisition_items.map((item, index) => (
                               <tr key={item.id} className="border-t">
+                                <td className="px-4 py-2 text-sm text-center">{item.serial_no || index + 1}</td>
                                 <td className="px-4 py-2 text-sm">{item.item_code || '-'}</td>
                                 <td className="px-4 py-2 text-sm">{item.item_name}</td>
                                 {rfqPanelOpen && (
@@ -1446,6 +1490,20 @@ export default function PurchaseRequisitionsPage() {
                                   </td>
                                 )}
                                 <td className="px-4 py-2 text-sm text-right">{item.requested_qty}</td>
+                                <td className="px-4 py-2 text-sm text-center">{item.uom || '-'}</td>
+                                <td className="px-4 py-2 text-sm text-right">{item.total_ordered_qty || 0}</td>
+                                <td className="px-4 py-2 text-sm text-right font-medium text-blue-700">{item.remaining_qty ?? item.requested_qty}</td>
+                                <td className="px-4 py-2 text-center">
+                                  {item.po_conversion_status === 'COMPLETED' && (
+                                    <span className="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">DONE</span>
+                                  )}
+                                  {item.po_conversion_status === 'PARTIAL' && (
+                                    <span className="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">PARTIAL</span>
+                                  )}
+                                  {(!item.po_conversion_status || item.po_conversion_status === 'PENDING') && (
+                                    <span className="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-600">PENDING</span>
+                                  )}
+                                </td>
                                 <td className="px-4 py-2 text-sm text-right">₹{(item.estimated_rate || 0).toFixed(2)}</td>
                                 <td className="px-4 py-2 text-sm text-right font-semibold">₹{((item.requested_qty || 0) * (item.estimated_rate || 0)).toFixed(2)}</td>
                                 <td className="px-4 py-2 text-sm text-gray-600">{item.remarks || '-'}</td>
@@ -1453,7 +1511,7 @@ export default function PurchaseRequisitionsPage() {
                             ))
                           ) : (
                             <tr>
-                              <td colSpan={rfqPanelOpen ? 7 : 6} className="px-4 py-8 text-center text-gray-500">
+                              <td colSpan={rfqPanelOpen ? 12 : 11} className="px-4 py-8 text-center text-gray-500">
                                 No items found in this requisition
                               </td>
                             </tr>
@@ -1462,7 +1520,7 @@ export default function PurchaseRequisitionsPage() {
                         {selectedPR.purchase_requisition_items && selectedPR.purchase_requisition_items.length > 0 && (
                           <tfoot className="bg-gray-50 border-t-2">
                             <tr>
-                              <td colSpan={rfqPanelOpen ? 5 : 4} className="px-4 py-3 text-right font-bold">Total Amount:</td>
+                              <td colSpan={rfqPanelOpen ? 10 : 9} className="px-4 py-3 text-right font-bold">Total Amount:</td>
                               <td className="px-4 py-3 text-right font-bold text-lg">
                                 ₹{selectedPR.purchase_requisition_items.reduce((sum, item) => sum + ((item.requested_qty || 0) * (item.estimated_rate || 0)), 0).toFixed(2)}
                               </td>
@@ -1689,20 +1747,24 @@ export default function PurchaseRequisitionsPage() {
                         <table className="w-full text-sm">
                           <thead className="bg-gray-100">
                             <tr>
+                              <th className="px-3 py-2 text-center">S.No</th>
                               <th className="px-3 py-2 text-left">Item Code</th>
                               <th className="px-3 py-2 text-left">Item Name</th>
                               <th className="px-3 py-2 text-right">Quantity</th>
+                              <th className="px-3 py-2 text-center">UOM</th>
                               <th className="px-3 py-2 text-left">Remarks</th>
                             </tr>
                           </thead>
                           <tbody>
                             {rfqPreviewData.itemVendors
                               .filter((iv: any) => iv.vendorIds.length > 0)
-                              .map((iv: any) => (
+                              .map((iv: any, index: number) => (
                                 <tr key={iv.item.id} className="border-t">
+                                  <td className="px-3 py-2 text-center">{iv.item.serial_no || index + 1}</td>
                                   <td className="px-3 py-2">{iv.item.item_code || '-'}</td>
                                   <td className="px-3 py-2">{iv.item.item_name}</td>
                                   <td className="px-3 py-2 text-right">{iv.item.requested_qty}</td>
+                                  <td className="px-3 py-2 text-center">{iv.item.uom || '-'}</td>
                                   <td className="px-3 py-2 text-gray-600">{iv.item.remarks || '-'}</td>
                                 </tr>
                               ))}

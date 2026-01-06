@@ -243,6 +243,7 @@ export class PurchaseRequisitionsService {
   async sendRFQ(tenantId: string, requisitionId: string, body: any) {
     const vendorIds: string[] = Array.isArray(body?.vendorIds) ? body.vendorIds : [];
     const vendorEmails: string[] = Array.isArray(body?.vendorEmails) ? body.vendorEmails : [];
+    const itemVendors: Array<{ itemId: string; vendorIds: string[] }> = Array.isArray(body?.itemVendors) ? body.itemVendors : [];
 
     if (vendorIds.length === 0 && vendorEmails.length === 0) {
       throw new BadRequestException('vendorIds or vendorEmails is required');
@@ -258,23 +259,50 @@ export class PurchaseRequisitionsService {
       throw new BadRequestException('PR must be APPROVED to send RFQ');
     }
 
-    const rfqNumber = `RFQ-${pr.pr_number}`;
-    const items = (pr.purchase_requisition_items || []).map((item: any) => ({
-      item_name: item.item_name || item.itemName || '-',
-      description: item.description || item.specifications || item.remarks || '-',
-      quantity: item.requested_qty ?? item.quantity ?? 0,
-      required_date: item.required_date || pr.required_date || '-',
-    }));
+    // Save item-vendor mappings to pr_item_rfq_vendors table
+    if (itemVendors.length > 0) {
+      // First, delete existing mappings for this PR
+      await this.supabase
+        .from('pr_item_rfq_vendors')
+        .delete()
+        .in('pr_item_id', itemVendors.map(iv => iv.itemId));
 
+      // Then insert new mappings
+      const mappings = itemVendors.flatMap(iv => 
+        iv.vendorIds.map(vendorId => ({
+          pr_item_id: iv.itemId,
+          vendor_id: vendorId,
+        }))
+      );
+
+      if (mappings.length > 0) {
+        const { error: mappingError } = await this.supabase
+          .from('pr_item_rfq_vendors')
+          .insert(mappings);
+
+        if (mappingError) {
+          console.error('Error saving item-vendor mappings:', mappingError);
+          // Don't throw - continue with RFQ sending even if mapping save fails
+        }
+      }
+    }
+
+    const rfqNumber = `RFQ-${pr.pr_number}`;
+    
     const vendorLookups = await Promise.all(
       vendorIds.map(async (vendorId) => this.vendorsService.findOne(tenantId, vendorId)),
     );
 
-    const recipients: Array<{ email: string; name: string } > = [];
+    const recipients: Array<{ email: string; name: string; vendorId?: string }> = [];
 
-    for (const vendor of vendorLookups) {
+    for (let i = 0; i < vendorLookups.length; i++) {
+      const vendor = vendorLookups[i];
       if (vendor?.email) {
-        recipients.push({ email: vendor.email, name: vendor.name || 'Vendor' });
+        recipients.push({ 
+          email: vendor.email, 
+          name: vendor.name || 'Vendor',
+          vendorId: vendorIds[i]
+        });
       }
     }
 
@@ -292,16 +320,39 @@ export class PurchaseRequisitionsService {
     const remarks = body?.remarks;
 
     const sendResults = await Promise.allSettled(
-      recipients.map((recipient) =>
-        this.emailService.sendRFQ(recipient.email, {
+      recipients.map((recipient) => {
+        // Filter items for this vendor based on itemVendors mappings
+        let vendorItems = pr.purchase_requisition_items || [];
+        
+        if (recipient.vendorId && itemVendors.length > 0) {
+          // Get items assigned to this vendor
+          const assignedItemIds = itemVendors
+            .filter(iv => iv.vendorIds.includes(recipient.vendorId))
+            .map(iv => iv.itemId);
+          
+          vendorItems = vendorItems.filter((item: any) => 
+            assignedItemIds.includes(item.id)
+          );
+        }
+
+        const items = vendorItems.map((item: any) => ({
+          item_name: item.item_name || item.itemName || '-',
+          item_code: item.item_code || item.itemCode || '-',
+          uom: item.uom || '-',
+          description: item.description || item.specifications || item.remarks || '-',
+          quantity: item.requested_qty ?? item.quantity ?? 0,
+          required_date: item.required_date || pr.required_date || '-',
+        }));
+
+        return this.emailService.sendRFQ(recipient.email, {
           rfq_number: rfqNumber,
           vendor_name: recipient.name,
           items,
           response_date: responseDate,
           remarks,
           attachments: Array.isArray(body?.attachments) ? body.attachments : [],
-        }),
-      ),
+        });
+      }),
     );
 
     const sent: Array<{ email: string; messageId?: string }> = [];

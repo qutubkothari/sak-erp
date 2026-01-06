@@ -28,9 +28,16 @@ interface PurchaseOrder {
   payment_notes?: string;
   customs_duty?: number;
   other_charges?: number;
+  updated_by?: string;
+  edit_count?: number;
+  last_edited_at?: string;
+  is_partial_po?: boolean;
   purchase_order_items: Array<{
-    item: { name: string };
+    item: { name: string; code?: string; uom?: string };
     quantity: number;
+    uom?: string;
+    serial_no?: number;
+    pr_item_id?: string;
   }>;
 }
 
@@ -100,6 +107,7 @@ function PurchaseOrdersContent() {
       itemId: string;
       itemCode: string;
       itemName: string;
+      uom?: string;
       vendorId: string;
       quantity: number;
       unitPrice: number;
@@ -423,11 +431,21 @@ function PurchaseOrdersContent() {
         const subtotal = quantity * unitPrice;
         const totalWithTax = subtotal + (subtotal * 18 / 100);
         
+        // Get UOM from PR item or master item
+        let uom = item.uom || '';
+        if (!uom && itemId && freshItems.length > 0) {
+          const masterItem = freshItems.find((i: any) => i.id === itemId);
+          if (masterItem) {
+            uom = masterItem.uom || '';
+          }
+        }
+        
         return {
           prItemId: item.id ? String(item.id) : undefined,
           itemId: itemId || '',
           itemCode: item.item_code || '',
           itemName: item.item_name || '',
+          uom: uom,
           vendorId: preferredVendorId, // Auto-selected preferred vendor
           quantity: quantity,
           unitPrice: unitPrice,
@@ -858,6 +876,7 @@ function PurchaseOrdersContent() {
           itemId: '',
           itemCode: '',
           itemName: '',
+          uom: '',
           vendorId: '',
           quantity: 1,
           unitPrice: 0,
@@ -883,6 +902,7 @@ function PurchaseOrdersContent() {
           itemId: value,
           itemCode: selectedItem.code,
           itemName: selectedItem.name,
+          uom: selectedItem.uom || '',
           unitPrice: selectedItem.standard_cost || selectedItem.selling_price || 0,
         };
         
@@ -1654,10 +1674,11 @@ function PurchaseOrdersContent() {
                 ) : (
                   <div className="space-y-4">
                     {/* Column Headers */}
-                    <div className="grid grid-cols-7 gap-4 px-4 pb-2 border-b border-gray-300">
+                    <div className="grid grid-cols-8 gap-4 px-4 pb-2 border-b border-gray-300">
                       <div className="col-span-2 text-sm font-semibold text-gray-700">Item</div>
                       <div className="text-sm font-semibold text-gray-700">Vendor</div>
                       <div className="text-sm font-semibold text-gray-700">Quantity</div>
+                      <div className="text-sm font-semibold text-gray-700">UOM</div>
                       <div className="text-sm font-semibold text-gray-700">Unit Price</div>
                       <div className="text-sm font-semibold text-gray-700">Tax %</div>
                       <div className="text-sm font-semibold text-gray-700">Total Price</div>
@@ -1665,7 +1686,7 @@ function PurchaseOrdersContent() {
                     
                     {formData.items.map((item, index) => (
                       <div key={index} className={`border border-gray-300 rounded-lg p-4 ${pendingItemIndex === index ? 'ring-2 ring-red-300' : ''}`}>
-                        <div className="grid grid-cols-7 gap-4">
+                        <div className="grid grid-cols-8 gap-4">
                           <div className="col-span-2">
                             {item.itemId ? (
                               <div className="space-y-1">
@@ -1776,21 +1797,21 @@ function PurchaseOrdersContent() {
                                 type="number"
                                 value={item.quantity}
                                 onChange={(e) => handleUpdateItem(index, 'quantity', parseFloat(e.target.value))}
-                                placeholder={`Qty${(() => {
-                                  const selected = items.find((i) => i.id === item.itemId);
-                                  const uom = selected?.uom || items.find((i) => i.code === item.itemCode)?.uom;
-                                  return uom ? ` (${uom})` : '';
-                                })()}`}
+                                placeholder="Quantity"
                                 className="w-full border border-gray-300 rounded px-3 py-2"
                                 required
                               />
-                              {(() => {
-                                const selected = items.find((i) => i.id === item.itemId);
-                                const uom = selected?.uom || items.find((i) => i.code === item.itemCode)?.uom;
-                                if (!uom) return null;
-                                return <span className="text-xs text-gray-600 whitespace-nowrap">{uom}</span>;
-                              })()}
                             </div>
+                          </div>
+                          <div>
+                            <input
+                              type="text"
+                              value={item.uom || ''}
+                              readOnly
+                              placeholder="UOM"
+                              className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 cursor-not-allowed"
+                              title="UOM is auto-filled from master item"
+                            />
                           </div>
                           <div className="relative">
                             <div className="flex items-center gap-1">
@@ -2121,12 +2142,30 @@ function PurchaseOrdersContent() {
                 <div>
                   <p className="text-sm text-gray-600">PR Reference</p>
                   <p className="font-semibold">{selectedPO.pr?.pr_number || '-'}</p>
+                  {selectedPO.is_partial_po && (
+                    <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded bg-yellow-100 text-yellow-800">
+                      Partial PO
+                    </span>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Status</p>
                   <span className={`inline-block px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedPO.status)}`}>
                     {selectedPO.status}
                   </span>
+                </div>
+                {selectedPO.edit_count && selectedPO.edit_count > 0 && (
+                  <div>
+                    <p className="text-sm text-gray-600">Edits</p>
+                    <p className="font-semibold">{selectedPO.edit_count} time{selectedPO.edit_count !== 1 ? 's' : ''}</p>
+                  </div>
+                )}
+                {selectedPO.last_edited_at && (
+                  <div>
+                    <p className="text-sm text-gray-600">Last Edited</p>
+                    <p className="font-semibold">{new Date(selectedPO.last_edited_at).toLocaleDateString()} {new Date(selectedPO.last_edited_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                  </div>
+                )}
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Vendor</p>
@@ -2154,9 +2193,11 @@ function PurchaseOrdersContent() {
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-gray-700">S.No</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Item</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Drawing</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Quantity</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-gray-700">UOM</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Rate</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Amount</th>
                       </tr>
@@ -2165,6 +2206,7 @@ function PurchaseOrdersContent() {
                       {selectedPO.purchase_order_items && selectedPO.purchase_order_items.length > 0 ? (
                         selectedPO.purchase_order_items.map((item: any, idx: number) => (
                           <tr key={idx}>
+                            <td className="px-4 py-2 text-center text-sm">{item.serial_no || idx + 1}</td>
                             <td className="px-4 py-2">
                               <div className="font-medium">{item.item?.name || item.item_name || '-'}</div>
                               <div className="text-xs text-gray-500">{item.item?.code || item.item_code || ''}</div>
@@ -2210,6 +2252,7 @@ function PurchaseOrdersContent() {
                               })()}
                             </td>
                             <td className="px-4 py-2 text-right">{item.quantity || item.ordered_qty || 0}</td>
+                            <td className="px-4 py-2 text-center text-sm">{item.uom || item.item?.uom || '-'}</td>
                             <td className="px-4 py-2 text-right">
                               <div>₹{(item.rate || 0).toLocaleString()}</div>
                               {(() => {

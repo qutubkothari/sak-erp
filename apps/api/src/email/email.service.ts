@@ -192,18 +192,24 @@ export class EmailService {
             <table class="table">
               <thead>
                 <tr>
-                  <th>Item</th>
-                  <th>Description</th>
+                  <th>S.No</th>
+                  <th>Item Code</th>
+                  <th>Item Name</th>
                   <th>Quantity</th>
+                  <th>UOM</th>
+                  <th>Description</th>
                   <th>Required Date</th>
                 </tr>
               </thead>
               <tbody>
-                ${rfqData.items.map((item: any) => `
+                ${rfqData.items.map((item: any, index: number) => `
                   <tr>
+                    <td>${index + 1}</td>
+                    <td>${item.item_code || '-'}</td>
                     <td>${item.item_name}</td>
-                    <td>${item.description || '-'}</td>
                     <td>${item.quantity}</td>
+                    <td>${item.uom || '-'}</td>
+                    <td>${item.description || '-'}</td>
                     <td>${item.required_date || '-'}</td>
                   </tr>
                 `).join('')}
