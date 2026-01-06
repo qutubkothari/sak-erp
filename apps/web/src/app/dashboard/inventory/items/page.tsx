@@ -552,9 +552,7 @@ export default function ItemsPage() {
       formDataUpload.append('bucket', 'drawings');
       formDataUpload.append('folder', 'item-drawings');
       
-      const result = await apiClient.post('/upload', formDataUpload, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const result = await apiClient.postForm('/upload', formDataUpload);
       
       return {
         drawing_url: result.url,
