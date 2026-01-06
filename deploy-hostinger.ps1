@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 # ====== CONFIG (Hostinger VPS) ======
 $HOSTINGER_IP = if ($env:HOSTINGER_IP) { $env:HOSTINGER_IP } else { "72.62.192.228" }
 $HOSTINGER_USER = if ($env:HOSTINGER_USER) { $env:HOSTINGER_USER } else { "qutubk" }
-$KEY_PATH = if ($env:HOSTINGER_KEY_PATH) { $env:HOSTINGER_KEY_PATH } else { "./hostinger-key.pem" }
+$KEY_PATH = if ($env:HOSTINGER_KEY_PATH) { $env:HOSTINGER_KEY_PATH } else { "$env:USERPROFILE\.ssh\hostinger_ed25519" }
 
 # Remote deployment path
 $REMOTE_PATH = if ($env:HOSTINGER_REMOTE_PATH) { $env:HOSTINGER_REMOTE_PATH } else { "/var/www/sak-erp" }
@@ -39,18 +39,11 @@ function ScpToHostinger($localPath, $remotePath) {
 
 # ====== Preconditions ======
 Run "Preflight" {
-  $isCI = ($env:GITHUB_ACTIONS -eq 'true') -or ($env:CI -eq 'true')
   if (-not (Test-Path $KEY_PATH)) {
-    if ($isCI) {
-      throw "SSH key not found at: $KEY_PATH (CI requires key-based auth)"
-    }
-    Write-Host "SSH key not found at: $KEY_PATH" -ForegroundColor Yellow
-    Write-Host "Trying password authentication instead..." -ForegroundColor Yellow
-    # If key doesn't exist, we'll try password auth
-    $script:usePassword = $true
-  } else {
-    $script:usePassword = $false
+    throw "SSH key not found at: $KEY_PATH. Please ensure the key exists."
   }
+  Write-Host "Using SSH key: $KEY_PATH" -ForegroundColor Gray
+  $script:usePassword = $false
   
   Assert-CommandExists "ssh"
   Assert-CommandExists "scp"
@@ -65,12 +58,7 @@ Run "Preflight" {
   # Quick connectivity check
   Write-Host "Testing connection to Hostinger VPS..." -ForegroundColor Gray
   try {
-    if ($script:usePassword) {
-      Write-Host "Please enter SSH password when prompted" -ForegroundColor Yellow
-      & ssh -o StrictHostKeyChecking=no "$HOSTINGER_USER@$HOSTINGER_IP" "echo 'Connection successful'; node -v 2>/dev/null || echo 'Node.js not installed'; pnpm -v 2>/dev/null || echo 'pnpm not installed'; pm2 -v 2>/dev/null || echo 'PM2 not installed'" | Out-Host
-    } else {
-      Invoke-Ssh "echo 'Connection successful'; node -v 2>/dev/null || echo 'Node.js not installed'; pnpm -v 2>/dev/null || echo 'pnpm not installed'; pm2 -v 2>/dev/null || echo 'PM2 not installed'" | Out-Host
-    }
+    Invoke-Ssh "echo 'Connection successful'; node -v 2>/dev/null || echo 'Node.js not installed'; pnpm -v 2>/dev/null || echo 'pnpm not installed'; pm2 -v 2>/dev/null || echo 'PM2 not installed'" | Out-Host
   } catch {
     Write-Host "Connection test failed. Proceeding anyway..." -ForegroundColor Yellow
   }
@@ -144,12 +132,7 @@ Run "Create artifact archive ($archive)" {
 
 # ====== Upload & deploy on Hostinger ======
 Run "Upload archive to Hostinger" {
-  if ($script:usePassword) {
-    Write-Host "Please enter SSH password when prompted" -ForegroundColor Yellow
-    & scp -o StrictHostKeyChecking=no $archive "$HOSTINGER_USER@${HOSTINGER_IP}:/tmp/$archive"
-  } else {
-    ScpToHostinger $archive "/tmp/$archive"
-  }
+  ScpToHostinger $archive "/tmp/$archive"
 }
 
 Run "Deploy on Hostinger (extract, install prod deps, restart PM2)" {
@@ -176,12 +159,7 @@ Run "Deploy on Hostinger (extract, install prod deps, restart PM2)" {
      'pm2 list')
 
   # Execute via bash -lc using single quotes (no CRLF issues)
-  if ($script:usePassword) {
-    Write-Host "Please enter SSH password when prompted" -ForegroundColor Yellow
-    & ssh.exe -o StrictHostKeyChecking=no "$HOSTINGER_USER@$HOSTINGER_IP" "bash -lc '$($remoteCmd.Replace("'","'\\''"))'" | Out-Host
-  } else {
-    Invoke-Ssh "bash -lc '$($remoteCmd.Replace("'","'\\''"))'" | Out-Host
-  }
+  Invoke-Ssh "bash -lc '$($remoteCmd.Replace("'","'\\'''))' " | Out-Host
 }
 
 Run "Done" {
