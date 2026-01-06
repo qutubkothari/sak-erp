@@ -33,6 +33,11 @@ export class PurchaseRequisitionsController {
     return this.prService.findOne(req.user.tenantId, id);
   }
 
+  @Get(':id/available-for-po')
+  async findOneAvailableForPO(@Request() req: any, @Param('id') id: string) {
+    return this.prService.findOneAvailableForPO(req.user.tenantId, id);
+  }
+
   @Put(':id')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.prService.update(req.user.tenantId, id, body);

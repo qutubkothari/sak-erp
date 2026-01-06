@@ -1,0 +1,56 @@
+# Auto-deploy to GitHub + Hostinger on every push to main
+# Mirrors the local deploy-github-and-hostinger.ps1 workflow
+# 
+# Required GitHub Secrets:
+#   VPS_HOST       - Hostinger IP (e.g., 72.62.192.228)
+#   VPS_USER       - SSH username (e.g., qutubk)
+#   VPS_SSH_KEY    - Private key content (ed25519 or RSA)
+#   VPS_PATH       - Remote path (e.g., /var/www/sak-erp)
+
+name: Deploy to GitHub + Hostinger
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-hostinger
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build & Deploy to Hostinger
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: ✅ Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 📦 Enable pnpm
+        run: corepack enable
+
+      - name: 🔑 Setup SSH key
+        shell: bash
+        env:
+          HOSTINGER_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$HOSTINGER_SSH_KEY" > hostinger-key.pem
+          chmod 600 hostinger-key.pem
+
+      - name: 🚀 Deploy to Hostinger (deploy-hostinger.ps1)
+        shell: pwsh
+        env:
+          HOSTINGER_IP: ${{ secrets.VPS_HOST }}
+          HOSTINGER_USER: ${{ secrets.VPS_USER }}
+          HOSTINGER_KEY_PATH: ./hostinger-key.pem
+          HOSTINGER_REMOTE_PATH: ${{ secrets.VPS_PATH }}
+        run: |
+          Write-Host "Starting Hostinger deployment..." -ForegroundColor Cyan
+          ./deploy-hostinger.ps1

@@ -14,6 +14,8 @@ interface PRItem {
   quantity: number;
   estimatedPrice?: number;
   specifications?: string;
+  paymentTerms?: string;
+  deliveryTerms?: string;
 }
 
 interface Item {
@@ -49,6 +51,8 @@ interface PRDetailItem {
   estimated_rate: number;
   total_amount: number;
   remarks?: string;
+  payment_terms?: string;
+  delivery_terms?: string;
 }
 
 interface PRDetail {
@@ -102,6 +106,8 @@ export default function PurchaseRequisitionsPage() {
     quantity: '',
     estimatedPrice: '',
     specifications: '',
+    paymentTerms: '',
+    deliveryTerms: '',
   });
 
   const [masterItems, setMasterItems] = useState<Item[]>([]);
@@ -315,6 +321,8 @@ export default function PurchaseRequisitionsPage() {
       quantity: parseFloat(itemForm.quantity),
       estimatedPrice: itemForm.estimatedPrice ? parseFloat(itemForm.estimatedPrice) : undefined,
       specifications: itemForm.specifications,
+      paymentTerms: itemForm.paymentTerms || undefined,
+      deliveryTerms: itemForm.deliveryTerms || undefined,
     };
 
     setItems((prev) => [...prev, nextItem]);
@@ -326,6 +334,8 @@ export default function PurchaseRequisitionsPage() {
       quantity: '',
       estimatedPrice: '',
       specifications: '',
+      paymentTerms: '',
+      deliveryTerms: '',
     });
     setSearchTerm('');
     setSelectedItemId(null);
@@ -341,6 +351,8 @@ export default function PurchaseRequisitionsPage() {
       quantity: '',
       estimatedPrice: '',
       specifications: '',
+      paymentTerms: '',
+      deliveryTerms: '',
     });
     setSearchTerm('');
     setSelectedItemId(null);
@@ -443,17 +455,25 @@ export default function PurchaseRequisitionsPage() {
         notes: data.notes || '',
       });
 
-      // Populate items
-      const prItems: PRItem[] = data.items.map((item: any) => ({
-        id: item.id.toString(),
-        itemCode: item.item_code || '',
-        itemName: item.item_name,
-        uom: item.uom || undefined,
-        vendorId: item.vendor_id || undefined,
-        vendorName: item.vendor_name || undefined,
-        quantity: item.quantity,
-        estimatedPrice: item.estimated_price || undefined,
-        specifications: item.specifications || '',
+      // Populate items (API may return purchase_requisition_items)
+      const rawItems: any[] = Array.isArray(data?.purchase_requisition_items)
+        ? data.purchase_requisition_items
+        : Array.isArray(data?.items)
+          ? data.items
+          : [];
+
+      const prItems: PRItem[] = rawItems.map((item: any) => ({
+        id: String(item?.id || ''),
+        itemCode: item?.item_code || item?.itemCode || '',
+        itemName: item?.item_name || item?.itemName || '',
+        uom: item?.uom || undefined,
+        vendorId: item?.vendor_id || item?.vendorId || undefined,
+        vendorName: item?.vendor_name || item?.vendorName || undefined,
+        quantity: item?.requested_qty ?? item?.quantity ?? 0,
+        estimatedPrice: item?.estimated_rate ?? item?.estimated_price ?? item?.estimatedPrice ?? undefined,
+        specifications: item?.remarks || item?.specifications || '',
+        paymentTerms: item?.payment_terms || item?.paymentTerms || undefined,
+        deliveryTerms: item?.delivery_terms || item?.deliveryTerms || undefined,
       }));
       setItems(prItems);
 
@@ -677,6 +697,8 @@ export default function PurchaseRequisitionsPage() {
           requestedQty: item.quantity,
           estimatedRate: item.estimatedPrice || 0,
           remarks: item.specifications || null,
+          paymentTerms: item.paymentTerms || null,
+          deliveryTerms: item.deliveryTerms || null,
         })),
       };
       
@@ -1000,6 +1022,23 @@ export default function PurchaseRequisitionsPage() {
                       placeholder="Specifications / Notes"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                     />
+
+                    <div className="grid grid-cols-2 gap-3 mt-3">
+                      <input
+                        type="text"
+                        value={itemForm.paymentTerms}
+                        onChange={(e) => setItemForm({ ...itemForm, paymentTerms: e.target.value })}
+                        placeholder="Payment Terms (line)"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                      />
+                      <input
+                        type="text"
+                        value={itemForm.deliveryTerms}
+                        onChange={(e) => setItemForm({ ...itemForm, deliveryTerms: e.target.value })}
+                        placeholder="Delivery Terms (line)"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
                   </div>
 
                   {/* Items List */}
@@ -1017,6 +1056,8 @@ export default function PurchaseRequisitionsPage() {
                             >
                               Est. Unit Price
                             </th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold">Payment Terms</th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold">Delivery Terms</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Specifications</th>
                             <th className="px-4 py-2"></th>
                           </tr>
@@ -1041,6 +1082,8 @@ export default function PurchaseRequisitionsPage() {
                                               vendorId: vendorId || undefined,
                                               vendorName: vendor ? vendor.name : undefined,
                                             }
+                                            <td className="px-4 py-2">{item.paymentTerms || '-'}</td>
+                                            <td className="px-4 py-2">{item.deliveryTerms || '-'}</td>
                                           : it,
                                       ),
                                     );

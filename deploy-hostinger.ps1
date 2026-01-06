@@ -5,12 +5,12 @@
 $ErrorActionPreference = "Stop"
 
 # ====== CONFIG (Hostinger VPS) ======
-$HOSTINGER_IP = "72.62.192.228"
-$HOSTINGER_USER = "qutubk"
-$KEY_PATH = ".\\hostinger-key.pem"  # Update with your Hostinger SSH key path
+$HOSTINGER_IP = if ($env:HOSTINGER_IP) { $env:HOSTINGER_IP } else { "72.62.192.228" }
+$HOSTINGER_USER = if ($env:HOSTINGER_USER) { $env:HOSTINGER_USER } else { "qutubk" }
+$KEY_PATH = if ($env:HOSTINGER_KEY_PATH) { $env:HOSTINGER_KEY_PATH } else { "./hostinger-key.pem" }
 
 # Remote deployment path
-$REMOTE_PATH = "/var/www/sak-erp"
+$REMOTE_PATH = if ($env:HOSTINGER_REMOTE_PATH) { $env:HOSTINGER_REMOTE_PATH } else { "/var/www/sak-erp" }
 
 # PM2 process names
 $PM2_API_NAME = "sak-api"
@@ -30,16 +30,20 @@ function Run($label, $scriptBlock) {
 }
 
 function Invoke-Ssh($remoteCommand) {
-  & ssh.exe -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -i $KEY_PATH "$HOSTINGER_USER@$HOSTINGER_IP" $remoteCommand
+  & ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -i $KEY_PATH "$HOSTINGER_USER@$HOSTINGER_IP" $remoteCommand
 }
 
 function ScpToHostinger($localPath, $remotePath) {
-  & scp.exe -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i $KEY_PATH $localPath "$HOSTINGER_USER@${HOSTINGER_IP}:$remotePath"
+  & scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i $KEY_PATH $localPath "$HOSTINGER_USER@${HOSTINGER_IP}:$remotePath"
 }
 
 # ====== Preconditions ======
 Run "Preflight" {
+  $isCI = ($env:GITHUB_ACTIONS -eq 'true') -or ($env:CI -eq 'true')
   if (-not (Test-Path $KEY_PATH)) {
+    if ($isCI) {
+      throw "SSH key not found at: $KEY_PATH (CI requires key-based auth)"
+    }
     Write-Host "SSH key not found at: $KEY_PATH" -ForegroundColor Yellow
     Write-Host "Trying password authentication instead..." -ForegroundColor Yellow
     # If key doesn't exist, we'll try password auth
@@ -63,7 +67,7 @@ Run "Preflight" {
   try {
     if ($script:usePassword) {
       Write-Host "Please enter SSH password when prompted" -ForegroundColor Yellow
-      & ssh.exe -o StrictHostKeyChecking=no "$HOSTINGER_USER@$HOSTINGER_IP" "echo 'Connection successful'; node -v 2>/dev/null || echo 'Node.js not installed'; pnpm -v 2>/dev/null || echo 'pnpm not installed'; pm2 -v 2>/dev/null || echo 'PM2 not installed'" | Out-Host
+      & ssh -o StrictHostKeyChecking=no "$HOSTINGER_USER@$HOSTINGER_IP" "echo 'Connection successful'; node -v 2>/dev/null || echo 'Node.js not installed'; pnpm -v 2>/dev/null || echo 'pnpm not installed'; pm2 -v 2>/dev/null || echo 'PM2 not installed'" | Out-Host
     } else {
       Invoke-Ssh "echo 'Connection successful'; node -v 2>/dev/null || echo 'Node.js not installed'; pnpm -v 2>/dev/null || echo 'pnpm not installed'; pm2 -v 2>/dev/null || echo 'PM2 not installed'" | Out-Host
     }
@@ -132,7 +136,7 @@ Run "Create artifact archive ($archive)" {
   $existingOptional = $optionalInputs | Where-Object { Test-Path $_ }
   $tarInputs = @($requiredInputs + $existingOptional)
 
-  & tar.exe -czf $archive @tarInputs
+  & tar -czf $archive @tarInputs
 
   $size = [math]::Round((Get-Item $archive).Length / 1MB, 2)
   Write-Host "Archive size: $size MB" -ForegroundColor Gray
@@ -142,7 +146,7 @@ Run "Create artifact archive ($archive)" {
 Run "Upload archive to Hostinger" {
   if ($script:usePassword) {
     Write-Host "Please enter SSH password when prompted" -ForegroundColor Yellow
-    & scp.exe -o StrictHostKeyChecking=no $archive "$HOSTINGER_USER@${HOSTINGER_IP}:/tmp/$archive"
+    & scp -o StrictHostKeyChecking=no $archive "$HOSTINGER_USER@${HOSTINGER_IP}:/tmp/$archive"
   } else {
     ScpToHostinger $archive "/tmp/$archive"
   }

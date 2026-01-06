@@ -101,6 +101,36 @@ Saif Automations ERP is a comprehensive manufacturing management system designed
 
 ---
 
+## 🚚 Deployment
+
+### Auto-Deploy (GitHub → Hostinger)
+Every push to `main` automatically deploys to Hostinger using the same PowerShell script you use locally.
+
+**How it works:**
+1. GitHub Actions triggers on push to `main`
+2. Runs `deploy-hostinger.ps1` (builds locally, uploads artifact, restarts PM2)
+3. Same process as running `.\deploy-github-and-hostinger.ps1` locally
+
+**Required GitHub Secrets:**
+- `VPS_HOST` = `72.62.192.228` (your Hostinger IP)
+- `VPS_USER` = `qutubk` (SSH username)
+- `VPS_SSH_KEY` = your ed25519/RSA private key content
+- `VPS_PATH` = `/var/www/sak-erp` (remote path)
+
+**Workflow file:** `.github/workflows/deploy-vps.yml`
+
+### Manual Deploy (Local)
+Run `.\deploy-github-and-hostinger.ps1` to:
+1. Commit & push to GitHub
+2. Build locally
+3. Deploy to Hostinger
+
+### VPS Requirements
+- Node.js 20+, pnpm, PM2 installed
+- Deploy directory exists: `/var/www/sak-erp`
+
+---
+
 ## 🏗️ Architecture
 
 This is a **microservices-based monorepo** using:

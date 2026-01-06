@@ -694,7 +694,7 @@ export class DocumentsService {
       }
     };
 
-    let insertPayload: any = { ...createDto };
+    const insertPayload: any = { ...createDto };
     let data: any;
     for (let attempt = 0; attempt < 4; attempt++) {
       // eslint-disable-next-line no-await-in-loop

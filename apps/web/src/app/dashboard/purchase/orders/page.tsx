@@ -38,6 +38,11 @@ function PurchaseOrdersContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prId = searchParams?.get('prId');
+
+  const [purchaseRequisitions, setPurchaseRequisitions] = useState<
+    Array<{ id: string; pr_number: string; department?: string; status?: string }>
+  >([]);
+  const [loadingPrList, setLoadingPrList] = useState(false);
   
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<Array<{ id: string; name: string; contact_person: string }>>([]);
@@ -91,6 +96,7 @@ function PurchaseOrdersContent() {
     trackingUrl: '',
     deliveryStatus: 'PENDING',
     items: [] as Array<{
+      prItemId?: string;
       itemId: string;
       itemCode: string;
       itemName: string;
@@ -100,6 +106,8 @@ function PurchaseOrdersContent() {
       taxRate: number;
       totalPrice: number;
       specifications: string;
+      paymentTerms?: string;
+      deliveryTerms?: string;
     }>,
   });
 
@@ -112,6 +120,35 @@ function PurchaseOrdersContent() {
       loadPRData(prId);
     }
   }, [filterStatus, prId]);
+
+  useEffect(() => {
+    if (!showModal) return;
+    if (editingMode !== 'create') return;
+    fetchPurchaseRequisitions();
+  }, [showModal, editingMode]);
+
+  const fetchPurchaseRequisitions = async () => {
+    try {
+      setLoadingPrList(true);
+      const data = await apiClient.get(`/purchase/requisitions?status=APPROVED`);
+      const list = Array.isArray(data) ? data : [];
+      setPurchaseRequisitions(
+        list
+          .map((raw: any) => ({
+            id: String(raw?.id || ''),
+            pr_number: String(raw?.pr_number || raw?.prNumber || ''),
+            department: raw?.department ? String(raw.department) : undefined,
+            status: raw?.status ? String(raw.status) : undefined,
+          }))
+          .filter((x: any) => x.id && x.pr_number),
+      );
+    } catch (error) {
+      console.error('Error fetching purchase requisitions:', error);
+      setPurchaseRequisitions([]);
+    } finally {
+      setLoadingPrList(false);
+    }
+  };
 
   // Ensure item master data is loaded whenever the create/edit modal is open.
   // This prevents the Product dropdown from appearing empty in some edit flows.
@@ -302,7 +339,7 @@ function PurchaseOrdersContent() {
       const freshItems = itemsData || [];
       console.log('Fetched items for price lookup:', freshItems.length);
       
-      const prData = await apiClient.get(`/purchase/requisitions/${prId}`);
+      const prData = await apiClient.get(`/purchase/requisitions/${prId}/available-for-po`);
       console.log('PR Data received:', prData);
       console.log('PR Items:', prData.purchase_requisition_items);
       
@@ -310,7 +347,8 @@ function PurchaseOrdersContent() {
       setCurrentPrId(prId);
       
       // Map PR items to PO items and fetch preferred vendors
-      const poItemsPromises = prData.purchase_requisition_items?.map(async (item: any) => {
+      const prItemsRaw = Array.isArray(prData.purchase_requisition_items) ? prData.purchase_requisition_items : [];
+      const poItemsPromises = prItemsRaw.map(async (item: any) => {
         console.log('Mapping PR item:', item);
         console.log(`Item ID: ${item.item_id}, Item Code: ${item.item_code}, Items count: ${freshItems.length}`);
         
@@ -386,6 +424,7 @@ function PurchaseOrdersContent() {
         const totalWithTax = subtotal + (subtotal * 18 / 100);
         
         return {
+          prItemId: item.id ? String(item.id) : undefined,
           itemId: itemId || '',
           itemCode: item.item_code || '',
           itemName: item.item_name || '',
@@ -395,24 +434,28 @@ function PurchaseOrdersContent() {
           taxRate: 18, // Default GST rate
           totalPrice: totalWithTax,
           specifications: item.remarks || '',
+          paymentTerms: item.payment_terms || '',
+          deliveryTerms: item.delivery_terms || '',
         };
-      }) || [];
+      });
 
       const poItems = await Promise.all(poItemsPromises);
       console.log('Mapped PO Items with preferred vendors:', poItems);
 
-      setFormData({
-        ...formData,
+      setFormData((prev) => ({
+        ...prev,
         notes: `Generated from PR: ${prData.pr_number}\nDepartment: ${prData.department}\nPriority: ${prData.priority || 'MEDIUM'}`,
         items: poItems,
-      });
+      }));
 
       // Open modal automatically
       setShowModal(true);
       const autoSelectedCount = poItems.filter(item => item.vendorId).length;
       setAlertMessage({ 
         type: 'info', 
-        message: `Loaded ${poItems.length} items from PR ${prData.pr_number}. ${autoSelectedCount} items have preferred vendors auto-selected. You can override vendor selection if needed. System will automatically create separate POs for different vendors.` 
+        message: poItems.length === 0
+          ? `PR ${prData.pr_number} has no remaining items available for PO.`
+          : `Loaded ${poItems.length} items from PR ${prData.pr_number}. ${autoSelectedCount} items have preferred vendors auto-selected. You can override vendor selection if needed. System will automatically create separate POs for different vendors.` 
       });
     } catch (error) {
       console.error('Error loading PR data:', error);
@@ -614,6 +657,7 @@ function PurchaseOrdersContent() {
           }
           
           return {
+            prItemId: (item as any).prItemId,
             itemCode: item.itemCode || '',
             itemName: item.itemName || '',
             orderedQty: item.quantity,
@@ -621,6 +665,8 @@ function PurchaseOrdersContent() {
             taxPercent: item.taxRate,
             amount: item.totalPrice,
             remarks: item.specifications || '',
+            paymentTerms: (item as any).paymentTerms || null,
+            deliveryTerms: (item as any).deliveryTerms || null,
           };
         });
 
@@ -763,6 +809,7 @@ function PurchaseOrdersContent() {
         otherCharges,
         totalAmount: grandTotal,
         items: formData.items.map((item) => ({
+          prItemId: (item as any).prItemId,
           itemCode: item.itemCode || '',
           itemName: item.itemName || '',
           orderedQty: item.quantity,
@@ -770,6 +817,8 @@ function PurchaseOrdersContent() {
           taxPercent: item.taxRate,
           amount: item.totalPrice,
           remarks: item.specifications || '',
+          paymentTerms: (item as any).paymentTerms || null,
+          deliveryTerms: (item as any).deliveryTerms || null,
         })),
       };
 
@@ -805,6 +854,7 @@ function PurchaseOrdersContent() {
       items: [
         ...prev.items,
         {
+          prItemId: undefined,
           itemId: '',
           itemCode: '',
           itemName: '',
@@ -814,6 +864,8 @@ function PurchaseOrdersContent() {
           taxRate: 18,
           totalPrice: 0,
           specifications: '',
+          paymentTerms: '',
+          deliveryTerms: '',
         },
       ],
     }));
@@ -1385,6 +1437,34 @@ function PurchaseOrdersContent() {
             <div className="p-6 space-y-6">
               {/* Order Details */}
               <div className="grid grid-cols-2 gap-4">
+                {editingMode === 'create' && (
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Purchase Requisition (optional)
+                    </label>
+                    <SearchableSelect
+                      value={currentPrId || ''}
+                      onChange={(value) => {
+                        const next = String(value || '').trim();
+                        if (!next) {
+                          setCurrentPrId(null);
+                          setFormData((prev) => ({ ...prev, items: [] }));
+                          return;
+                        }
+                        loadPRData(next);
+                      }}
+                      options={purchaseRequisitions.map((pr) => ({
+                        value: pr.id,
+                        label: pr.pr_number,
+                        subtitle: pr.department || pr.status || '',
+                      }))}
+                      placeholder={loadingPrList ? 'Loading PRs...' : 'Select PR...'}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Shows only PR items not already used in any PO.
+                    </p>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Master Vendor (sets all items)
@@ -1691,14 +1771,26 @@ function PurchaseOrdersContent() {
                             </select>
                           </div>
                           <div>
-                            <input
-                              type="number"
-                              value={item.quantity}
-                              onChange={(e) => handleUpdateItem(index, 'quantity', parseFloat(e.target.value))}
-                              placeholder="Qty"
-                              className="w-full border border-gray-300 rounded px-3 py-2"
-                              required
-                            />
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                value={item.quantity}
+                                onChange={(e) => handleUpdateItem(index, 'quantity', parseFloat(e.target.value))}
+                                placeholder={`Qty${(() => {
+                                  const selected = items.find((i) => i.id === item.itemId);
+                                  const uom = selected?.uom || items.find((i) => i.code === item.itemCode)?.uom;
+                                  return uom ? ` (${uom})` : '';
+                                })()}`}
+                                className="w-full border border-gray-300 rounded px-3 py-2"
+                                required
+                              />
+                              {(() => {
+                                const selected = items.find((i) => i.id === item.itemId);
+                                const uom = selected?.uom || items.find((i) => i.code === item.itemCode)?.uom;
+                                if (!uom) return null;
+                                return <span className="text-xs text-gray-600 whitespace-nowrap">{uom}</span>;
+                              })()}
+                            </div>
                           </div>
                           <div className="relative">
                             <div className="flex items-center gap-1">
@@ -1828,6 +1920,27 @@ function PurchaseOrdersContent() {
                             >
                               ×
                             </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Line Payment Terms</label>
+                            <input
+                              type="text"
+                              value={(item as any).paymentTerms || ''}
+                              onChange={(e) => handleUpdateItem(index, 'paymentTerms', e.target.value)}
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Line Delivery Terms</label>
+                            <input
+                              type="text"
+                              value={(item as any).deliveryTerms || ''}
+                              onChange={(e) => handleUpdateItem(index, 'deliveryTerms', e.target.value)}
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                            />
                           </div>
                         </div>
                       </div>

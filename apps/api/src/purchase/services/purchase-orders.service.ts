@@ -101,6 +101,8 @@ export class PurchaseOrdersService {
           discount_percent: item.discountPercent || 0,
           amount: item.amount || finalAmount,
           delivery_date: item.deliveryDate,
+          payment_terms: item.paymentTerms ?? null,
+          delivery_terms: item.deliveryTerms ?? null,
           remarks: item.remarks,
         };
       });
@@ -209,6 +211,7 @@ export class PurchaseOrdersService {
       if (data.items.length > 0) {
         const items = data.items.map((item: any) => ({
           po_id: id,
+          pr_item_id: item.prItemId,
           item_code: item.itemCode,
           item_name: item.itemName,
           description: item.description,
@@ -219,6 +222,8 @@ export class PurchaseOrdersService {
           discount_percent: item.discountPercent || 0,
           amount: item.amount || item.totalPrice,
           delivery_date: item.deliveryDate,
+          payment_terms: item.paymentTerms ?? null,
+          delivery_terms: item.deliveryTerms ?? null,
           remarks: item.remarks || item.specifications,
         }));
 

@@ -51,6 +51,8 @@ export class PurchaseRequisitionsService {
         requested_qty: item.requestedQty,
         estimated_rate: item.estimatedRate,
         required_date: item.requiredDate,
+        payment_terms: item.paymentTerms ?? null,
+        delivery_terms: item.deliveryTerms ?? null,
         remarks: item.remarks,
       }));
 
@@ -105,6 +107,48 @@ export class PurchaseRequisitionsService {
 
     if (error) throw new NotFoundException('Purchase Requisition not found');
     return data;
+  }
+
+  async findOneAvailableForPO(tenantId: string, id: string) {
+    const pr = await this.findOne(tenantId, id);
+
+    const { data: poRows, error: poError } = await this.supabase
+      .from('purchase_orders')
+      .select(`
+        id,
+        purchase_order_items(pr_item_id)
+      `)
+      .eq('tenant_id', tenantId)
+      .eq('pr_id', id);
+
+    if (poError) throw new BadRequestException(poError.message);
+
+    const usedPrItemIds = new Set<string>();
+    (poRows || []).forEach((po: any) => {
+      const items = Array.isArray(po?.purchase_order_items) ? po.purchase_order_items : [];
+      items.forEach((it: any) => {
+        const prItemId = String(it?.pr_item_id || '').trim();
+        if (prItemId) usedPrItemIds.add(prItemId);
+      });
+    });
+
+    const prItems = Array.isArray((pr as any)?.purchase_requisition_items)
+      ? (pr as any).purchase_requisition_items
+      : [];
+
+    const availableItems = prItems.filter((it: any) => {
+      const prItemId = String(it?.id || '').trim();
+      if (!prItemId) return false;
+      return !usedPrItemIds.has(prItemId);
+    });
+
+    return {
+      ...pr,
+      purchase_requisition_items: availableItems,
+      _meta: {
+        excluded_pr_item_ids: Array.from(usedPrItemIds),
+      },
+    };
   }
 
   async update(tenantId: string, id: string, data: any) {
