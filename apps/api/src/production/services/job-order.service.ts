@@ -354,7 +354,7 @@ export class JobOrderService {
       itemSelections?: Record<string, string>;
     },
   ) {
-    const { data: bom } = await this.supabase
+    const { data: bom, error: bomError } = await this.supabase
       .from('bom_headers')
       .select(`
         *,
@@ -365,7 +365,10 @@ export class JobOrderService {
       .eq('id', args.bomId)
       .single();
 
-    if (!bom) throw new NotFoundException('BOM not found');
+    if (!bom) {
+      console.error('[JobOrderService] BOM not found - bomId:', args.bomId, 'error:', bomError);
+      throw new NotFoundException(`BOM not found for ID: ${args.bomId}. Error: ${bomError?.message || 'Unknown'}`);
+    }
 
     const operations = (bom.bom_routing || []).map((route: any, idx: number) => ({
       sequenceNumber: route.operation_sequence || (idx + 1) * 10,
@@ -1082,6 +1085,13 @@ export class JobOrderService {
     // Auto-create and auto-complete missing sub assemblies.
     for (const sa of preview.subAssembliesToMake as SmartSubAssemblyPlan[]) {
       if (sa.toMakeQuantity <= 0) continue;
+
+      console.log('[JobOrderService] Creating sub-assembly:', {
+        itemId: sa.itemId,
+        itemCode: sa.itemCode,
+        bomId: sa.bomId,
+        quantity: sa.toMakeQuantity,
+      });
 
       const created = await this.createFromBOMWithVariantSelections(tenantId, userId, {
         itemId: sa.itemId,
