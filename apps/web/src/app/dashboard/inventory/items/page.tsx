@@ -646,9 +646,6 @@ export default function ItemsPage() {
     });
     setDrawingFile(null);
   };
-      variant_name: '',
-    });
-  };
 
   const filteredItems = items.filter(item => {
     const matchesSearch = 
