@@ -911,6 +911,15 @@ function PurchaseOrdersContent() {
   };
 
   const handleAddItem = () => {
+    // Validate last row before adding new one
+    if (formData.items.length > 0) {
+      const lastItem = formData.items[formData.items.length - 1];
+      if (!lastItem.itemId || lastItem.quantity <= 0) {
+        alert('Please complete the current row before adding a new one');
+        return;
+      }
+    }
+
     setFormData((prev) => ({
       ...prev,
       items: [

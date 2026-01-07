@@ -953,6 +953,15 @@ export default function SalesPage() {
   };
 
   const addQuotationItem = () => {
+    // Validate last row before adding new one
+    if (quotationForm.items.length > 0) {
+      const lastItem = quotationForm.items[quotationForm.items.length - 1];
+      if (!lastItem.item_id || lastItem.quantity <= 0) {
+        alert('Please complete the current row before adding a new one');
+        return;
+      }
+    }
+
     setQuotationForm({
       ...quotationForm,
       items: [
@@ -994,6 +1003,15 @@ export default function SalesPage() {
   };
 
   const addDispatchItem = () => {
+    // Validate last row before adding new one
+    if (dispatchForm.items.length > 0) {
+      const lastItem = dispatchForm.items[dispatchForm.items.length - 1];
+      if (!lastItem.sales_order_item_id || lastItem.quantity <= 0) {
+        alert('Please complete the current row before adding a new one');
+        return;
+      }
+    }
+
     setDispatchForm({
       ...dispatchForm,
       items: [
