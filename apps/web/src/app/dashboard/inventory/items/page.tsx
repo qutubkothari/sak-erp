@@ -251,6 +251,7 @@ export default function ItemsPage() {
 
   useEffect(() => {
     fetchItems();
+    fetchVendors();
   }, [showDeleted]);
 
   useEffect(() => {
@@ -301,7 +302,26 @@ export default function ItemsPage() {
         await apiClient.put(`/inventory/items/${editingItem.id}`, payload);
         alert('Item updated successfully!');
       } else {
-        await apiClient.post('/inventory/items', payload);
+        const result = await apiClient.post('/inventory/items', payload);
+        
+        // If vendors were added during creation, save them now
+        if (itemVendors.length > 0 && result.id) {
+          for (const vendor of itemVendors) {
+            try {
+              await apiClient.post(`/inventory/items/${result.id}/vendors`, {
+                vendor_id: vendor.vendor_id,
+                priority: vendor.priority,
+                unit_price: vendor.unit_price,
+                lead_time_days: vendor.lead_time_days,
+                vendor_item_code: vendor.vendor_item_code,
+              });
+            } catch (vendorError) {
+              console.error('Error adding vendor to new item:', vendorError);
+              // Continue with other vendors even if one fails
+            }
+          }
+        }
+        
         alert('Item created successfully!');
       }
 
@@ -494,21 +514,55 @@ export default function ItemsPage() {
   };
 
   const addItemVendor = async () => {
-    if (!editingItem || !vendorForm.vendor_id) {
+    if (!vendorForm.vendor_id) {
       alert('Please select a vendor');
       return;
     }
 
-    try {
-      await apiClient.post(`/inventory/items/${editingItem.id}/vendors`, {
+    // If editing existing item, save to database
+    if (editingItem) {
+      try {
+        await apiClient.post(`/inventory/items/${editingItem.id}/vendors`, {
+          vendor_id: vendorForm.vendor_id,
+          priority: vendorForm.priority,
+          unit_price: vendorForm.unit_price ? parseFloat(vendorForm.unit_price) : null,
+          lead_time_days: vendorForm.lead_time_days ? parseInt(vendorForm.lead_time_days) : null,
+          vendor_item_code: vendorForm.vendor_item_code || null,
+        });
+        
+        alert('Vendor added successfully!');
+        setShowVendorForm(false);
+        setVendorForm({
+          vendor_id: '',
+          priority: 1,
+          unit_price: '',
+          lead_time_days: '',
+          vendor_item_code: '',
+        });
+        fetchItemVendors(editingItem.id);
+      } catch (error: any) {
+        console.error('Error adding vendor:', error);
+        alert(error.message || 'Failed to add vendor');
+      }
+    } else {
+      // If creating new item, add to temporary list
+      const vendor = vendors.find(v => v.id === vendorForm.vendor_id);
+      if (!vendor) {
+        alert('Vendor not found');
+        return;
+      }
+
+      const newVendor: any = {
         vendor_id: vendorForm.vendor_id,
+        vendor_name: vendor.name,
         priority: vendorForm.priority,
         unit_price: vendorForm.unit_price ? parseFloat(vendorForm.unit_price) : null,
         lead_time_days: vendorForm.lead_time_days ? parseInt(vendorForm.lead_time_days) : null,
         vendor_item_code: vendorForm.vendor_item_code || null,
-      });
-      
-      alert('Vendor added successfully!');
+        is_preferred: vendorForm.priority === 1,
+      };
+
+      setItemVendors([...itemVendors, newVendor]);
       setShowVendorForm(false);
       setVendorForm({
         vendor_id: '',
@@ -517,23 +571,25 @@ export default function ItemsPage() {
         lead_time_days: '',
         vendor_item_code: '',
       });
-      fetchItemVendors(editingItem.id);
-    } catch (error: any) {
-      console.error('Error adding vendor:', error);
-      alert(error.message || 'Failed to add vendor');
     }
   };
 
   const removeItemVendor = async (vendorId: string) => {
-    if (!editingItem || !confirm('Remove this vendor?')) return;
+    if (editingItem) {
+      // If editing, remove from database
+      if (!confirm('Remove this vendor?')) return;
 
-    try {
-      await apiClient.delete(`/inventory/items/${editingItem.id}/vendors/${vendorId}`);
-      alert('Vendor removed successfully!');
-      fetchItemVendors(editingItem.id);
-    } catch (error) {
-      console.error('Error removing vendor:', error);
-      alert('Failed to remove vendor');
+      try {
+        await apiClient.delete(`/inventory/items/${editingItem.id}/vendors/${vendorId}`);
+        alert('Vendor removed successfully!');
+        fetchItemVendors(editingItem.id);
+      } catch (error) {
+        console.error('Error removing vendor:', error);
+        alert('Failed to remove vendor');
+      }
+    } else {
+      // If creating new item, remove from temporary list
+      setItemVendors(itemVendors.filter(iv => iv.vendor_id !== vendorId));
     }
   };
 
@@ -664,6 +720,8 @@ export default function ItemsPage() {
       drawing_file_name: '',
     });
     setDrawingFile(null);
+    setItemVendors([]);
+    setShowVendorForm(false);
   };
 
   const filteredItems = items.filter(item => {
@@ -1644,18 +1702,17 @@ export default function ItemsPage() {
                 </div>
 
                 {/* Vendor Management Section */}
-                {editingItem && (
-                  <div className="border-t pt-4 mt-4">
-                    <div className="flex justify-between items-center mb-3">
-                      <h3 className="text-lg font-semibold text-gray-900">Vendors</h3>
-                      <button
-                        type="button"
-                        onClick={() => setShowVendorForm(!showVendorForm)}
-                        className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
-                      >
-                        {showVendorForm ? 'Cancel' : 'Add Vendor'}
-                      </button>
-                    </div>
+                <div className="border-t pt-4 mt-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-lg font-semibold text-gray-900">🏭 Preferred Vendors</h3>
+                    <button
+                      type="button"
+                      onClick={() => setShowVendorForm(!showVendorForm)}
+                      className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+                    >
+                      {showVendorForm ? 'Cancel' : '+ Add Vendor'}
+                    </button>
+                  </div>
 
                     {showVendorForm && (
                       <div className="bg-gray-50 p-4 rounded-lg mb-4 space-y-3">
@@ -1769,8 +1826,7 @@ export default function ItemsPage() {
                     ) : (
                       <p className="text-sm text-gray-500 text-center py-4">No vendors assigned yet</p>
                     )}
-                  </div>
-                )}
+                </div>
 
                 <div className="flex justify-end gap-3 mt-6">
                   <button
