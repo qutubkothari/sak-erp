@@ -90,6 +90,11 @@ export class SalesController {
     return this.salesService.getSalesOrderById(req, soId);
   }
 
+  @Post('orders')
+  async createDirectSalesOrder(@Request() req: any, @Body() soData: any) {
+    return this.salesService.createDirectSalesOrder(req, soData);
+  }
+
   @Put('orders/:id')
   async updateSalesOrder(
     @Request() req: any,

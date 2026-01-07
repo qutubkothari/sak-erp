@@ -67,6 +67,9 @@ interface SalesOrder {
   net_amount: number;
   advance_paid: number;
   balance_amount: number;
+  project?: string;
+  is_direct_order?: boolean;
+  source_type?: 'QUOTATION' | 'DIRECT' | 'INTERNAL';
   created_at: string;
 }
 
@@ -255,8 +258,21 @@ export default function SalesPage() {
     advance_amount: 0,
     payment_terms: '',
     special_instructions: '',
+    project: '',
   });
   const [conversionItems, setConversionItems] = useState<{[key: string]: number}>({});
+
+  // Direct Sales Order form
+  const [showDirectSOForm, setShowDirectSOForm] = useState(false);
+  const [directSOForm, setDirectSOForm] = useState({
+    customer_id: '',
+    order_date: new Date().toISOString().split('T')[0],
+    expected_delivery_date: '',
+    payment_terms: '',
+    project: '',
+    source_type: 'DIRECT' as 'DIRECT' | 'INTERNAL',
+    items: [] as QuotationItem[],
+  });
 
   const handlePrintWarranty = async (warrantyId: string) => {
     try {
@@ -1060,6 +1076,7 @@ export default function SalesPage() {
         advance_amount: 0,
         payment_terms: '',
         special_instructions: '',
+        project: '',
       });
       setConversionItems({});
       fetchQuotations();
@@ -1067,6 +1084,41 @@ export default function SalesPage() {
     } catch (err: any) {
       setError(err.message || 'Failed to convert quotation');
       alert('Failed to convert quotation: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateDirectSO = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!directSOForm.customer_id) {
+      alert('Please select a customer');
+      return;
+    }
+    if (directSOForm.items.length === 0) {
+      alert('Please add at least one item');
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    try {
+      await apiClient.post('/sales/orders', directSOForm);
+      alert('Direct Sales Order created successfully!');
+      setShowDirectSOForm(false);
+      setDirectSOForm({
+        customer_id: '',
+        order_date: new Date().toISOString().split('T')[0],
+        expected_delivery_date: '',
+        payment_terms: '',
+        project: '',
+        source_type: 'DIRECT',
+        items: [],
+      });
+      fetchOrders();
+    } catch (err: any) {
+      setError(err.message || 'Failed to create direct sales order');
+      alert('Failed to create direct sales order: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -1743,14 +1795,26 @@ export default function SalesPage() {
                       </div>
                     </div>
                     
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
-                      <input
-                        type="text"
-                        value={soConversionForm.payment_terms}
-                        onChange={(e) => setSOConversionForm({ ...soConversionForm, payment_terms: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
+                        <input
+                          type="text"
+                          value={soConversionForm.payment_terms}
+                          onChange={(e) => setSOConversionForm({ ...soConversionForm, payment_terms: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+                        <input
+                          type="text"
+                          value={soConversionForm.project}
+                          onChange={(e) => setSOConversionForm({ ...soConversionForm, project: e.target.value })}
+                          placeholder="e.g., Project Alpha, Phase 1"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        />
+                      </div>
                     </div>
                     
                     <div>
@@ -1782,6 +1846,248 @@ export default function SalesPage() {
                       className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
                     >
                       {loading ? 'Converting...' : 'Create Sales Order'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Direct Sales Order Form Modal */}
+          {showDirectSOForm && (
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-semibold">Create Direct Sales Order</h3>
+                  <button
+                    onClick={() => setShowDirectSOForm(false)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <form onSubmit={handleCreateDirectSO} className="space-y-4">
+                  {/* Customer and Basic Details */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
+                      <SearchableSelect
+                        options={customers.map(c => ({ label: `${c.customer_code} - ${c.customer_name}`, value: c.id }))}
+                        value={directSOForm.customer_id}
+                        onChange={(value) => setDirectSOForm({ ...directSOForm, customer_id: value })}
+                        placeholder="Select customer..."
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Source Type *</label>
+                      <select
+                        value={directSOForm.source_type}
+                        onChange={(e) => setDirectSOForm({ ...directSOForm, source_type: e.target.value as 'DIRECT' | 'INTERNAL' })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        required
+                      >
+                        <option value="DIRECT">Direct Customer Order</option>
+                        <option value="INTERNAL">Internal Stock</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Order Date *</label>
+                      <input
+                        type="date"
+                        value={directSOForm.order_date}
+                        onChange={(e) => setDirectSOForm({ ...directSOForm, order_date: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Expected Delivery Date</label>
+                      <input
+                        type="date"
+                        value={directSOForm.expected_delivery_date}
+                        onChange={(e) => setDirectSOForm({ ...directSOForm, expected_delivery_date: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+                      <input
+                        type="text"
+                        value={directSOForm.project}
+                        onChange={(e) => setDirectSOForm({ ...directSOForm, project: e.target.value })}
+                        placeholder="e.g., Project Alpha, Phase 1"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
+                    <input
+                      type="text"
+                      value={directSOForm.payment_terms}
+                      onChange={(e) => setDirectSOForm({ ...directSOForm, payment_terms: e.target.value })}
+                      placeholder="e.g., 30 days, Net 45, etc."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+
+                  {/* Items Section */}
+                  <div className="border rounded-lg p-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="text-sm font-semibold">Order Items *</h4>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDirectSOForm({
+                            ...directSOForm,
+                            items: [...directSOForm.items, {
+                              item_id: '',
+                              item_description: '',
+                              quantity: 1,
+                              unit_price: 0,
+                              discount_percentage: 0,
+                              tax_percentage: 18,
+                            }]
+                          });
+                        }}
+                        className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                      >
+                        + Add Item
+                      </button>
+                    </div>
+                    
+                    {directSOForm.items.length === 0 ? (
+                      <p className="text-gray-500 text-sm">No items added. Click "+ Add Item" to start.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {directSOForm.items.map((item, index) => (
+                          <div key={index} className="grid grid-cols-12 gap-2 items-start border-b pb-3">
+                            <div className="col-span-4">
+                              <label className="block text-xs text-gray-600 mb-1">Item Description *</label>
+                              <input
+                                type="text"
+                                value={item.item_description}
+                                onChange={(e) => {
+                                  const newItems = [...directSOForm.items];
+                                  newItems[index].item_description = e.target.value;
+                                  setDirectSOForm({ ...directSOForm, items: newItems });
+                                }}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                placeholder="Item description"
+                                required
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="block text-xs text-gray-600 mb-1">Quantity *</label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => {
+                                  const newItems = [...directSOForm.items];
+                                  newItems[index].quantity = parseFloat(e.target.value) || 1;
+                                  setDirectSOForm({ ...directSOForm, items: newItems });
+                                }}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                required
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="block text-xs text-gray-600 mb-1">Unit Price (₹) *</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.unit_price}
+                                onChange={(e) => {
+                                  const newItems = [...directSOForm.items];
+                                  newItems[index].unit_price = parseFloat(e.target.value) || 0;
+                                  setDirectSOForm({ ...directSOForm, items: newItems });
+                                }}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                required
+                              />
+                            </div>
+                            <div className="col-span-1">
+                              <label className="block text-xs text-gray-600 mb-1">Disc %</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.1"
+                                value={item.discount_percentage}
+                                onChange={(e) => {
+                                  const newItems = [...directSOForm.items];
+                                  newItems[index].discount_percentage = parseFloat(e.target.value) || 0;
+                                  setDirectSOForm({ ...directSOForm, items: newItems });
+                                }}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                              />
+                            </div>
+                            <div className="col-span-1">
+                              <label className="block text-xs text-gray-600 mb-1">Tax %</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.1"
+                                value={item.tax_percentage}
+                                onChange={(e) => {
+                                  const newItems = [...directSOForm.items];
+                                  newItems[index].tax_percentage = parseFloat(e.target.value) || 0;
+                                  setDirectSOForm({ ...directSOForm, items: newItems });
+                                }}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                              />
+                            </div>
+                            <div className="col-span-2 flex items-end justify-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newItems = directSOForm.items.filter((_, i) => i !== index);
+                                  setDirectSOForm({ ...directSOForm, items: newItems });
+                                }}
+                                className="px-2 py-1 bg-red-50 text-red-600 text-xs rounded hover:bg-red-100"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDirectSOForm(false);
+                        setDirectSOForm({
+                          customer_id: '',
+                          order_date: new Date().toISOString().split('T')[0],
+                          expected_delivery_date: '',
+                          payment_terms: '',
+                          project: '',
+                          source_type: 'DIRECT',
+                          items: [],
+                        });
+                      }}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {loading ? 'Creating...' : 'Create Sales Order'}
                     </button>
                   </div>
                 </form>
@@ -2086,7 +2392,15 @@ export default function SalesPage() {
       {/* Sales Orders Tab */}
       {activeTab === 'orders' && (
         <div>
-          <h2 className="text-lg font-semibold mb-4">Sales Orders</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold">Sales Orders</h2>
+            <button
+              onClick={() => setShowDirectSOForm(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              + Create Direct Order
+            </button>
+          </div>
           {loading ? (
             <p className="text-gray-600">Loading sales orders...</p>
           ) : (
@@ -2096,6 +2410,7 @@ export default function SalesPage() {
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SO Number</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Project</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order Date</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Delivery Date</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
@@ -2112,6 +2427,9 @@ export default function SalesPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {order.customer_name || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {order.project || '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                         {new Date(order.order_date).toLocaleDateString()}

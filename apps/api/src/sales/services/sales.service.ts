@@ -567,6 +567,9 @@ export class SalesService {
       payment_terms: conversionData?.payment_terms || quotation.payment_terms,
       delivery_terms: quotation.delivery_terms,
       notes: conversionData?.special_instructions || quotation.notes,
+      project: conversionData?.project || null, // Project field
+      is_direct_order: false,
+      source_type: 'QUOTATION',
       created_by: userId,
     };
 
@@ -657,6 +660,10 @@ export class SalesService {
       query = query.eq('customer_id', filters.customer_id);
     }
 
+    if (filters?.project) {
+      query = query.eq('project', filters.project);
+    }
+
     const { data, error } = await query.order('order_date', { ascending: false });
 
     if (error) throw new BadRequestException(error.message);
@@ -669,6 +676,121 @@ export class SalesService {
     }));
     
     return formattedData;
+  }
+
+  async createDirectSalesOrder(req: Request, soData: any) {
+    const { tenantId, userId } = req.user as any;
+
+    // Validate required fields
+    if (!soData.customer_id) {
+      throw new BadRequestException('Customer is required');
+    }
+
+    if (!soData.items || soData.items.length === 0) {
+      throw new BadRequestException('At least one item is required');
+    }
+
+    // Generate SO number
+    const soNumber = await this.generateSONumber(req);
+
+    // Calculate totals
+    const { preparedItems, totalAmount, taxAmount } = this.prepareSalesOrderItems(soData.items || []);
+
+    const discountAmount = Number(soData.discount_amount || 0);
+    const netAmount = totalAmount + taxAmount - discountAmount;
+    const advanceAmount = Number(soData.advance_amount || 0);
+    const balanceAmount = netAmount - advanceAmount;
+
+    // Create sales order
+    const salesOrder = {
+      tenant_id: tenantId,
+      so_number: soNumber,
+      quotation_id: null, // Direct order, no quotation
+      customer_id: soData.customer_id,
+      order_date: soData.order_date || new Date().toISOString().split('T')[0],
+      expected_delivery_date: soData.expected_delivery_date || null,
+      status: 'CONFIRMED',
+      total_amount: totalAmount,
+      discount_amount: discountAmount,
+      tax_amount: taxAmount,
+      net_amount: netAmount,
+      advance_paid: advanceAmount,
+      balance_amount: balanceAmount,
+      payment_terms: soData.payment_terms || null,
+      delivery_terms: soData.delivery_terms || null,
+      billing_address: soData.billing_address || null,
+      shipping_address: soData.shipping_address || null,
+      notes: soData.notes || null,
+      project: soData.project || null, // Project field
+      is_direct_order: true,
+      source_type: soData.source_type || 'DIRECT',
+      created_by: userId,
+    };
+
+    const { data: soRecord, error: soError } = await this.supabase
+      .from('sales_orders')
+      .insert(salesOrder)
+      .select()
+      .single();
+
+    if (soError) throw new BadRequestException(soError.message);
+
+    // Insert sales order items
+    const soItems = preparedItems.map((item: any) => ({
+      sales_order_id: soRecord.id,
+      item_id: item.item_id,
+      item_description: item.item_description,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      discount_amount: item.discount_amount || 0,
+      tax_percentage: item.tax_percentage || 18,
+      tax_amount: item.tax_amount,
+      line_total: item.line_total,
+      notes: item.notes || null,
+    }));
+
+    const { error: itemsError } = await this.supabase
+      .from('sales_order_items')
+      .insert(soItems);
+
+    if (itemsError) throw new BadRequestException(itemsError.message);
+
+    return soRecord;
+  }
+
+  private prepareSalesOrderItems(items: any[]) {
+    let totalAmount = 0;
+    let taxAmount = 0;
+
+    const preparedItems = items.map((item: any) => {
+      const quantity = Number(item.quantity) || 0;
+      const unitPrice = Number(item.unit_price) || 0;
+      const discountPercentage = Number(item.discount_percentage) || 0;
+      const taxPercentage = Number(item.tax_percentage) || 18;
+
+      const subtotal = quantity * unitPrice;
+      const discountAmount = (subtotal * discountPercentage) / 100;
+      const taxableAmount = subtotal - discountAmount;
+      const itemTaxAmount = (taxableAmount * taxPercentage) / 100;
+      const lineTotal = subtotal - discountAmount;
+
+      totalAmount += lineTotal;
+      taxAmount += itemTaxAmount;
+
+      return {
+        item_id: item.item_id,
+        item_description: item.item_description,
+        quantity,
+        unit_price: unitPrice,
+        discount_amount: discountAmount,
+        tax_percentage: taxPercentage,
+        tax_amount: itemTaxAmount,
+        line_total: lineTotal,
+        notes: item.notes || null,
+      };
+    });
+
+    return { preparedItems, totalAmount, taxAmount };
   }
 
   async getSalesOrderById(req: Request, soId: string) {
