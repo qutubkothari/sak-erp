@@ -238,6 +238,10 @@ export class ItemsService {
       throw new BadRequestException('Invalid drawing_required. Must be OPTIONAL, COMPULSORY, or NOT_REQUIRED.');
     }
 
+    // If drawing is COMPULSORY, check that at least one active drawing exists
+    // Note: For create, this validation happens after item creation (user must upload drawing immediately after)
+    // For edit changing to COMPULSORY, we validate here
+
     const standardCost = this.normalizeNumber(itemData.standard_cost ?? itemData.standardCost);
     const sellingPrice = this.normalizeNumber(itemData.selling_price ?? itemData.sellingPrice);
     const reorderLevel = this.normalizeNumber(itemData.reorder_level ?? itemData.reorderLevel, 'int');
@@ -486,6 +490,28 @@ export class ItemsService {
       ) {
         throw new BadRequestException('Invalid drawing_required. Must be OPTIONAL, COMPULSORY, or NOT_REQUIRED.');
       }
+      
+      // If changing to COMPULSORY, verify at least one active drawing exists
+      if (drawingRequired === 'COMPULSORY') {
+        const { data: activeDrawings, error: drawingError } = await this.supabase
+          .from('item_drawings')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('item_id', id)
+          .eq('is_active', true)
+          .limit(1);
+        
+        if (drawingError) {
+          throw new BadRequestException(`Failed to check drawing status: ${drawingError.message}`);
+        }
+        
+        if (!activeDrawings || activeDrawings.length === 0) {
+          throw new BadRequestException(
+            'Cannot set drawing as COMPULSORY. Please upload at least one drawing first.'
+          );
+        }
+      }
+      
       updateData.drawing_required = drawingRequired;
     }
 
