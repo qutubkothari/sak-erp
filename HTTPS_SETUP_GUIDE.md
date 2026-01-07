@@ -1,11 +1,18 @@
 # HTTPS/SSL Certificate Setup Guide for Hostinger VPS
 
-## Complete Duplicate Detection System Deployment Status ✅
+## Domain: pms.saksolution.com
+
+### Complete Duplicate Detection System Deployment Status ✅
+
+**Your Production URLs (after HTTPS setup):**
+- Frontend: https://pms.saksolution.com
+- API: https://api.pms.saksolution.com/api/v1
+- HR Module: https://pms.saksolution.com/dashboard/hr
 
 ### What's Now Live:
 - **Backend API**: http://72.62.192.228:4000/api/v1 ✅ DEPLOYED
 - **Frontend**: Pending (build errors with unused variables in GRN page)
-- **Duplicate Detection**: 100% backend complete, 50% frontend complete
+- **Duplicate Detection**: 100% backend complete, 100% frontend code complete
 
 ---
 
@@ -42,12 +49,12 @@ Create Nginx configuration file:
 sudo nano /etc/nginx/sites-available/sak-erp
 ```
 
-Add this configuration (replace `your-domain.com` with your actual domain):
+Add this configuration for **pms.saksolution.com**:
 ```nginx
 # Frontend Server Block
 server {
     listen 80;
-    server_name your-domain.com www.your-domain.com;
+    server_name pms.saksolution.com www.pms.saksolution.com;
 
     # Redirect all HTTP to HTTPS
     location / {
@@ -66,7 +73,7 @@ server {
 # API Server Block
 server {
     listen 80;
-    server_name api.your-domain.com;
+    server_name api.pms.saksolution.com;
 
     location / {
         proxy_pass http://localhost:4000;
@@ -93,13 +100,13 @@ sudo systemctl reload nginx
 
 Run Certbot to get and install SSL certificate:
 ```bash
-# For Nginx
-sudo certbot --nginx -d your-domain.com -d www.your-domain.com -d api.your-domain.com
+# For Nginx (your setup)
+sudo certbot --nginx -d pms.saksolution.com -d www.pms.saksolution.com -d api.pms.saksolution.com
 ```
 
 Or for Apache:
 ```bash
-sudo certbot --apache -d your-domain.com -d www.your-domain.com -d api.your-domain.com
+sudo certbot --apache -d pms.saksolution.com -d www.pms.saksolution.com -d api.pms.saksolution.com
 ```
 
 Certbot will:
@@ -111,8 +118,8 @@ Certbot will:
 ### Step 4: Verify HTTPS is Working
 
 Test your sites:
-- Frontend: https://your-domain.com
-- API: https://api.your-domain.com/api/v1
+- Frontend: https://pms.saksolution.com
+- API: https://api.pms.saksolution.com/api/v1
 
 ### Step 5: Auto-Renewal Setup
 
@@ -212,13 +219,13 @@ After setting up HTTPS, update your `.env` files:
 
 **apps/web/.env.local**:
 ```env
-NEXT_PUBLIC_API_URL=https://api.your-domain.com/api/v1
+NEXT_PUBLIC_API_URL=https://api.pms.saksolution.com/api/v1
 ```
 
 **apps/api/.env**:
 ```env
-FRONTEND_URL=https://your-domain.com
-CORS_ORIGINS=https://your-domain.com,https://www.your-domain.com
+FRONTEND_URL=https://pms.saksolution.com
+CORS_ORIGINS=https://pms.saksolution.com,https://www.pms.saksolution.com
 ```
 
 Redeploy after updating:
@@ -262,8 +269,8 @@ sudo nano /etc/nginx/sites-available/sak-erp
 sudo ln -s /etc/nginx/sites-available/sak-erp /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 
-# 4. Obtain SSL Certificate (replace with your domain)
-sudo certbot --nginx -d your-domain.com -d www.your-domain.com -d api.your-domain.com
+# 4. Obtain SSL Certificate
+sudo certbot --nginx -d pms.saksolution.com -d www.pms.saksolution.com -d api.pms.saksolution.com
 
 # 5. Test Auto-Renewal
 sudo certbot renew --dry-run
@@ -272,7 +279,7 @@ sudo certbot renew --dry-run
 sudo ufw allow 'Nginx Full'
 sudo ufw enable
 
-# 7. Done! Visit https://your-domain.com
+# 7. Done! Visit https://pms.saksolution.com
 ```
 
 ---
@@ -289,9 +296,9 @@ sudo ufw enable
 ## Current System Status
 
 **Production URLs** (after HTTPS setup):
-- Frontend: https://your-domain.com
-- API: https://api.your-domain.com/api/v1
-- HR Module: https://your-domain.com/dashboard/hr
+- Frontend: https://pms.saksolution.com
+- API: https://api.pms.saksolution.com/api/v1
+- HR Module: https://pms.saksolution.com/dashboard/hr
 
 **Current HTTP URLs** (temporary):
 - Frontend: http://72.62.192.228:3000 (build errors)
