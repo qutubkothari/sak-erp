@@ -78,9 +78,6 @@ interface UIDRecord {
   };
 }
 
-function GRNContent() {
-  const router = useRouter();
-
 interface PurchaseTrail {
   uid: string;
   item: { code: string; name: string };
