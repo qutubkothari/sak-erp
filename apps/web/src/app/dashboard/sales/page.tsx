@@ -2016,7 +2016,7 @@ export default function SalesPage() {
                     </div>
                     
                     {directSOForm.items.length === 0 ? (
-                      <p className="text-gray-500 text-sm">No items added. Click "+ Add Item" to start.</p>
+                      <p className="text-gray-500 text-sm">No items added. Click &ldquo;+ Add Item&rdquo; to start.</p>
                     ) : (
                       <div className="space-y-3">
                         {directSOForm.items.map((item, index) => (
