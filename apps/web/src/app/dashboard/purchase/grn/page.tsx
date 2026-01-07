@@ -2192,3 +2192,7 @@ function GRNContent() {
     </div>
   );
 }
+
+export default function GRNPage() {
+  return <GRNContent />;
+}

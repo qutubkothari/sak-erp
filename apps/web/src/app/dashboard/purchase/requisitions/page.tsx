@@ -1902,3 +1902,7 @@ function PRContent() {
     </div>
   );
 }
+
+export default function PurchaseRequisitionsPage() {
+  return <PRContent />;
+}
