@@ -139,6 +139,7 @@ export default function BOMPage() {
   const [loadingTrail, setLoadingTrail] = useState(false);
   const [showDrawingManager, setShowDrawingManager] = useState(false);
   const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string } | null>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
 
   const [formData, setFormData] = useState({
     itemId: '',
@@ -520,16 +521,40 @@ export default function BOMPage() {
             <h1 className="text-4xl font-bold text-amber-900">Bill of Materials (BOM)</h1>
             <p className="text-amber-700">Define product structure and generate purchase requisitions</p>
           </div>
-          <button
-            onClick={() => {
-              setEditingBomId(null);
-              resetForm();
-              setShowModal(true);
-            }}
-            className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold"
-          >
-            + Create BOM
-          </button>
+          <div className="flex gap-3">
+            <div className="flex rounded-lg overflow-hidden border border-gray-300 bg-white">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  viewMode === 'table'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                📊 Table
+              </button>
+              <button
+                onClick={() => setViewMode('cards')}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  viewMode === 'cards'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                🃏 Cards
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                setEditingBomId(null);
+                resetForm();
+                setShowModal(true);
+              }}
+              className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold"
+            >
+              + Create BOM
+            </button>
+          </div>
         </div>
 
         {/* Search Bar */}
@@ -566,8 +591,136 @@ export default function BOMPage() {
           </div>
         </div>
 
-        {/* BOM List */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* BOM List - Table or Card View */}
+        {viewMode === 'table' ? (
+          // TABLE VIEW
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            {loading ? (
+              <div className="text-center py-12 text-gray-500">Loading BOMs...</div>
+            ) : boms.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">📋</div>
+                <h3 className="text-xl font-semibold text-gray-700 mb-2">No BOMs Found</h3>
+                <p className="text-gray-500">Create your first BOM to define product structure</p>
+              </div>
+            ) : (() => {
+              const filteredBoms = boms.filter((bom) => {
+                if (!searchQuery) return true;
+                const query = searchQuery.toLowerCase();
+                const itemName = bom.item?.name?.toLowerCase() || '';
+                const itemCode = bom.item?.code?.toLowerCase() || '';
+                const version = String(bom.version);
+                return itemName.includes(query) || itemCode.includes(query) || version.includes(query);
+              });
+
+              if (filteredBoms.length === 0) {
+                return (
+                  <div className="text-center py-12">
+                    <div className="text-6xl mb-4">🔍</div>
+                    <h3 className="text-xl font-semibold text-gray-700 mb-2">No BOMs Match Your Search</h3>
+                    <p className="text-gray-500">Try different keywords or clear the search</p>
+                  </div>
+                );
+              }
+
+              return (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Product
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Item Code
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Version
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Components
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Effective From
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredBoms.map((bom) => (
+                      <tr key={bom.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">{bom.item?.name || 'Unknown Item'}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">{bom.item?.code || 'N/A'}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <span className="text-sm font-medium text-gray-900">v{bom.version}</span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                            {bom.bom_items?.length || 0} {(bom.bom_items?.length || 0) === 1 ? 'part' : 'parts'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <span
+                            className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              bom.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            {bom.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {bom.effective_from ? formatDate(bom.effective_from) : 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => setSelectedBom(bom)}
+                              className="text-amber-600 hover:text-amber-900"
+                              title="View Details"
+                            >
+                              👁️
+                            </button>
+                            <button
+                              onClick={() => openEditModal(bom)}
+                              className="text-blue-600 hover:text-blue-900"
+                              title="Edit"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => router.push(`/dashboard/bom/${bom.id}/routing`)}
+                              className="text-indigo-600 hover:text-indigo-900"
+                              title="Routing"
+                            >
+                              🔄
+                            </button>
+                            <button
+                              onClick={() => handleGeneratePR(bom.id)}
+                              className="text-green-600 hover:text-green-900"
+                              title="Generate PR"
+                            >
+                              📋
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            })()}
+          </div>
+        ) : (
+          // CARD VIEW
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {loading ? (
             <div className="col-span-full text-center py-12 text-gray-500">Loading BOMs...</div>
           ) : boms.length === 0 ? (
@@ -687,6 +840,7 @@ export default function BOMPage() {
             ));
           })()}
         </div>
+        )}
       </div>
 
       {/* Create BOM Modal */}
@@ -708,8 +862,9 @@ export default function BOMPage() {
                     <h4 className="font-semibold text-blue-900 mb-1">How to fill this form:</h4>
                     <ul className="text-sm text-blue-800 space-y-1">
                       <li>• <strong>Finished Product:</strong> Search and select the finished product you want to manufacture</li>
-                      <li>• <strong>Components:</strong> Search and select raw materials or sub-assemblies needed</li>
-                      <li>• <strong>Quantity:</strong> How many units of this component are needed to make 1 finished product</li>
+                      <li>• <strong>Parts:</strong> Add raw materials or purchased components needed for production</li>
+                      <li>• <strong>Assemblies:</strong> Add sub-assemblies (other BOMs) that are part of this product</li>
+                      <li>• <strong>Quantity:</strong> How many units of each part/assembly are needed to make 1 finished product</li>
                     </ul>
                     <p className="text-xs text-blue-700 mt-2">
                       ✨ Start typing to search items by name or code
@@ -768,18 +923,18 @@ export default function BOMPage() {
               {/* Components */}
               <div>
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Components</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Components (Parts & Assemblies)</h3>
                   <button
                     onClick={handleAddItem}
                     className="text-amber-600 hover:text-amber-800 font-medium"
                   >
-                    + Add Component
+                    + Add Part/Assembly
                   </button>
                 </div>
 
                 {formData.items.length === 0 ? (
                   <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
-                    <p className="text-gray-500">No components added. Click &ldquo;Add Component&rdquo; to get started.</p>
+                    <p className="text-gray-500">No parts or assemblies added. Click "Add Part/Assembly" to get started.</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -798,7 +953,7 @@ export default function BOMPage() {
                                 onChange={(e) => handleUpdateItem(index, 'componentType', e.target.value)}
                                 className="mr-2"
                               />
-                              <span className="text-sm">📦 Item (Raw Material)</span>
+                              <span className="text-sm">📦 Part (Raw Material/Component)</span>
                             </label>
                             <label className="flex items-center cursor-pointer">
                               <input
@@ -809,7 +964,7 @@ export default function BOMPage() {
                                 onChange={(e) => handleUpdateItem(index, 'componentType', e.target.value)}
                                 className="mr-2"
                               />
-                              <span className="text-sm">🔧 BOM (Sub-Assembly)</span>
+                              <span className="text-sm">🔧 Assembly (Sub-BOM)</span>
                             </label>
                           </div>
                         </div>
@@ -817,7 +972,7 @@ export default function BOMPage() {
                         <div className="grid grid-cols-12 gap-3">
                           <div className="col-span-4">
                             <label className="text-xs text-gray-600 font-medium">
-                              {item.componentType === 'ITEM' ? 'Item *' : 'BOM *'}
+                              {item.componentType === 'ITEM' ? 'Part *' : 'Assembly *'}
                             </label>
                             {item.componentType === 'ITEM' ? (
                               <ItemSearch
@@ -833,7 +988,7 @@ export default function BOMPage() {
                                     .find(Boolean) || null
                                 }
                                 onSelect={(selectedItem) => handleUpdateItem(index, 'itemId', selectedItem.id)}
-                                placeholder="Search item..."
+                                placeholder="Search part by name or code..."
                                 className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
                               />
                             ) : (
@@ -842,7 +997,7 @@ export default function BOMPage() {
                                 onChange={(e) => handleUpdateItem(index, 'childBomId', e.target.value)}
                                 className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
                               >
-                                <option value="">Select BOM...</option>
+                                <option value="">Select assembly BOM...</option>
                                 {availableBOMs.map((bom) => (
                                   <option key={bom.id} value={bom.id}>
                                     {bom.item?.code} - {bom.item?.name} (v{bom.version})
@@ -1205,7 +1360,7 @@ export default function BOMPage() {
                                   ? 'bg-blue-100 text-blue-800' 
                                   : 'bg-green-100 text-green-800'
                               }`}>
-                                {item.component_type === 'BOM' ? '🔧 BOM' : '📦 Item'}
+                                {item.component_type === 'BOM' ? '🔧 Assembly' : '📦 Part'}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900">

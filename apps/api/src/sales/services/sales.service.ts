@@ -1606,12 +1606,16 @@ export class SalesService {
       throw new BadRequestException('UID not found in dispatch items. Dispatch the item first.');
     }
 
-    if (dispatchItem.dispatch_notes.tenant_id !== tenantId) {
+    const dispatchNotes = Array.isArray(dispatchItem.dispatch_notes) 
+      ? dispatchItem.dispatch_notes[0] 
+      : dispatchItem.dispatch_notes;
+
+    if (dispatchNotes.tenant_id !== tenantId) {
       throw new NotFoundException('Dispatch item not found');
     }
 
     const warrantyStartDate =
-      String((dispatchItem.dispatch_notes as any).dispatch_date || '').trim() ||
+      String((dispatchNotes as any).dispatch_date || '').trim() ||
       new Date().toISOString().split('T')[0];
     const warrantyEndDate = this.calculateWarrantyEndDate(warrantyStartDate, warrantyDurationMonths);
 
@@ -1656,9 +1660,9 @@ export class SalesService {
     if (warrantyError) throw new BadRequestException(warrantyError.message);
     if (!warranty) throw new NotFoundException('Warranty not found');
 
-    const safeMaybeSingle = async <T>(promise: Promise<{ data: T | null; error: any }>): Promise<T | null> => {
+    const safeMaybeSingle = async <T>(queryBuilder: any): Promise<T | null> => {
       try {
-        const { data, error } = await promise;
+        const { data, error } = await queryBuilder;
         if (error) return null;
         return data ?? null;
       } catch {
