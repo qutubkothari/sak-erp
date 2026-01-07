@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 
 function getApiV1BaseUrl(): string | null {
   const raw = (process.env.NEXT_PUBLIC_API_URL || '').trim();
@@ -78,6 +79,10 @@ interface UIDRecord {
   };
 }
 
+function GRNContent() {
+  const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
+  const router = useRouter();
+
 interface PurchaseTrail {
   uid: string;
   item: { code: string; name: string };
@@ -126,6 +131,7 @@ interface Warehouse {
 }
 
 function GRNContent() {
+  const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
   const [grns, setGrns] = useState<GRN[]>([]);
   const [loading, setLoading] = useState(true);
@@ -677,8 +683,11 @@ function GRNContent() {
       })),
     };
 
-    // Create GRN directly
-    await actuallyCreateGRN();
+    // Check for duplicates before creating
+    await checkDuplicates(
+      () => apiClient.post('/purchase/grn/check-duplicates', checkPayload),
+      () => actuallyCreateGRN(),
+    );
     }
   };
 
@@ -2163,7 +2172,23 @@ function GRNContent() {
         </div>
       )}
 
-      {/* Removed duplicate detection for now */}
+      {/* Duplicate Warning Modal */}
+      <DuplicateWarning
+        isOpen={duplicateState.isOpen}
+        exactMatches={duplicateState.exactMatches}
+        fuzzyMatches={duplicateState.fuzzyMatches}
+        entityType="GRN"
+        onProceed={handleProceed}
+        onCancel={handleCancel}
+        formatRecord={(data) => (
+          <div className="text-sm">
+            <p className="font-semibold">GRN #{data.grn_number}</p>
+            <p className="text-xs text-gray-600">PO: {data.purchase_order?.po_number}</p>
+            <p className="text-xs text-gray-600">Items: {data.grn_items?.length || 0}</p>
+            <p className="text-xs text-gray-600">Date: {new Date(data.grn_date).toLocaleDateString()}</p>
+          </div>
+        )}
+      />
     </div>
   );
 }
