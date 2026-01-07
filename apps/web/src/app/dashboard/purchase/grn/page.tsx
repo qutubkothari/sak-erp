@@ -680,7 +680,6 @@ function GRNContent() {
 
     // Directly create GRN (duplicate detection temporarily disabled)
     await actuallyCreateGRN();
-    }
   };
 
   const fetchGRNUIDs = async (grnId: string) => {
@@ -1592,50 +1591,56 @@ function GRNContent() {
                         const itemName = item.item_name || item.item?.name || 'Unknown Item';
                         const itemCode = item.item_code || item.item?.code || 'N/A';
                         return (
-                        <div key={idx} className="bg-white border border-red-200 rounded-lg p-3">
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <div className="font-semibold text-gray-900">
-                                {itemName} ({itemCode})
-                              </div>
-                              <div className="text-sm text-gray-600 mt-1">
-                                Rejected Qty: <span className="font-bold text-red-600">{item.rejected_qty}</span>
-                                {item.unit_price && (
-                                  <span className="ml-3">
-                                    Amount: <span className="font-bold text-red-600">
-                                      ₹{(item.rejection_amount || (item.rejected_qty * item.unit_price)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          <div key={idx} className="bg-white border border-red-200 rounded-lg p-3">
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <div className="font-semibold text-gray-900">
+                                  {itemName} ({itemCode})
+                                </div>
+                                <div className="text-sm text-gray-600 mt-1">
+                                  Rejected Qty: <span className="font-bold text-red-600">{item.rejected_qty}</span>
+                                  {item.unit_price && (
+                                    <span className="ml-3">
+                                      Amount:{' '}
+                                      <span className="font-bold text-red-600">
+                                        ₹{(item.rejection_amount || (item.rejected_qty * item.unit_price)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                      </span>
                                     </span>
-                                  </span>
-                                )}
+                                  )}
+                                </div>
                               </div>
+
+                              {item.return_status && item.return_status !== 'NONE' && (
+                                <span
+                                  className={`px-2 py-1 rounded text-xs font-bold ${
+                                    item.return_status === 'PENDING_RETURN'
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : item.return_status === 'RETURNED'
+                                      ? 'bg-green-100 text-green-800'
+                                      : item.return_status === 'DESTROYED'
+                                      ? 'bg-gray-100 text-gray-800'
+                                      : 'bg-blue-100 text-blue-800'
+                                  }`}
+                                >
+                                  {item.return_status.replace('_', ' ')}
+                                </span>
+                              )}
                             </div>
-                            {item.return_status && item.return_status !== 'NONE' && (
-                              <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                item.return_status === 'PENDING_RETURN' ? 'bg-yellow-100 text-yellow-800' :
-                                item.return_status === 'RETURNED' ? 'bg-green-100 text-green-800' :
-                                item.return_status === 'DESTROYED' ? 'bg-gray-100 text-gray-800' :
-                                'bg-blue-100 text-blue-800'
-                              }`}>
-                                {item.return_status.replace('_', ' ')}
-                              </span>
+
+                            {item.rejection_reason && (
+                              <div className="text-sm text-gray-700 bg-red-50 border-l-4 border-red-400 p-2 rounded">
+                                <span className="font-medium">Reason:</span> {item.rejection_reason}
+                              </div>
+                            )}
+                            {item.qc_notes && (
+                              <div className="text-sm text-gray-600 mt-1">
+                                <span className="font-medium">QC Notes:</span> {item.qc_notes}
+                              </div>
+                            )}
+                            {item.debit_note_id && (
+                              <div className="text-sm text-blue-600 mt-2 font-medium">📄 Debit Note Created</div>
                             )}
                           </div>
-                          {item.rejection_reason && (
-                            <div className="text-sm text-gray-700 bg-red-50 border-l-4 border-red-400 p-2 rounded">
-                              <span className="font-medium">Reason:</span> {item.rejection_reason}
-                            </div>
-                          )}
-                          {item.qc_notes && (
-                            <div className="text-sm text-gray-600 mt-1">
-                              <span className="font-medium">QC Notes:</span> {item.qc_notes}
-                            </div>
-                          )}
-                          {item.debit_note_id && (
-                            <div className="text-sm text-blue-600 mt-2 font-medium">
-                              📄 Debit Note Created
-                            </div>
-                          )}
-                        </div>
                         );
                       })}
                   </div>
@@ -2163,8 +2168,6 @@ function GRNContent() {
           </div>
         </div>
       )}
-
-      {/* Duplicate detection temporarily disabled */}
     </div>
   );
 }

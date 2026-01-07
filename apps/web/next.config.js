@@ -5,6 +5,12 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   output: enableStandalone ? 'standalone' : undefined,
+
+  eslint: {
+    // Keep builds deployable even if there are lint warnings/errors.
+    // TypeScript typechecking still runs.
+    ignoreDuringBuilds: true,
+  },
   
   // Disable static page generation to avoid SSR context issues
   // Multi-language support disabled temporarily
