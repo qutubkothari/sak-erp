@@ -327,6 +327,19 @@ function PRContent() {
 
     const selectedItem = masterItems.find(item => item.id === selectedItemId);
 
+    // Check for duplicate items (only when selecting from master items, not manual entry)
+    if (selectedItemId && !useManualEntry) {
+      const duplicate = items.find(item => {
+        const existingItemId = masterItems.find(mi => mi.code === item.itemCode)?.id;
+        return existingItemId === selectedItemId;
+      });
+      
+      if (duplicate) {
+        alert('This item is already added to the requisition');
+        return;
+      }
+    }
+
     const nextItem = {
       id: Date.now().toString(),
       itemCode: selectedItem?.code || '',
@@ -420,6 +433,20 @@ function PRContent() {
     }
 
     const selectedItem = masterItems.find(item => item.id === selectedItemId);
+
+    // Check for duplicate items when changing selection (only when selecting from master items, not manual entry)
+    if (selectedItemId && !useManualEntry) {
+      const duplicate = items.find(item => {
+        if (item.id === editingItemId) return false; // Skip the item being edited
+        const existingItemId = masterItems.find(mi => mi.code === item.itemCode)?.id;
+        return existingItemId === selectedItemId;
+      });
+      
+      if (duplicate) {
+        alert('This item is already added to the requisition');
+        return;
+      }
+    }
 
     setItems(prev => prev.map(item => 
       item.id === editingItemId ? {

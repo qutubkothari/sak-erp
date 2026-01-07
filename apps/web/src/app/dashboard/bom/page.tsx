@@ -504,6 +504,27 @@ export default function BOMPage() {
   };
 
   const handleUpdateItem = (index: number, field: string, value: any) => {
+    // Check for duplicate items when changing itemId or childBomId
+    if (field === 'itemId' && value) {
+      const isDuplicate = formData.items.some((item, i) => 
+        i !== index && item.componentType === 'ITEM' && item.itemId === value
+      );
+      if (isDuplicate) {
+        alert('This item is already added to the BOM. Please select a different item.');
+        return;
+      }
+    }
+    
+    if (field === 'childBomId' && value) {
+      const isDuplicate = formData.items.some((item, i) => 
+        i !== index && item.componentType === 'BOM' && item.childBomId === value
+      );
+      if (isDuplicate) {
+        alert('This BOM/Assembly is already added. Please select a different one.');
+        return;
+      }
+    }
+    
     const updatedItems = [...formData.items];
     updatedItems[index] = { ...updatedItems[index], [field]: value };
     setFormData({ ...formData, items: updatedItems });

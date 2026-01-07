@@ -519,6 +519,13 @@ export default function ItemsPage() {
       return;
     }
 
+    // Check for duplicate vendor
+    const isDuplicate = itemVendors.some(iv => iv.vendor_id === vendorForm.vendor_id);
+    if (isDuplicate) {
+      alert('This vendor is already added. Please select a different vendor.');
+      return;
+    }
+
     // If editing existing item, save to database
     if (editingItem) {
       try {

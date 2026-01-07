@@ -937,6 +937,17 @@ function PurchaseOrdersContent() {
   const handleUpdateItem = async (index: number, field: string, value: any) => {
     const updatedItems = [...formData.items];
     
+    // Check for duplicate items when changing itemId
+    if (field === 'itemId' && value) {
+      const isDuplicate = formData.items.some((item, i) => 
+        i !== index && item.itemId === value
+      );
+      if (isDuplicate) {
+        alert('This item is already added to the purchase order. Please select a different item.');
+        return;
+      }
+    }
+    
     // If selecting an item from dropdown, populate itemCode, itemName, unitPrice, and preferred vendor
     if (field === 'itemId' && value) {
       const selectedItem = items.find(item => item.id === value);

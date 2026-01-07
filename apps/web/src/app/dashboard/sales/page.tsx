@@ -970,6 +970,17 @@ export default function SalesPage() {
   };
 
   const updateQuotationItem = (index: number, field: keyof QuotationItem, value: any) => {
+    // Check for duplicate items when changing item_id
+    if (field === 'item_id' && value) {
+      const isDuplicate = quotationForm.items.some((item, i) => 
+        i !== index && item.item_id === value
+      );
+      if (isDuplicate) {
+        alert('This item is already added to the quotation. Please select a different item.');
+        return;
+      }
+    }
+    
     const newItems = [...quotationForm.items];
     newItems[index] = { ...newItems[index], [field]: value };
     setQuotationForm({ ...quotationForm, items: newItems });
@@ -1001,6 +1012,15 @@ export default function SalesPage() {
   const updateDispatchItem = (index: number, field: string, value: any) => {
     const newItems = [...dispatchForm.items];
     if (field === 'sales_order_item_id') {
+      // Check for duplicate sales order items
+      const isDuplicate = dispatchForm.items.some((item, i) => 
+        i !== index && item.sales_order_item_id === value
+      );
+      if (isDuplicate) {
+        alert('This sales order item is already added to the dispatch. Please select a different item.');
+        return;
+      }
+      
       // Auto-fill item_id from selected SO item
       const soItem = salesOrderItems.find(item => item.id === value);
       if (soItem) {
