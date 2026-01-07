@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 
 function getApiV1BaseUrl(): string | null {
   const raw = (process.env.NEXT_PUBLIC_API_URL || '').trim();
@@ -77,6 +78,10 @@ interface UIDRecord {
     name: string;
   };
 }
+
+function GRNContent() {
+  const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
+  const router = useRouter();
 
 interface PurchaseTrail {
   uid: string;
@@ -550,7 +555,7 @@ export default function GRNPage() {
     }
   };
 
-  const handleCreateGRN = async () => {
+  const actuallyCreateGRN = async () => {
     try {
       // Validate required fields
       if (!formData.poId) {
@@ -648,6 +653,40 @@ export default function GRNPage() {
     } catch (error) {
       console.error('Error creating GRN:', error);
       setAlertMessage({ type: 'error', message: 'Failed to create GRN. Please try again.' });
+    }
+  };
+
+  const handleCreateGRN = async () => {
+    // Validate required fields first
+    if (!formData.poId) {
+      alert('Please select a Purchase Order');
+      return;
+    }
+    
+    if (!formData.warehouseId) {
+      alert('Please select a Warehouse');
+      return;
+    }
+    
+    if (formData.items.length === 0) {
+      alert('No items to receive. Please select a PO with items.');
+      return;
+    }
+
+    // Prepare payload for duplicate check
+    const checkPayload = {
+      purchaseOrderId: formData.poId,
+      items: formData.items.map(item => ({
+        itemId: item.itemId,
+        quantity: item.receivedQuantity,
+      })),
+    };
+
+    // Check for duplicates before creating
+    await checkDuplicates(
+      () => apiClient.post('/purchase/grn/check-duplicates', checkPayload),
+      () => actuallyCreateGRN(),
+    );
     }
   };
 
@@ -2131,6 +2170,24 @@ export default function GRNPage() {
           </div>
         </div>
       )}
+
+      {/* Duplicate Warning Modal */}
+      <DuplicateWarning
+        isOpen={duplicateState.isOpen}
+        exactMatches={duplicateState.exactMatches}
+        fuzzyMatches={duplicateState.fuzzyMatches}
+        entityType="GRN"
+        onProceed={handleProceed}
+        onCancel={handleCancel}
+        formatRecord={(data) => (
+          <div className="text-sm">
+            <p className="font-semibold">GRN #{data.grn_number}</p>
+            <p className="text-xs text-gray-600">PO: {data.purchase_order?.po_number}</p>
+            <p className="text-xs text-gray-600">Items: {data.grn_items?.length || 0}</p>
+            <p className="text-xs text-gray-600">Date: {new Date(data.grn_date).toLocaleDateString()}</p>
+          </div>
+        )}
+      />
     </div>
   );
 }

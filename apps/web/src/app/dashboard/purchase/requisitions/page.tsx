@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 
 interface PRItem {
   id: string;
@@ -80,6 +81,10 @@ interface PRDetail {
   purchase_requisition_items: PRDetailItem[];
 }
 
+function PRContent() {
+  const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
+  const router = useRouter();
+  const dropdownRef = useRef<HTMLDivElement>(null);
 interface Vendor {
   id: string;
   code: string;
@@ -701,7 +706,7 @@ export default function PurchaseRequisitionsPage() {
     }
   };
 
-  const handleSubmit = async (status: 'DRAFT' | 'SUBMITTED') => {
+  const actuallySubmitPR = async (status: 'DRAFT' | 'SUBMITTED') => {
     try {
       const prData = {
         department: formData.department,
@@ -738,6 +743,33 @@ export default function PurchaseRequisitionsPage() {
       console.error('Error saving PR:', error);
       alert('Failed to save purchase requisition. Please try again.');
     }
+  };
+
+  const handleSubmit = async (status: 'DRAFT' | 'SUBMITTED') => {
+    // Skip duplicate check for updates or drafts
+    if (editingPRId || status === 'DRAFT') {
+      return actuallySubmitPR(status);
+    }
+
+    // Validate items before duplicate check
+    if (items.length === 0) {
+      alert('Please add at least one item');
+      return;
+    }
+
+    // Prepare payload for duplicate check
+    const checkPayload = {
+      items: items.map(item => ({
+        itemId: item.id,
+        quantity: item.quantity,
+      })),
+    };
+
+    // Check for duplicates before creating new PR
+    await checkDuplicates(
+      () => apiClient.post('/purchase/requisitions/check-duplicates', checkPayload),
+      () => actuallySubmitPR(status),
+    );
   };
 
   return (
@@ -1848,6 +1880,24 @@ export default function PurchaseRequisitionsPage() {
           </div>
         )}
       </div>
+
+      {/* Duplicate Warning Modal */}
+      <DuplicateWarning
+        isOpen={duplicateState.isOpen}
+        exactMatches={duplicateState.exactMatches}
+        fuzzyMatches={duplicateState.fuzzyMatches}
+        entityType="Purchase Requisition"
+        onProceed={handleProceed}
+        onCancel={handleCancel}
+        formatRecord={(data) => (
+          <div className="text-sm">
+            <p className="font-semibold">PR #{data.pr_number}</p>
+            <p className="text-xs text-gray-600">Department: {data.department}</p>
+            <p className="text-xs text-gray-600">Items: {data.purchase_requisition_items?.length || 0}</p>
+            <p className="text-xs text-gray-600">Status: {data.status}</p>
+          </div>
+        )}
+      />
     </div>
   );
 }

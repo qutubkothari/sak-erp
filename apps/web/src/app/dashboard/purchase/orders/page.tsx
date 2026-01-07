@@ -6,6 +6,7 @@ import { apiClient } from '../../../../../lib/api-client';
 import DrawingManager from '../../../../components/DrawingManager';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { useSelection } from '../../../../hooks/useSelection';
+import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 
 interface PurchaseOrder {
   id: string;
@@ -77,6 +78,7 @@ function PurchaseOrdersContent() {
   const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [currentPrId, setCurrentPrId] = useState<string | null>(null);
+  const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   type PriceHistoryRecord = { po_number: string; po_date: string; unit_price: number; quantity: number; po_status: string };
   const [priceHistory, setPriceHistory] = useState<Record<string, PriceHistoryRecord[]>>({});
   const [stockInfo, setStockInfo] = useState<Record<string, { total_quantity: number; available_quantity: number; allocated_quantity: number }>>({});
@@ -506,7 +508,7 @@ function PurchaseOrdersContent() {
     }
   };
 
-  const handleCreateOrder = async () => {
+  const actuallyCreatePO = async () => {
     if (submitting) return; // Prevent duplicate submissions
     
     try {
@@ -745,6 +747,48 @@ function PurchaseOrdersContent() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleCreateOrder = async () => {
+    // First validate required fields
+    if (!formData.orderDate) {
+      setAlertMessage({ type: 'error', message: 'Please select an order date' });
+      return;
+    }
+    
+    if (formData.items.length === 0) {
+      setAlertMessage({ type: 'error', message: 'Please add at least one item' });
+      return;
+    }
+
+    // Check if all items have vendor selected
+    const itemsWithoutVendor = formData.items.filter(item => !item.vendorId);
+    if (itemsWithoutVendor.length > 0) {
+      setAlertMessage({ type: 'error', message: 'Please select vendor for all items' });
+      return;
+    }
+
+    // Get first vendor ID for duplicate check
+    const firstVendorId = formData.items[0]?.vendorId;
+    if (!firstVendorId) {
+      setAlertMessage({ type: 'error', message: 'Please select vendor for items' });
+      return;
+    }
+
+    // Prepare simplified payload for duplicate check
+    const checkPayload = {
+      vendorId: firstVendorId,
+      items: formData.items.map(item => ({
+        itemId: item.itemId || items.find(i => i.code === item.itemCode)?.id,
+        quantity: item.quantity,
+      })),
+    };
+
+    // Check for duplicates before creating
+    await checkDuplicates(
+      () => apiClient.post('/purchase/orders/check-duplicates', checkPayload),
+      () => actuallyCreatePO(),
+    );
   };
 
   const handleUpdateOrder = async (poId: string) => {
@@ -2510,6 +2554,25 @@ function PurchaseOrdersContent() {
           </div>
         </div>
       )}
+
+      {/* Duplicate Warning Modal */}
+      <DuplicateWarning
+        isOpen={duplicateState.isOpen}
+        exactMatches={duplicateState.exactMatches}
+        fuzzyMatches={duplicateState.fuzzyMatches}
+        entityType="Purchase Order"
+        onProceed={handleProceed}
+        onCancel={handleCancel}
+        formatRecord={(data) => (
+          <div className="text-sm">
+            <p className="font-semibold">PO #{data.po_number}</p>
+            <p className="text-xs text-gray-600">Vendor: {data.vendor?.name}</p>
+            <p className="text-xs text-gray-600">Items: {data.purchase_order_items?.length || 0}</p>
+            <p className="text-xs text-gray-600">Total: ₹{data.total_amount?.toLocaleString()}</p>
+            <p className="text-xs text-gray-600">Date: {new Date(data.po_date).toLocaleDateString()}</p>
+          </div>
+        )}
+      />
     </div>
   );
 }
