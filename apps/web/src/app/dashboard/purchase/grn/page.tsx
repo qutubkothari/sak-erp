@@ -78,10 +78,6 @@ interface UIDRecord {
   };
 }
 
-function GRNContent() {
-  const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
-  const router = useRouter();
-
 interface PurchaseTrail {
   uid: string;
   item: { code: string; name: string };
