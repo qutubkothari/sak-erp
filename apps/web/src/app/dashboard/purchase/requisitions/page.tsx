@@ -93,7 +93,8 @@ interface Vendor {
   is_active: boolean;
 }
 
-export default function PurchaseRequisitionsPage() {
+function PRContent() {
+  const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);

@@ -130,7 +130,8 @@ interface Warehouse {
   location: string;
 }
 
-export default function GRNPage() {
+function GRNContent() {
+  const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
   const [grns, setGrns] = useState<GRN[]>([]);
   const [loading, setLoading] = useState(true);
