@@ -2452,7 +2452,6 @@ function PurchaseOrdersContent() {
               </button>
             </div>
           </div>
-        </div>
       )}
 
       {/* Alert Popup */}
