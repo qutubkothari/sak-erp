@@ -81,10 +81,6 @@ interface PRDetail {
   purchase_requisition_items: PRDetailItem[];
 }
 
-function PRContent() {
-  const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
-  const router = useRouter();
-  const dropdownRef = useRef<HTMLDivElement>(null);
 interface Vendor {
   id: string;
   code: string;
