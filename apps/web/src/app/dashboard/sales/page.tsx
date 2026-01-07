@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import SearchableSelect from '../../../components/SearchableSelect';
+import DuplicateWarning, { useDuplicateDetection } from '../../../components/DuplicateWarning';
 
 type TabType = 'customers' | 'quotations' | 'orders' | 'dispatch' | 'warranties';
 
@@ -249,6 +250,11 @@ export default function SalesPage() {
     warranty_type: 'STANDARD',
     notes: '',
   });
+
+  // Duplicate detection hooks
+  const customerDuplicateDetection = useDuplicateDetection();
+  const quotationDuplicateDetection = useDuplicateDetection();
+  const salesOrderDuplicateDetection = useDuplicateDetection();
 
   // Sales Order conversion
   const [showSOConversionForm, setShowSOConversionForm] = useState(false);
@@ -720,8 +726,7 @@ export default function SalesPage() {
     }
   };
 
-  const handleSaveCustomer = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const actuallyCreateCustomer = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -744,6 +749,22 @@ export default function SalesPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSaveCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // For updates, skip duplicate check
+    if (editingCustomerId) {
+      await actuallyCreateCustomer();
+      return;
+    }
+
+    // Check for duplicates before creating
+    await customerDuplicateDetection.checkDuplicates(
+      () => apiClient.post('/sales/customers/check-duplicates', customerForm),
+      () => actuallyCreateCustomer(),
+    );
   };
 
   const handleEditCustomer = (customer: Customer) => {
@@ -779,8 +800,7 @@ export default function SalesPage() {
     }
   };
 
-  const handleSaveQuotation = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const actuallyCreateQuotation = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -799,6 +819,22 @@ export default function SalesPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSaveQuotation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // For updates, skip duplicate check
+    if (editingQuotationId) {
+      await actuallyCreateQuotation();
+      return;
+    }
+
+    // Check for duplicates before creating
+    await quotationDuplicateDetection.checkDuplicates(
+      () => apiClient.post('/sales/quotations/check-duplicates', quotationForm),
+      () => actuallyCreateQuotation(),
+    );
   };
 
   const handleViewQuotation = async (quotationId: string) => {
@@ -1043,31 +1079,11 @@ export default function SalesPage() {
     }
   };
 
-  const handleConvertToSO = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedQuotationForSO) return;
-    
-    // Build items array with selected quantities
-    const items = Object.entries(conversionItems)
-      .filter(([_, qty]) => qty > 0)
-      .map(([quotation_item_id, quantity]) => ({
-        quotation_item_id,
-        quantity,
-      }));
-    
-    if (items.length === 0) {
-      alert('Please specify quantities to convert for at least one item.');
-      return;
-    }
-    
+  const actuallyConvertToSO = async (payload: any) => {
     setLoading(true);
     setError(null);
     try {
-      const payload = {
-        ...soConversionForm,
-        items,
-      };
-      await apiClient.post(`/sales/quotations/${selectedQuotationForSO.id}/convert-to-so`, payload);
+      await apiClient.post(`/sales/quotations/${selectedQuotationForSO!.id}/convert-to-so`, payload);
       alert('Quotation converted to Sales Order successfully!');
       setShowSOConversionForm(false);
       setSelectedQuotationForSO(null);
@@ -1089,17 +1105,37 @@ export default function SalesPage() {
     }
   };
 
-  const handleCreateDirectSO = async (e: React.FormEvent) => {
+  const handleConvertToSO = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!directSOForm.customer_id) {
-      alert('Please select a customer');
-      return;
-    }
-    if (directSOForm.items.length === 0) {
-      alert('Please add at least one item');
+    if (!selectedQuotationForSO) return;
+    
+    // Build items array with selected quantities
+    const items = Object.entries(conversionItems)
+      .filter(([_, qty]) => qty > 0)
+      .map(([quotation_item_id, quantity]) => ({
+        quotation_item_id,
+        quantity,
+      }));
+    
+    if (items.length === 0) {
+      alert('Please specify quantities to convert for at least one item.');
       return;
     }
     
+    const payload = {
+      ...soConversionForm,
+      items,
+      customer_id: selectedQuotationForSO.customer_id,
+    };
+
+    // Check for duplicates before converting
+    await salesOrderDuplicateDetection.checkDuplicates(
+      () => apiClient.post('/sales/orders/check-duplicates', payload),
+      () => actuallyConvertToSO(payload),
+    );
+  };
+
+  const actuallyCreateDirectSO = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -1122,6 +1158,24 @@ export default function SalesPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCreateDirectSO = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!directSOForm.customer_id) {
+      alert('Please select a customer');
+      return;
+    }
+    if (directSOForm.items.length === 0) {
+      alert('Please add at least one item');
+      return;
+    }
+    
+    // Check for duplicates before creating
+    await salesOrderDuplicateDetection.checkDuplicates(
+      () => apiClient.post('/sales/orders/check-duplicates', directSOForm),
+      () => actuallyCreateDirectSO(),
+    );
   };
 
   const handleCreateWarranty = async (e: React.FormEvent) => {
@@ -3238,6 +3292,58 @@ export default function SalesPage() {
           )}
         </div>
       )}
+
+      {/* Duplicate Warning Modals */}
+      <DuplicateWarning
+        isOpen={customerDuplicateDetection.duplicateState.isOpen}
+        exactMatches={customerDuplicateDetection.duplicateState.exactMatches}
+        fuzzyMatches={customerDuplicateDetection.duplicateState.fuzzyMatches}
+        entityType="Customer"
+        onProceed={customerDuplicateDetection.handleProceed}
+        onCancel={customerDuplicateDetection.handleCancel}
+        formatRecord={(data) => (
+          <div className="text-sm">
+            <p className="font-semibold">{data.customer_name}</p>
+            <p className="text-xs text-gray-600">GST: {data.gst_number || 'N/A'}</p>
+            <p className="text-xs text-gray-600">Contact: {data.contact_person}</p>
+            <p className="text-xs text-gray-600">Phone: {data.phone || data.mobile}</p>
+          </div>
+        )}
+      />
+
+      <DuplicateWarning
+        isOpen={quotationDuplicateDetection.duplicateState.isOpen}
+        exactMatches={quotationDuplicateDetection.duplicateState.exactMatches}
+        fuzzyMatches={quotationDuplicateDetection.duplicateState.fuzzyMatches}
+        entityType="Quotation"
+        onProceed={quotationDuplicateDetection.handleProceed}
+        onCancel={quotationDuplicateDetection.handleCancel}
+        formatRecord={(data) => (
+          <div className="text-sm">
+            <p className="font-semibold">Quote #{data.quotation_number}</p>
+            <p className="text-xs text-gray-600">Customer: {data.customer_name}</p>
+            <p className="text-xs text-gray-600">Items: {data.items?.length || data.quotation_items?.length || 0}</p>
+            <p className="text-xs text-gray-600">Total: ₹{data.total_amount?.toLocaleString() || data.net_amount?.toLocaleString()}</p>
+          </div>
+        )}
+      />
+
+      <DuplicateWarning
+        isOpen={salesOrderDuplicateDetection.duplicateState.isOpen}
+        exactMatches={salesOrderDuplicateDetection.duplicateState.exactMatches}
+        fuzzyMatches={salesOrderDuplicateDetection.duplicateState.fuzzyMatches}
+        entityType="Sales Order"
+        onProceed={salesOrderDuplicateDetection.handleProceed}
+        onCancel={salesOrderDuplicateDetection.handleCancel}
+        formatRecord={(data) => (
+          <div className="text-sm">
+            <p className="font-semibold">SO #{data.so_number}</p>
+            <p className="text-xs text-gray-600">Customer: {data.customer_name}</p>
+            <p className="text-xs text-gray-600">Items: {data.items?.length || data.sales_order_items?.length || 0}</p>
+            <p className="text-xs text-gray-600">Total: ₹{data.total_amount?.toLocaleString() || data.net_amount?.toLocaleString()}</p>
+          </div>
+        )}
+      />
     </div>
   );
 }

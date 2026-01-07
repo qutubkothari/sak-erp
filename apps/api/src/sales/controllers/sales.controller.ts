@@ -1,13 +1,33 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
 import { SalesService } from '../services/sales.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 
 @Controller('sales')
 @UseGuards(JwtAuthGuard)
 export class SalesController {
-  constructor(private readonly salesService: SalesService) {}
+  constructor(
+    private readonly salesService: SalesService,
+    private readonly duplicateDetectionService: DuplicateDetectionService,
+  ) {}
 
   // ==================== CUSTOMERS ====================
+  
+  @Post('customers/check-duplicates')
+  async checkCustomerDuplicates(@Request() req: any, @Body() customerData: any) {
+    const existing = await this.salesService.getCustomers(req, {});
+    
+    return this.duplicateDetectionService.checkDuplicates(
+      customerData,
+      existing,
+      {
+        exactMatchFields: ['gst_number', 'pan_number', 'email'],
+        fuzzyMatchFields: ['customer_name', 'contact_person', 'phone', 'mobile'],
+        fuzzyThreshold: 0.2,
+        excludeId: customerData.id,
+      },
+    );
+  }
   
   @Get('customers')
   async getCustomers(@Request() req: any, @Query() filters: any) {
@@ -34,6 +54,47 @@ export class SalesController {
   }
 
   // ==================== QUOTATIONS ====================
+  
+  @Post('quotations/check-duplicates')
+  async checkQuotationDuplicates(@Request() req: any, @Body() quotationData: any) {
+    const existing = await this.salesService.getQuotations(req, {});
+    
+    // Check for same customer + items within last 7 days
+    const recentQuotations = existing.filter((q: any) => {
+      if (q.customer_id !== quotationData.customer_id) return false;
+      const daysDiff = Math.abs(new Date().getTime() - new Date(q.created_at).getTime()) / (1000 * 3600 * 24);
+      return daysDiff <= 7;
+    });
+    
+    if (recentQuotations.length === 0) {
+      return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
+    }
+    
+    // Check if items match
+    for (const recentQuotation of recentQuotations) {
+      const hasSameItems = this.duplicateDetectionService.checkArrayDuplicates(
+        quotationData.items || [],
+        [recentQuotation.items || []],
+        ['item_description', 'quantity'],
+      );
+      
+      if (hasSameItems) {
+        return {
+          hasDuplicates: true,
+          fuzzyMatches: [{
+            id: recentQuotation.id,
+            matchScore: 95,
+            matchedFields: ['customer_id', 'items'],
+            data: recentQuotation,
+          }],
+          exactMatches: [],
+          message: 'Similar quotation with same customer and items created in last 7 days',
+        };
+      }
+    }
+    
+    return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
+  }
   
   @Get('quotations')
   async getQuotations(@Request() req: any, @Query() filters: any) {
@@ -79,6 +140,47 @@ export class SalesController {
   }
 
   // ==================== SALES ORDERS ====================
+  
+  @Post('orders/check-duplicates')
+  async checkSalesOrderDuplicates(@Request() req: any, @Body() soData: any) {
+    const existing = await this.salesService.getSalesOrders(req, {});
+    
+    // Check for same customer + items within last 3 days
+    const recentSOs = existing.filter((so: any) => {
+      if (so.customer_id !== soData.customer_id) return false;
+      const daysDiff = Math.abs(new Date().getTime() - new Date(so.created_at).getTime()) / (1000 * 3600 * 24);
+      return daysDiff <= 3;
+    });
+    
+    if (recentSOs.length === 0) {
+      return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
+    }
+    
+    // Check if items match
+    for (const recentSO of recentSOs) {
+      const hasSameItems = this.duplicateDetectionService.checkArrayDuplicates(
+        soData.items || [],
+        [recentSO.items || []],
+        ['item_description', 'quantity'],
+      );
+      
+      if (hasSameItems) {
+        return {
+          hasDuplicates: true,
+          exactMatches: [{
+            id: recentSO.id,
+            matchScore: 100,
+            matchedFields: ['customer_id', 'items'],
+            data: recentSO,
+          }],
+          fuzzyMatches: [],
+          message: 'Identical Sales Order with same customer and items created in last 3 days',
+        };
+      }
+    }
+    
+    return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
+  }
   
   @Get('orders')
   async getSalesOrders(@Request() req: any, @Query() filters: any) {

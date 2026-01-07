@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { useSelection } from '../../../../hooks/useSelection';
+import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 
 interface Vendor {
   id: string;
@@ -42,6 +43,7 @@ export default function VendorsPage() {
   const [filterCategory, setFilterCategory] = useState('ALL');
 
   const selection = useSelection(vendors);
+  const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -89,7 +91,7 @@ export default function VendorsPage() {
     }
   };
 
-  const handleSubmit = async () => {
+  const actuallyCreateVendor = async () => {
     try {
       if (editingVendor) {
         await apiClient.put(`/purchase/vendors/${editingVendor.id}`, formData);
@@ -102,6 +104,20 @@ export default function VendorsPage() {
     } catch (error) {
       console.error('Error saving vendor:', error);
     }
+  };
+
+  const handleSubmit = async () => {
+    // For updates, skip duplicate check or include ID
+    if (editingVendor) {
+      await actuallyCreateVendor();
+      return;
+    }
+
+    // Check for duplicates before creating
+    await checkDuplicates(
+      () => apiClient.post('/purchase/vendors/check-duplicates', formData),
+      () => actuallyCreateVendor(),
+    );
   };
 
   const handleEdit = (vendor: Vendor) => {
@@ -674,6 +690,24 @@ export default function VendorsPage() {
           </div>
         </div>
       )}
+
+      {/* Duplicate Warning Modal */}
+      <DuplicateWarning
+        isOpen={duplicateState.isOpen}
+        exactMatches={duplicateState.exactMatches}
+        fuzzyMatches={duplicateState.fuzzyMatches}
+        entityType="Vendor"
+        onProceed={handleProceed}
+        onCancel={handleCancel}
+        formatRecord={(data) => (
+          <div className="text-sm">
+            <p className="font-semibold">{data.name || data.legal_name}</p>
+            <p className="text-xs text-gray-600">GST: {data.tax_id || data.gst_number || 'N/A'}</p>
+            <p className="text-xs text-gray-600">Email: {data.email || 'N/A'}</p>
+            <p className="text-xs text-gray-600">Phone: {data.phone || 'N/A'}</p>
+          </div>
+        )}
+      />
     </div>
   );
 }

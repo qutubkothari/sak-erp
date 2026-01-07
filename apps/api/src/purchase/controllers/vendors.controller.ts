@@ -12,11 +12,31 @@ import {
 } from '@nestjs/common';
 import { VendorsService } from '../services/vendors.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 
 @Controller('purchase/vendors')
 @UseGuards(JwtAuthGuard)
 export class VendorsController {
-  constructor(private readonly vendorsService: VendorsService) {}
+  constructor(
+    private readonly vendorsService: VendorsService,
+    private readonly duplicateDetectionService: DuplicateDetectionService,
+  ) {}
+
+  @Post('check-duplicates')
+  async checkDuplicates(@Request() req: any, @Body() vendorData: any) {
+    const existing = await this.vendorsService.findAll(req.user.tenantId, {});
+    
+    return this.duplicateDetectionService.checkDuplicates(
+      vendorData,
+      existing,
+      {
+        exactMatchFields: ['gst_number', 'pan_number', 'tax_id'],
+        fuzzyMatchFields: ['name', 'legal_name', 'email', 'phone'],
+        fuzzyThreshold: 0.2,
+        excludeId: vendorData.id,
+      },
+    );
+  }
 
   @Post()
   async create(@Request() req: any, @Body() body: any) {

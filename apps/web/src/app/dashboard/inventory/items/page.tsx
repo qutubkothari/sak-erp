@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import DrawingManager from '../../../../components/DrawingManager';
+import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 
 interface Item {
   id: string;
@@ -98,6 +99,7 @@ export default function ItemsPage() {
   const [showVariantManager, setShowVariantManager] = useState(false);
   const [selectedParentItem, setSelectedParentItem] = useState<Item | null>(null);
   const [variants, setVariants] = useState<Item[]>([]);
+  const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const [newVariant, setNewVariant] = useState({ code: '', name: '', variant_name: '', is_default: false });
   
   // Drawing upload state
@@ -293,6 +295,26 @@ export default function ItemsPage() {
     }
   };
 
+  const actuallyCreateItem = async (payload: any) => {
+    try {
+      if (editingItem) {
+        await apiClient.put(`/inventory/items/${editingItem.id}`, payload);
+        alert('Item updated successfully!');
+      } else {
+        await apiClient.post('/inventory/items', payload);
+        alert('Item created successfully!');
+      }
+
+      setShowForm(false);
+      setEditingItem(null);
+      resetForm();
+      fetchItems();
+    } catch (error: any) {
+      console.error('Error saving item:', error);
+      alert(error.response?.data?.message || 'Failed to save item');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -325,18 +347,17 @@ export default function ItemsPage() {
         variant_name: formData.variant_name || null,
       };
 
+      // For updates, skip duplicate check
       if (editingItem) {
-        await apiClient.put(`/inventory/items/${editingItem.id}`, payload);
-        alert('Item updated successfully!');
-      } else {
-        await apiClient.post('/inventory/items', payload);
-        alert('Item created successfully!');
+        await actuallyCreateItem(payload);
+        return;
       }
 
-      setShowForm(false);
-      setEditingItem(null);
-      resetForm();
-      fetchItems();
+      // Check for duplicates before creating
+      await checkDuplicates(
+        () => apiClient.post('/items/check-duplicates', payload),
+        () => actuallyCreateItem(payload),
+      );
     } catch (error: any) {
       console.error('Error saving item:', error);
       alert(error.response?.data?.message || 'Failed to save item');
@@ -2159,6 +2180,24 @@ export default function ItemsPage() {
           </div>
         </div>
       )}
+
+      {/* Duplicate Warning Modal */}
+      <DuplicateWarning
+        isOpen={duplicateState.isOpen}
+        exactMatches={duplicateState.exactMatches}
+        fuzzyMatches={duplicateState.fuzzyMatches}
+        entityType="Item"
+        onProceed={handleProceed}
+        onCancel={handleCancel}
+        formatRecord={(data) => (
+          <div className="text-sm">
+            <p className="font-semibold">{data.name || data.item_name}</p>
+            <p className="text-xs text-gray-600">Code: {data.code || data.item_code}</p>
+            <p className="text-xs text-gray-600">Drawing: {data.drawing_number || 'N/A'}</p>
+            <p className="text-xs text-gray-600 line-clamp-2">{data.description}</p>
+          </div>
+        )}
+      />
     </div>
   );
 }

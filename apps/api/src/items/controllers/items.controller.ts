@@ -12,11 +12,31 @@ import {
 } from '@nestjs/common';
 import { ItemsService } from '../services/items.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 
 @Controller('items')
 @UseGuards(JwtAuthGuard)
 export class ItemsController {
-  constructor(private readonly itemsService: ItemsService) {}
+  constructor(
+    private readonly itemsService: ItemsService,
+    private readonly duplicateDetectionService: DuplicateDetectionService,
+  ) {}
+
+  @Post('check-duplicates')
+  async checkDuplicates(@Request() req: any, @Body() itemData: any) {
+    const existing = await this.itemsService.findAll(req.user.tenantId, '', true);
+    
+    return this.duplicateDetectionService.checkDuplicates(
+      itemData,
+      existing,
+      {
+        exactMatchFields: ['item_code', 'drawing_number'],
+        fuzzyMatchFields: ['item_name', 'description'],
+        fuzzyThreshold: 0.25,
+        excludeId: itemData.id,
+      },
+    );
+  }
 
   @Get()
   async findAll(@Request() req: any, @Query('search') search?: string, @Query('includeInactive') includeInactive?: string) {

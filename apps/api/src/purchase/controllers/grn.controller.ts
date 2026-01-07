@@ -20,6 +20,7 @@ import { diskStorage } from 'multer';
 import { mkdirSync } from 'fs';
 import { extname, resolve, join } from 'path';
 import { randomUUID } from 'crypto';
+import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 
 function getUploadsRoot(): string {
   return (
@@ -83,7 +84,49 @@ function buildGrnUploadStorage(kind: 'invoice' | 'qc') {
 @Controller('purchase/grn')
 @UseGuards(JwtAuthGuard)
 export class GrnController {
-  constructor(private readonly grnService: GrnService) {}
+  constructor(
+    private readonly grnService: GrnService,
+    private readonly duplicateDetectionService: DuplicateDetectionService,
+  ) {}
+
+  @Post('check-duplicates')
+  async checkDuplicates(@Request() req: any, @Body() grnData: any) {
+    const existing = await this.grnService.findAll(req.user.tenantId, {});
+    
+    // Check for duplicate GRN for same PO
+    const existingForPO = existing.filter((grn: any) => 
+      grn.purchase_order_id === grnData.purchase_order_id
+    );
+    
+    if (existingForPO.length === 0) {
+      return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
+    }
+    
+    // Check if items match
+    for (const existingGRN of existingForPO) {
+      const hasSameItems = this.duplicateDetectionService.checkArrayDuplicates(
+        grnData.items || [],
+        [existingGRN.items || []],
+        ['item_id', 'quantity'],
+      );
+      
+      if (hasSameItems) {
+        return {
+          hasDuplicates: true,
+          exactMatches: [{
+            id: existingGRN.id,
+            matchScore: 100,
+            matchedFields: ['purchase_order_id', 'items'],
+            data: existingGRN,
+          }],
+          fuzzyMatches: [],
+          message: 'Identical GRN already exists for this PO with same items and quantities',
+        };
+      }
+    }
+    
+    return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
+  }
 
   @Post('invoice/upload')
   @UseInterceptors(

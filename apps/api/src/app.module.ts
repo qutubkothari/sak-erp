@@ -9,6 +9,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { join } from 'path';
 
 // Core Modules
+import { CommonModule } from './common/common.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { MigrationController } from './migration.controller';
 import { MigrationService } from './migration.service';
@@ -77,6 +78,7 @@ import { EmailModule } from './email/email.module';
     ScheduleModule.forRoot(),
 
     // Core
+    CommonModule,
     PrismaModule,
     AuthModule,
     TenantModule,

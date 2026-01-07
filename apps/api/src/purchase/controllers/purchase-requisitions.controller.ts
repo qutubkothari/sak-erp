@@ -12,11 +12,55 @@ import {
 } from '@nestjs/common';
 import { PurchaseRequisitionsService } from '../services/purchase-requisitions.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 
 @Controller('purchase/requisitions')
 @UseGuards(JwtAuthGuard)
 export class PurchaseRequisitionsController {
-  constructor(private readonly prService: PurchaseRequisitionsService) {}
+  constructor(
+    private readonly prService: PurchaseRequisitionsService,
+    private readonly duplicateDetectionService: DuplicateDetectionService,
+  ) {}
+
+  @Post('check-duplicates')
+  async checkDuplicates(@Request() req: any, @Body() prData: any) {
+    const existing = await this.prService.findAll(req.user.tenantId, {});
+    
+    // Check for same items within last 3 days
+    const recentPRs = existing.filter((pr: any) => {
+      const daysDiff = Math.abs(new Date().getTime() - new Date(pr.created_at).getTime()) / (1000 * 3600 * 24);
+      return daysDiff <= 3;
+    });
+    
+    if (recentPRs.length === 0) {
+      return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
+    }
+    
+    // Check if items match
+    for (const recentPR of recentPRs) {
+      const hasSameItems = this.duplicateDetectionService.checkArrayDuplicates(
+        prData.items || [],
+        [recentPR.items || []],
+        ['item_id', 'quantity'],
+      );
+      
+      if (hasSameItems) {
+        return {
+          hasDuplicates: true,
+          fuzzyMatches: [{
+            id: recentPR.id,
+            matchScore: 90,
+            matchedFields: ['items'],
+            data: recentPR,
+          }],
+          exactMatches: [],
+          message: 'Similar Purchase Requisition with same items created in last 3 days',
+        };
+      }
+    }
+    
+    return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
+  }
 
   @Post()
   async create(@Request() req: any, @Body() body: any) {
