@@ -434,6 +434,27 @@ export default function BOMPage() {
   };
 
   const handleAddItem = () => {
+    // Validate that all existing rows are complete before adding a new one
+    if (formData.items.length > 0) {
+      const lastItem = formData.items[formData.items.length - 1];
+      
+      // Check if the last item is incomplete
+      if (lastItem.componentType === 'ITEM' && !lastItem.itemId) {
+        alert('Please select an item for the current row before adding a new one');
+        return;
+      }
+      
+      if (lastItem.componentType === 'BOM' && !lastItem.childBomId) {
+        alert('Please select a BOM/Assembly for the current row before adding a new one');
+        return;
+      }
+      
+      if (!lastItem.quantity || lastItem.quantity <= 0) {
+        alert('Please enter a valid quantity for the current row before adding a new one');
+        return;
+      }
+    }
+    
     setFormData({
       ...formData,
       items: [
