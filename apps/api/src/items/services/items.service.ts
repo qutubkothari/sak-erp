@@ -248,6 +248,17 @@ export class ItemsService {
     const reorderQuantity = this.normalizeNumber(itemData.reorder_quantity ?? itemData.reorderQuantity, 'int');
     const leadTimeDays = this.normalizeNumber(itemData.lead_time_days ?? itemData.leadTimeDays, 'int');
 
+    // Validate reorder level for non-assembly items
+    const category = itemData.category;
+    const isAssembly = category === 'SUBASSEMBLY' || category === 'FINISHED_GOODS';
+    if (!isAssembly) {
+      if (!reorderLevel || reorderLevel <= 0) {
+        throw new BadRequestException(
+          'Reorder level must be greater than 0 for RAW_MATERIAL, COMPONENT, CONSUMABLE, PACKING_MATERIAL, SPARE_PART, and SERVICE items.'
+        );
+      }
+    }
+
     const { data, error } = await this.supabase
       .from('items')
       .insert({
@@ -453,6 +464,17 @@ export class ItemsService {
         itemData.reorder_level ?? itemData.reorderLevel,
         'int',
       );
+    }
+
+    // Validate reorder level for non-assembly items
+    const category = itemData.category || (await this.findOne(tenantId, id)).category;
+    const isAssembly = category === 'SUBASSEMBLY' || category === 'FINISHED_GOODS';
+    if (!isAssembly && reorderLevelProvided) {
+      if (!updateData.reorder_level || updateData.reorder_level <= 0) {
+        throw new BadRequestException(
+          'Reorder level must be greater than 0 for RAW_MATERIAL, COMPONENT, CONSUMABLE, PACKING_MATERIAL, SPARE_PART, and SERVICE items.'
+        );
+      }
     }
 
     if (reorderQtyProvided) {
