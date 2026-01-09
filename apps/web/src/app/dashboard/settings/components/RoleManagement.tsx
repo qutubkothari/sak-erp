@@ -21,6 +21,57 @@ interface Role {
   created_at: string;
 }
 
+function normalizePermissions(value: unknown): Permission[] {
+  const makeDefault = (module: string): Permission => ({
+    module,
+    view: false,
+    create: false,
+    edit: false,
+    delete: false,
+    approve: false,
+  });
+
+  if (Array.isArray(value)) {
+    return value as Permission[];
+  }
+
+  if (value && typeof value === 'object') {
+    const asAny = value as any;
+
+    // Some older data may store a single permission object.
+    if (typeof asAny.module === 'string') {
+      return [
+        {
+          module: asAny.module,
+          view: !!asAny.view,
+          create: !!asAny.create,
+          edit: !!asAny.edit,
+          delete: !!asAny.delete,
+          approve: !!asAny.approve,
+        },
+      ];
+    }
+
+    // Or it may store an object keyed by module name.
+    return MODULES.map((module) => {
+      const entry = asAny[module];
+      if (entry && typeof entry === 'object') {
+        return {
+          module,
+          view: !!entry.view,
+          create: !!entry.create,
+          edit: !!entry.edit,
+          delete: !!entry.delete,
+          approve: !!entry.approve,
+        };
+      }
+      return makeDefault(module);
+    });
+  }
+
+  return MODULES.map(makeDefault);
+}
+
 const MODULES = [
   'Purchase Management',
   'Sales Management',
@@ -104,6 +155,9 @@ export default function RoleManagement() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {roles.map((role) => (
+            (() => {
+              const permissions = normalizePermissions((role as any).permissions);
+              return (
             <div
               key={role.id}
               className="bg-white rounded-lg border-2 p-6 hover:shadow-lg transition-shadow"
@@ -130,7 +184,7 @@ export default function RoleManagement() {
                   PERMISSIONS
                 </p>
                 <div className="flex flex-wrap gap-1">
-                  {role.permissions?.slice(0, 3).map((perm, idx) => (
+                  {permissions.slice(0, 3).map((perm, idx) => (
                     <span
                       key={idx}
                       className="text-xs px-2 py-1 rounded-full"
@@ -139,12 +193,12 @@ export default function RoleManagement() {
                       {perm.module}
                     </span>
                   ))}
-                  {role.permissions?.length > 3 && (
+                  {permissions.length > 3 && (
                     <span
                       className="text-xs px-2 py-1 rounded-full"
                       style={{ backgroundColor: '#E8DCC4', color: '#6F4E37' }}
                     >
-                      +{role.permissions.length - 3} more
+                      +{permissions.length - 3} more
                     </span>
                   )}
                 </div>
@@ -170,6 +224,8 @@ export default function RoleManagement() {
                 </button>
               </div>
             </div>
+              );
+            })()
           ))}
         </div>
       )}
@@ -200,14 +256,7 @@ function RoleModal({
   const [formData, setFormData] = useState({
     name: role?.name || '',
     description: role?.description || '',
-    permissions: role?.permissions || MODULES.map((module) => ({
-      module,
-      view: false,
-      create: false,
-      edit: false,
-      delete: false,
-      approve: false,
-    })),
+    permissions: normalizePermissions((role as any)?.permissions),
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
