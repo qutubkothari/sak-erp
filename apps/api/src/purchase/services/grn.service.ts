@@ -443,6 +443,9 @@ export class GrnService {
 
     if (error) throw new BadRequestException(error.message);
 
+    // Ensure stock entries exist for accepted quantities.
+    await this.ensureStockEntriesForGrnAccepted(tenantId, grn);
+
     // Auto-generate UIDs for accepted items
     if (grn.grn_items && grn.grn_items.length > 0) {
       for (const item of grn.grn_items) {
@@ -477,8 +480,35 @@ export class GrnService {
     if (status === 'APPROVED') {
       // Check if QC is completed
       if (!grn.qc_completed) {
-        throw new BadRequestException('Cannot approve GRN: QC inspection must be completed first. Please complete QC via the QC Accept action.');
+        const items = Array.isArray(grn.grn_items) ? grn.grn_items : [];
+        const qcDecidedForAll =
+          items.length > 0 &&
+          items.every((i: any) => {
+            const accepted = Number(i.accepted_qty ?? i.accepted_quantity ?? 0) || 0;
+            const rejected = Number(i.rejected_qty ?? i.rejected_quantity ?? 0) || 0;
+            const received = Number(i.received_qty ?? i.received_quantity ?? 0) || 0;
+            return accepted + rejected === received;
+          });
+
+        if (!qcDecidedForAll) {
+          throw new BadRequestException(
+            'Cannot approve GRN: QC inspection must be completed first. Please complete QC via the QC Accept action.',
+          );
+        }
+
+        // Backward compatible: if QC has effectively been decided (accepted+rejected == received),
+        // mark QC completed so approval can proceed.
+        await this.supabase
+          .from('grns')
+          .update({ qc_completed: true, updated_at: new Date().toISOString() })
+          .eq('tenant_id', tenantId)
+          .eq('id', grn.id);
+
+        grn.qc_completed = true;
       }
+
+      // Ensure stock is increased for accepted items regardless of UID tracking.
+      await this.ensureStockEntriesForGrnAccepted(tenantId, grn);
 
       console.log('=== UID GENERATION START ===');
       console.log('GRN object:', JSON.stringify(grn, null, 2));
@@ -498,7 +528,7 @@ export class GrnService {
           const acceptedQty = item.accepted_qty || item.accepted_quantity || 0;
           if (acceptedQty > 0) {
             await this.generateUIDsForItem(tenantId, userId, grn, item);
-            // Note: Stock entry creation is handled inside generateUIDsForItem
+            // Stock entry creation is handled separately (QC accept / GRN create / approve).
           } else {
             console.log('Skipping item due to accepted_qty <= 0. Value was:', acceptedQty);
           }
@@ -656,6 +686,68 @@ export class GrnService {
       console.error('Error generating UIDs:', error);
       // Don't throw - allow GRN to be submitted even if UID generation fails
       return [];
+    }
+  }
+
+  private async ensureStockEntriesForGrnAccepted(tenantId: string, grn: any) {
+    try {
+      const grnId = grn?.id;
+      if (!grnId) return;
+
+      // Ensure we have header fields (warehouse_id, grn_number)
+      const warehouseId = grn?.warehouse_id || grn?.warehouse?.id;
+      const grnNumber = grn?.grn_number;
+      if (!warehouseId || !grnNumber) {
+        const { data: freshGrn } = await this.supabase
+          .from('grns')
+          .select('id, warehouse_id, grn_number')
+          .eq('tenant_id', tenantId)
+          .eq('id', grnId)
+          .maybeSingle();
+
+        if (freshGrn) {
+          grn.warehouse_id = grn.warehouse_id || freshGrn.warehouse_id;
+          grn.grn_number = grn.grn_number || freshGrn.grn_number;
+        }
+      }
+
+      const effectiveWarehouseId = grn?.warehouse_id || warehouseId;
+      const effectiveGrnNumber = grn?.grn_number || grnNumber;
+      if (!effectiveWarehouseId || !effectiveGrnNumber) return;
+
+      const items = Array.isArray(grn?.grn_items) ? grn.grn_items : [];
+      if (items.length === 0) return;
+
+      for (const item of items) {
+        const acceptedQty = Number(item?.accepted_qty ?? item?.accepted_quantity ?? 0) || 0;
+        if (acceptedQty <= 0) continue;
+
+        const itemId = item?.item_id || item?.item?.id;
+        const grnItemId = item?.id;
+        if (!itemId || !grnItemId) continue;
+
+        const unitPrice = Number(item?.rate ?? item?.unit_price ?? item?.unitPrice ?? 0) || 0;
+
+        await this.createStockEntry({
+          tenant_id: tenantId,
+          item_id: itemId,
+          warehouse_id: effectiveWarehouseId,
+          quantity: acceptedQty,
+          available_quantity: acceptedQty,
+          allocated_quantity: 0,
+          unit_price: unitPrice,
+          batch_number: item?.batch_number ?? item?.batchNumber ?? null,
+          expiry_date: item?.expiry_date ?? item?.expiryDate ?? null,
+          grn_reference: effectiveGrnNumber,
+          created_from: 'GRN_APPROVE',
+          metadata: {
+            grn_item_id: grnItemId,
+            item_code: item?.item_code ?? item?.item?.code,
+          },
+        });
+      }
+    } catch (e) {
+      console.error('❌ ensureStockEntriesForGrnAccepted failed:', e);
     }
   }
 
