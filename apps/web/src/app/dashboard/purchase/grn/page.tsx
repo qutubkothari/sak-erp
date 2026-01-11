@@ -126,6 +126,14 @@ interface Warehouse {
   location: string;
 }
 
+type ItemUidConfig = {
+  id: string;
+  uid_tracking?: boolean;
+  uid_strategy?: string;
+  batch_uom?: string;
+  batch_quantity?: number;
+};
+
 function GRNContent() {
   // const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
@@ -142,6 +150,7 @@ function GRNContent() {
   const [loadingTrail, setLoadingTrail] = useState(false);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [itemUidConfigById, setItemUidConfigById] = useState<Record<string, ItemUidConfig>>({});
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -406,6 +415,44 @@ function GRNContent() {
     fetchPurchaseOrders();
     fetchWarehouses();
   }, [filterStatus]);
+
+  useEffect(() => {
+    // Used to show container/drum breakdown while entering GRN qty in base UOM.
+    const fetchItemUidConfig = async () => {
+      try {
+        const token = localStorage.getItem('accessToken');
+        const response = await fetch('/api/v1/inventory/items?includeInactive=true', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+        const items = Array.isArray(data) ? data : [];
+        const next: Record<string, ItemUidConfig> = {};
+        for (const it of items) {
+          if (!it?.id) continue;
+          next[String(it.id)] = {
+            id: String(it.id),
+            uid_tracking: it.uid_tracking,
+            uid_strategy: it.uid_strategy,
+            batch_uom: it.batch_uom,
+            batch_quantity: typeof it.batch_quantity === 'number' ? it.batch_quantity : Number(it.batch_quantity) || undefined,
+          };
+        }
+        setItemUidConfigById(next);
+      } catch {
+        // Best-effort UI enhancement only.
+      }
+    };
+
+    fetchItemUidConfig();
+  }, []);
 
   const fetchPurchaseOrders = async () => {
     try {
@@ -1294,6 +1341,23 @@ function GRNContent() {
                             <div className="text-xs text-gray-500 mt-1">
                               Master HSN: {item.masterHsnCode || 'N/A'}
                             </div>
+                            {(() => {
+                              const cfg = itemUidConfigById[item.itemId];
+                              const isBatched = cfg?.uid_tracking !== false && cfg?.uid_strategy === 'BATCHED';
+                              const perContainer = Number(cfg?.batch_quantity ?? 0) || 0;
+                              if (!isBatched || perContainer <= 0) return null;
+
+                              const qty = Number(item.acceptedQuantity ?? 0) || 0;
+                              const containers = qty > 0 ? Math.ceil(qty / perContainer) : 0;
+                              const containerLabel = String(cfg?.batch_uom || 'Container');
+                              const uomLabel = String(item.uom || 'UOM');
+
+                              return (
+                                <div className="text-xs text-indigo-700 mt-1">
+                                  Pack: {perContainer} {uomLabel} / {containerLabel}  UIDs: {containers} {containerLabel}{containers === 1 ? '' : 's'}
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           <div>

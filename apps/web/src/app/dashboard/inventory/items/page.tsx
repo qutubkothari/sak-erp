@@ -1774,25 +1774,36 @@ export default function ItemsPage() {
                                 <option value="Bag">Bag</option>
                                 <option value="Roll">Roll</option>
                                 <option value="Drum">Drum</option>
+                                <option value="Bucket">Bucket</option>
+                                <option value="Can">Can</option>
+                                <option value="IBC">IBC</option>
                                 <option value="Bottle">Bottle</option>
                               </select>
                             </div>
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Pieces per Container *</label>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                                Qty per Container ({formData.uom || 'UOM'}) *
+                              </label>
                               <input
                                 type="number"
                                 required
-                                step="1"
-                                min="1"
+                                step="any"
+                                min="0.000001"
                                 value={formData.batch_quantity}
                                 onChange={(e) => setFormData({ ...formData, batch_quantity: e.target.value })}
                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
-                                placeholder="e.g. 1000"
+                                placeholder={
+                                  String(formData.uom || '').toUpperCase() === 'L'
+                                    ? 'e.g. 200 (L per drum)'
+                                    : 'e.g. 1000'
+                                }
                               />
                             </div>
                           </div>
                           <div className="bg-blue-50 p-2 rounded text-xs text-blue-800">
-                            💡 Example: If you receive 5000 screws in boxes of 1000, system will generate 5 UIDs (one per box)
+                            💡 You will still purchase/receive in {formData.uom || 'UOM'}. This setting is only for UID generation.
+                            <br />
+                            Example: If you receive 250 {formData.uom || 'L'} and 1 {formData.batch_uom || 'container'} holds 200 {formData.uom || 'L'}, system will generate 2 UIDs (one per container).
                           </div>
                         </div>
                       )}
