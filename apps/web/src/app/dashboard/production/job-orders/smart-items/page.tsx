@@ -488,6 +488,14 @@ function SmartJobOrdersItemsPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
+  const formatQuantity = (value: number | string | undefined): string => {
+    const num = Number(value || 0);
+    if (num === 0) return '0';
+    // Round to 4 decimal places and remove trailing zeros
+    const rounded = Math.round(num * 10000) / 10000;
+    return rounded.toString();
+  };
+
   const renderExplosionTree = () => {
     if (!preview) return null;
 
@@ -683,8 +691,9 @@ function SmartJobOrdersItemsPageContent() {
                       const selectedItemId = selectedItemByNodeKey[key] || node.itemId;
                       const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                       const available = stockState?.available ?? node.availableQuantity;
-                      const inStockLabel = stockState?.loading ? '…' : String(available);
-                      const short = Math.max(0, Number(node.requiredQuantity || 0) - Number(available || 0));
+                      const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
+                      const requiredQty = Number(node.requiredQuantity || 0);
+                      const short = Math.max(0, requiredQty - Number(available || 0));
 
                       return (
                         <tr key={`${node.bomId}:${node.itemId}:${idx}`} className="hover:bg-gray-50">
@@ -706,7 +715,7 @@ function SmartJobOrdersItemsPageContent() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-2 text-sm text-right text-gray-900">{node.requiredQuantity}</td>
+                          <td className="px-4 py-2 text-sm text-right text-gray-900">{formatQuantity(node.requiredQuantity)}</td>
                           <td
                             className="px-4 py-2 text-sm text-right text-gray-900"
                             title={stockState?.error || ''}
@@ -718,7 +727,7 @@ function SmartJobOrdersItemsPageContent() {
                               short > 0 ? 'text-red-600' : 'text-green-600'
                             }`}
                           >
-                            {short > 0 ? short : '✓'}
+                            {short > 0 ? formatQuantity(short) : '✓'}
                           </td>
                         </tr>
                       );
