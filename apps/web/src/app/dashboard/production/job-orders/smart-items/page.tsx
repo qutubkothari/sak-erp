@@ -474,15 +474,17 @@ function SmartJobOrdersItemsPageContent() {
         const shortage = Math.max(0, Number(item.requiredQuantity || 0) - Number(available || 0));
         
         return {
-          item_id: selectedItemId,
-          quantity: Math.ceil(shortage), // Round up to ensure we have enough
+          itemCode: item.itemCode,
+          itemName: item.itemName,
+          requestedQty: Math.ceil(shortage), // Round up to ensure we have enough
           description: `For Job Order: ${preview.finishedItem.code} (Shortage)`,
+          uom: 'PCS', // Default unit, can be enhanced later
         };
       });
 
       const prData = {
-        pr_date: new Date().toISOString().split('T')[0],
-        description: `Auto-generated PR for Job Order shortage: ${preview.finishedItem.code}`,
+        requestDate: new Date().toISOString().split('T')[0],
+        purpose: `Auto-generated PR for Job Order shortage: ${preview.finishedItem.code}`,
         items: prItems,
       };
 
