@@ -486,7 +486,7 @@ function SmartJobOrdersItemsPageContent() {
         items: prItems,
       };
 
-      const result = await apiClient.post('/purchase-requisitions', prData);
+      const result = await apiClient.post('/purchase/requisitions', prData);
       const prId = result?.id || result?.pr_id;
       
       if (prId) {
