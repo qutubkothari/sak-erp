@@ -950,6 +950,24 @@ export default function ItemsPage() {
     setCurrentPage(1);
   }, [searchTerm, categoryFilter, showDeleted]);
 
+  const normalizedItemUom = String(formData.uom || '')
+    .trim()
+    .toUpperCase();
+  const isVolumeUom = normalizedItemUom === 'LITER' || normalizedItemUom === 'L' || normalizedItemUom === 'LTR' || normalizedItemUom === 'ML';
+
+  useEffect(() => {
+    if (formData.uid_strategy !== 'BATCHED') return;
+    if (!formData.batch_uom) return;
+
+    const allowedContainerTypes = isVolumeUom
+      ? ['Drum', 'Bucket', 'Can', 'IBC', 'Bottle', 'Container']
+      : ['Box', 'Carton', 'Pallet', 'Bag', 'Roll', 'Container'];
+
+    if (!allowedContainerTypes.includes(formData.batch_uom)) {
+      setFormData((prev) => ({ ...prev, batch_uom: '', batch_quantity: '' }));
+    }
+  }, [formData.uid_strategy, formData.batch_uom, isVolumeUom]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -1768,21 +1786,30 @@ export default function ItemsPage() {
                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
                               >
                                 <option value="">Select Type</option>
-                                <option value="Box">Box</option>
-                                <option value="Carton">Carton</option>
-                                <option value="Pallet">Pallet</option>
-                                <option value="Bag">Bag</option>
-                                <option value="Roll">Roll</option>
-                                <option value="Drum">Drum</option>
-                                <option value="Bucket">Bucket</option>
-                                <option value="Can">Can</option>
-                                <option value="IBC">IBC</option>
-                                <option value="Bottle">Bottle</option>
+                                {isVolumeUom ? (
+                                  <>
+                                    <option value="Drum">Drum</option>
+                                    <option value="Bucket">Bucket</option>
+                                    <option value="Can">Can</option>
+                                    <option value="Bottle">Bottle</option>
+                                    <option value="IBC">IBC</option>
+                                    <option value="Container">Container</option>
+                                  </>
+                                ) : (
+                                  <>
+                                    <option value="Box">Box</option>
+                                    <option value="Carton">Carton</option>
+                                    <option value="Pallet">Pallet</option>
+                                    <option value="Bag">Bag</option>
+                                    <option value="Roll">Roll</option>
+                                    <option value="Container">Container</option>
+                                  </>
+                                )}
                               </select>
                             </div>
                             <div>
                               <label className="block text-xs font-medium text-gray-600 mb-1">
-                                Qty per Container ({formData.uom || 'UOM'}) *
+                                Qty per {formData.batch_uom || 'Container'} ({formData.uom || 'UOM'}) *
                               </label>
                               <input
                                 type="number"
@@ -1793,8 +1820,8 @@ export default function ItemsPage() {
                                 onChange={(e) => setFormData({ ...formData, batch_quantity: e.target.value })}
                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
                                 placeholder={
-                                  String(formData.uom || '').toUpperCase() === 'L'
-                                    ? 'e.g. 200 (L per drum)'
+                                  isVolumeUom
+                                    ? 'e.g. 200 (per drum/bucket)'
                                     : 'e.g. 1000'
                                 }
                               />
@@ -1803,7 +1830,7 @@ export default function ItemsPage() {
                           <div className="bg-blue-50 p-2 rounded text-xs text-blue-800">
                             💡 You will still purchase/receive in {formData.uom || 'UOM'}. This setting is only for UID generation.
                             <br />
-                            Example: If you receive 250 {formData.uom || 'L'} and 1 {formData.batch_uom || 'container'} holds 200 {formData.uom || 'L'}, system will generate 2 UIDs (one per container).
+                            Example: If you receive 250 {formData.uom || 'UOM'} and 1 {formData.batch_uom || 'container'} holds 200 {formData.uom || 'UOM'}, system will generate 2 UIDs (one per container).
                           </div>
                         </div>
                       )}
