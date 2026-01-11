@@ -1279,14 +1279,15 @@ function GRNContent() {
                   <div className="space-y-4">
                     {formData.items.map((item, index) => (
                       <div key={index} className="border border-gray-300 rounded-lg p-4 bg-gray-50">
-                        <div className="grid grid-cols-11 gap-3">
+                        <div className="overflow-x-auto">
+                          <div className="min-w-[980px] grid grid-cols-1 md:grid-cols-[56px_2.2fr_80px_160px_90px_90px_90px_90px_120px_44px] gap-3 items-end">
                           <div>
-                            <label className="text-xs text-gray-600 font-semibold">S.No</label>
+                            <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">S.No</label>
                             <div className="text-sm font-medium text-gray-900 mt-2">{index + 1}</div>
                           </div>
 
-                          <div className="col-span-2">
-                            <label className="text-xs text-gray-600 font-semibold">Item</label>
+                          <div>
+                            <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">Item</label>
                             <div className="text-sm font-medium text-gray-900 mt-1">
                               {item.itemCode} - {item.itemName}
                             </div>
@@ -1296,7 +1297,7 @@ function GRNContent() {
                           </div>
 
                           <div>
-                            <label className="text-xs text-gray-600 font-semibold">UOM</label>
+                            <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">UOM</label>
                             <input
                               type="text"
                               value={item.uom || ''}
@@ -1306,7 +1307,7 @@ function GRNContent() {
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600">Supplier HSN</label>
+                            <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">Supplier HSN</label>
                             <input
                               type="text"
                               value={item.supplierHsnCode || ''}
@@ -1323,7 +1324,7 @@ function GRNContent() {
                             )}
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600 font-semibold">Ordered</label>
+                            <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">Ordered</label>
                             <input
                               type="number"
                               value={item.orderedQuantity}
@@ -1332,7 +1333,7 @@ function GRNContent() {
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600 font-semibold">Received *</label>
+                            <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">Received *</label>
                             <input
                               type="number"
                               value={item.receivedQuantity}
@@ -1341,7 +1342,7 @@ function GRNContent() {
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600 font-semibold">Accepted *</label>
+                            <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">Accepted *</label>
                             <input
                               type="number"
                               value={item.acceptedQuantity}
@@ -1350,7 +1351,7 @@ function GRNContent() {
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600 font-semibold">Rejected</label>
+                            <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">Rejected</label>
                             <input
                               type="number"
                               value={item.rejectedQuantity}
@@ -1359,7 +1360,7 @@ function GRNContent() {
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600">Batch</label>
+                            <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">Batch</label>
                             <input
                               type="text"
                               value={item.batchNumber}
@@ -1367,13 +1368,15 @@ function GRNContent() {
                               className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                             />
                           </div>
-                          <div className="flex items-end">
+                          <div className="flex items-end justify-end">
                             <button
                               onClick={() => handleRemoveItem(index)}
-                              className="text-red-600 hover:text-red-900 text-xl"
+                              className="h-10 w-10 inline-flex items-center justify-center rounded border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-900"
+                              aria-label="Remove item"
                             >
-                              ×
+                              <span className="text-xl leading-none">×</span>
                             </button>
+                          </div>
                           </div>
                         </div>
                         <div className="mt-2">
