@@ -163,6 +163,14 @@ function SmartJobOrdersItemsPageContent() {
   const [createSummary, setCreateSummary] = useState<SmartCreateResponse | null>(null);
   const [showCreateSummary, setShowCreateSummary] = useState(false);
 
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    if (showCreateSummary) document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showCreateSummary]);
+
   const canPreview = Boolean(itemId) && Number(quantity) > 0;
 
   const fetchJobOrders = async () => {
@@ -1333,7 +1341,7 @@ function SmartJobOrdersItemsPageContent() {
       </div>
       {showCreateSummary ? (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-3xl rounded-xl shadow-xl border border-amber-200 overflow-hidden">
+          <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-xl shadow-xl border border-amber-200 overflow-hidden flex flex-col">
             <div className="px-6 py-4 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
               <div>
                 <div className="text-lg font-semibold text-amber-900">Smart Job Order Created</div>
@@ -1372,7 +1380,7 @@ function SmartJobOrdersItemsPageContent() {
                 : [];
 
               return (
-                <div className="p-6">
+                <div className="flex-1 overflow-y-auto overscroll-contain p-6">
                   <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-lg p-4">
                     <div className="text-sm">
                       <div className="text-gray-600">Job Order</div>
