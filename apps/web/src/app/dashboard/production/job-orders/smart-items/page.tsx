@@ -1125,7 +1125,13 @@ function SmartJobOrdersItemsPageContent() {
                     </button>
                   </div>
                 </div>
-                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden max-h-[500px] overflow-y-auto">
+                <div 
+                  className="bg-white border border-gray-200 rounded-lg overflow-hidden max-h-[500px] overflow-y-scroll"
+                  style={{
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: '#d97706 #f3f4f6'
+                  }}
+                >
                   {renderExplosionTree()}
                 </div>
               </div>
