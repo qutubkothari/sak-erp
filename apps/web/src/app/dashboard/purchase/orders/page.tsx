@@ -2216,7 +2216,7 @@ function PurchaseOrdersContent() {
                     {selectedPO.status}
                   </span>
                 </div>
-                {selectedPO.edit_count && selectedPO.edit_count > 0 && (
+                {selectedPO.edit_count != null && selectedPO.edit_count > 0 && (
                   <div>
                     <p className="text-sm text-gray-600">Edits</p>
                     <p className="font-semibold">{selectedPO.edit_count} time{selectedPO.edit_count !== 1 ? 's' : ''}</p>
@@ -2247,7 +2247,6 @@ function PurchaseOrdersContent() {
                   <p className="text-sm text-gray-600">Total Amount</p>
                   <p className="font-semibold text-lg">₹{selectedPO.total_amount?.toLocaleString() || 0}</p>
                 </div>
-              </div>
               </div>
 
               {/* Items Table */}
@@ -2516,6 +2515,7 @@ function PurchaseOrdersContent() {
               </button>
             </div>
           </div>
+        </div>
       )}
 
       {/* Alert Popup */}
