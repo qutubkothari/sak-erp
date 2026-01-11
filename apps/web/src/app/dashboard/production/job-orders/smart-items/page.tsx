@@ -447,6 +447,37 @@ function SmartJobOrdersItemsPageContent() {
       return;
     }
 
+    // Check if any RAW MATERIALS (items without BOMs) are out of stock
+    const itemsWithShortage = preview?.nodes?.filter(n => {
+      if (n.componentType !== 'ITEM') return false;
+      const key = nodeKey(n);
+      const selectedItemId = selectedItemByNodeKey[key] || n.itemId;
+      const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+      const available = stockState?.available ?? n.availableQuantity;
+      return Number(n.requiredQuantity || 0) > Number(available || 0);
+    }) || [];
+
+    // Filter out items that can be auto-made (those with BOMs in subAssembliesToMake)
+    const autoMakeItemIds = new Set((preview?.subAssembliesToMake || []).map(sa => sa.itemId));
+    const rawMaterialShortages = itemsWithShortage.filter(item => {
+      const selectedItemId = selectedItemByNodeKey[nodeKey(item)] || item.itemId;
+      return !autoMakeItemIds.has(selectedItemId);
+    });
+
+    if (rawMaterialShortages.length > 0) {
+      const shortageList = rawMaterialShortages.map(item => {
+        const key = nodeKey(item);
+        const selectedItemId = selectedItemByNodeKey[key] || item.itemId;
+        const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+        const available = stockState?.available ?? item.availableQuantity;
+        const shortage = Number(item.requiredQuantity || 0) - Number(available || 0);
+        return `${item.itemCode} - ${item.itemName}: Need ${formatQuantity(item.requiredQuantity)}, Have ${formatQuantity(available)}, Short ${formatQuantity(shortage)}`;
+      }).join('\n');
+      
+      alert(`❌ Cannot create Job Order - Raw materials out of stock:\n\n${shortageList}\n\nPlease purchase or adjust stock before creating this job order.`);
+      return;
+    }
+
     setCreating(true);
     try {
       const itemSelections: Record<string, string> = {};
@@ -1101,27 +1132,55 @@ function SmartJobOrdersItemsPageContent() {
 
               <div className="mt-6 flex items-center justify-between gap-4 sticky bottom-0 bg-white border-t-2 border-amber-200 p-4 shadow-lg rounded-lg">
                 <div className="text-sm text-gray-700">
-                  {preview.nodes.filter(n => n.componentType === 'ITEM').some(n => {
-                    const key = nodeKey(n);
-                    const selectedItemId = selectedItemByNodeKey[key] || n.itemId;
-                    const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
-                    const available = stockState?.available ?? n.availableQuantity;
-                    return Number(n.requiredQuantity || 0) > Number(available || 0);
-                  }) ? (
-                    <span className="flex items-center gap-2 text-red-700 font-semibold">
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                      Warning: Some items have insufficient stock! Sub-assemblies will be auto-created.
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2 text-green-700 font-semibold">
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      </svg>
-                      All materials available in stock
-                    </span>
-                  )}
+                  {(() => {
+                    const itemsWithShortage = preview.nodes.filter(n => {
+                      if (n.componentType !== 'ITEM') return false;
+                      const key = nodeKey(n);
+                      const selectedItemId = selectedItemByNodeKey[key] || n.itemId;
+                      const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+                      const available = stockState?.available ?? n.availableQuantity;
+                      return Number(n.requiredQuantity || 0) > Number(available || 0);
+                    });
+                    
+                    const autoMakeItemIds = new Set((preview.subAssembliesToMake || []).map(sa => sa.itemId));
+                    const rawMaterialShortages = itemsWithShortage.filter(item => {
+                      const selectedItemId = selectedItemByNodeKey[nodeKey(item)] || item.itemId;
+                      return !autoMakeItemIds.has(selectedItemId);
+                    });
+                    const subAssemblyShortages = itemsWithShortage.filter(item => {
+                      const selectedItemId = selectedItemByNodeKey[nodeKey(item)] || item.itemId;
+                      return autoMakeItemIds.has(selectedItemId);
+                    });
+
+                    if (rawMaterialShortages.length > 0) {
+                      return (
+                        <span className="flex items-center gap-2 text-red-700 font-semibold">
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                          </svg>
+                          ❌ Blocked: {rawMaterialShortages.length} raw material{rawMaterialShortages.length > 1 ? 's' : ''} out of stock!
+                        </span>
+                      );
+                    } else if (subAssemblyShortages.length > 0) {
+                      return (
+                        <span className="flex items-center gap-2 text-amber-700 font-semibold">
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          ⚠️ {subAssemblyShortages.length} sub-assembl{subAssemblyShortages.length > 1 ? 'ies' : 'y'} will be auto-created
+                        </span>
+                      );
+                    } else {
+                      return (
+                        <span className="flex items-center gap-2 text-green-700 font-semibold">
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          ✓ All materials available in stock
+                        </span>
+                      );
+                    }
+                  })()}
                 </div>
                 <button
                   onClick={handleCreate}
