@@ -67,6 +67,10 @@ function PurchaseOrdersContent() {
   const [showModal, setShowModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [showPOEmailPreview, setShowPOEmailPreview] = useState(false);
+  const [poEmailPreviewLoading, setPoEmailPreviewLoading] = useState(false);
+  const [poEmailSending, setPoEmailSending] = useState(false);
+  const [poEmailPreview, setPoEmailPreview] = useState<any>(null);
   const [editingPOId, setEditingPOId] = useState<string | null>(null);
   const [editingMode, setEditingMode] = useState<'create' | 'edit' | 'tracking'>('create');
   const [filterStatus, setFilterStatus] = useState('ALL');
@@ -1227,6 +1231,48 @@ function PurchaseOrdersContent() {
     } catch (error) {
       console.error('Error fetching PO details:', error);
       setAlertMessage({ type: 'error', message: 'Failed to load PO details' });
+    }
+  };
+
+  const handlePreviewPOEmail = async (poId: string) => {
+    try {
+      setPoEmailPreviewLoading(true);
+      const res = await apiClient.post(`/purchase/orders/${poId}/preview-email`, {});
+
+      setPoEmailPreview(res);
+      setShowPOEmailPreview(true);
+    } catch (error: any) {
+      console.error('Error previewing PO email:', error);
+      setAlertMessage({
+        type: 'error',
+        message: error?.message || 'Failed to generate PO email preview',
+      });
+    } finally {
+      setPoEmailPreviewLoading(false);
+    }
+  };
+
+  const handleSendPOEmail = async (poId: string) => {
+    try {
+      setPoEmailSending(true);
+      const res = await apiClient.post(`/purchase/orders/${poId}/send-email`, {});
+
+      setAlertMessage({
+        type: 'success',
+        message: res?.message || 'PO email sent successfully',
+      });
+      setShowPOEmailPreview(false);
+      setPoEmailPreview(null);
+      setShowViewModal(false);
+      await fetchOrders();
+    } catch (error: any) {
+      console.error('Error sending PO email:', error);
+      setAlertMessage({
+        type: 'error',
+        message: error?.message || 'Failed to send PO email',
+      });
+    } finally {
+      setPoEmailSending(false);
     }
   };
 
@@ -2496,15 +2542,24 @@ function PurchaseOrdersContent() {
                 )}
 
                 {selectedPO.status !== 'DRAFT' && (
-                  <button
-                    onClick={() => {
-                      setShowViewModal(false);
-                      handleEditDetails(selectedPO.id, 'tracking');
-                    }}
-                    className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
-                  >
-                    Update Tracking
-                  </button>
+                  <>
+                    <button
+                      onClick={() => handlePreviewPOEmail(selectedPO.id)}
+                      disabled={poEmailPreviewLoading}
+                      className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {poEmailPreviewLoading ? 'Generating...' : 'Preview Email'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowViewModal(false);
+                        handleEditDetails(selectedPO.id, 'tracking');
+                      }}
+                      className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                    >
+                      Update Tracking
+                    </button>
+                  </>
                 )}
               </div>
               <button
@@ -2514,6 +2569,92 @@ function PurchaseOrdersContent() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* PO Email Preview Modal */}
+      {showPOEmailPreview && poEmailPreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
+              <h2 className="text-2xl font-bold text-amber-900">PO Email Preview</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPOEmailPreview(false);
+                  setPoEmailPreview(null);
+                }}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            {(() => {
+              const preview = poEmailPreview?.preview || poEmailPreview;
+              const poId = String(poEmailPreview?.po_id || selectedPO?.id || '');
+              const html = String(preview?.html || '');
+
+              return (
+                <div className="p-6 space-y-4">
+                  <div className="bg-gray-50 p-4 rounded-lg text-sm space-y-1">
+                    <div>
+                      <span className="font-semibold">To:</span> {String(preview?.to || '')}
+                    </div>
+                    <div>
+                      <span className="font-semibold">From:</span> {String(preview?.from || '')}
+                    </div>
+                    {preview?.replyTo && (
+                      <div>
+                        <span className="font-semibold">Reply-To:</span> {String(preview.replyTo)}
+                      </div>
+                    )}
+                    <div>
+                      <span className="font-semibold">Subject:</span> {String(preview?.subject || '')}
+                    </div>
+                    {Array.isArray(preview?.attachments) && preview.attachments.length > 0 && (
+                      <div>
+                        <span className="font-semibold">Attachments:</span> {preview.attachments.join(', ')}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border rounded-lg overflow-hidden bg-white">
+                    <iframe
+                      title="PO Email Preview"
+                      className="w-full h-[60vh]"
+                      srcDoc={html}
+                      sandbox=""
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+
+                  <div className="sticky bottom-0 bg-white border-t -mx-6 px-6 py-4 flex justify-end gap-3">
+                    <button
+                      onClick={() => {
+                        setShowPOEmailPreview(false);
+                        setPoEmailPreview(null);
+                      }}
+                      className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleSendPOEmail(poId)}
+                      disabled={poEmailSending || !poId}
+                      className={`px-6 py-2 rounded-lg transition-colors ${
+                        poEmailSending || !poId
+                          ? 'bg-gray-300 text-gray-600'
+                          : 'bg-green-600 text-white hover:bg-green-700'
+                      }`}
+                    >
+                      {poEmailSending ? 'Sending...' : 'Confirm & Send PO Email'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

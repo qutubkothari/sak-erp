@@ -111,6 +111,15 @@ export class PurchaseRequisitionsController {
     return this.prService.sendRFQ(req.user.tenantId, id, body);
   }
 
+  @Post(':id/rfq/preview')
+  async previewRFQ(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: any,
+  ) {
+    return this.prService.previewRFQ(req.user.tenantId, id, body);
+  }
+
   @Delete(':id')
   async delete(@Request() req: any, @Param('id') id: string) {
     return this.prService.delete(req.user.tenantId, id);

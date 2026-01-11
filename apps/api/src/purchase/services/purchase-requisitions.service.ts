@@ -123,7 +123,7 @@ export class PurchaseRequisitionsService {
         const itemUomById = new Map<string, string>();
 
         if (codes.length > 0 || ids.length > 0) {
-          let itemsQuery = this.supabase
+          const itemsQuery = this.supabase
             .from('items')
             .select('id, code, uom')
             .eq('tenant_id', tenantId);
@@ -552,6 +552,106 @@ export class PurchaseRequisitionsService {
       failed_count: failed.length,
       sent,
       failed,
+    };
+  }
+
+  async previewRFQ(tenantId: string, requisitionId: string, body: any) {
+    const vendorIds: string[] = Array.isArray(body?.vendorIds) ? body.vendorIds : [];
+    const vendorEmails: string[] = Array.isArray(body?.vendorEmails) ? body.vendorEmails : [];
+    const itemVendors: Array<{ itemId: string; vendorIds: string[] }> = Array.isArray(body?.itemVendors)
+      ? body.itemVendors
+      : [];
+
+    if (vendorIds.length === 0 && vendorEmails.length === 0) {
+      throw new BadRequestException('vendorIds or vendorEmails is required');
+    }
+
+    const pr = await this.findOne(tenantId, requisitionId);
+
+    if (!pr) {
+      throw new NotFoundException('Purchase Requisition not found');
+    }
+
+    if (pr.status !== 'APPROVED') {
+      throw new BadRequestException('PR must be APPROVED to preview RFQ');
+    }
+
+    const rfqNumber = `RFQ-${pr.pr_number}`;
+
+    const vendorLookups = await Promise.all(
+      vendorIds.map(async (vendorId) => this.vendorsService.findOne(tenantId, vendorId)),
+    );
+
+    const recipients: Array<{ email: string; name: string; vendorId?: string }> = [];
+
+    for (let i = 0; i < vendorLookups.length; i++) {
+      const vendor = vendorLookups[i];
+      if (vendor?.email) {
+        recipients.push({
+          email: vendor.email,
+          name: vendor.name || 'Vendor',
+          vendorId: vendorIds[i],
+        });
+      }
+    }
+
+    for (const email of vendorEmails) {
+      if (typeof email === 'string' && email.trim()) {
+        recipients.push({ email: email.trim(), name: 'Vendor' });
+      }
+    }
+
+    if (recipients.length === 0) {
+      throw new BadRequestException('No valid vendor emails found');
+    }
+
+    const responseDate = body?.responseDate || body?.response_date;
+    const remarks = body?.remarks;
+
+    const previews = await Promise.all(
+      recipients.map(async (recipient) => {
+        // Filter items for this vendor based on itemVendors mappings
+        let vendorItems = pr.purchase_requisition_items || [];
+
+        if (recipient.vendorId && itemVendors.length > 0) {
+          const assignedItemIds = itemVendors
+            .filter((iv) => iv.vendorIds.includes(recipient.vendorId as string))
+            .map((iv) => iv.itemId);
+
+          vendorItems = vendorItems.filter((item: any) => assignedItemIds.includes(item.id));
+        }
+
+        const items = vendorItems.map((item: any) => ({
+          item_name: item.item_name || item.itemName || '-',
+          item_code: item.item_code || item.itemCode || '-',
+          uom: item.uom || '-',
+          description: item.description || item.specifications || item.remarks || '-',
+          quantity: item.requested_qty ?? item.quantity ?? 0,
+          required_date: item.required_date || pr.required_date || '-',
+        }));
+
+        const preview = await this.emailService.buildRFQPreview(recipient.email, {
+          rfq_number: rfqNumber,
+          vendor_name: recipient.name,
+          items,
+          response_date: responseDate,
+          remarks,
+          attachments: Array.isArray(body?.attachments) ? body.attachments : [],
+        });
+
+        return {
+          vendor_name: recipient.name,
+          vendor_id: recipient.vendorId,
+          ...preview,
+        };
+      }),
+    );
+
+    return {
+      rfq_number: rfqNumber,
+      requisition_id: requisitionId,
+      preview_count: previews.length,
+      previews,
     };
   }
 

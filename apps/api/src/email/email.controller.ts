@@ -22,6 +22,7 @@ import { EmailAttachmentService } from './email-attachment.service';
 import { EmailSchedulerService } from './email-scheduler.service';
 import { EmailConfigService } from './email-config.service';
 
+import { ConfigService } from '@nestjs/config';
 @Controller('emails')
 @UseGuards(JwtAuthGuard)
 export class EmailController {
@@ -30,6 +31,7 @@ export class EmailController {
     private readonly fetchService: EmailFetchService,
     private readonly parserService: EmailParserService,
     private readonly attachmentService: EmailAttachmentService,
+    private readonly configService: ConfigService,
     private readonly schedulerService: EmailSchedulerService,
     private readonly emailConfigService: EmailConfigService,
   ) {}
@@ -350,6 +352,25 @@ export class EmailController {
   @Get('config')
   async getEmailConfig() {
     return this.emailConfigService.getAllEmailConfigDetails();
+  }
+
+  @Get('status')
+  async getStatus() {
+    const smtpUser = (this.configService.get<string>('SMTP_USER') || '').trim();
+    const smtpPass = (this.configService.get<string>('SMTP_PASS') || '').trim();
+    const gmailUser = (this.configService.get<string>('GMAIL_USER') || '').trim();
+
+    const smtpConfigured = Boolean(smtpUser && smtpPass);
+    const gmailOAuthConfigured = Boolean(gmailUser);
+
+    return {
+      outboundEnabled: smtpConfigured || gmailOAuthConfigured,
+      smtpConfigured,
+      gmailOAuthConfigured,
+      smtpUserSet: Boolean(smtpUser),
+      smtpPassSet: Boolean(smtpPass),
+      gmailUserSet: Boolean(gmailUser),
+    };
   }
 
   /**

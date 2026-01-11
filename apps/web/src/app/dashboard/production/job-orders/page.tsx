@@ -136,6 +136,7 @@ function JobOrdersPageContent() {
   const [selectedJobOrderLoading, setSelectedJobOrderLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [completionPreview, setCompletionPreview] = useState<any>(null);
+  const [completionJobOrderId, setCompletionJobOrderId] = useState<string | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [stockErrorModal, setStockErrorModal] = useState<{show: boolean, shortages: any[]}>({show: false, shortages: []});
   const [itemStockSummaryById, setItemStockSummaryById] = useState<Record<string, ItemStockSummary>>({});
@@ -260,6 +261,33 @@ function JobOrdersPageContent() {
       console.error('Error fetching job order UIDs for QC:', error);
       alert('Failed to load UIDs for QC');
       setShowQcModal(false);
+    } finally {
+      setQcLoading(false);
+    }
+  };
+
+  const ensureJobOrderUidsAndReloadQc = async () => {
+    if (!selectedJobOrder?.id) return;
+
+    setQcLoading(true);
+    try {
+      await apiClient.post(`/job-orders/${selectedJobOrder.id}/ensure-uids`, {});
+
+      const response = await apiClient.get<any>(
+        `/uid?job_order_id=${selectedJobOrder.id}&limit=5000&sortBy=created_at&sortOrder=asc`,
+      );
+      const data = Array.isArray(response) ? response : response?.data || [];
+      const list = (data || []) as JobOrderUID[];
+
+      setQcUids(list);
+      const firstPendingIdx = list.findIndex(
+        (u) => String(u?.quality_status || '').toUpperCase() !== 'PASSED',
+      );
+      setQcIndex(firstPendingIdx >= 0 ? firstPendingIdx : 0);
+    } catch (error: any) {
+      console.error('Error ensuring job order UIDs:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to generate UIDs';
+      alert(errorMsg);
     } finally {
       setQcLoading(false);
     }
@@ -772,6 +800,7 @@ function JobOrdersPageContent() {
     // First, fetch completion preview
     setLoading(true);
     try {
+      setCompletionJobOrderId(id);
       const preview = await apiClient.get(`/job-orders/${id}/completion-preview`);
       setCompletionPreview(preview);
       setShowCompletionModal(true);
@@ -779,6 +808,7 @@ function JobOrdersPageContent() {
       console.error('Error fetching completion preview:', error);
       const errorMsg = error.response?.data?.message || error.message || 'Failed to load completion preview';
       alert(errorMsg);
+      setCompletionJobOrderId(null);
     } finally {
       setLoading(false);
     }
@@ -786,13 +816,17 @@ function JobOrdersPageContent() {
 
   const confirmCompletion = async () => {
     if (!completionPreview) return;
+    if (!completionJobOrderId) {
+      alert('Missing Job Order ID. Please close the popup and try again.');
+      return;
+    }
     
     setLoading(true);
     try {
-      const jobOrderId = jobOrders.find(jo => jo.jobOrderNumber === completionPreview.jobOrderNumber)?.id;
-      await apiClient.post(`/job-orders/${jobOrderId}/complete`, {});
+      await apiClient.post(`/job-orders/${completionJobOrderId}/complete`, {});
       setShowCompletionModal(false);
       setCompletionPreview(null);
+      setCompletionJobOrderId(null);
       fetchJobOrders();
       alert('✅ Job Order completed successfully!\n\nUIDs generated and awaiting QC approval.\nStock will be added after QC inspection.');
     } catch (error: any) {
@@ -838,29 +872,33 @@ function JobOrdersPageContent() {
         <h1 className="text-2xl font-bold text-[#36454F]">Job Orders</h1>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push('/dashboard/production/job-orders/smart-items')}
+            onClick={() => {
+              if (legacy) {
+                setShowCreateModal(true);
+                return;
+              }
+
+              router.push('/dashboard/production/job-orders/smart-items');
+            }}
             className="px-4 py-2 bg-[#8B6F47] text-white rounded hover:bg-[#6F4E37]"
-            title="Smart Job Order: select FG + preview BOM explosion + create"
+            title={
+              legacy
+                ? 'Legacy Create Job Order (backup)'
+                : 'Smart Job Order: select FG + preview BOM explosion + create'
+            }
           >
             + Create Job Order
-          </button>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-3 py-2 border border-[#E8DCC4] text-[#6F4E37] rounded hover:bg-[#E8DCC4]"
-            title="Legacy Create Job Order (backup)"
-          >
-            Legacy Create
           </button>
         </div>
       </div>
 
       {/* Job Orders List */}
-      <div className="bg-[#FAF9F6] rounded-lg shadow-lg border border-[#E8DCC4] overflow-hidden">
-        <table className="min-w-full divide-y divide-[#E8DCC4]">
+      <div className="bg-[#FAF9F6] rounded-lg shadow-lg border border-[#E8DCC4] overflow-x-auto">
+        <table className="min-w-[980px] w-full divide-y divide-[#E8DCC4]">
           <thead className="bg-[#E8DCC4]">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Job Order #</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Item</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase w-[420px]">Item</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Quantity</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Start Date</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Priority</th>
@@ -872,9 +910,11 @@ function JobOrdersPageContent() {
             {jobOrders.map((jo) => (
               <tr key={jo.id} className="hover:bg-[#E8DCC4]">
                 <td className="px-6 py-4 whitespace-nowrap font-medium">{jo.jobOrderNumber}</td>
-                <td className="px-6 py-4">
-                  <div>{jo.itemCode}</div>
-                  <div className="text-sm text-gray-500">{jo.itemName}</div>
+                <td className="px-6 py-4 min-w-[280px] max-w-[520px]">
+                  <div className="font-medium text-[#36454F] whitespace-nowrap">{jo.itemCode}</div>
+                  <div className="text-sm text-gray-500 whitespace-normal break-words" title={jo.itemName}>
+                    {jo.itemName}
+                  </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">{jo.quantity}</td>
                 <td className="px-6 py-4 whitespace-nowrap">{new Date(jo.startDate).toLocaleDateString()}</td>
@@ -1516,7 +1556,18 @@ function JobOrdersPageContent() {
             {qcLoading ? (
               <div className="p-6 text-center text-gray-600">Loading UIDs...</div>
             ) : qcUids.length === 0 ? (
-              <div className="p-6 text-center text-gray-600">No UIDs found for this job order.</div>
+              <div className="p-6 text-center text-gray-600">
+                <div>No UIDs found for this job order.</div>
+                <div className="mt-3">
+                  <button
+                    onClick={ensureJobOrderUidsAndReloadQc}
+                    disabled={qcLoading}
+                    className="px-4 py-2 bg-[#8B6F47] text-white rounded hover:bg-[#6F4E37] disabled:opacity-50"
+                  >
+                    Generate UIDs
+                  </button>
+                </div>
+              </div>
             ) : (
               <>
                 <div className="mb-4 flex justify-between items-center">
@@ -1795,6 +1846,7 @@ function JobOrdersPageContent() {
                 onClick={() => {
                   setShowCompletionModal(false);
                   setCompletionPreview(null);
+                  setCompletionJobOrderId(null);
                 }}
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >

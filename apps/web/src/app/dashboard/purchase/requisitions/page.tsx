@@ -144,6 +144,8 @@ function PRContent() {
   const [rfqRemarks, setRfqRemarks] = useState('');
   const [showRfqPreview, setShowRfqPreview] = useState(false);
   const [rfqPreviewData, setRfqPreviewData] = useState<any>(null);
+  const [rfqPreviewIndex, setRfqPreviewIndex] = useState(0);
+  const [rfqPreviewLoading, setRfqPreviewLoading] = useState(false);
 
   // Helper to get selected vendor IDs
   const getSelectedVendorIds = () => {
@@ -629,7 +631,7 @@ function PRContent() {
     });
   };
 
-  const handlePreviewRFQ = () => {
+  const handlePreviewRFQ = async () => {
     if (!selectedPR) return;
     const selectedVendors = getSelectedVendorIds();
     if (selectedVendors.length === 0) {
@@ -643,14 +645,37 @@ function PRContent() {
       vendorIds: rfqItemVendors[item.id] || []
     })) || [];
 
-    setRfqPreviewData({
-      pr: selectedPR,
-      vendors: rfqVendors.filter(v => selectedVendors.includes(v.id)),
-      itemVendors: itemVendorAssignments,
-      responseDate: rfqResponseDate,
-      remarks: rfqRemarks
-    });
-    setShowRfqPreview(true);
+    // Create item-vendor assignments for API
+    const itemVendorAssignmentsForApi = selectedPR.purchase_requisition_items?.map((item) => ({
+      itemId: item.id,
+      vendorIds: rfqItemVendors[item.id] || [],
+    })) || [];
+
+    try {
+      setRfqPreviewLoading(true);
+      const preview = await apiClient.post(`/purchase/requisitions/${selectedPR.id}/rfq/preview`, {
+        vendorIds: selectedVendors,
+        itemVendors: itemVendorAssignmentsForApi,
+        responseDate: rfqResponseDate || undefined,
+        remarks: rfqRemarks || undefined,
+      });
+
+      setRfqPreviewIndex(0);
+      setRfqPreviewData({
+        pr: selectedPR,
+        vendors: rfqVendors.filter((v) => selectedVendors.includes(v.id)),
+        itemVendors: itemVendorAssignments,
+        responseDate: rfqResponseDate,
+        remarks: rfqRemarks,
+        emailPreviews: Array.isArray(preview?.previews) ? preview.previews : [],
+      });
+      setShowRfqPreview(true);
+    } catch (error) {
+      console.error('Error previewing RFQ:', error);
+      alert('Failed to generate RFQ preview');
+    } finally {
+      setRfqPreviewLoading(false);
+    }
   };
 
   const handleSendRFQ = async () => {
@@ -1698,14 +1723,14 @@ function PRContent() {
                       <div className="flex justify-end gap-3 mt-3">
                         <button
                           onClick={handlePreviewRFQ}
-                          disabled={rfqLoadingVendors}
+                          disabled={rfqLoadingVendors || rfqPreviewLoading}
                           className={`px-6 py-2 rounded-lg transition-colors ${
-                            rfqLoadingVendors
+                            rfqLoadingVendors || rfqPreviewLoading
                               ? 'bg-gray-300 text-gray-600'
                               : 'bg-blue-600 text-white hover:bg-blue-700'
                           }`}
                         >
-                          Preview Email
+                          {rfqPreviewLoading ? 'Generating...' : 'Preview Email'}
                         </button>
                       </div>
                     </div>
@@ -1734,7 +1759,10 @@ function PRContent() {
                 <h2 className="text-2xl font-bold text-amber-900">RFQ Email Preview</h2>
                 <button
                   type="button"
-                  onClick={() => setShowRfqPreview(false)}
+                  onClick={() => {
+                    setShowRfqPreview(false);
+                    setRfqPreviewIndex(0);
+                  }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
                   ×
@@ -1742,150 +1770,129 @@ function PRContent() {
               </div>
 
               <div className="p-6 space-y-6">
-                {/* Email Recipients */}
-                <div>
-                  <h3 className="text-lg font-bold mb-2">Recipients</h3>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-sm font-semibold mb-2">To: Vendors</p>
-                    <div className="space-y-1">
-                      {rfqPreviewData.vendors.map((vendor: Vendor) => (
-                        <div key={vendor.id} className="text-sm">
-                          <span className="font-medium">{vendor.name}</span> - {vendor.email}
+                {(() => {
+                  const previews = Array.isArray(rfqPreviewData?.emailPreviews)
+                    ? rfqPreviewData.emailPreviews
+                    : [];
+                  const current = previews[rfqPreviewIndex] || previews[0];
+
+                  return (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Recipient list */}
+                        <div className="md:col-span-1">
+                          <h3 className="text-lg font-bold mb-2">Recipients</h3>
+                          <div className="border rounded-lg overflow-hidden">
+                            <div className="bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700">
+                              Select vendor
+                            </div>
+                            <div className="max-h-72 overflow-y-auto divide-y">
+                              {previews.length === 0 ? (
+                                <div className="p-3 text-sm text-gray-600">No preview data available.</div>
+                              ) : (
+                                previews.map((p: any, idx: number) => {
+                                  const active = idx === rfqPreviewIndex;
+                                  return (
+                                    <button
+                                      key={`${String(p?.to || '')}-${idx}`}
+                                      type="button"
+                                      onClick={() => setRfqPreviewIndex(idx)}
+                                      className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
+                                        active ? 'bg-amber-50' : ''
+                                      }`}
+                                    >
+                                      <div className="text-sm font-semibold text-gray-900">
+                                        {p?.vendor_name || 'Vendor'}
+                                      </div>
+                                      <div className="text-xs text-gray-600">{String(p?.to || '')}</div>
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
 
-                {/* Email Subject */}
-                <div>
-                  <h3 className="text-lg font-bold mb-2">Subject</h3>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-sm">Request for Quotation - PR #{rfqPreviewData.pr.pr_number}</p>
-                  </div>
-                </div>
+                        {/* Email preview */}
+                        <div className="md:col-span-2 space-y-3">
+                          <h3 className="text-lg font-bold">Email</h3>
+                          {!current ? (
+                            <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-700">
+                              Select a recipient to preview the email.
+                            </div>
+                          ) : (
+                            <>
+                              <div className="bg-gray-50 p-4 rounded-lg text-sm space-y-1">
+                                <div>
+                                  <span className="font-semibold">To:</span> {String(current?.to || '')}
+                                </div>
+                                <div>
+                                  <span className="font-semibold">From:</span> {String(current?.from || '')}
+                                </div>
+                                {current?.replyTo && (
+                                  <div>
+                                    <span className="font-semibold">Reply-To:</span>{' '}
+                                    {String(current.replyTo)}
+                                  </div>
+                                )}
+                                <div>
+                                  <span className="font-semibold">Subject:</span>{' '}
+                                  {String(current?.subject || '')}
+                                </div>
+                                {Array.isArray(current?.attachments) && current.attachments.length > 0 && (
+                                  <div>
+                                    <span className="font-semibold">Attachments:</span>{' '}
+                                    {current.attachments.join(', ')}
+                                  </div>
+                                )}
+                              </div>
 
-                {/* Email Body */}
-                <div>
-                  <h3 className="text-lg font-bold mb-2">Email Content</h3>
-                  <div className="bg-gray-50 p-6 rounded-lg space-y-4 border">
-                    <div>
-                      <p className="text-sm mb-4">Dear Vendor,</p>
-                      <p className="text-sm mb-4">
-                        We are requesting quotations for the following items as per our Purchase Requisition #{rfqPreviewData.pr.pr_number}.
-                      </p>
-                    </div>
-
-                    {/* PR Details */}
-                    <div className="grid grid-cols-2 gap-4 text-sm bg-white p-4 rounded border">
-                      <div>
-                        <p className="text-gray-600">PR Number:</p>
-                        <p className="font-semibold">{rfqPreviewData.pr.pr_number}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-600">Department:</p>
-                        <p className="font-semibold">{rfqPreviewData.pr.department}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-600">Required Date:</p>
-                        <p className="font-semibold">{new Date(rfqPreviewData.pr.required_date).toLocaleDateString()}</p>
-                      </div>
-                      {rfqPreviewData.responseDate && (
-                        <div>
-                          <p className="text-gray-600">Response Required By:</p>
-                          <p className="font-semibold">{new Date(rfqPreviewData.responseDate).toLocaleDateString()}</p>
+                              <div className="border rounded-lg overflow-hidden bg-white">
+                                <iframe
+                                  title="RFQ Email Preview"
+                                  className="w-full h-[55vh]"
+                                  srcDoc={String(current?.html || '')}
+                                />
+                              </div>
+                            </>
+                          )}
                         </div>
-                      )}
-                    </div>
-
-                    {/* Items Table - Show which items each vendor will receive */}
-                    <div>
-                      <p className="text-sm font-semibold mb-2">Items for Quotation:</p>
-                      <div className="border rounded-lg overflow-hidden bg-white">
-                        <table className="w-full text-sm">
-                          <thead className="bg-gray-100">
-                            <tr>
-                              <th className="px-3 py-2 text-center">S.No</th>
-                              <th className="px-3 py-2 text-left">Item Code</th>
-                              <th className="px-3 py-2 text-left">Item Name</th>
-                              <th className="px-3 py-2 text-right">Quantity</th>
-                              <th className="px-3 py-2 text-center">UOM</th>
-                              <th className="px-3 py-2 text-left">Remarks</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rfqPreviewData.itemVendors
-                              .filter((iv: any) => iv.vendorIds.length > 0)
-                              .map((iv: any, index: number) => (
-                                <tr key={iv.item.id} className="border-t">
-                                  <td className="px-3 py-2 text-center">{iv.item.serial_no || index + 1}</td>
-                                  <td className="px-3 py-2">{iv.item.item_code || '-'}</td>
-                                  <td className="px-3 py-2">{iv.item.item_name}</td>
-                                  <td className="px-3 py-2 text-right">{iv.item.requested_qty}</td>
-                                  <td className="px-3 py-2 text-center">{iv.item.uom || '-'}</td>
-                                  <td className="px-3 py-2 text-gray-600">{iv.item.remarks || '-'}</td>
-                                </tr>
-                              ))}
-                          </tbody>
-                        </table>
                       </div>
-                      <p className="text-xs text-gray-600 mt-2">
-                        * Each vendor will receive an email with only the items they were selected for
-                      </p>
-                    </div>
 
-                    {rfqPreviewData.remarks && (
-                      <div className="bg-amber-50 p-3 rounded border border-amber-200">
-                        <p className="text-sm font-semibold mb-1">Additional Notes:</p>
-                        <p className="text-sm">{rfqPreviewData.remarks}</p>
-                      </div>
-                    )}
-
-                    <div className="text-sm">
-                      <p className="mb-2">Please provide your quotation with the following details:</p>
-                      <ul className="list-disc list-inside space-y-1 ml-4 text-gray-700">
-                        <li>Unit price per item</li>
-                        <li>Total price including taxes</li>
-                        <li>Delivery lead time</li>
-                        <li>Payment terms</li>
-                        <li>Validity of the quotation</li>
-                      </ul>
-                    </div>
-
-                    <div className="text-sm">
-                      <p>Best regards,</p>
-                      <p className="font-semibold mt-1">Purchase Department</p>
-                      <p className="text-gray-600">SAK ERP System</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Vendor-Item Assignment Summary */}
-                <div>
-                  <h3 className="text-lg font-bold mb-2">Vendor Assignment Summary</h3>
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                    {rfqPreviewData.vendors.map((vendor: Vendor) => {
-                      const vendorItems = rfqPreviewData.itemVendors.filter((iv: any) => 
-                        iv.vendorIds.includes(vendor.id)
-                      );
-                      return (
-                        <div key={vendor.id} className="mb-3 last:mb-0">
-                          <p className="font-semibold text-sm">{vendor.name}:</p>
-                          <ul className="ml-4 text-sm text-gray-700">
-                            {vendorItems.map((iv: any) => (
-                              <li key={iv.item.id}>• {iv.item.item_name} (Qty: {iv.item.requested_qty})</li>
-                            ))}
-                          </ul>
+                      {/* Vendor-Item Assignment Summary (selection aid) */}
+                      <div>
+                        <h3 className="text-lg font-bold mb-2">Vendor Assignment Summary</h3>
+                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                          {rfqPreviewData.vendors.map((vendor: Vendor) => {
+                            const vendorItems = rfqPreviewData.itemVendors.filter((iv: any) =>
+                              iv.vendorIds.includes(vendor.id),
+                            );
+                            return (
+                              <div key={vendor.id} className="mb-3 last:mb-0">
+                                <p className="font-semibold text-sm">{vendor.name}:</p>
+                                <ul className="ml-4 text-sm text-gray-700">
+                                  {vendorItems.map((iv: any) => (
+                                    <li key={iv.item.id}>
+                                      • {iv.item.item_name} (Qty: {iv.item.requested_qty})
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-3">
                 <button
-                  onClick={() => setShowRfqPreview(false)}
+                  onClick={() => {
+                    setShowRfqPreview(false);
+                    setRfqPreviewIndex(0);
+                  }}
                   className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
                 >
                   Cancel

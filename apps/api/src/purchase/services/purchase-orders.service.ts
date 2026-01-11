@@ -569,10 +569,8 @@ export class PurchaseOrdersService {
     };
   }
 
-  async sendPOEmail(tenantId: string, poId: string) {
-    const po = await this.findOne(tenantId, poId);
-    
-    if (!po.vendor?.email) {
+  private async buildPOEmailData(tenantId: string, po: any) {
+    if (!po?.vendor?.email) {
       throw new BadRequestException('Vendor email not found');
     }
 
@@ -581,12 +579,8 @@ export class PurchaseOrdersService {
       : [];
 
     // Resolve drawing requirements + item ids (some older PO items may not have item_id populated)
-    const uniqueItemIds = Array.from(
-      new Set(poItems.map((i) => i?.item_id).filter(Boolean)),
-    );
-    const uniqueItemCodes = Array.from(
-      new Set(poItems.map((i) => i?.item_code).filter(Boolean)),
-    );
+    const uniqueItemIds = Array.from(new Set(poItems.map((i) => i?.item_id).filter(Boolean)));
+    const uniqueItemCodes = Array.from(new Set(poItems.map((i) => i?.item_code).filter(Boolean)));
 
     const itemsById = new Map<string, any>();
     const itemsByCode = new Map<string, any>();
@@ -685,13 +679,23 @@ export class PurchaseOrdersService {
 
       if (!activeDrawing) {
         if (isCompulsory) {
-          const label = poItem?.item_code || poItem?.item_name || resolvedItem?.code || resolvedItem?.name || resolvedItemId;
+          const label =
+            poItem?.item_code ||
+            poItem?.item_name ||
+            resolvedItem?.code ||
+            resolvedItem?.name ||
+            resolvedItemId;
           missingCompulsory.push(label);
         }
         continue;
       }
 
-      const itemCodeOrName = poItem?.item_code || resolvedItem?.code || poItem?.item_name || resolvedItem?.name || 'ITEM';
+      const itemCodeOrName =
+        poItem?.item_code ||
+        resolvedItem?.code ||
+        poItem?.item_name ||
+        resolvedItem?.name ||
+        'ITEM';
       const versionText = activeDrawing.version ? `v${activeDrawing.version}` : 'v';
       const baseName = activeDrawing.file_name || 'drawing';
       const filename = `${itemCodeOrName}_${versionText}_${baseName}`;
@@ -717,7 +721,7 @@ export class PurchaseOrdersService {
       delivery_date: po.delivery_date,
       payment_terms: po.payment_terms,
       vendor_name: po.vendor.name,
-      items: po.purchase_order_items.map((item: any) => ({
+      items: poItems.map((item: any) => ({
         item_name: item.item_name,
         quantity: item.ordered_qty,
         unit_price: item.rate,
@@ -732,7 +736,27 @@ export class PurchaseOrdersService {
       attachments,
     };
 
-    await this.emailService.sendPO(po.vendor.email, emailData);
+    return { recipient: po.vendor.email, emailData };
+  }
+
+  async previewPOEmail(tenantId: string, poId: string) {
+    const po = await this.findOne(tenantId, poId);
+    const { recipient, emailData } = await this.buildPOEmailData(tenantId, po);
+
+    const preview = await this.emailService.buildPOPreview(recipient, emailData);
+
+    return {
+      po_id: poId,
+      recipient,
+      preview,
+    };
+  }
+
+  async sendPOEmail(tenantId: string, poId: string) {
+    const po = await this.findOne(tenantId, poId);
+    const { recipient, emailData } = await this.buildPOEmailData(tenantId, po);
+
+    await this.emailService.sendPO(recipient, emailData);
 
     // Record that the PO was sent (used for automatic tracking reminders).
     // Also move APPROVED -> PENDING to represent "sent to vendor" using the existing pr_po_status enum.
@@ -750,7 +774,7 @@ export class PurchaseOrdersService {
       .eq('tenant_id', tenantId)
       .eq('id', poId);
 
-    return { message: 'PO email sent successfully', recipient: po.vendor.email };
+    return { message: 'PO email sent successfully', recipient };
   }
 
   async sendTrackingReminder(tenantId: string, poId: string) {

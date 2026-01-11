@@ -151,15 +151,6 @@ function SmartJobOrdersItemsPageContent() {
 
   const [creating, setCreating] = useState(false);
   const [creatingPR, setCreatingPR] = useState(false);
-
-  const [activeTab, setActiveTab] = useState<'create' | 'jobOrders'>('create');
-  const [jobOrdersLoading, setJobOrdersLoading] = useState(false);
-  const [jobOrdersError, setJobOrdersError] = useState('');
-  const [jobOrders, setJobOrders] = useState<JobOrderListRow[]>([]);
-
-  const [selectedJobOrderId, setSelectedJobOrderId] = useState<string>('');
-  const [jobOrderDetail, setJobOrderDetail] = useState<JobOrderDetail | null>(null);
-  const [jobOrderDetailLoading, setJobOrderDetailLoading] = useState(false);
   const [createSummary, setCreateSummary] = useState<SmartCreateResponse | null>(null);
   const [showCreateSummary, setShowCreateSummary] = useState(false);
 
@@ -172,36 +163,6 @@ function SmartJobOrdersItemsPageContent() {
   }, [showCreateSummary]);
 
   const canPreview = Boolean(itemId) && Number(quantity) > 0;
-
-  const fetchJobOrders = async () => {
-    setJobOrdersLoading(true);
-    setJobOrdersError('');
-    try {
-      const data = await apiClient.get('/job-orders');
-      setJobOrders(Array.isArray(data) ? (data as JobOrderListRow[]) : []);
-    } catch (err: any) {
-      setJobOrders([]);
-      setJobOrdersError(err?.message || 'Failed to load job orders');
-    } finally {
-      setJobOrdersLoading(false);
-    }
-  };
-
-  const fetchJobOrderDetail = async (id: string) => {
-    const safeId = String(id || '').trim();
-    if (!safeId) return;
-
-    setJobOrderDetailLoading(true);
-    try {
-      const data = await apiClient.get(`/job-orders/${safeId}`);
-      setJobOrderDetail((data as JobOrderDetail) || null);
-    } catch (err: any) {
-      setJobOrderDetail(null);
-      alert(`❌ Failed to load job order: ${err?.message || 'Unknown error'}`);
-    } finally {
-      setJobOrderDetailLoading(false);
-    }
-  };
 
   const headerSubtitle = useMemo(() => {
     if (salesOrderId) return `From Sales Order: ${salesOrderId}`;
@@ -575,21 +536,12 @@ function SmartJobOrdersItemsPageContent() {
       setShowCreateSummary(true);
 
       await fetchPreview();
-      // Refresh list tab so users can immediately see the new JO
-      await fetchJobOrders();
-      setActiveTab('jobOrders');
     } catch (err: any) {
       alert(`❌ Failed to create Smart Job Order: ${err?.message || 'Unknown error'}`);
     } finally {
       setCreating(false);
     }
   };
-
-  useEffect(() => {
-    if (activeTab !== 'jobOrders') return;
-    fetchJobOrders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
 
   const formatQuantity = (value: number | string | undefined): string => {
     const num = Number(value || 0);
@@ -860,196 +812,36 @@ function SmartJobOrdersItemsPageContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 p-8">
+    <div className="min-h-screen bg-gradient-to-br from-[#FAF9F6] to-[#E8DCC4] p-6">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-start gap-6 mb-8">
           <div>
-            <button onClick={() => router.push('/dashboard')} className="text-amber-600 hover:text-amber-800 mb-2">
-              ← Back to Dashboard
-            </button>
-            <h1 className="text-4xl font-bold text-amber-900">Smart Job Order (Item Swap)</h1>
-            <p className="text-amber-700">{headerSubtitle}</p>
-            <p className="text-xs text-amber-700 mt-2">
+            <h1 className="text-4xl font-bold text-[#36454F]">Smart Job Order (Item Swap)</h1>
+            <p className="text-[#6F4E37]">{headerSubtitle}</p>
+            <p className="text-xs text-[#6F4E37] mt-2">
               Variant version: /dashboard/production/job-orders/smart
             </p>
           </div>
 
           <div className="flex gap-3">
-            <div className="inline-flex rounded-lg border border-amber-300 overflow-hidden">
-              <button
-                onClick={() => setActiveTab('create')}
-                className={`px-4 py-2 text-sm ${
-                  activeTab === 'create'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-white text-amber-800 hover:bg-amber-50'
-                }`}
-              >
-                Create
-              </button>
-              <button
-                onClick={() => setActiveTab('jobOrders')}
-                className={`px-4 py-2 text-sm ${
-                  activeTab === 'jobOrders'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-white text-amber-800 hover:bg-amber-50'
-                }`}
-              >
-                Job Orders
-              </button>
-            </div>
             <button
               onClick={fetchPreview}
               disabled={!canPreview || loadingPreview}
-              className="px-4 py-2 rounded-lg border border-amber-300 text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+              className="px-4 py-2 rounded-lg border border-[#E8DCC4] text-[#6F4E37] hover:bg-[#E8DCC4] disabled:opacity-50"
             >
               {loadingPreview ? 'Loading…' : 'Load BOM'}
             </button>
             <button
               onClick={handleCreate}
               disabled={!canPreview || creating}
-              className="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+              className="px-4 py-2 rounded-lg bg-[#8B6F47] text-white hover:bg-[#6F4E37] disabled:opacity-50"
             >
               {creating ? 'Creating…' : 'Create Job Order'}
             </button>
           </div>
         </div>
 
-        {activeTab === 'jobOrders' ? (
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-amber-900">Recent Job Orders</h2>
-              <button
-                onClick={fetchJobOrders}
-                disabled={jobOrdersLoading}
-                className="px-3 py-1.5 rounded-md border border-amber-300 text-amber-800 hover:bg-amber-50 disabled:opacity-50"
-              >
-                {jobOrdersLoading ? 'Loading…' : 'Refresh'}
-              </button>
-            </div>
-
-            {jobOrdersError ? <div className="mb-3 text-sm text-red-700">{jobOrdersError}</div> : null}
-
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-600 border-b">
-                    <th className="py-2 pr-4">JO</th>
-                    <th className="py-2 pr-4">Item</th>
-                    <th className="py-2 pr-4">Qty</th>
-                    <th className="py-2 pr-4">Status</th>
-                    <th className="py-2 pr-4">Created</th>
-                    <th className="py-2 pr-4"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(jobOrders || []).map((jo) => {
-                    const joNumber = jo.job_order_number || jo.jobOrderNumber || '';
-                    return (
-                      <tr key={jo.id} className="border-b hover:bg-amber-50">
-                        <td className="py-2 pr-4 font-medium text-amber-900">{joNumber}</td>
-                        <td className="py-2 pr-4">
-                          <div className="text-gray-900">{jo.item_code || '-'}</div>
-                          <div className="text-xs text-gray-600">{jo.item_name || ''}</div>
-                        </td>
-                        <td className="py-2 pr-4">{Number(jo.quantity || 0) || 0}</td>
-                        <td className="py-2 pr-4">{jo.status || '-'}</td>
-                        <td className="py-2 pr-4">
-                          {jo.created_at ? new Date(jo.created_at).toLocaleString() : '-'}
-                        </td>
-                        <td className="py-2 pr-4">
-                          <button
-                            onClick={async () => {
-                              setSelectedJobOrderId(jo.id);
-                              await fetchJobOrderDetail(jo.id);
-                            }}
-                            className="px-3 py-1.5 rounded-md bg-amber-600 text-white hover:bg-amber-700"
-                          >
-                            View
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {(!jobOrders || jobOrders.length === 0) && !jobOrdersLoading ? (
-                    <tr>
-                      <td colSpan={6} className="py-6 text-center text-gray-600">
-                        No job orders found.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-
-            {selectedJobOrderId ? (
-              <div className="mt-6 border rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-amber-900">
-                      {jobOrderDetail?.job_order_number || 'Job Order'}
-                    </div>
-                    <div className="text-sm text-gray-700">
-                      {jobOrderDetail?.item_code} — {jobOrderDetail?.item_name}
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      Status: {jobOrderDetail?.status || '-'}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setSelectedJobOrderId('');
-                      setJobOrderDetail(null);
-                    }}
-                    className="px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-                  >
-                    Close
-                  </button>
-                </div>
-
-                <div className="mt-4">
-                  <div className="font-medium text-gray-800 mb-2">Materials</div>
-                  {jobOrderDetailLoading ? (
-                    <div className="text-sm text-gray-600">Loading…</div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-gray-600 border-b">
-                            <th className="py-2 pr-4">Item</th>
-                            <th className="py-2 pr-4">Required</th>
-                            <th className="py-2 pr-4">Issued</th>
-                            <th className="py-2 pr-4">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(jobOrderDetail?.materials || []).map((m) => (
-                            <tr key={m.id} className="border-b">
-                              <td className="py-2 pr-4">
-                                <div className="text-gray-900">{m.item_code || '-'}</div>
-                                <div className="text-xs text-gray-600">{m.item_name || ''}</div>
-                              </td>
-                              <td className="py-2 pr-4">{Number(m.required_quantity || 0) || 0}</td>
-                              <td className="py-2 pr-4">{Number(m.issued_quantity || 0) || 0}</td>
-                              <td className="py-2 pr-4">{m.status || '-'}</td>
-                            </tr>
-                          ))}
-                          {(jobOrderDetail?.materials || []).length === 0 ? (
-                            <tr>
-                              <td colSpan={4} className="py-4 text-center text-gray-600">
-                                No materials found for this job order.
-                              </td>
-                            </tr>
-                          ) : null}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-white rounded-lg shadow p-6 border border-[#E8DCC4]">
           <div className="grid grid-cols-12 gap-4 items-end">
             <div className="col-span-8">
               <label className="block text-sm font-medium text-gray-700 mb-2">Finished Goods Item *</label>
@@ -1080,27 +872,26 @@ function SmartJobOrdersItemsPageContent() {
               />
             </div>
           </div>
-          </div>
-        )}
+        </div>
 
           {previewError ? (
             <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm">{previewError}</div>
           ) : null}
 
           {loadingPreview && (
-            <div className="mt-6 p-6 rounded-lg border border-amber-200 bg-amber-50">
+            <div className="mt-6 p-6 rounded-lg border border-[#E8DCC4] bg-[#FAF9F6]">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-lg font-semibold text-amber-900">{loadingMessage}</span>
-                  <span className="text-sm font-medium text-amber-800">{loadingProgress}%</span>
+                  <span className="text-lg font-semibold text-[#36454F]">{loadingMessage}</span>
+                  <span className="text-sm font-medium text-[#6F4E37]">{loadingProgress}%</span>
                 </div>
-                <div className="w-full bg-amber-100 rounded-full h-3 overflow-hidden">
+                <div className="w-full bg-[#E8DCC4] rounded-full h-3 overflow-hidden">
                   <div
-                    className="bg-gradient-to-r from-amber-700 to-amber-800 h-3 rounded-full transition-all duration-500 ease-linear"
+                    className="bg-gradient-to-r from-[#8B6F47] to-[#6F4E37] h-3 rounded-full transition-all duration-500 ease-linear"
                     style={{ width: `${loadingProgress}%` }}
                   />
                 </div>
-                <div className="flex items-center justify-center text-amber-700 text-sm">
+                <div className="flex items-center justify-center text-[#6F4E37] text-sm">
                   <svg
                     className="animate-spin h-5 w-5 mr-2"
                     xmlns="http://www.w3.org/2000/svg"
@@ -1326,7 +1117,7 @@ function SmartJobOrdersItemsPageContent() {
                           className={`px-6 py-3 rounded-lg font-semibold text-white transition-colors ${
                             creating || !canPreview
                               ? 'bg-gray-400 cursor-not-allowed'
-                              : 'bg-amber-600 hover:bg-amber-700 shadow-md hover:shadow-lg'
+                              : 'bg-[#8B6F47] hover:bg-[#6F4E37] shadow-md hover:shadow-lg'
                           }`}
                         >
                           {creating ? 'Creating...' : 'Create Job Order'}

@@ -37,8 +37,8 @@ export default function JobOrdersLayout({ children }: { children: ReactNode }) {
                     className={
                       'px-3 py-2 rounded-lg text-sm font-medium transition-colors ' +
                       (active
-                        ? 'bg-amber-600 text-white'
-                        : 'text-amber-900 hover:bg-amber-50 border border-transparent')
+                        ? 'bg-[#8B6F47] text-white'
+                        : 'text-[#6F4E37] hover:bg-[#E8DCC4] border border-transparent')
                     }
                   >
                     {t.label}
@@ -48,7 +48,7 @@ export default function JobOrdersLayout({ children }: { children: ReactNode }) {
               <div className="flex-1" />
               <Link
                 href="/dashboard/production/job-orders?legacy=1"
-                className="px-3 py-2 rounded-lg text-sm font-medium text-amber-700 hover:text-amber-900 hover:bg-amber-50"
+                className="px-3 py-2 rounded-lg text-sm font-medium text-[#6F4E37] hover:text-[#36454F] hover:bg-[#E8DCC4]"
                 title="Open the old combined screen (kept for safety)"
               >
                 Legacy

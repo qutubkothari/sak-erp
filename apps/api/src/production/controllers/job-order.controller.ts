@@ -138,6 +138,13 @@ export class JobOrderController {
     return this.jobOrderService.approveQC(tenantId, id, approvedUids, rejectedUids, userId);
   }
 
+  @Post(':id/ensure-uids')
+  async ensureUids(@Request() req: any, @Param('id') id: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.ensureUidsForJobOrder(tenantId, id, userId);
+  }
+
   @Get(':id/completion-preview')
   async getCompletionPreview(@Request() req: any, @Param('id') id: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];

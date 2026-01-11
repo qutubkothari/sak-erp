@@ -4,6 +4,10 @@
 # 2. Builds the app locally
 # 3. Deploys to Hostinger VPS
 
+param(
+    [string]$CommitMessage
+)
+
 $ErrorActionPreference = "Stop"
 
 Write-Host "`n========================================" -ForegroundColor Cyan
@@ -13,7 +17,7 @@ Write-Host "========================================`n" -ForegroundColor Cyan
 # ====== STEP 1: GitHub Push ======
 Write-Host "=== Step 1: Pushing to GitHub ===" -ForegroundColor Yellow
 
-$commitMessage = Read-Host "Enter commit message (or press Enter for auto)"
+$commitMessage = $CommitMessage
 if ([string]::IsNullOrWhiteSpace($commitMessage)) {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm"
     $commitMessage = "Auto deploy - $timestamp"

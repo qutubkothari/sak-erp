@@ -39,7 +39,35 @@ export class EmailService {
     return (value || '').trim().toLowerCase();
   }
 
-  private async applyFromAndReplyTo(
+  private listAttachmentNames(attachments: nodemailer.SendMailOptions['attachments']): string[] {
+    const raw = attachments;
+    if (!raw) return [];
+    const items = Array.isArray(raw) ? raw : [raw];
+
+    const names: string[] = [];
+    for (const item of items) {
+      if (!item) continue;
+      if (typeof item === 'string') {
+        names.push(item);
+        continue;
+      }
+
+      const filename = (item as any).filename;
+      if (typeof filename === 'string' && filename.trim()) {
+        names.push(filename.trim());
+        continue;
+      }
+
+      const path = (item as any).path;
+      if (typeof path === 'string' && path.trim()) {
+        names.push(path.trim());
+      }
+    }
+
+    return names;
+  }
+
+  public async applyFromAndReplyTo(
     mailOptions: nodemailer.SendMailOptions,
     fromType: 'admin' | 'sales' | 'support' | 'technical' | 'purchase' | 'hr' | 'noreply' = 'noreply',
   ): Promise<nodemailer.SendMailOptions> {
@@ -83,6 +111,26 @@ export class EmailService {
     return this.sendMail(mailOptions);
   }
 
+  async buildRFQPreview(to: string, rfqData: any) {
+    let mailOptions: nodemailer.SendMailOptions = {
+      to,
+      subject: `Request for Quotation - ${rfqData.rfq_number}`,
+      html: this.generateRFQTemplate(rfqData) + this.emailConfig.getEmailSignature(),
+      attachments: rfqData.attachments || [],
+    };
+
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase');
+
+    return {
+      to: mailOptions.to,
+      from: mailOptions.from,
+      replyTo: mailOptions.replyTo,
+      subject: mailOptions.subject,
+      html: mailOptions.html,
+      attachments: this.listAttachmentNames(mailOptions.attachments),
+    };
+  }
+
   async sendPO(to: string, poData: any) {
     let mailOptions: nodemailer.SendMailOptions = {
       to,
@@ -93,6 +141,26 @@ export class EmailService {
 
     mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase');
     return this.sendMail(mailOptions);
+  }
+
+  async buildPOPreview(to: string, poData: any) {
+    let mailOptions: nodemailer.SendMailOptions = {
+      to,
+      subject: `Purchase Order - ${poData.po_number}`,
+      html: this.generatePOTemplate(poData) + this.emailConfig.getEmailSignature(),
+      attachments: poData.attachments || [],
+    };
+
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase');
+
+    return {
+      to: mailOptions.to,
+      from: mailOptions.from,
+      replyTo: mailOptions.replyTo,
+      subject: mailOptions.subject,
+      html: mailOptions.html,
+      attachments: this.listAttachmentNames(mailOptions.attachments),
+    };
   }
 
   async sendPOTrackingReminder(to: string, poData: any) {

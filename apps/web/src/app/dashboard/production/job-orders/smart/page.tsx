@@ -382,19 +382,13 @@ function SmartJobOrdersPageContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 p-8">
+    <div className="min-h-screen bg-gradient-to-br from-[#FAF9F6] to-[#E8DCC4] p-6">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-start gap-6 mb-8">
           <div>
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="text-amber-600 hover:text-amber-800 mb-2"
-            >
-              ← Back to Dashboard
-            </button>
-            <h1 className="text-4xl font-bold text-amber-900">Smart Job Order</h1>
-            <p className="text-amber-700">{headerSubtitle}</p>
-            <p className="text-xs text-amber-700 mt-2">
+            <h1 className="text-4xl font-bold text-[#36454F]">Smart Job Order</h1>
+            <p className="text-[#6F4E37]">{headerSubtitle}</p>
+            <p className="text-xs text-[#6F4E37] mt-2">
               Legacy form: /dashboard/production/job-orders?legacy=1
             </p>
           </div>
@@ -403,14 +397,14 @@ function SmartJobOrdersPageContent() {
             <button
               onClick={fetchPreview}
               disabled={!canPreview || loadingPreview}
-              className="px-4 py-2 rounded-lg border border-amber-300 text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+              className="px-4 py-2 rounded-lg border border-[#E8DCC4] text-[#6F4E37] hover:bg-[#E8DCC4] disabled:opacity-50"
             >
               {loadingPreview ? 'Loading…' : 'Load BOM'}
             </button>
             <button
               onClick={handleCreate}
               disabled={!canPreview || creating}
-              className="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+              className="px-4 py-2 rounded-lg bg-[#8B6F47] text-white hover:bg-[#6F4E37] disabled:opacity-50"
             >
               {creating ? 'Creating…' : 'Create Job Order'}
             </button>
