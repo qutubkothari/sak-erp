@@ -71,6 +71,9 @@ function PurchaseOrdersContent() {
   const [poEmailPreviewLoading, setPoEmailPreviewLoading] = useState(false);
   const [poEmailSending, setPoEmailSending] = useState(false);
   const [poEmailPreview, setPoEmailPreview] = useState<any>(null);
+  const [poEmailTo, setPoEmailTo] = useState('');
+  const [poEmailSubject, setPoEmailSubject] = useState('');
+  const [poEmailMessage, setPoEmailMessage] = useState('');
   const [editingPOId, setEditingPOId] = useState<string | null>(null);
   const [editingMode, setEditingMode] = useState<'create' | 'edit' | 'tracking'>('create');
   const [filterStatus, setFilterStatus] = useState('ALL');
@@ -1234,13 +1237,20 @@ function PurchaseOrdersContent() {
     }
   };
 
-  const handlePreviewPOEmail = async (poId: string) => {
+  const fetchPOEmailPreview = async (poId: string, payload: any, seedEditableFields: boolean) => {
     try {
       setPoEmailPreviewLoading(true);
-      const res = await apiClient.post(`/purchase/orders/${poId}/preview-email`, {});
+      const res = await apiClient.post(`/purchase/orders/${poId}/preview-email`, payload);
 
       setPoEmailPreview(res);
       setShowPOEmailPreview(true);
+
+      if (seedEditableFields) {
+        const preview = res?.preview || res;
+        setPoEmailTo(String(preview?.to || res?.recipient || ''));
+        setPoEmailSubject(String(preview?.subject || ''));
+        setPoEmailMessage('');
+      }
     } catch (error: any) {
       console.error('Error previewing PO email:', error);
       setAlertMessage({
@@ -1252,10 +1262,32 @@ function PurchaseOrdersContent() {
     }
   };
 
+  const handlePreviewPOEmail = async (poId: string) => {
+    return fetchPOEmailPreview(poId, {}, true);
+  };
+
+  const handleUpdatePOEmailPreview = async () => {
+    const poId = String(poEmailPreview?.po_id || selectedPO?.id || '').trim();
+    if (!poId) return;
+    return fetchPOEmailPreview(
+      poId,
+      {
+        to: poEmailTo,
+        subject: poEmailSubject,
+        customMessage: poEmailMessage,
+      },
+      false,
+    );
+  };
+
   const handleSendPOEmail = async (poId: string) => {
     try {
       setPoEmailSending(true);
-      const res = await apiClient.post(`/purchase/orders/${poId}/send-email`, {});
+      const res = await apiClient.post(`/purchase/orders/${poId}/send-email`, {
+        to: poEmailTo,
+        subject: poEmailSubject,
+        customMessage: poEmailMessage,
+      });
 
       setAlertMessage({
         type: 'success',
@@ -1263,6 +1295,9 @@ function PurchaseOrdersContent() {
       });
       setShowPOEmailPreview(false);
       setPoEmailPreview(null);
+      setPoEmailTo('');
+      setPoEmailSubject('');
+      setPoEmailMessage('');
       setShowViewModal(false);
       await fetchOrders();
     } catch (error: any) {
@@ -2584,6 +2619,9 @@ function PurchaseOrdersContent() {
                 onClick={() => {
                   setShowPOEmailPreview(false);
                   setPoEmailPreview(null);
+                  setPoEmailTo('');
+                  setPoEmailSubject('');
+                  setPoEmailMessage('');
                 }}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
               >
@@ -2599,9 +2637,54 @@ function PurchaseOrdersContent() {
               return (
                 <div className="p-6 space-y-4">
                   <div className="bg-gray-50 p-4 rounded-lg text-sm space-y-1">
-                    <div>
-                      <span className="font-semibold">To:</span> {String(preview?.to || '')}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <label className="block">
+                        <span className="font-semibold">To</span>
+                        <input
+                          className="mt-1 w-full border rounded px-3 py-2"
+                          value={poEmailTo}
+                          onChange={(e) => setPoEmailTo(e.target.value)}
+                          placeholder="vendor@email.com"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="font-semibold">Subject</span>
+                        <input
+                          className="mt-1 w-full border rounded px-3 py-2"
+                          value={poEmailSubject}
+                          onChange={(e) => setPoEmailSubject(e.target.value)}
+                          placeholder="Subject"
+                        />
+                      </label>
                     </div>
+
+                    <label className="block mt-2">
+                      <span className="font-semibold">Message (optional)</span>
+                      <textarea
+                        className="mt-1 w-full border rounded px-3 py-2"
+                        rows={3}
+                        value={poEmailMessage}
+                        onChange={(e) => setPoEmailMessage(e.target.value)}
+                        placeholder="Add a short note to the vendor..."
+                      />
+                    </label>
+
+                    <div className="flex justify-end mt-2">
+                      <button
+                        type="button"
+                        onClick={handleUpdatePOEmailPreview}
+                        disabled={poEmailPreviewLoading}
+                        className={`px-4 py-2 rounded-lg transition-colors text-sm ${
+                          poEmailPreviewLoading
+                            ? 'bg-gray-300 text-gray-600'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                      >
+                        {poEmailPreviewLoading ? 'Updating...' : 'Update Preview'}
+                      </button>
+                    </div>
+
                     <div>
                       <span className="font-semibold">From:</span> {String(preview?.from || '')}
                     </div>
@@ -2610,9 +2693,6 @@ function PurchaseOrdersContent() {
                         <span className="font-semibold">Reply-To:</span> {String(preview.replyTo)}
                       </div>
                     )}
-                    <div>
-                      <span className="font-semibold">Subject:</span> {String(preview?.subject || '')}
-                    </div>
                     {Array.isArray(preview?.attachments) && preview.attachments.length > 0 && (
                       <div>
                         <span className="font-semibold">Attachments:</span> {preview.attachments.join(', ')}
@@ -2635,6 +2715,9 @@ function PurchaseOrdersContent() {
                       onClick={() => {
                         setShowPOEmailPreview(false);
                         setPoEmailPreview(null);
+                        setPoEmailTo('');
+                        setPoEmailSubject('');
+                        setPoEmailMessage('');
                       }}
                       className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
                     >
@@ -2642,9 +2725,9 @@ function PurchaseOrdersContent() {
                     </button>
                     <button
                       onClick={() => handleSendPOEmail(poId)}
-                      disabled={poEmailSending || !poId}
+                      disabled={poEmailSending || !poId || !poEmailTo.trim()}
                       className={`px-6 py-2 rounded-lg transition-colors ${
-                        poEmailSending || !poId
+                        poEmailSending || !poId || !poEmailTo.trim()
                           ? 'bg-gray-300 text-gray-600'
                           : 'bg-green-600 text-white hover:bg-green-700'
                       }`}

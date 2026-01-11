@@ -118,13 +118,13 @@ export class PurchaseOrdersController {
   }
 
   @Post(':id/send-email')
-  async sendPOEmail(@Request() req: any, @Param('id') id: string) {
-    return this.poService.sendPOEmail(req.user.tenantId, id);
+  async sendPOEmail(@Request() req: any, @Param('id') id: string, @Body() body?: any) {
+    return this.poService.sendPOEmail(req.user.tenantId, id, body);
   }
 
   @Post(':id/preview-email')
-  async previewPOEmail(@Request() req: any, @Param('id') id: string) {
-    return this.poService.previewPOEmail(req.user.tenantId, id);
+  async previewPOEmail(@Request() req: any, @Param('id') id: string, @Body() body?: any) {
+    return this.poService.previewPOEmail(req.user.tenantId, id, body);
   }
 
   @Post(':id/send-tracking-reminder')

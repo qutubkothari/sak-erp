@@ -142,6 +142,9 @@ function PRContent() {
   const [rfqSending, setRfqSending] = useState(false);
   const [rfqResponseDate, setRfqResponseDate] = useState('');
   const [rfqRemarks, setRfqRemarks] = useState('');
+  const [rfqRecipientOverrides, setRfqRecipientOverrides] = useState<Record<string, string>>({});
+  const [rfqSubjectOverride, setRfqSubjectOverride] = useState('');
+  const [rfqCustomMessage, setRfqCustomMessage] = useState('');
   const [showRfqPreview, setShowRfqPreview] = useState(false);
   const [rfqPreviewData, setRfqPreviewData] = useState<any>(null);
   const [rfqPreviewIndex, setRfqPreviewIndex] = useState(0);
@@ -631,7 +634,7 @@ function PRContent() {
     });
   };
 
-  const handlePreviewRFQ = async () => {
+  const handlePreviewRFQ = async (options?: { keepIndex?: number }) => {
     if (!selectedPR) return;
     const selectedVendors = getSelectedVendorIds();
     if (selectedVendors.length === 0) {
@@ -658,16 +661,26 @@ function PRContent() {
         itemVendors: itemVendorAssignmentsForApi,
         responseDate: rfqResponseDate || undefined,
         remarks: rfqRemarks || undefined,
+        recipientOverrides: rfqRecipientOverrides,
+        subject: rfqSubjectOverride.trim() ? rfqSubjectOverride.trim() : undefined,
+        customMessage: rfqCustomMessage || undefined,
       });
 
-      setRfqPreviewIndex(0);
+      const emailPreviews = Array.isArray(preview?.previews) ? preview.previews : [];
+      const keepIndex = typeof options?.keepIndex === 'number' ? options.keepIndex : undefined;
+      const nextIndex =
+        typeof keepIndex === 'number'
+          ? Math.min(Math.max(keepIndex, 0), Math.max(emailPreviews.length - 1, 0))
+          : 0;
+
+      setRfqPreviewIndex(nextIndex);
       setRfqPreviewData({
         pr: selectedPR,
         vendors: rfqVendors.filter((v) => selectedVendors.includes(v.id)),
         itemVendors: itemVendorAssignments,
         responseDate: rfqResponseDate,
         remarks: rfqRemarks,
-        emailPreviews: Array.isArray(preview?.previews) ? preview.previews : [],
+        emailPreviews,
       });
       setShowRfqPreview(true);
     } catch (error) {
@@ -699,6 +712,9 @@ function PRContent() {
         itemVendors: itemVendorAssignments,
         responseDate: rfqResponseDate || undefined,
         remarks: rfqRemarks || undefined,
+        recipientOverrides: rfqRecipientOverrides,
+        subject: rfqSubjectOverride.trim() ? rfqSubjectOverride.trim() : undefined,
+        customMessage: rfqCustomMessage || undefined,
       });
 
       alert(`RFQ sent: ${result?.sent_count ?? 0}, failed: ${result?.failed_count ?? 0}`);
@@ -707,6 +723,9 @@ function PRContent() {
       setRfqItemVendors({});
       setRfqResponseDate('');
       setRfqRemarks('');
+      setRfqRecipientOverrides({});
+      setRfqSubjectOverride('');
+      setRfqCustomMessage('');
     } catch (error) {
       console.error('Error sending RFQ:', error);
       alert('Failed to send RFQ');
@@ -1722,7 +1741,7 @@ function PRContent() {
 
                       <div className="flex justify-end gap-3 mt-3">
                         <button
-                          onClick={handlePreviewRFQ}
+                          onClick={() => handlePreviewRFQ()}
                           disabled={rfqLoadingVendors || rfqPreviewLoading}
                           className={`px-6 py-2 rounded-lg transition-colors ${
                             rfqLoadingVendors || rfqPreviewLoading
@@ -1775,6 +1794,13 @@ function PRContent() {
                     ? rfqPreviewData.emailPreviews
                     : [];
                   const current = previews[rfqPreviewIndex] || previews[0];
+                  const recipientKey = String(current?.vendor_id || current?.to || '').trim();
+                  const effectiveTo =
+                    (recipientKey && typeof rfqRecipientOverrides[recipientKey] === 'string'
+                      ? rfqRecipientOverrides[recipientKey]
+                      : '') || String(current?.to || '');
+                  const effectiveSubject =
+                    (rfqSubjectOverride ? rfqSubjectOverride : String(current?.subject || '')) || '';
 
                   return (
                     <>
@@ -1822,10 +1848,67 @@ function PRContent() {
                             </div>
                           ) : (
                             <>
-                              <div className="bg-gray-50 p-4 rounded-lg text-sm space-y-1">
-                                <div>
-                                  <span className="font-semibold">To:</span> {String(current?.to || '')}
+                              <div className="bg-gray-50 p-4 rounded-lg text-sm space-y-3">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <label className="block">
+                                    <span className="font-semibold">To</span>
+                                    <input
+                                      className="mt-1 w-full border rounded px-3 py-2"
+                                      value={effectiveTo}
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        if (!recipientKey) return;
+                                        setRfqRecipientOverrides((prev) => {
+                                          const next = { ...prev };
+                                          if (!value.trim()) {
+                                            delete next[recipientKey];
+                                            return next;
+                                          }
+                                          next[recipientKey] = value;
+                                          return next;
+                                        });
+                                      }}
+                                      placeholder="vendor@email.com"
+                                    />
+                                  </label>
+
+                                  <label className="block">
+                                    <span className="font-semibold">Subject</span>
+                                    <input
+                                      className="mt-1 w-full border rounded px-3 py-2"
+                                      value={effectiveSubject}
+                                      onChange={(e) => setRfqSubjectOverride(e.target.value)}
+                                      placeholder="Subject"
+                                    />
+                                  </label>
                                 </div>
+
+                                <label className="block">
+                                  <span className="font-semibold">Message (optional)</span>
+                                  <textarea
+                                    className="mt-1 w-full border rounded px-3 py-2"
+                                    rows={3}
+                                    value={rfqCustomMessage}
+                                    onChange={(e) => setRfqCustomMessage(e.target.value)}
+                                    placeholder="Add a short note to the vendor..."
+                                  />
+                                </label>
+
+                                <div className="flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePreviewRFQ({ keepIndex: rfqPreviewIndex })}
+                                    disabled={rfqPreviewLoading}
+                                    className={`px-4 py-2 rounded-lg transition-colors text-sm ${
+                                      rfqPreviewLoading
+                                        ? 'bg-gray-300 text-gray-600'
+                                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                                    }`}
+                                  >
+                                    {rfqPreviewLoading ? 'Updating...' : 'Update Preview'}
+                                  </button>
+                                </div>
+
                                 <div>
                                   <span className="font-semibold">From:</span> {String(current?.from || '')}
                                 </div>
@@ -1835,10 +1918,6 @@ function PRContent() {
                                     {String(current.replyTo)}
                                   </div>
                                 )}
-                                <div>
-                                  <span className="font-semibold">Subject:</span>{' '}
-                                  {String(current?.subject || '')}
-                                </div>
                                 {Array.isArray(current?.attachments) && current.attachments.length > 0 && (
                                   <div>
                                     <span className="font-semibold">Attachments:</span>{' '}

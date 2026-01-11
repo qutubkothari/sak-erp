@@ -422,6 +422,23 @@ export class PurchaseRequisitionsService {
     const vendorEmails: string[] = Array.isArray(body?.vendorEmails) ? body.vendorEmails : [];
     const itemVendors: Array<{ itemId: string; vendorIds: string[] }> = Array.isArray(body?.itemVendors) ? body.itemVendors : [];
 
+    const recipientOverrides: Record<string, string> =
+      body?.recipientOverrides && typeof body.recipientOverrides === 'object'
+        ? body.recipientOverrides
+        : body?.recipient_overrides && typeof body.recipient_overrides === 'object'
+          ? body.recipient_overrides
+          : {};
+
+    const subjectOverride: string | undefined =
+      typeof body?.subject === 'string' && body.subject.trim() ? body.subject.trim() : undefined;
+
+    const customMessage: string | undefined =
+      typeof body?.customMessage === 'string'
+        ? body.customMessage
+        : typeof body?.custom_message === 'string'
+          ? body.custom_message
+          : undefined;
+
     if (vendorIds.length === 0 && vendorEmails.length === 0) {
       throw new BadRequestException('vendorIds or vendorEmails is required');
     }
@@ -489,6 +506,23 @@ export class PurchaseRequisitionsService {
       }
     }
 
+    // Apply recipient overrides (by vendorId or by original email)
+    for (const recipient of recipients) {
+      const keyByVendorId = recipient.vendorId ? String(recipient.vendorId) : '';
+      const keyByEmail = String(recipient.email || '').trim();
+      const override =
+        (keyByVendorId && typeof recipientOverrides[keyByVendorId] === 'string'
+          ? recipientOverrides[keyByVendorId]
+          : undefined) ||
+        (keyByEmail && typeof recipientOverrides[keyByEmail] === 'string'
+          ? recipientOverrides[keyByEmail]
+          : undefined);
+
+      if (typeof override === 'string' && override.trim()) {
+        recipient.email = override.trim();
+      }
+    }
+
     if (recipients.length === 0) {
       throw new BadRequestException('No valid vendor emails found');
     }
@@ -527,6 +561,8 @@ export class PurchaseRequisitionsService {
           items,
           response_date: responseDate,
           remarks,
+          subject: subjectOverride,
+          custom_message: customMessage,
           attachments: Array.isArray(body?.attachments) ? body.attachments : [],
         });
       }),
@@ -561,6 +597,23 @@ export class PurchaseRequisitionsService {
     const itemVendors: Array<{ itemId: string; vendorIds: string[] }> = Array.isArray(body?.itemVendors)
       ? body.itemVendors
       : [];
+
+    const recipientOverrides: Record<string, string> =
+      body?.recipientOverrides && typeof body.recipientOverrides === 'object'
+        ? body.recipientOverrides
+        : body?.recipient_overrides && typeof body.recipient_overrides === 'object'
+          ? body.recipient_overrides
+          : {};
+
+    const subjectOverride: string | undefined =
+      typeof body?.subject === 'string' && body.subject.trim() ? body.subject.trim() : undefined;
+
+    const customMessage: string | undefined =
+      typeof body?.customMessage === 'string'
+        ? body.customMessage
+        : typeof body?.custom_message === 'string'
+          ? body.custom_message
+          : undefined;
 
     if (vendorIds.length === 0 && vendorEmails.length === 0) {
       throw new BadRequestException('vendorIds or vendorEmails is required');
@@ -601,6 +654,23 @@ export class PurchaseRequisitionsService {
       }
     }
 
+    // Apply recipient overrides (by vendorId or by original email)
+    for (const recipient of recipients) {
+      const keyByVendorId = recipient.vendorId ? String(recipient.vendorId) : '';
+      const keyByEmail = String(recipient.email || '').trim();
+      const override =
+        (keyByVendorId && typeof recipientOverrides[keyByVendorId] === 'string'
+          ? recipientOverrides[keyByVendorId]
+          : undefined) ||
+        (keyByEmail && typeof recipientOverrides[keyByEmail] === 'string'
+          ? recipientOverrides[keyByEmail]
+          : undefined);
+
+      if (typeof override === 'string' && override.trim()) {
+        recipient.email = override.trim();
+      }
+    }
+
     if (recipients.length === 0) {
       throw new BadRequestException('No valid vendor emails found');
     }
@@ -636,6 +706,8 @@ export class PurchaseRequisitionsService {
           items,
           response_date: responseDate,
           remarks,
+          subject: subjectOverride,
+          custom_message: customMessage,
           attachments: Array.isArray(body?.attachments) ? body.attachments : [],
         });
 

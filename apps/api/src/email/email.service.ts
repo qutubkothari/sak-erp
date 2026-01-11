@@ -39,6 +39,21 @@ export class EmailService {
     return (value || '').trim().toLowerCase();
   }
 
+  private escapeHtml(value: unknown): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private formatPlainTextAsHtml(value: unknown): string {
+    const text = String(value ?? '').trim();
+    if (!text) return '';
+    return this.escapeHtml(text).replace(/\r\n|\r|\n/g, '<br>');
+  }
+
   private listAttachmentNames(attachments: nodemailer.SendMailOptions['attachments']): string[] {
     const raw = attachments;
     if (!raw) return [];
@@ -100,9 +115,10 @@ export class EmailService {
   }
 
   async sendRFQ(to: string, rfqData: any) {
+    const subject = String(rfqData?.subject || '').trim() || `Request for Quotation - ${rfqData.rfq_number}`;
     let mailOptions: nodemailer.SendMailOptions = {
       to,
-      subject: `Request for Quotation - ${rfqData.rfq_number}`,
+      subject,
       html: this.generateRFQTemplate(rfqData) + this.emailConfig.getEmailSignature(),
       attachments: rfqData.attachments || [],
     };
@@ -112,9 +128,10 @@ export class EmailService {
   }
 
   async buildRFQPreview(to: string, rfqData: any) {
+    const subject = String(rfqData?.subject || '').trim() || `Request for Quotation - ${rfqData.rfq_number}`;
     let mailOptions: nodemailer.SendMailOptions = {
       to,
-      subject: `Request for Quotation - ${rfqData.rfq_number}`,
+      subject,
       html: this.generateRFQTemplate(rfqData) + this.emailConfig.getEmailSignature(),
       attachments: rfqData.attachments || [],
     };
@@ -132,9 +149,10 @@ export class EmailService {
   }
 
   async sendPO(to: string, poData: any) {
+    const subject = String(poData?.subject || '').trim() || `Purchase Order - ${poData.po_number}`;
     let mailOptions: nodemailer.SendMailOptions = {
       to,
-      subject: `Purchase Order - ${poData.po_number}`,
+      subject,
       html: this.generatePOTemplate(poData) + this.emailConfig.getEmailSignature(),
       attachments: poData.attachments || [],
     };
@@ -144,9 +162,10 @@ export class EmailService {
   }
 
   async buildPOPreview(to: string, poData: any) {
+    const subject = String(poData?.subject || '').trim() || `Purchase Order - ${poData.po_number}`;
     let mailOptions: nodemailer.SendMailOptions = {
       to,
-      subject: `Purchase Order - ${poData.po_number}`,
+      subject,
       html: this.generatePOTemplate(poData) + this.emailConfig.getEmailSignature(),
       attachments: poData.attachments || [],
     };
@@ -234,6 +253,13 @@ export class EmailService {
   }
 
   private generateRFQTemplate(rfqData: any): string {
+    const vendorName = this.escapeHtml(rfqData?.vendor_name || 'Vendor');
+    const responseDate = this.escapeHtml(rfqData?.response_date || 'As soon as possible');
+    const remarks = this.escapeHtml(rfqData?.remarks || '-');
+    const customMessageHtml = rfqData?.custom_message
+      ? this.formatPlainTextAsHtml(rfqData.custom_message)
+      : '';
+
     return `
       <!DOCTYPE html>
       <html>
@@ -242,6 +268,7 @@ export class EmailService {
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .header { background: #8B6F47; color: white; padding: 20px; text-align: center; }
             .content { padding: 20px; }
+            .info-box { background: #f9f9f9; padding: 15px; margin: 15px 0; border-left: 4px solid #8B6F47; }
             .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
             .table th, .table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
             .table th { background: #f4f4f4; font-weight: bold; }
@@ -251,11 +278,18 @@ export class EmailService {
         <body>
           <div class="header">
             <h1>Request for Quotation</h1>
-            <p>${rfqData.rfq_number}</p>
+            <p>${this.escapeHtml(rfqData?.rfq_number || '')}</p>
           </div>
           <div class="content">
-            <p>Dear ${rfqData.vendor_name},</p>
+            <p>Dear ${vendorName},</p>
             <p>We would like to request a quotation for the following items:</p>
+
+            ${customMessageHtml ? `
+              <div class="info-box">
+                <strong>Message:</strong><br>
+                ${customMessageHtml}
+              </div>
+            ` : ''}
             
             <table class="table">
               <thead>
@@ -273,19 +307,19 @@ export class EmailService {
                 ${rfqData.items.map((item: any, index: number) => `
                   <tr>
                     <td>${index + 1}</td>
-                    <td>${item.item_code || '-'}</td>
-                    <td>${item.item_name}</td>
+                    <td>${this.escapeHtml(item?.item_code || '-')}</td>
+                    <td>${this.escapeHtml(item?.item_name || '-')}</td>
                     <td>${item.quantity}</td>
-                    <td>${item.uom || '-'}</td>
-                    <td>${item.description || '-'}</td>
-                    <td>${item.required_date || '-'}</td>
+                    <td>${this.escapeHtml(item?.uom || '-')}</td>
+                    <td>${this.escapeHtml(item?.description || '-')}</td>
+                    <td>${this.escapeHtml(item?.required_date || '-')}</td>
                   </tr>
                 `).join('')}
               </tbody>
             </table>
             
-            <p><strong>Expected Response Date:</strong> ${rfqData.response_date || 'As soon as possible'}</p>
-            <p><strong>Remarks:</strong> ${rfqData.remarks || '-'}</p>
+            <p><strong>Expected Response Date:</strong> ${responseDate}</p>
+            <p><strong>Remarks:</strong> ${remarks}</p>
             
             <p>Please provide your best quotation including:</p>
             <ul>
@@ -307,6 +341,14 @@ export class EmailService {
   }
 
   private generatePOTemplate(poData: any): string {
+    const vendorName = this.escapeHtml(poData?.vendor_name || 'Vendor');
+    const paymentTerms = this.escapeHtml(poData?.payment_terms || '-');
+    const deliveryAddress = poData?.delivery_address ? this.escapeHtml(poData.delivery_address) : '';
+    const remarks = poData?.remarks ? this.escapeHtml(poData.remarks) : '';
+    const customMessageHtml = poData?.custom_message
+      ? this.formatPlainTextAsHtml(poData.custom_message)
+      : '';
+
     return `
       <!DOCTYPE html>
       <html>
@@ -326,16 +368,23 @@ export class EmailService {
         <body>
           <div class="header">
             <h1>Purchase Order</h1>
-            <p>${poData.po_number}</p>
+            <p>${this.escapeHtml(poData?.po_number || '')}</p>
           </div>
           <div class="content">
-            <p>Dear ${poData.vendor_name},</p>
+            <p>Dear ${vendorName},</p>
             <p>Please supply the following items as per the details below:</p>
+
+            ${customMessageHtml ? `
+              <div class="info-box">
+                <strong>Message:</strong><br>
+                ${customMessageHtml}
+              </div>
+            ` : ''}
             
             <div class="info-box">
-              <strong>PO Date:</strong> ${poData.po_date}<br>
-              <strong>Expected Delivery:</strong> ${poData.delivery_date || '-'}<br>
-              <strong>Payment Terms:</strong> ${poData.payment_terms || '-'}
+              <strong>PO Date:</strong> ${this.escapeHtml(poData?.po_date || '-')}<br>
+              <strong>Expected Delivery:</strong> ${this.escapeHtml(poData?.delivery_date || '-')}<br>
+              <strong>Payment Terms:</strong> ${paymentTerms}
             </div>
             
             <table class="table">
@@ -353,7 +402,7 @@ export class EmailService {
                 ${poData.items.map((item: any, idx: number) => `
                   <tr>
                     <td>${idx + 1}</td>
-                    <td>${item.item_name}</td>
+                    <td>${this.escapeHtml(item?.item_name || '-')}</td>
                     <td>${item.quantity}</td>
                     <td>₹${item.unit_price.toFixed(2)}</td>
                     <td>${item.tax_percent}%</td>
@@ -367,14 +416,14 @@ export class EmailService {
             ${poData.other_charges ? `<p><strong>Other Charges:</strong> ₹${poData.other_charges.toFixed(2)}</p>` : ''}
             <p class="total">Total Amount: ₹${poData.total_amount.toFixed(2)}</p>
             
-            ${poData.delivery_address ? `
+            ${deliveryAddress ? `
               <div class="info-box">
                 <strong>Delivery Address:</strong><br>
-                ${poData.delivery_address}
+                ${deliveryAddress}
               </div>
             ` : ''}
             
-            ${poData.remarks ? `<p><strong>Remarks:</strong> ${poData.remarks}</p>` : ''}
+            ${remarks ? `<p><strong>Remarks:</strong> ${remarks}</p>` : ''}
             
             <p>Please acknowledge receipt of this PO and confirm the delivery schedule.</p>
             <p>Best regards,<br>${this.configService.get('COMPANY_NAME', 'SAK Solutions')}</p>

@@ -569,8 +569,13 @@ export class PurchaseOrdersService {
     };
   }
 
-  private async buildPOEmailData(tenantId: string, po: any) {
-    if (!po?.vendor?.email) {
+  private async buildPOEmailData(
+    tenantId: string,
+    po: any,
+    overrides?: { to?: string; subject?: string; customMessage?: string },
+  ) {
+    const recipient = String(overrides?.to || '').trim() || String(po?.vendor?.email || '').trim();
+    if (!recipient) {
       throw new BadRequestException('Vendor email not found');
     }
 
@@ -733,15 +738,32 @@ export class PurchaseOrdersService {
       total_amount: po.total_amount,
       delivery_address: po.delivery_address,
       remarks: po.remarks,
+      subject: overrides?.subject,
+      custom_message: overrides?.customMessage,
       attachments,
     };
 
-    return { recipient: po.vendor.email, emailData };
+    return { recipient, emailData };
   }
 
-  async previewPOEmail(tenantId: string, poId: string) {
+  async previewPOEmail(tenantId: string, poId: string, body?: any) {
     const po = await this.findOne(tenantId, poId);
-    const { recipient, emailData } = await this.buildPOEmailData(tenantId, po);
+    const overrides = {
+      to:
+        typeof body?.to === 'string'
+          ? body.to
+          : typeof body?.recipient === 'string'
+            ? body.recipient
+            : undefined,
+      subject: typeof body?.subject === 'string' ? body.subject : undefined,
+      customMessage:
+        typeof body?.customMessage === 'string'
+          ? body.customMessage
+          : typeof body?.custom_message === 'string'
+            ? body.custom_message
+            : undefined,
+    };
+    const { recipient, emailData } = await this.buildPOEmailData(tenantId, po, overrides);
 
     const preview = await this.emailService.buildPOPreview(recipient, emailData);
 
@@ -752,9 +774,24 @@ export class PurchaseOrdersService {
     };
   }
 
-  async sendPOEmail(tenantId: string, poId: string) {
+  async sendPOEmail(tenantId: string, poId: string, body?: any) {
     const po = await this.findOne(tenantId, poId);
-    const { recipient, emailData } = await this.buildPOEmailData(tenantId, po);
+    const overrides = {
+      to:
+        typeof body?.to === 'string'
+          ? body.to
+          : typeof body?.recipient === 'string'
+            ? body.recipient
+            : undefined,
+      subject: typeof body?.subject === 'string' ? body.subject : undefined,
+      customMessage:
+        typeof body?.customMessage === 'string'
+          ? body.customMessage
+          : typeof body?.custom_message === 'string'
+            ? body.custom_message
+            : undefined,
+    };
+    const { recipient, emailData } = await this.buildPOEmailData(tenantId, po, overrides);
 
     await this.emailService.sendPO(recipient, emailData);
 
