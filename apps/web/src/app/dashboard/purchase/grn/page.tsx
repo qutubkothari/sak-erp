@@ -1217,7 +1217,7 @@ function GRNContent() {
       {/* Create Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg w-[95vw] max-w-7xl max-h-[92vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900">Create Goods Receipt Note</h2>
             </div>
@@ -1335,8 +1335,10 @@ function GRNContent() {
 
                           <div>
                             <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">Item</label>
-                            <div className="text-sm font-medium text-gray-900 mt-1">
-                              {item.itemCode} - {item.itemName}
+                            <div className="text-sm font-medium text-gray-900 mt-1 break-words">
+                              <span className="whitespace-nowrap">{item.itemCode}</span>
+                              <span className="text-gray-500"> - </span>
+                              <span>{item.itemName}</span>
                             </div>
                             <div className="text-xs text-gray-500 mt-1">
                               Master HSN: {item.masterHsnCode || 'N/A'}
@@ -1506,7 +1508,7 @@ function GRNContent() {
       {/* View/Edit Modal */}
       {showViewModal && selectedGRN && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg w-[95vw] max-w-7xl max-h-[92vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
               <h2 className="text-2xl font-bold text-gray-900">
                 {editMode ? 'Edit GRN' : 'View GRN Details'}
