@@ -2228,6 +2228,8 @@ function PurchaseOrdersContent() {
                     <p className="font-semibold">{new Date(selectedPO.last_edited_at).toLocaleDateString()} {new Date(selectedPO.last_edited_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                   </div>
                 )}
+              </div>
+              <div className="grid grid-cols-2 gap-6">
                 <div>
                   <p className="text-sm text-gray-600">Vendor</p>
                   <p className="font-semibold">{(selectedPO as any)?.vendor?.name || (selectedPO as any)?.vendor_name || '-'}</p>
@@ -2245,6 +2247,7 @@ function PurchaseOrdersContent() {
                   <p className="text-sm text-gray-600">Total Amount</p>
                   <p className="font-semibold text-lg">₹{selectedPO.total_amount?.toLocaleString() || 0}</p>
                 </div>
+              </div>
               </div>
 
               {/* Items Table */}
