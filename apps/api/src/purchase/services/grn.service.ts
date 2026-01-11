@@ -261,11 +261,52 @@ export class GrnService {
         received_qty: i.received_qty 
       })), null, 2));
 
-      const { error: itemsError } = await this.supabase
+      const { data: insertedItems, error: itemsError } = await this.supabase
         .from('grn_items')
-        .insert(items);
+        .insert(items)
+        .select('id, item_id, item_code, accepted_qty, rejected_qty, received_qty, batch_number, rate');
 
       if (itemsError) throw new BadRequestException(itemsError.message);
+
+      const safeInsertedItems = Array.isArray(insertedItems) ? insertedItems : [];
+      const qcDecidedForAll = safeInsertedItems.length > 0 && safeInsertedItems.every((i: any) => {
+        const accepted = Number(i.accepted_qty ?? 0) || 0;
+        const rejected = Number(i.rejected_qty ?? 0) || 0;
+        const received = Number(i.received_qty ?? 0) || 0;
+        return accepted + rejected === received;
+      });
+
+      // If the user already provided accepted/rejected quantities (sum == received for all lines),
+      // treat it as QC completed and immediately add accepted stock.
+      if (qcDecidedForAll) {
+        await this.supabase
+          .from('grns')
+          .update({ qc_completed: true, updated_at: new Date().toISOString() })
+          .eq('tenant_id', tenantId)
+          .eq('id', grn.id);
+
+        for (const grnItem of safeInsertedItems) {
+          const acceptedQty = Number(grnItem.accepted_qty ?? 0) || 0;
+          if (acceptedQty <= 0) continue;
+
+          await this.createStockEntry({
+            tenant_id: tenantId,
+            item_id: grnItem.item_id,
+            warehouse_id: grn.warehouse_id,
+            quantity: acceptedQty,
+            available_quantity: acceptedQty,
+            allocated_quantity: 0,
+            unit_price: grnItem.rate,
+            batch_number: grnItem.batch_number,
+            grn_reference: grn.grn_number,
+            created_from: 'GRN_CREATE',
+            metadata: {
+              grn_item_id: grnItem.id,
+              item_code: grnItem.item_code,
+            },
+          });
+        }
+      }
     }
 
     // Calculate totals
@@ -980,6 +1021,27 @@ export class GrnService {
     try {
       console.log('=== CREATE STOCK ENTRY CALLED ===');
       console.log('Stock Data:', JSON.stringify(stockData, null, 2));
+
+      // Idempotency for GRN flows: if we have a grn_item_id, ensure we don't double-add stock.
+      const grnItemIdForDedup =
+        stockData?.metadata && typeof stockData.metadata === 'object'
+          ? (stockData.metadata.grn_item_id as string | undefined)
+          : undefined;
+      if (grnItemIdForDedup) {
+        const { data: existing, error: existingError } = await this.supabase
+          .from('stock_entries')
+          .select('id')
+          .eq('tenant_id', stockData.tenant_id)
+          .eq('metadata->>grn_item_id', grnItemIdForDedup)
+          .limit(1);
+
+        if (existingError) {
+          console.error('⚠️ Could not check existing stock entry for grn_item_id:', grnItemIdForDedup, existingError);
+        } else if (Array.isArray(existing) && existing.length > 0) {
+          console.log('ℹ️ Stock entry already exists for grn_item_id, skipping:', grnItemIdForDedup);
+          return;
+        }
+      }
 
       const quantityChange = Number(stockData.quantity ?? 0) || 0;
       const availableQuantity =
