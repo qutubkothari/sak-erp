@@ -269,44 +269,8 @@ export class GrnService {
       if (itemsError) throw new BadRequestException(itemsError.message);
 
       const safeInsertedItems = Array.isArray(insertedItems) ? insertedItems : [];
-      const qcDecidedForAll = safeInsertedItems.length > 0 && safeInsertedItems.every((i: any) => {
-        const accepted = Number(i.accepted_qty ?? 0) || 0;
-        const rejected = Number(i.rejected_qty ?? 0) || 0;
-        const received = Number(i.received_qty ?? 0) || 0;
-        return accepted + rejected === received;
-      });
-
-      // If the user already provided accepted/rejected quantities (sum == received for all lines),
-      // treat it as QC completed and immediately add accepted stock.
-      if (qcDecidedForAll) {
-        await this.supabase
-          .from('grns')
-          .update({ qc_completed: true, updated_at: new Date().toISOString() })
-          .eq('tenant_id', tenantId)
-          .eq('id', grn.id);
-
-        for (const grnItem of safeInsertedItems) {
-          const acceptedQty = Number(grnItem.accepted_qty ?? 0) || 0;
-          if (acceptedQty <= 0) continue;
-
-          await this.createStockEntry({
-            tenant_id: tenantId,
-            item_id: grnItem.item_id,
-            warehouse_id: grn.warehouse_id,
-            quantity: acceptedQty,
-            available_quantity: acceptedQty,
-            allocated_quantity: 0,
-            unit_price: grnItem.rate,
-            batch_number: grnItem.batch_number,
-            grn_reference: grn.grn_number,
-            created_from: 'GRN_CREATE',
-            metadata: {
-              grn_item_id: grnItem.id,
-              item_code: grnItem.item_code,
-            },
-          });
-        }
-      }
+      // Note: We intentionally do not auto-mark qc_completed on GRN create.
+      // QC should be completed explicitly via qcAccept (or as part of an approval workflow).
     }
 
     // Calculate totals

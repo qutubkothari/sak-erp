@@ -1852,13 +1852,19 @@ function GRNContent() {
                         setQcFormData(qcData);
                         setShowQCModal(true);
                       }}
-                      disabled={selectedGRN.status !== 'DRAFT' || selectedGRN.qc_completed}
+                      disabled={selectedGRN.status !== 'DRAFT'}
                       className={`px-6 py-2 text-white rounded-lg ${
-                        selectedGRN.status === 'DRAFT' && !selectedGRN.qc_completed
+                        selectedGRN.status === 'DRAFT'
                           ? 'bg-blue-600 hover:bg-blue-700 cursor-pointer' 
                           : 'bg-gray-400 cursor-not-allowed'
                       }`}
-                      title={selectedGRN.qc_completed ? 'QC already completed' : 'Perform QC inspection'}
+                      title={
+                        selectedGRN.status !== 'DRAFT'
+                          ? 'QC can be performed only in DRAFT'
+                          : selectedGRN.qc_completed
+                            ? 'QC already marked completed (you can still review/update)'
+                            : 'Perform QC inspection'
+                      }
                     >
                       🔍 QC Accept
                     </button>
