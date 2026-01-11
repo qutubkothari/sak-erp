@@ -76,6 +76,12 @@ type SmartPreview = {
   };
 };
 
+type SmartCreateResponse = {
+  jobOrder?: any;
+  autoCompletedSubJobOrders?: any[];
+  preview?: SmartPreview;
+};
+
 export default function SmartJobOrdersPage() {
   return (
     <Suspense
@@ -117,6 +123,9 @@ function SmartJobOrdersPageContent() {
   const [stockByItemId, setStockByItemId] = useState<
     Record<string, { available: number; loading: boolean; error?: string }>
   >({});
+
+  const [createSummary, setCreateSummary] = useState<SmartCreateResponse | null>(null);
+  const [showCreateSummary, setShowCreateSummary] = useState(false);
 
   const [creating, setCreating] = useState(false);
 
@@ -351,22 +360,17 @@ function SmartJobOrdersPageContent() {
         }
       }
 
-      const result = await apiClient.post<any>('/job-orders/smart/create', {
+      const result = (await apiClient.post('/job-orders/smart/create', {
         itemId,
         quantity: Number(quantity),
         startDate: new Date().toISOString().slice(0, 10),
         salesOrderId: salesOrderId || undefined,
         salesOrderItemId: salesOrderItemId || undefined,
         variantSelections,
-      });
+      })) as SmartCreateResponse;
 
-      const jobOrderNumber = result?.jobOrder?.job_order_number || result?.jobOrder?.jobOrderNumber || result?.jobOrder?.job_order_number;
-      const subCount = Array.isArray(result?.autoCompletedSubJobOrders) ? result.autoCompletedSubJobOrders.length : 0;
-
-      alert(
-        `✅ Job Order created!${jobOrderNumber ? `\n\nJO: ${jobOrderNumber}` : ''}` +
-          `\n\nAuto-created & completed sub-assemblies: ${subCount}`,
-      );
+      setCreateSummary(result);
+      setShowCreateSummary(true);
 
       // refresh preview (stock changed due to auto-completion)
       await fetchPreview();
@@ -391,7 +395,7 @@ function SmartJobOrdersPageContent() {
             <h1 className="text-4xl font-bold text-amber-900">Smart Job Order</h1>
             <p className="text-amber-700">{headerSubtitle}</p>
             <p className="text-xs text-amber-700 mt-2">
-              Legacy form is kept at /dashboard/production/job-orders
+              Legacy form: /dashboard/production/job-orders?legacy=1
             </p>
           </div>
 
@@ -643,6 +647,146 @@ function SmartJobOrdersPageContent() {
           )}
         </div>
       </div>
+
+      {showCreateSummary ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-3xl rounded-xl shadow-xl border border-amber-200 overflow-hidden">
+            <div className="px-6 py-4 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+              <div>
+                <div className="text-lg font-semibold text-amber-900">Smart Job Order Created</div>
+                <div className="text-sm text-amber-800">
+                  Materials below are <span className="font-semibold">issued</span> (stock reduced) at creation.
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCreateSummary(false)}
+                className="px-3 py-1.5 rounded-md border border-amber-300 text-amber-800 hover:bg-amber-100"
+              >
+                Close
+              </button>
+            </div>
+
+            {(() => {
+              const jo = (createSummary as any)?.jobOrder || (createSummary as any)?.job_order;
+              const joNumber = jo?.job_order_number || jo?.jobOrderNumber || '';
+              const joStatus = jo?.status || '-';
+              const joItemCode = jo?.item_code || jo?.itemCode || '';
+              const joItemName = jo?.item_name || jo?.itemName || '';
+              const joQty = Number(jo?.quantity ?? 0) || 0;
+
+              const materials = Array.isArray(jo?.materials) ? jo.materials : [];
+              const totalIssued = materials.reduce(
+                (sum: number, m: any) => sum + (Number(m?.issued_quantity ?? m?.issuedQuantity ?? 0) || 0),
+                0,
+              );
+
+              const subJobs = Array.isArray((createSummary as any)?.autoCompletedSubJobOrders)
+                ? (createSummary as any).autoCompletedSubJobOrders
+                : [];
+
+              return (
+                <div className="p-6">
+                  <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-lg p-4">
+                    <div className="text-sm">
+                      <div className="text-gray-600">Job Order</div>
+                      <div className="font-semibold text-gray-900">{joNumber || '—'}</div>
+                    </div>
+                    <div className="text-sm">
+                      <div className="text-gray-600">Status</div>
+                      <div className="font-semibold text-gray-900">{joStatus}</div>
+                    </div>
+                    <div className="text-sm col-span-2">
+                      <div className="text-gray-600">Item</div>
+                      <div className="font-semibold text-gray-900">
+                        {joItemCode ? `${joItemCode} — ${joItemName}` : joItemName || '—'}
+                      </div>
+                    </div>
+                    <div className="text-sm">
+                      <div className="text-gray-600">Quantity</div>
+                      <div className="font-semibold text-gray-900">{joQty}</div>
+                    </div>
+                    <div className="text-sm">
+                      <div className="text-gray-600">Stock Reduced (Issued)</div>
+                      <div className="font-semibold text-gray-900">{totalIssued}</div>
+                    </div>
+                  </div>
+
+                  {subJobs.length ? (
+                    <div className="mt-5">
+                      <div className="font-medium text-gray-800 mb-2">Auto-completed Sub-Assemblies</div>
+                      <div className="text-sm text-gray-700">
+                        {subJobs.map((s: any, idx: number) => {
+                          const n = s?.job_order_number || s?.jobOrderNumber || s?.jobOrder?.job_order_number;
+                          const code = s?.item_code || s?.itemCode;
+                          const name = s?.item_name || s?.itemName;
+                          const q = Number(s?.quantity ?? 0) || 0;
+                          return (
+                            <div key={idx} className="py-1">
+                              <span className="font-semibold text-gray-900">{n || 'JO'}</span>
+                              {code || name ? <span className="text-gray-700"> — {code} {name ? `(${name})` : ''}</span> : null}
+                              {q ? <span className="text-gray-600"> • Qty {q}</span> : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-5">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="font-medium text-gray-800">Materials Issued</div>
+                      <div className="text-xs text-gray-600">Issued reduces stock immediately.</div>
+                    </div>
+                    <div className="overflow-x-auto border rounded-lg">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-gray-50 border-b">
+                          <tr className="text-left text-gray-600">
+                            <th className="py-2 px-3">Item</th>
+                            <th className="py-2 px-3 text-right">Required</th>
+                            <th className="py-2 px-3 text-right">Issued (Reduced)</th>
+                            <th className="py-2 px-3">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {materials.map((m: any) => {
+                            const code = m?.item_code || m?.itemCode || '';
+                            const name = m?.item_name || m?.itemName || '';
+                            const reqQty = Number(m?.required_quantity ?? m?.requiredQuantity ?? 0) || 0;
+                            const issuedQty = Number(m?.issued_quantity ?? m?.issuedQuantity ?? 0) || 0;
+                            const st = m?.status || '-';
+                            return (
+                              <tr key={m?.id || `${code}-${name}`} className="border-b last:border-b-0">
+                                <td className="py-2 px-3">
+                                  <div className="text-gray-900">{code || '-'}</div>
+                                  <div className="text-xs text-gray-600">{name}</div>
+                                </td>
+                                <td className="py-2 px-3 text-right text-gray-900">{reqQty}</td>
+                                <td className="py-2 px-3 text-right font-semibold text-gray-900">{issuedQty}</td>
+                                <td className="py-2 px-3 text-gray-700">{st}</td>
+                              </tr>
+                            );
+                          })}
+                          {materials.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="py-4 px-3 text-center text-gray-600">
+                                No materials returned for this job order.
+                              </td>
+                            </tr>
+                          ) : null}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="mt-3 text-xs text-gray-600">
+                      Finished goods (UIDs/stock add) happens when the job order is <span className="font-semibold">COMPLETED</span>.
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

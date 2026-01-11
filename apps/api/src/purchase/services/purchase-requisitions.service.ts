@@ -91,7 +91,101 @@ export class PurchaseRequisitionsService {
     const { data, error } = await query;
 
     if (error) throw new BadRequestException(error.message);
-    return data;
+
+    const requisitions: any[] = Array.isArray(data) ? data : [];
+
+    // Backfill missing UOM in response from master items (best-effort)
+    try {
+      const allItems: any[] = requisitions.flatMap((r: any) =>
+        Array.isArray(r?.purchase_requisition_items) ? r.purchase_requisition_items : [],
+      );
+
+      const missing = allItems.filter((it: any) => {
+        const uom = String(it?.uom ?? '').trim();
+        const code = String(it?.item_code ?? it?.itemCode ?? '').trim();
+        const id = String(it?.item_id ?? it?.itemId ?? '').trim();
+        return (!uom || uom.length === 0) && (code.length > 0 || id.length > 0);
+      });
+
+      if (missing.length > 0) {
+        const codeSet = new Set<string>();
+        const idSet = new Set<string>();
+        missing.forEach((it: any) => {
+          const code = String(it?.item_code ?? it?.itemCode ?? '').trim();
+          const id = String(it?.item_id ?? it?.itemId ?? '').trim();
+          if (code) codeSet.add(code);
+          if (id) idSet.add(id);
+        });
+
+        const codes = Array.from(codeSet);
+        const ids = Array.from(idSet);
+        const itemUomByCode = new Map<string, string>();
+        const itemUomById = new Map<string, string>();
+
+        if (codes.length > 0 || ids.length > 0) {
+          let itemsQuery = this.supabase
+            .from('items')
+            .select('id, code, uom')
+            .eq('tenant_id', tenantId);
+
+          if (ids.length > 0 && codes.length > 0) {
+            // Supabase doesn't support OR across two different IN clauses cleanly; do two queries.
+            const [{ data: byId }, { data: byCode }] = await Promise.all([
+              this.supabase
+                .from('items')
+                .select('id, code, uom')
+                .eq('tenant_id', tenantId)
+                .in('id', ids),
+              this.supabase
+                .from('items')
+                .select('id, code, uom')
+                .eq('tenant_id', tenantId)
+                .in('code', codes),
+            ]);
+
+            (Array.isArray(byId) ? byId : []).forEach((row: any) => {
+              if (row?.id && row?.uom) itemUomById.set(String(row.id), String(row.uom));
+              if (row?.code && row?.uom) itemUomByCode.set(String(row.code), String(row.uom));
+            });
+            (Array.isArray(byCode) ? byCode : []).forEach((row: any) => {
+              if (row?.id && row?.uom) itemUomById.set(String(row.id), String(row.uom));
+              if (row?.code && row?.uom) itemUomByCode.set(String(row.code), String(row.uom));
+            });
+          } else if (ids.length > 0) {
+            const { data: itemsData } = await itemsQuery.in('id', ids);
+            (Array.isArray(itemsData) ? itemsData : []).forEach((row: any) => {
+              if (row?.id && row?.uom) itemUomById.set(String(row.id), String(row.uom));
+              if (row?.code && row?.uom) itemUomByCode.set(String(row.code), String(row.uom));
+            });
+          } else if (codes.length > 0) {
+            const { data: itemsData } = await itemsQuery.in('code', codes);
+            (Array.isArray(itemsData) ? itemsData : []).forEach((row: any) => {
+              if (row?.id && row?.uom) itemUomById.set(String(row.id), String(row.uom));
+              if (row?.code && row?.uom) itemUomByCode.set(String(row.code), String(row.uom));
+            });
+          }
+        }
+
+        requisitions.forEach((r: any) => {
+          const items = Array.isArray(r?.purchase_requisition_items)
+            ? r.purchase_requisition_items
+            : [];
+          items.forEach((it: any) => {
+            const currentUom = String(it?.uom ?? '').trim();
+            if (currentUom) return;
+            const code = String(it?.item_code ?? it?.itemCode ?? '').trim();
+            const id = String(it?.item_id ?? it?.itemId ?? '').trim();
+            const backfill = (id && itemUomById.get(id)) || (code && itemUomByCode.get(code)) || '';
+            if (backfill) it.uom = backfill;
+          });
+        });
+      }
+    } catch (e) {
+      // Never block PR list rendering on backfill
+      console.warn('PR UOM response backfill failed:', (e as any)?.message || e);
+    }
+
+    return requisitions;
   }
 
   async findOne(tenantId: string, id: string) {
@@ -106,6 +200,73 @@ export class PurchaseRequisitionsService {
       .single();
 
     if (error) throw new NotFoundException('Purchase Requisition not found');
+
+    // Backfill missing UOM in response from master items (best-effort)
+    try {
+      const pr: any = data as any;
+      const items: any[] = Array.isArray(pr?.purchase_requisition_items)
+        ? pr.purchase_requisition_items
+        : [];
+
+      const missing = items.filter((it: any) => {
+        const uom = String(it?.uom ?? '').trim();
+        const code = String(it?.item_code ?? it?.itemCode ?? '').trim();
+        const itemId = String(it?.item_id ?? it?.itemId ?? '').trim();
+        return (!uom || uom.length === 0) && (code.length > 0 || itemId.length > 0);
+      });
+
+      if (missing.length > 0) {
+        const codeSet = new Set<string>();
+        const idSet = new Set<string>();
+        missing.forEach((it: any) => {
+          const code = String(it?.item_code ?? it?.itemCode ?? '').trim();
+          const itemId = String(it?.item_id ?? it?.itemId ?? '').trim();
+          if (code) codeSet.add(code);
+          if (itemId) idSet.add(itemId);
+        });
+
+        const codes = Array.from(codeSet);
+        const ids = Array.from(idSet);
+        const itemUomByCode = new Map<string, string>();
+        const itemUomById = new Map<string, string>();
+
+        if (ids.length > 0) {
+          const { data: byId } = await this.supabase
+            .from('items')
+            .select('id, code, uom')
+            .eq('tenant_id', tenantId)
+            .in('id', ids);
+          (Array.isArray(byId) ? byId : []).forEach((row: any) => {
+            if (row?.id && row?.uom) itemUomById.set(String(row.id), String(row.uom));
+            if (row?.code && row?.uom) itemUomByCode.set(String(row.code), String(row.uom));
+          });
+        }
+
+        if (codes.length > 0) {
+          const { data: byCode } = await this.supabase
+            .from('items')
+            .select('id, code, uom')
+            .eq('tenant_id', tenantId)
+            .in('code', codes);
+          (Array.isArray(byCode) ? byCode : []).forEach((row: any) => {
+            if (row?.id && row?.uom) itemUomById.set(String(row.id), String(row.uom));
+            if (row?.code && row?.uom) itemUomByCode.set(String(row.code), String(row.uom));
+          });
+        }
+
+        items.forEach((it: any) => {
+          const currentUom = String(it?.uom ?? '').trim();
+          if (currentUom) return;
+          const code = String(it?.item_code ?? it?.itemCode ?? '').trim();
+          const itemId = String(it?.item_id ?? it?.itemId ?? '').trim();
+          const backfill = (itemId && itemUomById.get(itemId)) || (code && itemUomByCode.get(code)) || '';
+          if (backfill) it.uom = backfill;
+        });
+      }
+    } catch (e) {
+      console.warn('PR UOM response backfill failed:', (e as any)?.message || e);
+    }
+
     return data;
   }
 
@@ -152,15 +313,25 @@ export class PurchaseRequisitionsService {
   }
 
   async update(tenantId: string, id: string, data: any) {
+    const nowIso = new Date().toISOString();
+    const updateData: any = {
+      department: data.department,
+      required_date: data.requiredDate,
+      priority: data.priority,
+      // Keep backward/forward compatibility with different client field names
+      purpose: data.purpose ?? data.notes ?? null,
+      notes: data.notes ?? data.purpose ?? null,
+      remarks: data.remarks ?? null,
+      updated_at: nowIso,
+    };
+
+    if (data.status !== undefined) {
+      updateData.status = data.status;
+    }
+
     const { error } = await this.supabase
       .from('purchase_requisitions')
-      .update({
-        department: data.department,
-        required_date: data.requiredDate,
-        priority: data.priority,
-        notes: data.notes,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('tenant_id', tenantId)
       .eq('id', id);
 
@@ -178,11 +349,17 @@ export class PurchaseRequisitionsService {
       if (data.items.length > 0) {
         const items = data.items.map((item: any) => ({
           pr_id: id,
-          item_id: item.itemId,
-          quantity: item.quantity,
-          estimated_price: item.estimatedPrice,
-          specifications: item.specifications,
-          notes: item.notes,
+          item_code: item.itemCode,
+          item_name: item.itemName,
+          vendor_id: item.vendorId ?? item.vendor_id ?? null,
+          description: item.description ?? item.specifications ?? null,
+          uom: item.uom ?? null,
+          requested_qty: item.requestedQty ?? item.quantity ?? null,
+          estimated_rate: item.estimatedRate ?? item.estimatedPrice ?? null,
+          required_date: item.requiredDate ?? null,
+          payment_terms: item.paymentTerms ?? null,
+          delivery_terms: item.deliveryTerms ?? null,
+          remarks: item.remarks ?? item.notes ?? null,
         }));
 
         await this.supabase

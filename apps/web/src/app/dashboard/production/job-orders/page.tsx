@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import SearchableSelect from '../../../../components/SearchableSelect';
 
@@ -102,7 +102,28 @@ interface JobOrderUID {
 }
 
 export default function JobOrdersPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-6 min-h-screen bg-gradient-to-br from-[#FAF9F6] to-[#E8DCC4]">
+          <div className="max-w-6xl mx-auto">
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="text-lg font-semibold text-[#36454F]">Loading Job Orders…</div>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <JobOrdersPageContent />
+    </Suspense>
+  );
+}
+
+function JobOrdersPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const legacy = searchParams.get('legacy') === '1';
+
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [workstations, setWorkstations] = useState<Workstation[]>([]);
@@ -112,6 +133,7 @@ export default function JobOrdersPage() {
   const [bomSearchTerm, setBomSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedJobOrder, setSelectedJobOrder] = useState<JobOrder | null>(null);
+  const [selectedJobOrderLoading, setSelectedJobOrderLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [completionPreview, setCompletionPreview] = useState<any>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
@@ -147,6 +169,72 @@ export default function JobOrdersPage() {
     fetchAllBoms();
     console.log('Initial data fetch triggered');
   }, []);
+
+  const mapJobOrderFromApi = (jo: any): JobOrder => {
+    const operationsRaw = Array.isArray(jo?.operations) ? jo.operations : [];
+    const materialsRaw = Array.isArray(jo?.materials) ? jo.materials : [];
+
+    return {
+      id: jo.id,
+      jobOrderNumber: jo.job_order_number || jo.jobOrderNumber,
+      itemId: jo.item_id || jo.itemId,
+      itemCode: jo.item_code || jo.itemCode,
+      itemName: jo.item_name || jo.itemName,
+      bomId: jo.bom_id || jo.bomId,
+      quantity: Number(jo.quantity) || 0,
+      completedQuantity: jo.completed_quantity ?? jo.completedQuantity,
+      rejectedQuantity: jo.rejected_quantity ?? jo.rejectedQuantity,
+      startDate: jo.start_date || jo.startDate,
+      endDate: jo.end_date || jo.endDate,
+      priority: jo.priority,
+      status: jo.status,
+      notes: jo.notes,
+      createdAt: jo.created_at || jo.createdAt,
+      operations: operationsRaw.map((op: any) => ({
+        id: op.id,
+        sequenceNumber: op.sequence_number ?? op.sequenceNumber,
+        operationName: op.operation_name ?? op.operationName,
+        workstationId: op.workstation_id ?? op.workstationId,
+        workstationName: op.workstation_name ?? op.workstationName,
+        assignedUserId: op.assigned_user_id ?? op.assignedUserId,
+        assignedUserName: op.assigned_user_name ?? op.assignedUserName,
+        startDatetime: op.start_datetime ?? op.startDatetime,
+        endDatetime: op.end_datetime ?? op.endDatetime,
+        expectedDurationHours: op.expected_duration_hours ?? op.expectedDurationHours,
+        setupTimeHours: op.setup_time_hours ?? op.setupTimeHours,
+        acceptedVariationPercent: op.accepted_variation_percent ?? op.acceptedVariationPercent,
+        status: op.status,
+        notes: op.notes,
+      })),
+      materials: materialsRaw.map((m: any) => ({
+        id: m.id,
+        itemId: m.item_id ?? m.itemId,
+        itemCode: m.item_code ?? m.itemCode,
+        itemName: m.item_name ?? m.itemName,
+        requiredQuantity: m.required_quantity ?? m.requiredQuantity,
+        issuedQuantity: m.issued_quantity ?? m.issuedQuantity,
+        warehouseId: m.warehouse_id ?? m.warehouseId,
+        status: m.status,
+        selectedVariantId: m.selected_variant_id ?? m.selectedVariantId,
+        variantNotes: m.variant_notes ?? m.variantNotes,
+      })),
+    };
+  };
+
+  const openJobOrderDetails = async (jo: JobOrder) => {
+    setSelectedJobOrder(jo);
+    setSelectedJobOrderLoading(true);
+    try {
+      const data = await apiClient.get(`/job-orders/${jo.id}`);
+      const mapped = mapJobOrderFromApi(data);
+      setSelectedJobOrder(mapped);
+    } catch (error) {
+      console.error('Error fetching job order details:', error);
+      // Keep basic details visible even if details fetch fails.
+    } finally {
+      setSelectedJobOrderLoading(false);
+    }
+  };
 
   const openQcModal = async () => {
     if (!selectedJobOrder?.id) return;
@@ -264,20 +352,8 @@ export default function JobOrdersPage() {
   const fetchJobOrders = async () => {
     try {
       const data = await apiClient.get('/job-orders');
-      // Map snake_case to camelCase
-      const mapped = data.map((jo: any) => ({
-        ...jo,
-        jobOrderNumber: jo.job_order_number,
-        itemId: jo.item_id,
-        itemCode: jo.item_code,
-        itemName: jo.item_name,
-        bomId: jo.bom_id,
-        startDate: jo.start_date,
-        endDate: jo.end_date,
-        createdBy: jo.created_by,
-        createdAt: jo.created_at,
-        updatedAt: jo.updated_at,
-      }));
+      // Map snake_case to camelCase (list endpoint typically does not include materials/operations)
+      const mapped = (data || []).map((jo: any) => mapJobOrderFromApi(jo));
       setJobOrders(mapped);
     } catch (error) {
       console.error('Error fetching job orders:', error);
@@ -384,7 +460,7 @@ export default function JobOrdersPage() {
       
       // Store base quantities from BOM (per 1 unit)
       const baseQuantities: { [key: string]: number } = {};
-      const materialsWithVariants = await Promise.all(bomItems.map(async (item: any) => {
+      const materialsWithVariantsRaw = await Promise.all(bomItems.map(async (item: any) => {
         console.log('Processing BOM item:', {
           component_id: item.component_id,
           item_id: item.item_id,
@@ -392,7 +468,12 @@ export default function JobOrdersPage() {
           component_name: item.component_name,
           quantity: item.quantity
         });
-        const itemId = item.component_id || item.item_id;
+        const itemId = String(item.component_id || item.item_id || '').trim();
+        if (!itemId) {
+          console.warn('Skipping BOM item with no resolvable item id:', item);
+          return null;
+        }
+
         baseQuantities[itemId] = item.quantity;
         
         // Fetch variants for this item
@@ -421,6 +502,8 @@ export default function JobOrdersPage() {
           selectedVariantName: selectedVariantName,
         };
       }));
+
+      const materialsWithVariants = materialsWithVariantsRaw.filter(Boolean);
       
       setBaseMaterialQuantities(baseQuantities);
       setMaterials(materialsWithVariants);
@@ -711,7 +794,7 @@ export default function JobOrdersPage() {
       setShowCompletionModal(false);
       setCompletionPreview(null);
       fetchJobOrders();
-      alert('✅ Job Order completed successfully!\n\nInventory has been updated.');
+      alert('✅ Job Order completed successfully!\n\nUIDs generated and awaiting QC approval.\nStock will be added after QC inspection.');
     } catch (error: any) {
       console.error('Error completing job order:', error);
       const errorMsg = error.response?.data?.message || error.message || 'Failed to complete job order';
@@ -811,7 +894,7 @@ export default function JobOrdersPage() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <button
-                    onClick={() => setSelectedJobOrder(jo)}
+                    onClick={() => openJobOrderDetails(jo)}
                     className="text-blue-600 hover:text-blue-800 mr-3"
                   >
                     View
@@ -1249,6 +1332,9 @@ export default function JobOrdersPage() {
 
             {/* Job Order Details */}
             <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded">
+              {selectedJobOrderLoading ? (
+                <div className="col-span-2 text-sm text-gray-600">Loading materials & operations…</div>
+              ) : null}
               <div>
                 <strong>Item:</strong> {selectedJobOrder.itemCode} - {selectedJobOrder.itemName}
               </div>
@@ -1275,6 +1361,10 @@ export default function JobOrdersPage() {
                 >
                   Complete QC
                 </button>
+              </div>
+
+              <div className="col-span-2 text-xs text-gray-600">
+                Smart Job Orders issue materials at <strong>creation</strong> (stock reduces immediately). Completion consumes any remaining and adds finished goods.
               </div>
             </div>
 
@@ -1537,6 +1627,51 @@ export default function JobOrdersPage() {
                       })}
                     </tbody>
                   </table>
+                </div>
+
+                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded">
+                  <p className="text-sm text-gray-700 mb-4">
+                    <strong>Important:</strong> After completing QC inspection for all UIDs, click "Submit QC Results" below. 
+                    Only <strong>PASSED</strong> UIDs will be added to stock. Failed UIDs will be marked for rework/scrap.
+                  </p>
+                  <button
+                    onClick={async () => {
+                      const approvedUids = qcUids.filter(u => String(u?.quality_status || '').toUpperCase() === 'PASSED').map(u => u.uid);
+                      const rejectedUids = qcUids.filter(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED').map(u => u.uid);
+
+                      if (approvedUids.length === 0 && rejectedUids.length === 0) {
+                        alert('Please mark UIDs as PASS or FAIL before submitting QC results');
+                        return;
+                      }
+
+                      if (!confirm(`Submit QC Results?\n\nApproved (will add to stock): ${approvedUids.length}\nRejected (rework/scrap): ${rejectedUids.length}`)) {
+                        return;
+                      }
+
+                      setQcLoading(true);
+                      try {
+                        const response = await apiClient.post(`/job-orders/${selectedJobOrder.id}/qc-approve`, {
+                          approvedUids,
+                          rejectedUids,
+                        });
+
+                        alert(`✅ QC Complete!\n\n${response.message || `${approvedUids.length} units added to stock, ${rejectedUids.length} rejected`}`);
+                        setShowQcModal(false);
+                        setQcUids([]);
+                        fetchJobOrders();
+                      } catch (error: any) {
+                        console.error('Error submitting QC results:', error);
+                        const errorMsg = error.response?.data?.message || error.message || 'Failed to submit QC results';
+                        alert(errorMsg);
+                      } finally {
+                        setQcLoading(false);
+                      }
+                    }}
+                    disabled={qcLoading}
+                    className="w-full px-6 py-3 bg-blue-600 text-white font-semibold rounded hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    Submit QC Results & Add Stock
+                  </button>
                 </div>
               </>
             )}

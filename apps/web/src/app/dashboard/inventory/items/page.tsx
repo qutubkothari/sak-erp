@@ -296,13 +296,75 @@ export default function ItemsPage() {
     }
   };
 
-  const actuallyCreateItem = async (payload: any) => {
+  const actuallyCreateItem = async (
+    payload: any,
+    drawingLink?: {
+      fileName: string;
+      fileUrl: string;
+      fileType?: string;
+      fileSize?: number;
+      revisionNotes?: string;
+    },
+  ) => {
     try {
       if (editingItem) {
+        const shouldPreUploadDrawing =
+          !!drawingLink && payload?.drawing_required === 'COMPULSORY';
+
+        // If user is setting drawing as COMPULSORY and uploading in the same save,
+        // we must create the drawing record first so the API validation passes.
+        if (shouldPreUploadDrawing) {
+          try {
+            await apiClient.post(`/inventory/items/${editingItem.id}/drawings`, {
+              fileName: drawingLink!.fileName,
+              fileUrl: drawingLink!.fileUrl,
+              fileType: drawingLink!.fileType,
+              fileSize: drawingLink!.fileSize,
+              revisionNotes: drawingLink!.revisionNotes || 'Uploaded via item form',
+            });
+          } catch (err) {
+            console.error('Error linking drawing before item update:', err);
+            // Continue to item update; if drawing is compulsory, API may still reject.
+          }
+        }
+
         await apiClient.put(`/inventory/items/${editingItem.id}`, payload);
+
+        // For normal updates, link the new drawing after the item update succeeds.
+        if (drawingLink && !shouldPreUploadDrawing) {
+          try {
+            await apiClient.post(`/inventory/items/${editingItem.id}/drawings`, {
+              fileName: drawingLink.fileName,
+              fileUrl: drawingLink.fileUrl,
+              fileType: drawingLink.fileType,
+              fileSize: drawingLink.fileSize,
+              revisionNotes: drawingLink.revisionNotes || 'Uploaded via item form',
+            });
+          } catch (err) {
+            console.error('Error linking drawing after item update:', err);
+            alert('Item updated, but drawing could not be linked. Please upload it from the Drawings tab.');
+          }
+        }
+
         alert('Item updated successfully!');
       } else {
         const result = await apiClient.post('/inventory/items', payload);
+
+        // If a drawing was uploaded during creation, link it to the new item.
+        if (drawingLink && result?.id) {
+          try {
+            await apiClient.post(`/inventory/items/${result.id}/drawings`, {
+              fileName: drawingLink.fileName,
+              fileUrl: drawingLink.fileUrl,
+              fileType: drawingLink.fileType,
+              fileSize: drawingLink.fileSize,
+              revisionNotes: drawingLink.revisionNotes || 'Initial version',
+            });
+          } catch (err) {
+            console.error('Error linking drawing after item create:', err);
+            alert('Item created, but drawing could not be linked. Please upload it from the Drawings tab.');
+          }
+        }
         
         // If vendors were added during creation, save them now
         if (itemVendors.length > 0 && result.id) {
@@ -343,11 +405,30 @@ export default function ItemsPage() {
         drawing_url: formData.drawing_url,
         drawing_file_name: formData.drawing_file_name
       };
+
+      let drawingLink:
+        | {
+            fileName: string;
+            fileUrl: string;
+            fileType?: string;
+            fileSize?: number;
+            revisionNotes?: string;
+          }
+        | undefined;
       
       if (drawingFile) {
         const uploadResult = await handleDrawingUpload(drawingFile);
         if (uploadResult) {
           drawingData = uploadResult;
+
+          // Create a drawing record (item_drawings) after the item save.
+          drawingLink = {
+            fileName: drawingFile.name,
+            fileUrl: uploadResult.drawing_url,
+            fileType: drawingFile.type,
+            fileSize: drawingFile.size,
+            revisionNotes: editingItem ? 'Updated via item form' : 'Initial version',
+          };
         }
       }
       
@@ -369,18 +450,38 @@ export default function ItemsPage() {
 
       // For updates, skip duplicate check
       if (editingItem) {
-        await actuallyCreateItem(payload);
+        await actuallyCreateItem(payload, drawingLink);
         return;
       }
 
       // Check for duplicates before creating
       await checkDuplicates(
         () => apiClient.post('/items/check-duplicates', payload),
-        () => actuallyCreateItem(payload),
+        () => actuallyCreateItem(payload, drawingLink),
       );
     } catch (error: any) {
       console.error('Error saving item:', error);
       alert(error.response?.data?.message || 'Failed to save item');
+    }
+  };
+
+  const loadExistingDrawingForEdit = async (itemId: string) => {
+    try {
+      const drawings = await apiClient.get(`/inventory/items/${itemId}/drawings`);
+      if (!Array.isArray(drawings) || drawings.length === 0) return;
+
+      const active = drawings.find((d: any) => d?.is_active) || drawings[0];
+      const fileUrl = String(active?.file_url || '');
+      const fileName = String(active?.file_name || '');
+      if (!fileUrl && !fileName) return;
+
+      setFormData((prev) => ({
+        ...prev,
+        drawing_url: fileUrl || prev.drawing_url,
+        drawing_file_name: fileName || prev.drawing_file_name,
+      }));
+    } catch (error) {
+      console.error('Error loading existing drawings:', error);
     }
   };
 
@@ -412,8 +513,12 @@ export default function ItemsPage() {
       drawing_url: (item as any).drawing_url || '',
       drawing_file_name: (item as any).drawing_file_name || '',
     });
+    setDrawingFile(null);
     setShowForm(true);
     fetchItemVendors(item.id);
+
+    // Ensure the edit form shows the current drawing even when drawings are stored in item_drawings.
+    loadExistingDrawingForEdit(item.id);
   };
 
   const fetchItemVendors = async (itemId: string) => {
@@ -635,12 +740,15 @@ export default function ItemsPage() {
       formDataUpload.append('file', file);
       formDataUpload.append('bucket', 'drawings');
       formDataUpload.append('folder', 'item-drawings');
-      
-      const result = await apiClient.postForm('/upload', formDataUpload);
-      
+
+      const result: any = await apiClient.postForm('/upload', formDataUpload);
+
+      const uploadedUrl = result?.url || '';
+      if (!uploadedUrl) throw new Error('Upload failed: no url returned');
+
       return {
-        drawing_url: result.url,
-        drawing_file_name: file.name
+        drawing_url: uploadedUrl,
+        drawing_file_name: file.name,
       };
     } catch (error) {
       console.error('Error uploading drawing:', error);
@@ -678,13 +786,34 @@ export default function ItemsPage() {
     if (!confirm(`Add inventory for ${itemsWithQty.length} items?`)) return;
 
     try {
-      // Create inventory entries for each item
+      // Fetch warehouses to get warehouse IDs
+      const warehousesResponse = await apiClient.get('/inventory/warehouses');
+      const warehouses = warehousesResponse || [];
+
+      // Map location names to warehouse IDs
+      const locationToWarehouseId: Record<string, string> = {};
+      warehouses.forEach((wh: any) => {
+        if (wh.name === 'Main Warehouse') locationToWarehouseId['MAIN_WAREHOUSE'] = wh.id;
+        else if (wh.name === 'Production Floor') locationToWarehouseId['PRODUCTION_FLOOR'] = wh.id;
+        else if (wh.name === 'QC Area') locationToWarehouseId['QC_AREA'] = wh.id;
+        else if (wh.name === 'Finished Goods') locationToWarehouseId['FINISHED_GOODS'] = wh.id;
+      });
+
+      // If no mapping found, use the first warehouse as default
+      const defaultWarehouseId = warehouses[0]?.id;
+
+      if (!defaultWarehouseId) {
+        alert('No warehouses found. Please create a warehouse first.');
+        return;
+      }
+
+      // Create inventory movements for each item
       const promises = itemsWithQty.map(item =>
-        apiClient.post('/inventory', {
+        apiClient.post('/inventory/movements', {
+          movement_type: 'ADJUSTMENT',
           item_id: item.itemId,
+          to_warehouse_id: locationToWarehouseId[item.location] || defaultWarehouseId,
           quantity: parseFloat(item.quantity),
-          transaction_type: 'STOCK_IN',
-          location: item.location,
           notes: 'Bulk inventory entry'
         })
       );
@@ -1125,7 +1254,7 @@ export default function ItemsPage() {
                   {visibleColumns.total_stock && (
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold">
                       <span className={item.total_stock && item.total_stock > 0 ? 'text-green-700' : 'text-gray-400'}>
-                        {item.total_stock ?? 0} {item.uom}
+                        {item.total_stock ?? 0}
                       </span>
                     </td>
                   )}
@@ -1703,6 +1832,16 @@ export default function ItemsPage() {
                         <p className="text-xs text-green-600 mt-1">
                           📎 {drawingFile?.name || formData.drawing_file_name}
                         </p>
+                      )}
+
+                      {!drawingFile && formData.drawing_url && (
+                        <button
+                          type="button"
+                          onClick={() => window.open(formData.drawing_url, '_blank', 'noopener,noreferrer')}
+                          className="mt-1 text-xs text-blue-700 hover:text-blue-900 underline"
+                        >
+                          View current drawing
+                        </button>
                       )}
                     </div>
                   </div>

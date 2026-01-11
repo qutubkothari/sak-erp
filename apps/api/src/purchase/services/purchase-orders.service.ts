@@ -20,33 +20,94 @@ export class PurchaseOrdersService {
       paymentTerms: data.paymentTerms
     });
     
-    // Check if PO already exists for this PR + vendor combination to prevent duplicates
+    // Duplicate prevention logic:
+    // - Allow multiple (partial) POs for same PR+vendor if item+qty differs.
+    // - Block only if an identical item+qty set already exists.
+    let isPartialPo = false;
+    let partialPoSequence: number | null = null;
+    let parentPrId: string | null = null;
+
     if (data.prId && data.vendorId) {
       const { data: existingPOs, error: checkError } = await this.supabase
         .from('purchase_orders')
-        .select('id, po_number, vendor_id')
+        .select('id, po_number, vendor_id, partial_po_sequence')
         .eq('tenant_id', tenantId)
         .eq('pr_id', data.prId)
-        .eq('vendor_id', data.vendorId)
-        .limit(1);
+        .eq('vendor_id', data.vendorId);
 
       if (checkError) {
         console.error('Duplicate check error:', checkError);
         throw new BadRequestException(checkError.message);
       }
-      
-      if (existingPOs && existingPOs.length > 0) {
-        // Fetch vendor name separately to avoid relation issues
-        const { data: vendorData } = await this.supabase
-          .from('vendors')
-          .select('name')
-          .eq('id', existingPOs[0].vendor_id)
-          .single();
-        
-        const vendorName = vendorData?.name || 'this vendor';
-        throw new BadRequestException(
-          `A Purchase Order (${existingPOs[0].po_number}) already exists for this PR and ${vendorName}. Cannot create duplicate PO.`
-        );
+
+      const existing = existingPOs ?? [];
+      if (existing.length > 0) {
+        const incomingLines = (data.items ?? []).map((item: any) => {
+          const code = item.itemCode ?? item.item_code ?? item.itemId ?? item.item_id ?? '';
+          const qty = item.orderedQty ?? item.ordered_qty ?? item.quantity ?? 0;
+          return `${String(code)}:${Number(qty)}`;
+        });
+
+        const incomingKey = incomingLines
+          .filter(Boolean)
+          .sort()
+          .join('|');
+
+        if (incomingKey.length > 0) {
+          const existingIds = existing.map((p: any) => p.id);
+          const { data: existingItems, error: itemsErr } = await this.supabase
+            .from('purchase_order_items')
+            .select('po_id, item_code, item_id, ordered_qty')
+            .in('po_id', existingIds);
+
+          if (itemsErr) {
+            console.error('Duplicate items check error:', itemsErr);
+            throw new BadRequestException(itemsErr.message);
+          }
+
+          const itemsByPo = new Map<string, Array<{ item_code: string | null; item_id: string | null; ordered_qty: any }>>();
+          for (const row of existingItems ?? []) {
+            const list = itemsByPo.get(row.po_id) ?? [];
+            list.push(row);
+            itemsByPo.set(row.po_id, list);
+          }
+
+          for (const po of existing) {
+            const lines = (itemsByPo.get(po.id) ?? []).map((r: any) => {
+              const code = r.item_code ?? r.item_id ?? '';
+              const qty = r.ordered_qty ?? 0;
+              return `${String(code)}:${Number(qty)}`;
+            });
+
+            const key = lines
+              .filter(Boolean)
+              .sort()
+              .join('|');
+
+            if (key.length > 0 && key === incomingKey) {
+              // Fetch vendor name separately to avoid relation issues
+              const { data: vendorData } = await this.supabase
+                .from('vendors')
+                .select('name')
+                .eq('id', po.vendor_id)
+                .single();
+
+              const vendorName = vendorData?.name || 'this vendor';
+              throw new BadRequestException(
+                `A Purchase Order (${po.po_number}) already exists for this PR and ${vendorName} with the same items and quantities. Cannot create duplicate PO.`
+              );
+            }
+          }
+        }
+
+        // Not an exact duplicate; treat as partial PO.
+        isPartialPo = true;
+        parentPrId = data.prId;
+        const maxSeq = existing.reduce((max: number, p: any) => {
+          const seq = typeof p.partial_po_sequence === 'number' ? p.partial_po_sequence : 1;
+          return Math.max(max, seq);
+        }, 1);
+        partialPoSequence = maxSeq + 1;
       }
     }
 
@@ -59,6 +120,9 @@ export class PurchaseOrdersService {
         tenant_id: tenantId,
         po_number: poNumber,
         pr_id: data.prId,
+        is_partial_po: isPartialPo,
+        parent_pr_id: parentPrId,
+        partial_po_sequence: partialPoSequence ?? undefined,
         vendor_id: data.vendorId,
         po_date: data.poDate || new Date().toISOString().split('T')[0],
         delivery_date: data.deliveryDate,
@@ -122,9 +186,8 @@ export class PurchaseOrdersService {
       .from('purchase_orders')
       .select(`
         *,
-        pr:purchase_requisitions(id, pr_number),
         vendor:vendors(id, code, name, contact_person, email),
-        purchase_order_items(id, item_id, item_code, item_name, ordered_qty, rate, item:items(hsn_code))
+        purchase_order_items(id, item_id, item_code, item_name, uom, ordered_qty, rate, item:items(hsn_code))
       `)
       .eq('tenant_id', tenantId);
 
@@ -149,7 +212,33 @@ export class PurchaseOrdersService {
     const { data, error } = await query;
 
     if (error) throw new BadRequestException(error.message);
-    return data;
+
+    // Avoid PostgREST embed ambiguity: purchase_orders has multiple FKs to purchase_requisitions
+    // (e.g. pr_id and parent_pr_id). Fetch PRs separately and attach as `pr`.
+    const rows = Array.isArray(data) ? data : [];
+    const prIds = Array.from(
+      new Set(
+        rows
+          .map((po: any) => po?.pr_id)
+          .filter((id: any) => typeof id === 'string' && id.trim().length > 0),
+      ),
+    );
+
+    let prById = new Map<string, any>();
+    if (prIds.length > 0) {
+      const { data: prRows, error: prError } = await this.supabase
+        .from('purchase_requisitions')
+        .select('id, pr_number')
+        .in('id', prIds);
+
+      if (prError) throw new BadRequestException(prError.message);
+      prById = new Map((prRows || []).map((pr: any) => [pr.id, pr]));
+    }
+
+    return rows.map((po: any) => ({
+      ...po,
+      pr: po?.pr_id ? prById.get(po.pr_id) ?? null : null,
+    }));
   }
 
   async findOne(tenantId: string, id: string) {
@@ -157,7 +246,6 @@ export class PurchaseOrdersService {
       .from('purchase_orders')
       .select(`
         *,
-        pr:purchase_requisitions(id, pr_number),
         vendor:vendors(id, code, name, contact_person, email, phone, address),
         purchase_order_items(*)
       `)
@@ -166,7 +254,24 @@ export class PurchaseOrdersService {
       .single();
 
     if (error) throw new NotFoundException('Purchase Order not found');
-    return data;
+
+    // Attach PR (see note in findAll about multiple relationships)
+    let pr: any = null;
+    if ((data as any)?.pr_id) {
+      const { data: prRow, error: prError } = await this.supabase
+        .from('purchase_requisitions')
+        .select('id, pr_number')
+        .eq('id', (data as any).pr_id)
+        .maybeSingle();
+
+      if (prError) throw new BadRequestException(prError.message);
+      pr = prRow ?? null;
+    }
+
+    return {
+      ...(data as any),
+      pr,
+    };
   }
 
   async update(tenantId: string, id: string, data: any) {

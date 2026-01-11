@@ -6,6 +6,46 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 export class RoleService {
   private supabase: SupabaseClient;
 
+  private makeRoleCode(name: string): string {
+    const normalized = (name || '')
+      .trim()
+      .toUpperCase()
+      .replace(/&/g, ' AND ')
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+
+    return normalized.slice(0, 60);
+  }
+
+  private async ensureUniqueRoleCode(tenantId: string, baseCode: string): Promise<string> {
+    const trimmed = (baseCode || '').trim();
+    if (!trimmed) {
+      // Last-resort fallback to satisfy NOT NULL constraint.
+      return `ROLE_${Date.now()}`;
+    }
+
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const code = attempt === 0 ? trimmed : `${trimmed}_${attempt + 1}`;
+
+      const { data, error } = await this.supabase
+        .from('roles')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('code', code)
+        .limit(1);
+
+      if (error) {
+        throw new Error(`Failed to validate role code: ${error.message}`);
+      }
+
+      if (!data || data.length === 0) {
+        return code;
+      }
+    }
+
+    return `${trimmed}_${Date.now()}`;
+  }
+
   constructor(private configService: ConfigService) {
     const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
     const supabaseKey = this.configService.get<string>('SUPABASE_KEY');
@@ -50,12 +90,17 @@ export class RoleService {
     name: string;
     description: string;
     permissions: any[];
+    code?: string;
     tenantId: string;
   }) {
+    const baseCode = this.makeRoleCode(dto.code || dto.name);
+    const code = await this.ensureUniqueRoleCode(dto.tenantId, baseCode);
+
     const { data, error } = await this.supabase
       .from('roles')
       .insert({
         name: dto.name,
+        code,
         description: dto.description,
         permissions: dto.permissions,
         tenant_id: dto.tenantId,

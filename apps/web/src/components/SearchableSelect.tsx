@@ -122,7 +122,7 @@ export default function SearchableSelect({
         placeholder={placeholder}
         required={required}
         disabled={disabled}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white text-sm disabled:opacity-60"
+        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white text-sm disabled:opacity-60 truncate"
         autoComplete="off"
       />
       
@@ -142,9 +142,9 @@ export default function SearchableSelect({
                     : 'hover:bg-gray-100'
                 }`}
               >
-                <div className="font-medium">{option.label}</div>
+                <div className="font-medium whitespace-normal break-words">{option.label}</div>
                 {option.subtitle && (
-                  <div className="text-xs text-gray-500 mt-0.5">{option.subtitle}</div>
+                  <div className="text-xs text-gray-500 mt-0.5 whitespace-normal break-words">{option.subtitle}</div>
                 )}
               </div>
             ))

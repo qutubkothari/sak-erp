@@ -18,8 +18,13 @@ interface Customer {
   phone?: string;
   mobile?: string;
   gst_number?: string;
+  pan_number?: string;
+  billing_address?: string;
+  shipping_address?: string;
   city?: string;
   state?: string;
+  pincode?: string;
+  country?: string;
   credit_limit: number;
   credit_days: number;
   is_active: boolean;
@@ -769,7 +774,7 @@ export default function SalesPage() {
 
   const handleEditCustomer = (customer: Customer) => {
     setEditingCustomerId(customer.id);
-    setCustomerForm({
+    const formData = {
       customer_name: customer.customer_name || '',
       customer_type: customer.customer_type || 'REGULAR',
       contact_person: customer.contact_person || '',
@@ -777,16 +782,17 @@ export default function SalesPage() {
       phone: customer.phone || '',
       mobile: customer.mobile || '',
       gst_number: customer.gst_number || '',
-      pan_number: '',
-      billing_address: '',
-      shipping_address: '',
+      pan_number: customer.pan_number || '',
+      billing_address: customer.billing_address || '',
+      shipping_address: customer.shipping_address || '',
       city: customer.city || '',
       state: customer.state || '',
-      country: 'India',
-      pincode: '',
+      country: customer.country || 'India',
+      pincode: customer.pincode || '',
       credit_limit: Number(customer.credit_limit) || 0,
       credit_days: Number(customer.credit_days) || 30,
-    });
+    };
+    setCustomerForm(formData);
     setShowCustomerForm(true);
   };
 
@@ -1534,6 +1540,15 @@ export default function SalesPage() {
                         rows={2}
                       />
                     </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Shipping Address</label>
+                      <textarea
+                        value={customerForm.shipping_address}
+                        onChange={(e) => setCustomerForm({ ...customerForm, shipping_address: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        rows={2}
+                      />
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
                       <input
@@ -1550,6 +1565,26 @@ export default function SalesPage() {
                         value={customerForm.state}
                         onChange={(e) => setCustomerForm({ ...customerForm, state: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                      <input
+                        type="text"
+                        value={customerForm.country}
+                        onChange={(e) => setCustomerForm({ ...customerForm, country: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Pin Code</label>
+                      <input
+                        type="text"
+                        value={customerForm.pincode || ''}
+                        onChange={(e) => setCustomerForm({ ...customerForm, pincode: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        maxLength={6}
+                        placeholder="Enter 6-digit pin code"
                       />
                     </div>
                     <div>

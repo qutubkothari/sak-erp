@@ -11,15 +11,29 @@ export class JobOrderController {
   @Get('smart/preview')
   async getSmartPreview(
     @Request() req: any,
-    @Query() query: { itemId?: string; quantity?: string | number; salesOrderId?: string; salesOrderItemId?: string },
+    @Query()
+    query: {
+      itemId?: string;
+      quantity?: string | number;
+      salesOrderId?: string;
+      salesOrderItemId?: string;
+      includeAllComponents?: string | boolean;
+    },
   ) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const quantity = typeof query.quantity === 'string' ? Number(query.quantity) : Number(query.quantity);
+
+    const includeAllComponents =
+      query.includeAllComponents === true ||
+      query.includeAllComponents === 'true' ||
+      query.includeAllComponents === '1';
+
     return this.jobOrderService.getSmartJobOrderPreview(tenantId, {
       itemId: String(query.itemId || ''),
       quantity,
       salesOrderId: query.salesOrderId,
       salesOrderItemId: query.salesOrderItemId,
+      includeAllComponents,
     });
   }
 
@@ -109,6 +123,19 @@ export class JobOrderController {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id || req.user?.sub;
     return this.jobOrderService.completeJobOrder(tenantId, id, userId);
+  }
+
+  @Post(':id/qc-approve')
+  async approveQC(
+    @Request() req: any, 
+    @Param('id') id: string,
+    @Body() body: { approvedUids: string[]; rejectedUids: string[] }
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    const { approvedUids = [], rejectedUids = [] } = body;
+    
+    return this.jobOrderService.approveQC(tenantId, id, approvedUids, rejectedUids, userId);
   }
 
   @Get(':id/completion-preview')

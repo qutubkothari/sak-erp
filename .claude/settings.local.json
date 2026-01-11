@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File \".\\\\deploy-hostinger.ps1\")",
+      "Bash(ssh:*)"
+    ]
+  }
+}

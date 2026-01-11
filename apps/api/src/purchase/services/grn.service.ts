@@ -325,7 +325,7 @@ export class GrnService {
         purchase_order:purchase_orders(id, po_number, po_date),
         vendor:vendors(id, code, name, contact_person),
         warehouse:warehouses(id, code, name),
-        grn_items(*, item:items(id, code, name, hsn_code))
+        grn_items(*, item:items(id, code, name, hsn_code, uom))
       `)
       .eq('tenant_id', tenantId)
       .eq('id', id)

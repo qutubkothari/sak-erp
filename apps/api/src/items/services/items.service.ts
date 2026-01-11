@@ -248,13 +248,19 @@ export class ItemsService {
     const reorderQuantity = this.normalizeNumber(itemData.reorder_quantity ?? itemData.reorderQuantity, 'int');
     const leadTimeDays = this.normalizeNumber(itemData.lead_time_days ?? itemData.leadTimeDays, 'int');
 
-    // Validate reorder level for non-assembly items
+    // Validate reorder level only for stock-tracked categories.
+    // (SERVICE is excluded because services do not maintain inventory stock.)
     const category = itemData.category;
-    const isAssembly = category === 'SUBASSEMBLY' || category === 'FINISHED_GOODS';
-    if (!isAssembly) {
+    const requiresReorderLevel =
+      category === 'RAW_MATERIAL' ||
+      category === 'COMPONENT' ||
+      category === 'CONSUMABLE' ||
+      category === 'PACKING_MATERIAL' ||
+      category === 'SPARE_PART';
+    if (requiresReorderLevel) {
       if (!reorderLevel || reorderLevel <= 0) {
         throw new BadRequestException(
-          'Reorder level must be greater than 0 for RAW_MATERIAL, COMPONENT, CONSUMABLE, PACKING_MATERIAL, SPARE_PART, and SERVICE items.'
+          'Reorder level must be greater than 0 for RAW_MATERIAL, COMPONENT, CONSUMABLE, PACKING_MATERIAL, and SPARE_PART items.',
         );
       }
     }
@@ -466,13 +472,19 @@ export class ItemsService {
       );
     }
 
-    // Validate reorder level for non-assembly items
+    // Validate reorder level only for stock-tracked categories.
+    // (SERVICE is excluded because services do not maintain inventory stock.)
     const category = itemData.category || (await this.findOne(tenantId, id)).category;
-    const isAssembly = category === 'SUBASSEMBLY' || category === 'FINISHED_GOODS';
-    if (!isAssembly && reorderLevelProvided) {
+    const requiresReorderLevel =
+      category === 'RAW_MATERIAL' ||
+      category === 'COMPONENT' ||
+      category === 'CONSUMABLE' ||
+      category === 'PACKING_MATERIAL' ||
+      category === 'SPARE_PART';
+    if (requiresReorderLevel && reorderLevelProvided) {
       if (!updateData.reorder_level || updateData.reorder_level <= 0) {
         throw new BadRequestException(
-          'Reorder level must be greater than 0 for RAW_MATERIAL, COMPONENT, CONSUMABLE, PACKING_MATERIAL, SPARE_PART, and SERVICE items.'
+          'Reorder level must be greater than 0 for RAW_MATERIAL, COMPONENT, CONSUMABLE, PACKING_MATERIAL, and SPARE_PART items.',
         );
       }
     }

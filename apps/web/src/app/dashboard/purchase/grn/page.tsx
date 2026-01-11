@@ -110,6 +110,7 @@ interface PurchaseOrder {
     item_id: string;
     item_code: string;
     item_name: string;
+    uom?: string;
     ordered_qty: number;
     rate: number;
     item?: {
@@ -172,12 +173,19 @@ function GRNContent() {
     notes: string;
     items: Array<{
       id?: string;
+      itemId?: string;
+      poItemId?: string;
       itemCode: string;
       itemName: string;
+      uom?: string;
+      orderedQuantity?: number;
       receivedQty: number;
       acceptedQty: number;
       rejectedQty: number;
+      unitPrice?: number;
       batchNumber: string;
+      expiryDate?: string;
+      notes?: string;
     }>;
   }>({
     invoiceNumber: '',
@@ -208,6 +216,7 @@ function GRNContent() {
       itemCode?: string;
       itemName?: string;
       poItemId: string;
+      uom?: string;
       orderedQuantity: number;
       receivedQuantity: number;
       acceptedQuantity: number;
@@ -486,6 +495,7 @@ function GRNContent() {
           itemCode: item.item_code,
           itemName: item.item_name,
           poItemId: item.id,
+          uom: item.uom || '',
           orderedQuantity: item.ordered_qty,
           receivedQuantity: item.ordered_qty,
           acceptedQuantity: item.ordered_qty,
@@ -522,6 +532,12 @@ function GRNContent() {
     if (!selectedGRN) return;
     
     try {
+      const missingIds = editFormData.items.some((it) => !it.itemId || !it.poItemId);
+      if (missingIds) {
+        alert('Some GRN items are missing Item/PO Item IDs. Please close and re-open Edit.');
+        return;
+      }
+
       await apiClient.put(`/purchase/grn/${selectedGRN.id}`, {
         invoiceNumber: editFormData.invoiceNumber,
         invoiceDate: editFormData.invoiceDate,
@@ -532,12 +548,18 @@ function GRNContent() {
         warehouseId: editFormData.warehouseId,
         remarks: editFormData.notes,
         items: editFormData.items.map(item => ({
+          itemId: item.itemId,
+          poItemId: item.poItemId,
           itemCode: item.itemCode,
           itemName: item.itemName,
-          receivedQty: item.receivedQty,
-          acceptedQty: item.acceptedQty,
-          rejectedQty: item.rejectedQty,
+          orderedQuantity: item.orderedQuantity ?? item.receivedQty,
+          receivedQuantity: item.receivedQty,
+          acceptedQuantity: item.acceptedQty,
+          rejectedQuantity: item.rejectedQty,
+          unitPrice: item.unitPrice ?? 0,
           batchNumber: item.batchNumber,
+          expiryDate: item.expiryDate || null,
+          notes: item.notes || null,
         })),
       });
 
@@ -1051,27 +1073,83 @@ function GRNContent() {
                           🔍 UIDs
                         </button>
                       )}
-                      <button 
-                        onClick={() => {
-                          setSelectedGRN(grn);
-                          setEditFormData({
-                            invoiceNumber: grn.invoice_number || '',
-                            invoiceDate: grn.invoice_date || '',
-                            invoiceFileUrl: grn.invoice_file_url || '',
-                            invoiceFileName: grn.invoice_file_name || '',
-                            invoiceFileType: grn.invoice_file_type || '',
-                            invoiceFileSize: grn.invoice_file_size || 0,
-                            warehouseId: grn.warehouse?.id || '',
-                            notes: grn.remarks || '',
-                            items: grn.grn_items.map(item => ({
-                              itemCode: item.item_code || item.item?.code || '',
-                              itemName: item.item_name || item.item?.name || '',
-                              receivedQty: Number(item.received_qty || item.received_quantity) || 0,
-                              acceptedQty: Number(item.accepted_qty || item.accepted_quantity) || 0,
-                              rejectedQty: Number(item.rejected_qty || item.rejected_quantity) || 0,
-                              batchNumber: item.batch_number || '',
-                            })),
-                          });
+                      <button
+                        type="button"
+                        onClick={async (e: React.MouseEvent<HTMLButtonElement>) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+
+                          try {
+                            const token = localStorage.getItem('accessToken');
+                            const response = await fetch(`/api/v1/purchase/grn/${grn.id}`, {
+                              headers: { Authorization: `Bearer ${token}` },
+                            });
+                            const detailedGRN = await response.json();
+                            setSelectedGRN(detailedGRN);
+
+                            setEditFormData({
+                              invoiceNumber: detailedGRN.invoice_number || '',
+                              invoiceDate: detailedGRN.invoice_date || '',
+                              invoiceFileUrl: detailedGRN.invoice_file_url || '',
+                              invoiceFileName: detailedGRN.invoice_file_name || '',
+                              invoiceFileType: detailedGRN.invoice_file_type || '',
+                              invoiceFileSize: detailedGRN.invoice_file_size || 0,
+                              warehouseId: detailedGRN.warehouse?.id || '',
+                              notes: detailedGRN.remarks || detailedGRN.notes || '',
+                              items: (Array.isArray(detailedGRN.grn_items) ? detailedGRN.grn_items : []).map((item: any) => ({
+                                id: item.id,
+                                itemId: item.item_id || item.itemId || item.item?.id || '',
+                                poItemId: item.po_item_id || item.poItemId || '',
+                                itemCode: item.item_code || item.item?.code || '',
+                                itemName: item.item_name || item.item?.name || '',
+                                uom: item.uom || item.item?.uom || '',
+                                orderedQuantity:
+                                  Number(item.ordered_qty || item.ordered_quantity) ||
+                                  Number(item.received_qty || item.received_quantity) ||
+                                  0,
+                                receivedQty: Number(item.received_qty || item.received_quantity) || 0,
+                                acceptedQty: Number(item.accepted_qty || item.accepted_quantity) || 0,
+                                rejectedQty: Number(item.rejected_qty || item.rejected_quantity) || 0,
+                                unitPrice: Number(item.unit_price || item.unitPrice) || 0,
+                                batchNumber: item.batch_number || '',
+                                expiryDate: item.expiry_date || '',
+                                notes: item.notes || '',
+                              })),
+                            });
+                          } catch (error) {
+                            console.error('Error fetching GRN details for edit:', error);
+                            setSelectedGRN(grn);
+                            setEditFormData({
+                              invoiceNumber: grn.invoice_number || '',
+                              invoiceDate: grn.invoice_date || '',
+                              invoiceFileUrl: grn.invoice_file_url || '',
+                              invoiceFileName: grn.invoice_file_name || '',
+                              invoiceFileType: grn.invoice_file_type || '',
+                              invoiceFileSize: grn.invoice_file_size || 0,
+                              warehouseId: grn.warehouse?.id || '',
+                              notes: grn.remarks || '',
+                              items: (Array.isArray(grn.grn_items) ? grn.grn_items : []).map((item: any) => ({
+                                id: item.id,
+                                itemId: item.item_id || item.itemId || item.item?.id || '',
+                                poItemId: item.po_item_id || item.poItemId || '',
+                                itemCode: item.item_code || item.item?.code || '',
+                                itemName: item.item_name || item.item?.name || '',
+                                uom: item.uom || item.item?.uom || '',
+                                orderedQuantity:
+                                  Number(item.ordered_qty || item.ordered_quantity) ||
+                                  Number(item.received_qty || item.received_quantity) ||
+                                  0,
+                                receivedQty: Number(item.received_qty || item.received_quantity) || 0,
+                                acceptedQty: Number(item.accepted_qty || item.accepted_quantity) || 0,
+                                rejectedQty: Number(item.rejected_qty || item.rejected_quantity) || 0,
+                                unitPrice: Number(item.unit_price || item.unitPrice) || 0,
+                                batchNumber: item.batch_number || '',
+                                expiryDate: item.expiry_date || '',
+                                notes: item.notes || '',
+                              })),
+                            });
+                          }
+
                           setShowViewModal(true);
                           setEditMode(true);
                         }}
@@ -1201,7 +1279,12 @@ function GRNContent() {
                   <div className="space-y-4">
                     {formData.items.map((item, index) => (
                       <div key={index} className="border border-gray-300 rounded-lg p-4 bg-gray-50">
-                        <div className="grid grid-cols-8 gap-3">
+                        <div className="grid grid-cols-11 gap-3">
+                          <div>
+                            <label className="text-xs text-gray-600 font-semibold">S.No</label>
+                            <div className="text-sm font-medium text-gray-900 mt-2">{index + 1}</div>
+                          </div>
+
                           <div className="col-span-2">
                             <label className="text-xs text-gray-600 font-semibold">Item</label>
                             <div className="text-sm font-medium text-gray-900 mt-1">
@@ -1210,6 +1293,17 @@ function GRNContent() {
                             <div className="text-xs text-gray-500 mt-1">
                               Master HSN: {item.masterHsnCode || 'N/A'}
                             </div>
+                          </div>
+
+                          <div>
+                            <label className="text-xs text-gray-600 font-semibold">UOM</label>
+                            <input
+                              type="text"
+                              value={item.uom || ''}
+                              readOnly
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                              placeholder="-"
+                            />
                           </div>
                           <div>
                             <label className="text-xs text-gray-600">Supplier HSN</label>
@@ -1495,8 +1589,10 @@ function GRNContent() {
                 <table className="min-w-full border border-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
+                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-700">S.No</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Item Code</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Item Name</th>
+                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-700">UOM</th>
                       <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Received</th>
                       <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Accepted</th>
                       <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Rejected</th>
@@ -1507,8 +1603,10 @@ function GRNContent() {
                     {editMode ? (
                       editFormData.items.map((item, idx) => (
                         <tr key={idx}>
+                          <td className="px-4 py-2 text-sm text-gray-700 text-center">{idx + 1}</td>
                           <td className="px-4 py-2 text-sm text-gray-900">{item.itemCode}</td>
                           <td className="px-4 py-2 text-sm text-gray-900">{item.itemName}</td>
+                          <td className="px-4 py-2 text-sm text-gray-900 text-center">{item.uom || '-'}</td>
                           <td className="px-4 py-2 text-sm text-gray-900 text-right">
                             <input
                               type="number"
@@ -1563,8 +1661,10 @@ function GRNContent() {
                     ) : (
                       selectedGRN.grn_items.map((item, idx) => (
                         <tr key={idx}>
+                          <td className="px-4 py-2 text-sm text-gray-700 text-center">{idx + 1}</td>
                           <td className="px-4 py-2 text-sm text-gray-900">{item.item_code || item.item?.code || '-'}</td>
                           <td className="px-4 py-2 text-sm text-gray-900">{item.item_name || item.item?.name || '-'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-900 text-center">{(item as any).uom || (item.item as any)?.uom || '-'}</td>
                           <td className="px-4 py-2 text-sm text-gray-900 text-right">{Number(item.received_qty || item.received_quantity) || 0}</td>
                           <td className="px-4 py-2 text-sm text-green-600 text-right font-semibold">{Number(item.accepted_qty || item.accepted_quantity) || 0}</td>
                           <td className="px-4 py-2 text-sm text-red-600 text-right font-semibold">{Number(item.rejected_qty || item.rejected_quantity) || 0}</td>

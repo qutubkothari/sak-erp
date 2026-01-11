@@ -8,6 +8,7 @@ type SmartJobOrderPreviewRequest = {
   quantity: number;
   salesOrderId?: string;
   salesOrderItemId?: string;
+  includeAllComponents?: boolean;
 };
 
 type SmartJobOrderCreateRequest = {
@@ -18,6 +19,7 @@ type SmartJobOrderCreateRequest = {
   salesOrderItemId?: string;
   variantSelections?: Record<string, string>;
   itemSelections?: Record<string, string>;
+  autoIssueMaterials?: boolean;
 };
 
 type SmartExplosionNode = {
@@ -53,7 +55,198 @@ export class JobOrderService {
 
   constructor(private readonly uidService: UidSupabaseService) {}
 
+  private isUuid(value: unknown): value is string {
+    if (typeof value !== 'string') return false;
+    const v = value.trim();
+    if (!v) return false;
+    // Basic UUID v1-v5 validation (case-insensitive)
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  }
+
+  private async issueJobOrderMaterials(tenantId: string, jobOrderId: string) {
+    const { data: jobOrder } = await this.supabase
+      .from('production_job_orders')
+      .select('*, job_order_materials(*)')
+      .eq('tenant_id', tenantId)
+      .eq('id', jobOrderId)
+      .single();
+
+    if (!jobOrder) throw new NotFoundException('Job order not found');
+
+    const status = String(jobOrder.status || '');
+    if (status === 'COMPLETED' || status === 'CANCELLED') {
+      throw new BadRequestException('Cannot issue materials for a completed/cancelled job order');
+    }
+
+    for (const material of jobOrder.job_order_materials || []) {
+      const requiredQty = Number(material.required_quantity) || 0;
+      const alreadyIssued = Number(material.issued_quantity) || 0;
+      const consumeQty = Math.max(0, requiredQty - alreadyIssued);
+      if (consumeQty <= 0) {
+        // Keep status consistent if fully issued.
+        if (requiredQty > 0 && alreadyIssued >= requiredQty && material.status !== 'ISSUED') {
+          await this.supabase
+            .from('job_order_materials')
+            .update({ status: 'ISSUED' })
+            .eq('id', material.id);
+        }
+        continue;
+      }
+
+      const itemIdToConsume = material.selected_variant_id || material.item_id;
+      if (!this.isUuid(String(itemIdToConsume || ''))) {
+        throw new BadRequestException(`Invalid material itemId for consumption: ${String(itemIdToConsume)}`);
+      }
+
+      const { data: item } = await this.supabase
+        .from('items')
+        .select('code, name')
+        .eq('id', itemIdToConsume)
+        .single();
+
+      const { data: stockEntries } = await this.supabase
+        .from('stock_entries')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', itemIdToConsume)
+        .gt('available_quantity', 0)
+        .order('created_at', { ascending: true });
+
+      if (!stockEntries || stockEntries.length === 0) {
+        throw new BadRequestException(`Failed to issue ${item?.code || ''}: Item not found in inventory`);
+      }
+
+      const totalAvailable = stockEntries.reduce(
+        (sum, entry) => sum + parseFloat(entry.available_quantity.toString()),
+        0,
+      );
+
+      if (totalAvailable < consumeQty) {
+        throw new BadRequestException(
+          `Failed to issue ${item?.code || ''}: Insufficient stock. Need ${consumeQty}, have ${totalAvailable}`,
+        );
+      }
+
+      let remainingToConsume = consumeQty;
+      for (const entry of stockEntries) {
+        if (remainingToConsume <= 0) break;
+
+        const entryAvailable = parseFloat(entry.available_quantity.toString());
+        const toConsumeFromEntry = Math.min(entryAvailable, remainingToConsume);
+        const newAvailable = entryAvailable - toConsumeFromEntry;
+
+        const { error: updateError } = await this.supabase
+          .from('stock_entries')
+          .update({
+            available_quantity: newAvailable,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', entry.id);
+
+        if (updateError) {
+          throw new BadRequestException(`Failed to issue ${item?.code || ''}: ${updateError.message}`);
+        }
+
+        remainingToConsume -= toConsumeFromEntry;
+      }
+
+      const nextIssued = alreadyIssued + consumeQty;
+      await this.supabase
+        .from('job_order_materials')
+        .update({
+          issued_quantity: nextIssued,
+          status: nextIssued >= requiredQty ? 'ISSUED' : 'PARTIAL',
+        })
+        .eq('id', material.id);
+    }
+
+    // Move JO to IN_PROGRESS once materials are issued
+    if (status !== 'IN_PROGRESS') {
+      await this.supabase
+        .from('production_job_orders')
+        .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
+        .eq('tenant_id', tenantId)
+        .eq('id', jobOrderId);
+    }
+  }
+
+  private async normalizeMaterialIds(
+    tenantId: string,
+    materials: any[],
+  ): Promise<any[]> {
+    const safeMaterials = Array.isArray(materials) ? materials : [];
+    if (safeMaterials.length === 0) return safeMaterials;
+
+    const candidateIds = new Set<string>();
+    for (const material of safeMaterials) {
+      const itemId = String(material?.itemId || '').trim();
+      const selectedVariantId = String(
+        material?.selectedVariantId || material?.selected_variant_id || '',
+      ).trim();
+      if (itemId) candidateIds.add(itemId);
+      if (selectedVariantId) candidateIds.add(selectedVariantId);
+    }
+
+    const ids = Array.from(candidateIds);
+    if (ids.length === 0) return safeMaterials;
+
+    const { data: items } = await this.supabase
+      .from('items')
+      .select('id')
+      .in('id', ids);
+    const itemIdSet = new Set((items || []).map((i: any) => i.id));
+
+    const missingIds = ids.filter((id) => !itemIdSet.has(id));
+    if (missingIds.length === 0) return safeMaterials;
+
+    const { data: bomHeaders } = await this.supabase
+      .from('bom_headers')
+      .select('id, item_id')
+      .eq('tenant_id', tenantId)
+      .in('id', missingIds);
+
+    const headerIdToItemId = new Map<string, string>();
+    (bomHeaders || []).forEach((h: any) => {
+      if (h?.id && h?.item_id) headerIdToItemId.set(h.id, h.item_id);
+    });
+
+    if (headerIdToItemId.size === 0) return safeMaterials;
+
+    return safeMaterials.map((material) => {
+      const originalItemId = String(material?.itemId || '').trim();
+      const originalVariantId = String(
+        material?.selectedVariantId || material?.selected_variant_id || '',
+      ).trim();
+
+      const resolvedItemId = headerIdToItemId.get(originalItemId) || originalItemId;
+      const resolvedVariantId = headerIdToItemId.get(originalVariantId) || originalVariantId;
+
+      const next: any = { ...material };
+      if (resolvedItemId !== originalItemId) next.itemId = resolvedItemId;
+
+      if (originalVariantId) {
+        // Preserve existing key style (frontend sends selectedVariantId)
+        if ((material as any).selectedVariantId !== undefined) {
+          if (resolvedVariantId !== originalVariantId) next.selectedVariantId = resolvedVariantId;
+        } else {
+          if (resolvedVariantId !== originalVariantId) next.selected_variant_id = resolvedVariantId;
+        }
+      }
+
+      // If the UI used itemId as a proxy for selectedVariantId, keep them aligned.
+      if (originalVariantId && originalVariantId === originalItemId && resolvedItemId !== originalItemId) {
+        if ((material as any).selectedVariantId !== undefined) next.selectedVariantId = resolvedItemId;
+        else next.selected_variant_id = resolvedItemId;
+      }
+
+      return next;
+    });
+  }
+
   async create(tenantId: string, userId: string, dto: CreateJobOrderDto) {
+    console.log('[JobOrderService] create called - itemId:', dto.itemId, 'quantity:', dto.quantity);
+    console.log('[JobOrderService] create - materials:', JSON.stringify(dto.materials, null, 2));
+    
     // Get item details
     const { data: item } = await this.supabase
       .from('items')
@@ -63,9 +256,11 @@ export class JobOrderService {
 
     if (!item) throw new NotFoundException('Item not found');
 
+    const normalizedMaterials = await this.normalizeMaterialIds(tenantId, dto.materials || []);
+
     // Check material availability if materials are provided
-    if (dto.materials && dto.materials.length > 0) {
-      const availability = await this.checkMaterialAvailability(tenantId, dto.materials, dto.quantity);
+    if (normalizedMaterials && normalizedMaterials.length > 0) {
+      const availability = await this.checkMaterialAvailability(tenantId, normalizedMaterials, dto.quantity);
       if (!availability.available) {
         throw new BadRequestException(
           `Insufficient materials:\n${availability.shortages.map(s => 
@@ -134,18 +329,23 @@ export class JobOrderService {
         })
       );
 
-      await this.supabase.from('job_order_operations').insert(operations);
+      const { error: opErr } = await this.supabase.from('job_order_operations').insert(operations);
+      if (opErr) throw new BadRequestException(opErr.message);
     }
 
     // Create materials if provided
-    if (dto.materials && dto.materials.length > 0) {
+    if (normalizedMaterials && normalizedMaterials.length > 0) {
       const materials = await Promise.all(
-        dto.materials.map(async (mat) => {
+        normalizedMaterials.map(async (mat) => {
           const { data: matItem } = await this.supabase
             .from('items')
             .select('code, name')
             .eq('id', mat.itemId)
             .single();
+
+          if (!matItem?.code || !matItem?.name) {
+            throw new BadRequestException(`Material item not found: ${String(mat.itemId)}`);
+          }
 
           let warehouseName = null;
           if (mat.warehouseId) {
@@ -171,7 +371,8 @@ export class JobOrderService {
         })
       );
 
-      await this.supabase.from('job_order_materials').insert(materials);
+      const { error: matErr } = await this.supabase.from('job_order_materials').insert(materials);
+      if (matErr) throw new BadRequestException(matErr.message);
     }
 
     return this.findOne(tenantId, jobOrder.id);
@@ -300,18 +501,8 @@ export class JobOrderService {
   }
 
   async createFromBOM(tenantId: string, userId: string, itemId: string, bomId: string, quantity: number, startDate: string) {
-    // Get BOM details
-    const { data: bom } = await this.supabase
-      .from('bom_headers')
-      .select(`
-        *,
-        bom_items(*, items(code, name)),
-        bom_routing(*, workstations(id, name))
-      `)
-      .eq('tenant_id', tenantId)
-      .eq('id', bomId)
-      .single();
-
+    // Get BOM details (avoid PostgREST ambiguous embed between bom_headers and bom_items)
+    const bom = await this.getBomWithItemsAndRoutingForJobOrder(tenantId, bomId);
     if (!bom) throw new NotFoundException('BOM not found');
 
     // Create operations from routing
@@ -324,10 +515,70 @@ export class JobOrderService {
       acceptedVariationPercent: 5, // default 5%
     }));
 
-    // Create materials from BOM items
-    const materials = (bom.bom_items || []).map((item: any) => ({
-      itemId: item.item_id,
-      requiredQuantity: item.quantity * quantity,
+    // Create materials from BOM items.
+    // IMPORTANT: bom_items can represent either:
+    // - direct ITEM component via item_id
+    // - sub-BOM component via child_bom_id (multi-level BOM)
+    // For child_bom_id we consume the sub-assembly item (bom_headers.item_id) at this level.
+    const bomItems = Array.isArray(bom.bom_items) ? bom.bom_items : [];
+
+    const childBomIds = Array.from(
+      new Set(
+        bomItems
+          .map((bi: any) => bi?.child_bom_id || bi?.childBomId)
+          .filter(Boolean)
+          .map((v: any) => String(v)),
+      ),
+    );
+
+    const childBomIdToItemId = new Map<string, string>();
+    if (childBomIds.length > 0) {
+      const { data: childBoms, error: childBomsError } = await this.supabase
+        .from('bom_headers')
+        .select('id, item_id')
+        .in('id', childBomIds);
+      if (childBomsError) throw new BadRequestException(childBomsError.message);
+      for (const cb of childBoms || []) {
+        if (cb?.id && cb?.item_id) childBomIdToItemId.set(String(cb.id), String(cb.item_id));
+      }
+    }
+
+    // Deduplicate by itemId to avoid repeated rows
+    const requiredByItemId = new Map<string, number>();
+    for (const bi of bomItems) {
+      const lineQty = Number(bi?.quantity) || 0;
+      if (lineQty <= 0) continue;
+
+      const requiredQuantity = lineQty * Number(quantity);
+      const directItemId = bi?.item_id || bi?.itemId;
+      const childBomId = bi?.child_bom_id || bi?.childBomId;
+
+      let materialItemId: string | null = null;
+      if (directItemId) {
+        materialItemId = String(directItemId);
+      } else if (childBomId) {
+        materialItemId = childBomIdToItemId.get(String(childBomId)) || null;
+        if (!materialItemId) {
+          console.warn('[JobOrderService] BOM item references child_bom_id but child BOM has no item_id:', {
+            bomId,
+            bomItemId: bi?.id,
+            childBomId,
+          });
+        }
+      } else {
+        console.warn('[JobOrderService] Skipping BOM item with neither item_id nor child_bom_id:', {
+          bomId,
+          bomItemId: bi?.id,
+        });
+      }
+
+      if (!materialItemId) continue;
+      requiredByItemId.set(materialItemId, (requiredByItemId.get(materialItemId) || 0) + requiredQuantity);
+    }
+
+    const materials = Array.from(requiredByItemId.entries()).map(([materialItemId, requiredQuantity]) => ({
+      itemId: materialItemId,
+      requiredQuantity,
     }));
 
     return this.create(tenantId, userId, {
@@ -354,20 +605,35 @@ export class JobOrderService {
       itemSelections?: Record<string, string>;
     },
   ) {
-    const { data: bom, error: bomError } = await this.supabase
-      .from('bom_headers')
-      .select(`
-        *,
-        bom_items(*, items(code, name)),
-        bom_routing(*, workstations(id, name))
-      `)
-      .eq('tenant_id', tenantId)
-      .eq('id', args.bomId)
-      .single();
-
+    const bom = await this.getBomWithItemsAndRoutingForJobOrder(tenantId, args.bomId);
     if (!bom) {
-      console.error('[JobOrderService] BOM not found - bomId:', args.bomId, 'error:', bomError);
-      throw new NotFoundException(`BOM not found for ID: ${args.bomId}. Error: ${bomError?.message || 'Unknown'}`);
+      console.error('[JobOrderService] BOM not found - bomId:', args.bomId);
+      throw new NotFoundException(`BOM not found for ID: ${args.bomId}`);
+    }
+
+    // For multi-level BOMs, bom_items can reference child_bom_id instead of item_id.
+    // Resolve those child BOMs to their item_id so job_order_materials never gets null itemIds.
+    const childBomIds = Array.from(
+      new Set(
+        (bom.bom_items || [])
+          .map((bi: any) => bi?.child_bom_id || bi?.childBomId)
+          .filter(Boolean)
+          .map((id: any) => String(id)),
+      ),
+    );
+
+    const childBomIdToItemId = new Map<string, string>();
+    if (childBomIds.length > 0) {
+      const { data: childBoms, error: childBomsErr } = await this.supabase
+        .from('bom_headers')
+        .select('id, item_id')
+        .eq('tenant_id', tenantId)
+        .in('id', childBomIds);
+
+      if (childBomsErr) throw new BadRequestException(childBomsErr.message);
+      (childBoms || []).forEach((cb: any) => {
+        if (cb?.id && cb?.item_id) childBomIdToItemId.set(String(cb.id), String(cb.item_id));
+      });
     }
 
     const operations = (bom.bom_routing || []).map((route: any, idx: number) => ({
@@ -379,26 +645,47 @@ export class JobOrderService {
       acceptedVariationPercent: 5,
     }));
 
-    const materials = (bom.bom_items || []).map((item: any) => {
-      const baseItemId = item.item_id;
-      const selectionKey = `${args.bomId}:${baseItemId}`;
+    const materials = (bom.bom_items || [])
+      .map((item: any) => {
+        const directItemId = item?.item_id || item?.itemId || null;
+        const childBomId = item?.child_bom_id || item?.childBomId || null;
 
-      const selectedItemIdRaw = args.itemSelections?.[selectionKey];
-      const selectedItemId = String(selectedItemIdRaw || '').trim();
-      const effectiveItemId = selectedItemId ? selectedItemId : baseItemId;
+        const baseItemId = directItemId
+          ? String(directItemId)
+          : childBomId
+            ? childBomIdToItemId.get(String(childBomId)) || null
+            : null;
 
-      const selectedVariantId = args.variantSelections?.[selectionKey];
-      const shouldApplyVariant = effectiveItemId === baseItemId;
+        if (!baseItemId) {
+          console.warn('[JobOrderService] Skipping BOM item with neither item_id nor resolvable child_bom_id:', {
+            bomId: args.bomId,
+            bomItemId: item?.id,
+            directItemId,
+            childBomId,
+          });
+          return null;
+        }
 
-      return {
-        itemId: effectiveItemId,
-        requiredQuantity: item.quantity * args.quantity,
-        selectedVariantId:
-          shouldApplyVariant && selectedVariantId && selectedVariantId !== baseItemId
-            ? selectedVariantId
-            : undefined,
-      };
-    });
+        const selectionKey = `${args.bomId}:${baseItemId}`;
+
+        const selectedItemIdRaw = args.itemSelections?.[selectionKey];
+        const selectedItemId = String(selectedItemIdRaw || '').trim();
+        const effectiveItemId = selectedItemId ? selectedItemId : baseItemId;
+
+        const selectedVariantIdRaw = args.variantSelections?.[selectionKey];
+        const selectedVariantId = String(selectedVariantIdRaw || '').trim();
+        const shouldApplyVariant = effectiveItemId === baseItemId;
+
+        return {
+          itemId: effectiveItemId,
+          requiredQuantity: (Number(item?.quantity) || 0) * args.quantity,
+          selectedVariantId:
+            shouldApplyVariant && selectedVariantId && selectedVariantId !== baseItemId
+              ? selectedVariantId
+              : undefined,
+        };
+      })
+      .filter(Boolean);
 
     return this.create(tenantId, userId, {
       itemId: args.itemId,
@@ -414,15 +701,21 @@ export class JobOrderService {
 
   private async checkMaterialAvailability(tenantId: string, materials: any[], jobQuantity: number) {
     console.log('[JobOrderService] checkMaterialAvailability - tenantId:', tenantId);
-    console.log('[JobOrderService] checkMaterialAvailability - materials:', materials);
+    console.log('[JobOrderService] checkMaterialAvailability - materials:', JSON.stringify(materials, null, 2));
     console.log('[JobOrderService] checkMaterialAvailability - jobQuantity:', jobQuantity);
+
+    const normalizedMaterials = await this.normalizeMaterialIds(tenantId, materials || []);
     
     const shortages = [];
 
-    for (const material of materials) {
+    for (const material of normalizedMaterials) {
       const required = material.requiredQuantity;  // Don't multiply by jobQuantity - it's already included in requiredQuantity
 
       const itemIdToCheck = material.selectedVariantId || material.selected_variant_id || material.itemId;
+      if (!this.isUuid(String(itemIdToCheck || ''))) {
+        throw new BadRequestException(`Invalid material itemId: ${String(itemIdToCheck)}`);
+      }
+      console.log('[JobOrderService] Checking material - itemIdToCheck:', itemIdToCheck, 'required:', required);
 
       // IMPORTANT: Use stock_entries-backed summary (same as GET /items/:id/stock)
       // so Job Order validation matches the stock shown across the app.
@@ -440,18 +733,33 @@ export class JobOrderService {
       
       console.log('[JobOrderService] Required:', required, 'Available:', available);
 
+      // Check material availability
       if (available < required) {
         // Fetch item details
-        const { data: item } = await this.supabase
+        const { data: item, error: itemError } = await this.supabase
           .from('items')
-          .select('code, name')
+          .select('id, code, name')
           .eq('id', itemIdToCheck)
           .single();
 
+        if (itemError) {
+          console.error('[JobOrderService] Error fetching item details for', itemIdToCheck, ':', itemError);
+        }
+
+        console.log('[JobOrderService] Item lookup for', itemIdToCheck, '- found:', item, 'error:', itemError);
+
+        // If item doesn't exist, try to get item code/name from other sources
+        let itemCode = item?.code || 'Unknown';
+        let itemName = item?.name || 'Unknown';
+        
+        if (!item && itemIdToCheck) {
+          console.warn('[JobOrderService] Item not found in items table for ID:', itemIdToCheck);
+        }
+
         shortages.push({
           itemId: itemIdToCheck,
-          itemCode: item?.code || 'Unknown',
-          itemName: item?.name || 'Unknown',
+          itemCode: itemCode,
+          itemName: itemName,
           required,
           available,
           shortage: required - available,
@@ -459,7 +767,7 @@ export class JobOrderService {
       }
     }
 
-    console.log('[JobOrderService] Final shortages:', shortages);
+    console.log('[JobOrderService] Final shortages:', JSON.stringify(shortages, null, 2));
     return {
       available: shortages.length === 0,
       shortages,
@@ -484,7 +792,13 @@ export class JobOrderService {
     try {
       // 1. Consume materials from inventory (stock_entries)
       for (const material of jobOrder.job_order_materials) {
-        const consumeQty = material.required_quantity;
+        const requiredQty = Number(material.required_quantity) || 0;
+        const alreadyIssued = Number(material.issued_quantity) || 0;
+        const consumeQty = Math.max(0, requiredQty - alreadyIssued);
+        if (consumeQty <= 0) {
+          // Nothing left to consume for this material.
+          continue;
+        }
 
         // Use selected_variant_id if available, otherwise use item_id
         const itemIdToConsume = material.selected_variant_id || material.item_id;
@@ -550,7 +864,7 @@ export class JobOrderService {
         await this.supabase
           .from('job_order_materials')
           .update({ 
-            issued_quantity: consumeQty,
+            issued_quantity: alreadyIssued + consumeQty,
             status: 'ISSUED'
           })
           .eq('id', material.id);
@@ -581,7 +895,8 @@ export class JobOrderService {
         throw new BadRequestException('Finished item not found');
       }
 
-      // 3. Generate UIDs for finished goods
+      // 3. Generate UIDs for finished goods with PENDING_QC status
+      // NOTE: Stock will NOT be added until QC approval
       const quantityProduced = jobOrder.quantity;
       const uidsCreated = [];
 
@@ -593,7 +908,7 @@ export class JobOrderService {
         entityType = 'CP';
       }
 
-      console.log(`[JobOrder] Generating ${quantityProduced} UIDs for ${finishedItem.code}, entityType: ${entityType}`);
+      console.log(`[JobOrder] Generating ${quantityProduced} UIDs for ${finishedItem.code}, entityType: ${entityType}, status: PENDING_QC`);
 
       for (let i = 0; i < quantityProduced; i++) {
         // Generate UID
@@ -603,7 +918,7 @@ export class JobOrderService {
           entityType,
         );
 
-        // Create UID record with job order trail
+        // Create UID record with PENDING_QC status
         const { error: uidError } = await this.supabase
           .from('uid_registry')
           .insert({
@@ -612,14 +927,21 @@ export class JobOrderService {
             entity_type: entityType,
             entity_id: finishedItem.id,
             job_order_id: jobOrderId,
-            location: 'Production',
-            status: 'GENERATED',
+            location: 'QC',
+            status: 'PENDING_QC',
             lifecycle: JSON.stringify([
               {
                 stage: 'PRODUCED',
                 timestamp: new Date().toISOString(),
                 location: 'Production',
                 reference: `JOB ORDER ${jobOrder.job_order_number}`,
+                user: userId,
+              },
+              {
+                stage: 'PENDING_QC',
+                timestamp: new Date().toISOString(),
+                location: 'QC',
+                reference: 'Awaiting Quality Control Inspection',
                 user: userId,
               },
             ]),
@@ -629,6 +951,7 @@ export class JobOrderService {
               job_order_id: jobOrderId,
               job_order_number: jobOrder.job_order_number,
               production_date: new Date().toISOString(),
+              qc_status: 'PENDING',
             }),
           });
 
@@ -639,29 +962,10 @@ export class JobOrderService {
         }
       }
 
-      console.log(`[JobOrder] Generated ${uidsCreated.length} UIDs for job order ${jobOrder.job_order_number}`);
+      console.log(`[JobOrder] Generated ${uidsCreated.length} UIDs with PENDING_QC status for job order ${jobOrder.job_order_number}`);
+      console.log(`[JobOrder] Stock will be added ONLY after QC approval via approveQC endpoint`);
 
-      const { error: addError } = await this.supabase
-        .from('stock_entries')
-        .insert({
-          tenant_id: tenantId,
-          item_id: jobOrder.item_id,
-          warehouse_id: warehouseId,
-          quantity: jobOrder.quantity,
-          available_quantity: jobOrder.quantity,
-          allocated_quantity: 0,
-          metadata: {
-            created_from: 'JOB_ORDER_COMPLETION',
-            job_order_id: jobOrderId,
-            job_order_number: jobOrder.job_order_number,
-            uids_generated: uidsCreated.length,
-          },
-        });
-
-      if (addError) {
-        console.error('Error adding finished goods:', addError);
-        throw new BadRequestException(`Failed to add finished goods: ${addError.message}`);
-      }
+      // DO NOT add stock_entries here - will be added after QC approval
 
       // 3. Update job order status
       const { error: updateError } = await this.supabase
@@ -678,6 +982,183 @@ export class JobOrderService {
       return this.findOne(tenantId, jobOrderId);
     } catch (error) {
       console.error('Error completing job order:', error);
+      throw error;
+    }
+  }
+
+  async approveQC(
+    tenantId: string, 
+    jobOrderId: string, 
+    approvedUids: string[], 
+    rejectedUids: string[], 
+    userId?: string
+  ) {
+    // Validate job order exists and is completed
+    const { data: jobOrder } = await this.supabase
+      .from('production_job_orders')
+      .select('*, finished_item:items!production_job_orders_item_id_fkey(id, code, name)')
+      .eq('tenant_id', tenantId)
+      .eq('id', jobOrderId)
+      .single();
+
+    if (!jobOrder) throw new NotFoundException('Job order not found');
+    if (jobOrder.status !== 'COMPLETED') {
+      throw new BadRequestException('Job order must be COMPLETED before QC approval');
+    }
+
+    // Get all UIDs for this job order
+    const { data: allUids } = await this.supabase
+      .from('uid_registry')
+      .select('uid, status')
+      .eq('tenant_id', tenantId)
+      .eq('job_order_id', jobOrderId);
+
+    if (!allUids || allUids.length === 0) {
+      throw new BadRequestException('No UIDs found for this job order');
+    }
+
+    const totalUids = allUids.length;
+    const providedCount = approvedUids.length + rejectedUids.length;
+
+    if (providedCount !== totalUids) {
+      throw new BadRequestException(
+        `Total UIDs mismatch. Job order has ${totalUids} UIDs, but ${providedCount} were provided for QC`
+      );
+    }
+
+    try {
+      // 1. Update approved UIDs
+      if (approvedUids.length > 0) {
+        for (const uid of approvedUids) {
+          const { data: existing } = await this.supabase
+            .from('uid_registry')
+            .select('lifecycle, metadata')
+            .eq('uid', uid)
+            .single();
+
+          const currentLifecycle = existing?.lifecycle ? JSON.parse(existing.lifecycle) : [];
+          const currentMetadata = existing?.metadata ? JSON.parse(existing.metadata) : {};
+
+          await this.supabase
+            .from('uid_registry')
+            .update({
+              status: 'QC_APPROVED',
+              location: 'Warehouse',
+              lifecycle: JSON.stringify([
+                ...currentLifecycle,
+                {
+                  stage: 'QC_APPROVED',
+                  timestamp: new Date().toISOString(),
+                  location: 'QC',
+                  reference: 'Quality Control Passed',
+                  user: userId,
+                },
+              ]),
+              metadata: JSON.stringify({
+                ...currentMetadata,
+                qc_status: 'APPROVED',
+                qc_approved_at: new Date().toISOString(),
+                qc_approved_by: userId,
+              }),
+            })
+            .eq('uid', uid);
+        }
+      }
+
+      // 2. Update rejected UIDs
+      if (rejectedUids.length > 0) {
+        for (const uid of rejectedUids) {
+          const { data: existing } = await this.supabase
+            .from('uid_registry')
+            .select('lifecycle, metadata')
+            .eq('uid', uid)
+            .single();
+
+          const currentLifecycle = existing?.lifecycle ? JSON.parse(existing.lifecycle) : [];
+          const currentMetadata = existing?.metadata ? JSON.parse(existing.metadata) : {};
+
+          await this.supabase
+            .from('uid_registry')
+            .update({
+              status: 'QC_REJECTED',
+              location: 'Rework/Scrap',
+              lifecycle: JSON.stringify([
+                ...currentLifecycle,
+                {
+                  stage: 'QC_REJECTED',
+                  timestamp: new Date().toISOString(),
+                  location: 'QC',
+                  reference: 'Quality Control Failed',
+                  user: userId,
+                },
+              ]),
+              metadata: JSON.stringify({
+                ...currentMetadata,
+                qc_status: 'REJECTED',
+                qc_rejected_at: new Date().toISOString(),
+                qc_rejected_by: userId,
+              }),
+            })
+            .eq('uid', uid);
+        }
+      }
+
+      // 3. Add stock ONLY for approved UIDs
+      if (approvedUids.length > 0) {
+        // Get warehouse
+        const { data: warehouses } = await this.supabase
+          .from('warehouses')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .limit(1);
+
+        if (!warehouses || warehouses.length === 0) {
+          throw new BadRequestException('No warehouse configured');
+        }
+
+        const warehouseId = warehouses[0].id;
+
+        // Add stock entry for approved quantity
+        const { error: addError } = await this.supabase
+          .from('stock_entries')
+          .insert({
+            tenant_id: tenantId,
+            item_id: jobOrder.item_id,
+            warehouse_id: warehouseId,
+            quantity: approvedUids.length,
+            available_quantity: approvedUids.length,
+            allocated_quantity: 0,
+            metadata: {
+              created_from: 'QC_APPROVAL',
+              job_order_id: jobOrderId,
+              job_order_number: jobOrder.job_order_number,
+              total_produced: totalUids,
+              qc_approved: approvedUids.length,
+              qc_rejected: rejectedUids.length,
+              approved_uids: approvedUids,
+            },
+          });
+
+        if (addError) {
+          console.error('Error adding approved stock:', addError);
+          throw new BadRequestException(`Failed to add stock: ${addError.message}`);
+        }
+      }
+
+      console.log(`[QC Approval] Job Order ${jobOrder.job_order_number}: ${approvedUids.length} approved, ${rejectedUids.length} rejected`);
+      console.log(`[QC Approval] Added ${approvedUids.length} units to stock`);
+
+      return {
+        jobOrderId,
+        jobOrderNumber: jobOrder.job_order_number,
+        totalProduced: totalUids,
+        qcApproved: approvedUids.length,
+        qcRejected: rejectedUids.length,
+        stockAdded: approvedUids.length,
+        message: `QC Complete: ${approvedUids.length} approved units added to stock, ${rejectedUids.length} rejected`,
+      };
+    } catch (error) {
+      console.error('Error during QC approval:', error);
       throw error;
     }
   }
@@ -816,6 +1297,40 @@ export class JobOrderService {
     return Array.isArray(data) ? data : [];
   }
 
+  private async getBomWithItemsAndRoutingForJobOrder(tenantId: string, bomId: string): Promise<any | null> {
+    const { data: header, error: headerError } = await this.supabase
+      .from('bom_headers')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('id', bomId)
+      .single();
+
+    if (headerError) throw new BadRequestException(headerError.message);
+    if (!header) return null;
+
+    const [itemsRes, routingRes] = await Promise.all([
+      this.supabase
+        .from('bom_items')
+        .select('*')
+        .eq('bom_id', bomId)
+        .order('sequence', { ascending: true }),
+      this.supabase
+        .from('bom_routing')
+        .select('*')
+        .eq('bom_id', bomId)
+        .order('operation_sequence', { ascending: true }),
+    ]);
+
+    if (itemsRes.error) throw new BadRequestException(itemsRes.error.message);
+    if (routingRes.error) throw new BadRequestException(routingRes.error.message);
+
+    return {
+      ...header,
+      bom_items: Array.isArray(itemsRes.data) ? itemsRes.data : [],
+      bom_routing: Array.isArray(routingRes.data) ? routingRes.data : [],
+    };
+  }
+
   private async buildSmartExplosion(
     tenantId: string,
     bomId: string,
@@ -826,6 +1341,9 @@ export class JobOrderService {
       itemById: Map<string, any>;
       stockByItemId: Map<string, number>;
       bomById: Map<string, any>;
+    },
+    options?: {
+      includeAllComponents?: boolean;
     },
   ): Promise<{ nodes: SmartExplosionNode[]; subAssemblies: SmartSubAssemblyPlan[] }> {
     if (multiplier <= 0) return { nodes: [], subAssemblies: [] };
@@ -905,14 +1423,19 @@ export class JobOrderService {
             availableQuantity: available,
             toMakeQuantity,
           });
+        }
 
+        const shouldExplodeChild = Boolean(options?.includeAllComponents) || toMakeQuantity > 0;
+        if (shouldExplodeChild) {
+          const nextMultiplier = Boolean(options?.includeAllComponents) ? requiredQuantity : toMakeQuantity;
           const childResult = await this.buildSmartExplosion(
             tenantId,
             childBomId,
-            toMakeQuantity,
+            nextMultiplier,
             level + 1,
             new Set(visitedBomIds),
             caches,
+            options,
           );
           nodes.push(...childResult.nodes);
           subAssemblies.push(...childResult.subAssemblies);
@@ -969,14 +1492,19 @@ export class JobOrderService {
                 availableQuantity: available,
                 toMakeQuantity,
               });
+            }
 
+            const shouldExplodeChild = Boolean(options?.includeAllComponents) || toMakeQuantity > 0;
+            if (shouldExplodeChild) {
+              const nextMultiplier = Boolean(options?.includeAllComponents) ? requiredQuantity : toMakeQuantity;
               const childResult = await this.buildSmartExplosion(
                 tenantId,
                 subBom.id,
-                toMakeQuantity,
+                nextMultiplier,
                 level + 1,
                 new Set(visitedBomIds),
                 caches,
+                options,
               );
               nodes.push(...childResult.nodes);
               subAssemblies.push(...childResult.subAssemblies);
@@ -1039,6 +1567,7 @@ export class JobOrderService {
       0,
       new Set<string>(),
       caches,
+      { includeAllComponents: Boolean(req.includeAllComponents) },
     );
 
     // De-dup sub assemblies by (bomId,itemId) keeping the max-toMake (covers repeated usage).
@@ -1130,8 +1659,17 @@ export class JobOrderService {
       itemSelections: req.itemSelections,
     });
 
+    // Smart job order UX expects stock to reduce immediately upon creation.
+    // Issue materials for the main job order (does NOT add finished goods stock).
+    const shouldAutoIssue = req.autoIssueMaterials !== false;
+    if (shouldAutoIssue) {
+      await this.issueJobOrderMaterials(tenantId, main.id);
+    }
+
+    const mainWithMaterials = shouldAutoIssue ? await this.findOne(tenantId, main.id) : main;
+
     return {
-      jobOrder: main,
+      jobOrder: mainWithMaterials,
       autoCompletedSubJobOrders: completedSubJobOrders,
       preview,
     };

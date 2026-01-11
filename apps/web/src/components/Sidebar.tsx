@@ -134,25 +134,134 @@ type StoredUser = {
   role?: { name: string; permissions?: any[] };
   first_name?: string;
   last_name?: string;
+  firstName?: string;
+  lastName?: string;
   email?: string;
 };
 
+type Permission = {
+  module?: string;
+  view?: boolean;
+  create?: boolean;
+  edit?: boolean;
+  delete?: boolean;
+  approve?: boolean;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function toPermission(value: unknown): Permission {
+  if (!isRecord(value)) return {};
+  return {
+    module: typeof value.module === 'string' ? value.module : undefined,
+    view: !!value.view,
+    create: !!value.create,
+    edit: !!value.edit,
+    delete: !!value.delete,
+    approve: !!value.approve,
+  };
+}
+
+function normalizePermissions(value: unknown): Permission[] {
+  if (Array.isArray(value)) return value.map(toPermission);
+  if (isRecord(value)) {
+    if (typeof value.module === 'string') return [toPermission(value)];
+
+    // Object keyed by module name
+    return Object.keys(value).map((module) => {
+      const entry = value[module];
+      const perm = toPermission(entry);
+      return { ...perm, module };
+    });
+  }
+  return [];
+}
+
+function isPermissionEnabled(permission: Permission): boolean {
+  return !!(
+    permission.view ||
+    permission.create ||
+    permission.edit ||
+    permission.delete ||
+    permission.approve
+  );
+}
+
 function getUserPermissions(user: StoredUser | null): unknown {
   if (!user) return [];
-  const raw = (user as any).roles;
-  if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'object') {
-    const flattened = raw.flatMap((entry: any) => {
-      const perms = entry?.role?.permissions;
+  const raw = (user as { roles?: unknown }).roles;
+
+  if (Array.isArray(raw) && raw.length > 0 && isRecord(raw[0])) {
+    const flattened = raw.flatMap((entry) => {
+      if (!isRecord(entry)) return [];
+      const role = entry.role;
+      if (!isRecord(role)) return [];
+      const perms = role.permissions;
       return Array.isArray(perms) ? perms : [];
     });
     if (flattened.length > 0) return flattened;
-    const first = raw.find((entry: any) => entry?.role?.permissions)?.role?.permissions;
-    return first ?? [];
+
+    const firstWithPerms = raw.find((entry) => {
+      if (!isRecord(entry)) return false;
+      const role = entry.role;
+      return isRecord(role) && Array.isArray(role.permissions) && role.permissions.length > 0;
+    });
+
+    if (firstWithPerms && isRecord(firstWithPerms) && isRecord(firstWithPerms.role)) {
+      return firstWithPerms.role.permissions ?? [];
+    }
+
+    return [];
   }
-  if ((user as any).role?.permissions) {
-    return (user as any).role.permissions;
+
+  const singleRolePerms = (user as { role?: { permissions?: unknown } }).role?.permissions;
+  if (singleRolePerms) {
+    return singleRolePerms;
   }
   return [];
+}
+
+function getAllowedNavigationNames(user: StoredUser | null): Set<string> {
+  const allowed = new Set<string>();
+  allowed.add('Dashboard');
+
+  const rawPermissions = getUserPermissions(user);
+  if (!Array.isArray(rawPermissions)) return allowed;
+
+  const permissions = normalizePermissions(rawPermissions);
+  const enabledModules = new Set(
+    permissions
+      .filter((p) => isPermissionEnabled(p))
+      .map((p) => (typeof p.module === 'string' ? p.module : ''))
+      .filter(Boolean),
+  );
+
+  // Map role permission modules -> sidebar sections.
+  // Keep this mapping minimal and aligned to RoleManagement MODULES.
+  const moduleToNav: Record<string, string[]> = {
+    'Purchase Management': ['Purchase', 'Accounts'],
+    'Sales Management': ['Sales'],
+    Inventory: ['Inventory', 'UID Tracking'],
+    Production: ['Production'],
+    'Quality Control': ['Quality'],
+    'HR Management': ['HR'],
+    'Service Management': ['Service'],
+    'BOM & Engineering': ['Production'],
+    Documents: ['Documents'],
+    Reports: ['Dashboard'],
+    Settings: ['Settings', 'Debug'],
+  };
+
+  enabledModules.forEach((module) => {
+    const navNames = moduleToNav[module];
+    if (Array.isArray(navNames)) {
+      navNames.forEach((name) => allowed.add(name));
+    }
+  });
+
+  return allowed;
 }
 
 interface SidebarProps {
@@ -175,15 +284,27 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     }
   }, []);
 
+  const permissions = getUserPermissions(currentUser);
+  const allowedNavigationNames = getAllowedNavigationNames(currentUser);
+  const shouldEnforcePermissions =
+    currentUser !== null &&
+    Array.isArray(permissions) &&
+    normalizePermissions(permissions).some((p) => isPermissionEnabled(p));
+
+  const visibleNavigation = shouldEnforcePermissions
+    ? navigation.filter((item) => allowedNavigationNames.has(item.name))
+    : navigation;
+
   // Auto-expand active section
   useEffect(() => {
-    const activeSection = navigation.find(item => 
-      item.children?.some(child => pathname.startsWith(child.href.split('?')[0]))
+    const activeSection = visibleNavigation.find((item) =>
+      item.children?.some((child) => pathname.startsWith(child.href.split('?')[0])),
     );
-    if (activeSection && !expandedSections.includes(activeSection.name)) {
-      setExpandedSections(prev => [...prev, activeSection.name]);
-    }
-  }, [pathname]);
+    if (!activeSection) return;
+    setExpandedSections((prev) =>
+      prev.includes(activeSection.name) ? prev : [...prev, activeSection.name],
+    );
+  }, [pathname, visibleNavigation]);
 
   const isActivePath = (href: string) => {
     const basePath = href.split('?')[0];
@@ -197,13 +318,11 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     );
   };
 
-  const permissions = getUserPermissions(currentUser);
-  const shouldEnforcePermissions = currentUser !== null && Array.isArray(permissions) && permissions.length > 0;
-  const visibleNavigation = shouldEnforcePermissions ? navigation : navigation;
-
   const getUserInitials = () => {
-    if (currentUser?.first_name || currentUser?.last_name) {
-      return `${currentUser.first_name?.[0] || ''}${currentUser.last_name?.[0] || ''}`.toUpperCase() || 'U';
+    const first = currentUser?.first_name ?? currentUser?.firstName;
+    const last = currentUser?.last_name ?? currentUser?.lastName;
+    if (first || last) {
+      return `${first?.[0] || ''}${last?.[0] || ''}`.toUpperCase() || 'U';
     }
     if (currentUser?.email) {
       return currentUser.email[0].toUpperCase();

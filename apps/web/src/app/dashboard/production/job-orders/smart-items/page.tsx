@@ -69,6 +69,42 @@ type SmartPreview = {
   };
 };
 
+type JobOrderListRow = {
+  id: string;
+  job_order_number?: string;
+  jobOrderNumber?: string;
+  item_code?: string;
+  item_name?: string;
+  quantity?: number;
+  status?: string;
+  start_date?: string;
+  created_at?: string;
+};
+
+type JobOrderDetail = {
+  id: string;
+  job_order_number?: string;
+  item_code?: string;
+  item_name?: string;
+  quantity?: number;
+  status?: string;
+  start_date?: string;
+  created_at?: string;
+  materials?: Array<{
+    id: string;
+    item_code?: string;
+    item_name?: string;
+    required_quantity?: number;
+    issued_quantity?: number;
+    status?: string;
+  }>;
+};
+type SmartCreateResponse = {
+  jobOrder?: any;
+  autoCompletedSubJobOrders?: any[];
+  preview?: SmartPreview;
+};
+
 export default function SmartJobOrdersItemsPage() {
   return (
     <Suspense
@@ -114,7 +150,48 @@ function SmartJobOrdersItemsPageContent() {
 
   const [creating, setCreating] = useState(false);
 
+  const [activeTab, setActiveTab] = useState<'create' | 'jobOrders'>('create');
+  const [jobOrdersLoading, setJobOrdersLoading] = useState(false);
+  const [jobOrdersError, setJobOrdersError] = useState('');
+  const [jobOrders, setJobOrders] = useState<JobOrderListRow[]>([]);
+
+  const [selectedJobOrderId, setSelectedJobOrderId] = useState<string>('');
+  const [jobOrderDetail, setJobOrderDetail] = useState<JobOrderDetail | null>(null);
+  const [jobOrderDetailLoading, setJobOrderDetailLoading] = useState(false);
+  const [createSummary, setCreateSummary] = useState<SmartCreateResponse | null>(null);
+  const [showCreateSummary, setShowCreateSummary] = useState(false);
+
   const canPreview = Boolean(itemId) && Number(quantity) > 0;
+
+  const fetchJobOrders = async () => {
+    setJobOrdersLoading(true);
+    setJobOrdersError('');
+    try {
+      const data = await apiClient.get('/job-orders');
+      setJobOrders(Array.isArray(data) ? (data as JobOrderListRow[]) : []);
+    } catch (err: any) {
+      setJobOrders([]);
+      setJobOrdersError(err?.message || 'Failed to load job orders');
+    } finally {
+      setJobOrdersLoading(false);
+    }
+  };
+
+  const fetchJobOrderDetail = async (id: string) => {
+    const safeId = String(id || '').trim();
+    if (!safeId) return;
+
+    setJobOrderDetailLoading(true);
+    try {
+      const data = await apiClient.get(`/job-orders/${safeId}`);
+      setJobOrderDetail((data as JobOrderDetail) || null);
+    } catch (err: any) {
+      setJobOrderDetail(null);
+      alert(`❌ Failed to load job order: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setJobOrderDetailLoading(false);
+    }
+  };
 
   const headerSubtitle = useMemo(() => {
     if (salesOrderId) return `From Sales Order: ${salesOrderId}`;
@@ -217,6 +294,13 @@ function SmartJobOrdersItemsPageContent() {
 
   const nodeKey = (node: SmartExplosionNode) => `${node.bomId}:${node.itemId}`;
 
+  const isUuid = (value: unknown) => {
+    if (typeof value !== 'string') return false;
+    const v = value.trim();
+    if (!v) return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  };
+
   const fetchItemStockAvailable = async (itemIdToCheck: string) => {
     const id = String(itemIdToCheck || '').trim();
     if (!id) return;
@@ -231,7 +315,7 @@ function SmartJobOrdersItemsPageContent() {
     });
 
     try {
-      const summary = await apiClient.get<ItemStockSummary>(`/items/${id}/stock`);
+      const summary = (await apiClient.get(`/items/${id}/stock`)) as ItemStockSummary;
       const available = Number((summary as any)?.available_quantity ?? 0) || 0;
       setStockByItemId((prev) => ({
         ...prev,
@@ -273,12 +357,13 @@ function SmartJobOrdersItemsPageContent() {
         });
       }, 200);
 
-      const data = await apiClient.get<SmartPreview>('/job-orders/smart/preview', {
+      const data = (await apiClient.get('/job-orders/smart/preview', {
         itemId,
         quantity,
         salesOrderId: salesOrderId || undefined,
         salesOrderItemId: salesOrderItemId || undefined,
-      });
+        includeAllComponents: true,
+      })) as SmartPreview;
 
       clearInterval(progressInterval);
       setLoadingProgress(100);
@@ -318,7 +403,7 @@ function SmartJobOrdersItemsPageContent() {
     const bomNodes = preview.nodes.filter((n) => n.componentType === 'BOM');
     
     // Expand all BOMs by default
-    setExpandedBoms(new Set(bomNodes.map((b) => b.bomId)));
+    setExpandedBoms(new Set([preview.topBom.id, ...bomNodes.map((b) => b.bomId)]));
 
     let cancelled = false;
 
@@ -367,41 +452,282 @@ function SmartJobOrdersItemsPageContent() {
       const itemSelections: Record<string, string> = {};
       if (preview?.nodes?.length) {
         for (const node of preview.nodes) {
-          if (node.componentType !== 'ITEM') continue;
+          if (node.componentType !== 'ITEM' || !node.itemId) continue;
           const key = nodeKey(node);
           const selected = selectedItemByNodeKey[key];
-          if (selected) itemSelections[key] = selected;
+          if (selected && isUuid(selected)) itemSelections[key] = selected;
         }
       }
 
-      const result = await apiClient.post<any>('/job-orders/smart/create', {
+      const result = (await apiClient.post('/job-orders/smart/create', {
         itemId,
         quantity: Number(quantity),
         startDate: new Date().toISOString().slice(0, 10),
         salesOrderId: salesOrderId || undefined,
         salesOrderItemId: salesOrderItemId || undefined,
         itemSelections,
-      });
+      })) as SmartCreateResponse;
 
-      const jobOrderNumber =
-        result?.jobOrder?.job_order_number ||
-        result?.jobOrder?.jobOrderNumber ||
-        result?.jobOrder?.job_order_number;
-      const subCount = Array.isArray(result?.autoCompletedSubJobOrders)
-        ? result.autoCompletedSubJobOrders.length
-        : 0;
-
-      alert(
-        `✅ Job Order created!${jobOrderNumber ? `\n\nJO: ${jobOrderNumber}` : ''}` +
-          `\n\nAuto-created & completed sub-assemblies: ${subCount}`,
-      );
+      setCreateSummary(result);
+      setShowCreateSummary(true);
 
       await fetchPreview();
+      // Refresh list tab so users can immediately see the new JO
+      await fetchJobOrders();
+      setActiveTab('jobOrders');
     } catch (err: any) {
       alert(`❌ Failed to create Smart Job Order: ${err?.message || 'Unknown error'}`);
     } finally {
       setCreating(false);
     }
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'jobOrders') return;
+    fetchJobOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  const renderExplosionTree = () => {
+    if (!preview) return null;
+
+    const rootBomId = preview.topBom.id;
+    const virtualRoot: SmartExplosionNode = {
+      level: 0,
+      componentType: 'BOM',
+      bomId: rootBomId,
+      parentBomId: undefined,
+      itemId: preview.finishedItem.id,
+      itemCode: preview.finishedItem.code,
+      itemName: preview.finishedItem.name,
+      requiredQuantity: preview.quantity,
+      availableQuantity: 0,
+      toMakeQuantity: 0,
+      shortageQuantity: 0,
+    };
+
+    const bomNodes = [virtualRoot, ...preview.nodes.filter((n) => n.componentType === 'BOM')];
+    const itemNodes = preview.nodes.filter((n) => n.componentType === 'ITEM');
+
+    const bomById = new Map<string, SmartExplosionNode>();
+    for (const b of bomNodes) {
+      if (!bomById.has(b.bomId)) bomById.set(b.bomId, b);
+    }
+
+    const childBomIdsByParent = new Map<string, string[]>();
+    for (const b of bomNodes) {
+      if (b.bomId === rootBomId) continue;
+      const parentId = b.parentBomId || rootBomId;
+      const list = childBomIdsByParent.get(parentId) || [];
+      list.push(b.bomId);
+      childBomIdsByParent.set(parentId, list);
+    }
+
+    const itemNodesByBomId = new Map<string, SmartExplosionNode[]>();
+    for (const n of itemNodes) {
+      const list = itemNodesByBomId.get(n.bomId) || [];
+      list.push(n);
+      itemNodesByBomId.set(n.bomId, list);
+    }
+
+    // Stable ordering: by level then item code
+    for (const [parentId, list] of childBomIdsByParent.entries()) {
+      const sorted = [...list].sort((a, b) => {
+        const aa = bomById.get(a);
+        const bb = bomById.get(b);
+        const lvlA = Number(aa?.level ?? 0);
+        const lvlB = Number(bb?.level ?? 0);
+        if (lvlA !== lvlB) return lvlA - lvlB;
+        return String(aa?.itemCode || '').localeCompare(String(bb?.itemCode || ''));
+      });
+      childBomIdsByParent.set(parentId, sorted);
+    }
+
+    for (const [bid, list] of itemNodesByBomId.entries()) {
+      itemNodesByBomId.set(
+        bid,
+        [...list].sort((a, b) => String(a.itemCode || '').localeCompare(String(b.itemCode || ''))),
+      );
+    }
+
+    const toggleBom = (id: string) => {
+      setExpandedBoms((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    };
+
+    const shortageMemo = new Map<string, boolean>();
+    const hasShortageInBom = (id: string): boolean => {
+      const cached = shortageMemo.get(id);
+      if (cached !== undefined) return cached;
+
+      const directItems = itemNodesByBomId.get(id) || [];
+      for (const item of directItems) {
+        const key = nodeKey(item);
+        const selectedItemId = selectedItemByNodeKey[key] || item.itemId;
+        const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+        const available = stockState?.available ?? item.availableQuantity;
+        if (Number(item.requiredQuantity || 0) > Number(available || 0)) {
+          shortageMemo.set(id, true);
+          return true;
+        }
+      }
+
+      const childBoms = childBomIdsByParent.get(id) || [];
+      for (const childId of childBoms) {
+        if (hasShortageInBom(childId)) {
+          shortageMemo.set(id, true);
+          return true;
+        }
+      }
+
+      shortageMemo.set(id, false);
+      return false;
+    };
+
+    const getBgColor = (lvl: number) => {
+      if (lvl === 0) return 'bg-amber-100 hover:bg-amber-200';
+      if (lvl === 1) return 'bg-amber-50 hover:bg-amber-100';
+      if (lvl === 2) return 'bg-orange-50 hover:bg-orange-100';
+      return 'bg-yellow-50 hover:bg-yellow-100';
+    };
+
+    const renderBom = (id: string, isFirstInSection: boolean) => {
+      const bom = bomById.get(id);
+      if (!bom) return null;
+
+      const isExpanded = expandedBoms.has(id);
+      const directItems = itemNodesByBomId.get(id) || [];
+      const childBoms = childBomIdsByParent.get(id) || [];
+      const hasShortage = hasShortageInBom(id);
+      const lvl = Number(bom.level ?? 0);
+
+      return (
+        <div key={id} className={!isFirstInSection ? 'border-t border-gray-200' : ''}>
+          <div
+            onClick={() => toggleBom(id)}
+            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${getBgColor(lvl)}`}
+            style={{ paddingLeft: `${16 + lvl * 24}px` }}
+          >
+            <span className="text-amber-700">
+              {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+            </span>
+            <Layers size={16} className="text-amber-600" />
+            <span className="font-semibold text-amber-900 flex items-center gap-2">
+              {bom.itemCode} - {bom.itemName}
+              {lvl > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
+                  Level {lvl} Sub-BOM
+                </span>
+              )}
+            </span>
+            <span className="ml-auto flex items-center gap-4 text-sm">
+              <span className="text-amber-700">
+                {directItems.length} item{directItems.length !== 1 ? 's' : ''}
+                {childBoms.length ? ` • ${childBoms.length} sub` : ''}
+              </span>
+              {hasShortage && (
+                <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
+                  Shortage
+                </span>
+              )}
+            </span>
+          </div>
+
+          {isExpanded && (
+            <div className="bg-white">
+              {directItems.length > 0 ? (
+                <table className="min-w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th
+                        className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase"
+                        style={{ paddingLeft: `${40 + lvl * 24}px` }}
+                      >
+                        Item
+                      </th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                        Required
+                      </th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                        In Stock
+                      </th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                        Short
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {directItems.map((node, idx) => {
+                      const key = nodeKey(node);
+                      const selectedItemId = selectedItemByNodeKey[key] || node.itemId;
+                      const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+                      const available = stockState?.available ?? node.availableQuantity;
+                      const inStockLabel = stockState?.loading ? '…' : String(available);
+                      const short = Math.max(0, Number(node.requiredQuantity || 0) - Number(available || 0));
+
+                      return (
+                        <tr key={`${node.bomId}:${node.itemId}:${idx}`} className="hover:bg-gray-50">
+                          <td className="px-4 py-2" style={{ paddingLeft: `${40 + lvl * 24}px` }}>
+                            <div className="flex items-center gap-2">
+                              <Package size={14} className="text-gray-400 flex-shrink-0" />
+                              <div className="min-w-[280px]">
+                                <SearchableSelect
+                                  options={allItemOptions}
+                                  value={selectedItemId}
+                                  onChange={async (value) => {
+                                    const next = String(value || '');
+                                    setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
+                                    await fetchItemStockAvailable(next);
+                                  }}
+                                  placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
+                                  disabled={itemsLoading || allItemOptions.length === 0}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2 text-sm text-right text-gray-900">{node.requiredQuantity}</td>
+                          <td
+                            className="px-4 py-2 text-sm text-right text-gray-900"
+                            title={stockState?.error || ''}
+                          >
+                            {inStockLabel}
+                          </td>
+                          <td
+                            className={`px-4 py-2 text-sm text-right font-semibold ${
+                              short > 0 ? 'text-red-600' : 'text-green-600'
+                            }`}
+                          >
+                            {short > 0 ? short : '✓'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : null}
+
+              {childBoms.length > 0 ? (
+                <div className={directItems.length > 0 ? 'border-t border-gray-100' : ''}>
+                  {childBoms.map((childId, idx) => renderBom(childId, idx === 0))}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const topChildren = childBomIdsByParent.get(rootBomId) || [];
+    if (!topChildren.length && itemNodes.length) {
+      // Fallback: show root with items if there are no BOM nodes.
+      return renderBom(rootBomId, true);
+    }
+
+    return topChildren.map((id, idx) => renderBom(id, idx === 0));
   };
 
   return (
@@ -420,6 +746,28 @@ function SmartJobOrdersItemsPageContent() {
           </div>
 
           <div className="flex gap-3">
+            <div className="inline-flex rounded-lg border border-amber-300 overflow-hidden">
+              <button
+                onClick={() => setActiveTab('create')}
+                className={`px-4 py-2 text-sm ${
+                  activeTab === 'create'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-white text-amber-800 hover:bg-amber-50'
+                }`}
+              >
+                Create
+              </button>
+              <button
+                onClick={() => setActiveTab('jobOrders')}
+                className={`px-4 py-2 text-sm ${
+                  activeTab === 'jobOrders'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-white text-amber-800 hover:bg-amber-50'
+                }`}
+              >
+                Job Orders
+              </button>
+            </div>
             <button
               onClick={fetchPreview}
               disabled={!canPreview || loadingPreview}
@@ -437,7 +785,142 @@ function SmartJobOrdersItemsPageContent() {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
+        {activeTab === 'jobOrders' ? (
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-amber-900">Recent Job Orders</h2>
+              <button
+                onClick={fetchJobOrders}
+                disabled={jobOrdersLoading}
+                className="px-3 py-1.5 rounded-md border border-amber-300 text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+              >
+                {jobOrdersLoading ? 'Loading…' : 'Refresh'}
+              </button>
+            </div>
+
+            {jobOrdersError ? <div className="mb-3 text-sm text-red-700">{jobOrdersError}</div> : null}
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-600 border-b">
+                    <th className="py-2 pr-4">JO</th>
+                    <th className="py-2 pr-4">Item</th>
+                    <th className="py-2 pr-4">Qty</th>
+                    <th className="py-2 pr-4">Status</th>
+                    <th className="py-2 pr-4">Created</th>
+                    <th className="py-2 pr-4"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(jobOrders || []).map((jo) => {
+                    const joNumber = jo.job_order_number || jo.jobOrderNumber || '';
+                    return (
+                      <tr key={jo.id} className="border-b hover:bg-amber-50">
+                        <td className="py-2 pr-4 font-medium text-amber-900">{joNumber}</td>
+                        <td className="py-2 pr-4">
+                          <div className="text-gray-900">{jo.item_code || '-'}</div>
+                          <div className="text-xs text-gray-600">{jo.item_name || ''}</div>
+                        </td>
+                        <td className="py-2 pr-4">{Number(jo.quantity || 0) || 0}</td>
+                        <td className="py-2 pr-4">{jo.status || '-'}</td>
+                        <td className="py-2 pr-4">
+                          {jo.created_at ? new Date(jo.created_at).toLocaleString() : '-'}
+                        </td>
+                        <td className="py-2 pr-4">
+                          <button
+                            onClick={async () => {
+                              setSelectedJobOrderId(jo.id);
+                              await fetchJobOrderDetail(jo.id);
+                            }}
+                            className="px-3 py-1.5 rounded-md bg-amber-600 text-white hover:bg-amber-700"
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(!jobOrders || jobOrders.length === 0) && !jobOrdersLoading ? (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-gray-600">
+                        No job orders found.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+
+            {selectedJobOrderId ? (
+              <div className="mt-6 border rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-amber-900">
+                      {jobOrderDetail?.job_order_number || 'Job Order'}
+                    </div>
+                    <div className="text-sm text-gray-700">
+                      {jobOrderDetail?.item_code} — {jobOrderDetail?.item_name}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      Status: {jobOrderDetail?.status || '-'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSelectedJobOrderId('');
+                      setJobOrderDetail(null);
+                    }}
+                    className="px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="mt-4">
+                  <div className="font-medium text-gray-800 mb-2">Materials</div>
+                  {jobOrderDetailLoading ? (
+                    <div className="text-sm text-gray-600">Loading…</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-gray-600 border-b">
+                            <th className="py-2 pr-4">Item</th>
+                            <th className="py-2 pr-4">Required</th>
+                            <th className="py-2 pr-4">Issued</th>
+                            <th className="py-2 pr-4">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(jobOrderDetail?.materials || []).map((m) => (
+                            <tr key={m.id} className="border-b">
+                              <td className="py-2 pr-4">
+                                <div className="text-gray-900">{m.item_code || '-'}</div>
+                                <div className="text-xs text-gray-600">{m.item_name || ''}</div>
+                              </td>
+                              <td className="py-2 pr-4">{Number(m.required_quantity || 0) || 0}</td>
+                              <td className="py-2 pr-4">{Number(m.issued_quantity || 0) || 0}</td>
+                              <td className="py-2 pr-4">{m.status || '-'}</td>
+                            </tr>
+                          ))}
+                          {(jobOrderDetail?.materials || []).length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="py-4 text-center text-gray-600">
+                                No materials found for this job order.
+                              </td>
+                            </tr>
+                          ) : null}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg shadow p-6">
           <div className="grid grid-cols-12 gap-4 items-end">
             <div className="col-span-8">
               <label className="block text-sm font-medium text-gray-700 mb-2">Finished Goods Item *</label>
@@ -468,6 +951,8 @@ function SmartJobOrdersItemsPageContent() {
               />
             </div>
           </div>
+          </div>
+        )}
 
           {previewError ? (
             <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm">{previewError}</div>
@@ -565,7 +1050,10 @@ function SmartJobOrdersItemsPageContent() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
-                        const allBomIds = preview.nodes.filter((n) => n.componentType === 'BOM').map((n) => n.bomId);
+                        const allBomIds = [
+                          preview.topBom.id,
+                          ...preview.nodes.filter((n) => n.componentType === 'BOM').map((n) => n.bomId),
+                        ];
                         setExpandedBoms(new Set(allBomIds));
                       }}
                       className="px-3 py-1 text-xs rounded border border-amber-300 text-amber-700 hover:bg-amber-50"
@@ -581,173 +1069,165 @@ function SmartJobOrdersItemsPageContent() {
                   </div>
                 </div>
                 <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                  {/* Group nodes by BOM */}
-                  {(() => {
-                    // Build hierarchical structure
-                    const bomGroups: { bom: SmartExplosionNode; items: SmartExplosionNode[] }[] = [];
-                    let currentBom: SmartExplosionNode | null = null;
-                    let currentItems: SmartExplosionNode[] = [];
-
-                    for (const node of preview.nodes) {
-                      if (node.componentType === 'BOM') {
-                        if (currentBom) {
-                          bomGroups.push({ bom: currentBom, items: currentItems });
-                        }
-                        currentBom = node;
-                        currentItems = [];
-                      } else if (node.componentType === 'ITEM') {
-                        currentItems.push(node);
-                      }
-                    }
-                    if (currentBom) {
-                      bomGroups.push({ bom: currentBom, items: currentItems });
-                    }
-
-                    // Handle case where there are only ITEM nodes (no BOM nodes)
-                    // Create a virtual BOM group using the top-level BOM info
-                    if (bomGroups.length === 0 && currentItems.length > 0) {
-                      const virtualBom: SmartExplosionNode = {
-                        level: 0,
-                        componentType: 'BOM',
-                        bomId: preview.topBom.id,
-                        itemId: preview.finishedItem.id,
-                        itemCode: preview.finishedItem.code,
-                        itemName: preview.finishedItem.name,
-                        requiredQuantity: preview.quantity,
-                        availableQuantity: 0,
-                        toMakeQuantity: 0,
-                        shortageQuantity: 0,
-                      };
-                      bomGroups.push({ bom: virtualBom, items: currentItems });
-                    }
-
-                    const toggleBom = (bomId: string) => {
-                      setExpandedBoms((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(bomId)) {
-                          next.delete(bomId);
-                        } else {
-                          next.add(bomId);
-                        }
-                        return next;
-                      });
-                    };
-
-                    return bomGroups.map((group, groupIdx) => {
-                      const isExpanded = expandedBoms.has(group.bom.bomId);
-                      const hasShortage = group.items.some((item) => {
-                        const key = nodeKey(item);
-                        const selectedItemId = selectedItemByNodeKey[key] || item.itemId;
-                        const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
-                        const available = stockState?.available ?? item.availableQuantity;
-                        return Number(item.requiredQuantity || 0) > Number(available || 0);
-                      });
-
-                      // Determine background color based on level
-                      const getBgColor = () => {
-                        if (group.bom.level === 0) return 'bg-amber-100 hover:bg-amber-200';
-                        if (group.bom.level === 1) return 'bg-amber-50 hover:bg-amber-100';
-                        if (group.bom.level === 2) return 'bg-orange-50 hover:bg-orange-100';
-                        return 'bg-yellow-50 hover:bg-yellow-100';
-                      };
-
-                      return (
-                        <div key={group.bom.bomId} className={groupIdx > 0 ? 'border-t border-gray-200' : ''}>
-                          {/* BOM Header - Collapsible */}
-                          <div
-                            onClick={() => toggleBom(group.bom.bomId)}
-                            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${getBgColor()}`}
-                            style={{ paddingLeft: `${16 + group.bom.level * 24}px` }}
-                          >
-                            <span className="text-amber-700">
-                              {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                            </span>
-                            <Layers size={16} className="text-amber-600" />
-                            <span className="font-semibold text-amber-900 flex items-center gap-2">
-                              {group.bom.itemCode} - {group.bom.itemName}
-                              {group.bom.level > 0 && (
-                                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
-                                  Level {group.bom.level} Sub-BOM
-                                </span>
-                              )}
-                            </span>
-                            <span className="ml-auto flex items-center gap-4 text-sm">
-                              <span className="text-amber-700">
-                                {group.items.length} item{group.items.length !== 1 ? 's' : ''}
-                              </span>
-                              {hasShortage && (
-                                <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
-                                  Shortage
-                                </span>
-                              )}
-                            </span>
-                          </div>
-
-                          {/* Child Items - Collapsible Content */}
-                          {isExpanded && group.items.length > 0 && (
-                            <div className="bg-white">
-                              <table className="min-w-full">
-                                <thead className="bg-gray-50 border-b border-gray-200">
-                                  <tr>
-                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase" style={{ paddingLeft: `${40 + group.bom.level * 24}px` }}>Item</th>
-                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">Required</th>
-                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">In Stock</th>
-                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">Short</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                  {group.items.map((node, idx) => {
-                                    const key = nodeKey(node);
-                                    const selectedItemId = selectedItemByNodeKey[key] || node.itemId;
-                                    const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
-                                    const available = stockState?.available ?? node.availableQuantity;
-                                    const inStockLabel = stockState?.loading ? '…' : String(available);
-                                    const short = Math.max(0, Number(node.requiredQuantity || 0) - Number(available || 0));
-
-                                    return (
-                                      <tr key={`${node.bomId}:${node.itemId}:${idx}`} className="hover:bg-gray-50">
-                                        <td className="px-4 py-2" style={{ paddingLeft: `${40 + group.bom.level * 24}px` }}>
-                                          <div className="flex items-center gap-2">
-                                            <Package size={14} className="text-gray-400 flex-shrink-0" />
-                                            <div className="min-w-[280px]">
-                                              <SearchableSelect
-                                                options={allItemOptions}
-                                                value={selectedItemId}
-                                                onChange={async (value) => {
-                                                  const next = String(value || '');
-                                                  setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
-                                                  await fetchItemStockAvailable(next);
-                                                }}
-                                                placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
-                                                disabled={itemsLoading || allItemOptions.length === 0}
-                                              />
-                                            </div>
-                                          </div>
-                                        </td>
-                                        <td className="px-4 py-2 text-sm text-right text-gray-900">{node.requiredQuantity}</td>
-                                        <td className="px-4 py-2 text-sm text-right text-gray-900" title={stockState?.error || ''}>
-                                          {inStockLabel}
-                                        </td>
-                                        <td className={`px-4 py-2 text-sm text-right font-semibold ${short > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                          {short > 0 ? short : '✓'}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    });
-                  })()}
+                  {renderExplosionTree()}
                 </div>
               </div>
             </>
           ) : null}
-        </div>
       </div>
+      {showCreateSummary ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-3xl rounded-xl shadow-xl border border-amber-200 overflow-hidden">
+            <div className="px-6 py-4 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+              <div>
+                <div className="text-lg font-semibold text-amber-900">Smart Job Order Created</div>
+                <div className="text-sm text-amber-800">
+                  Materials below are <span className="font-semibold">issued</span> (stock reduced) at creation.
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCreateSummary(false)}
+                className="px-3 py-1.5 rounded-md border border-amber-300 text-amber-800 hover:bg-amber-100"
+              >
+                Close
+              </button>
+            </div>
+
+            {(() => {
+              const jo = (createSummary as any)?.jobOrder || (createSummary as any)?.job_order;
+              const joNumber = jo?.job_order_number || jo?.jobOrderNumber || '';
+              const joStatus = jo?.status || '-';
+              const joItemCode = jo?.item_code || jo?.itemCode || '';
+              const joItemName = jo?.item_name || jo?.itemName || '';
+              const joQty = Number(jo?.quantity ?? 0) || 0;
+
+              const materials = Array.isArray(jo?.materials) ? jo.materials : [];
+              const totalRequired = materials.reduce(
+                (sum: number, m: any) => sum + (Number(m?.required_quantity ?? m?.requiredQuantity ?? 0) || 0),
+                0,
+              );
+              const totalIssued = materials.reduce(
+                (sum: number, m: any) => sum + (Number(m?.issued_quantity ?? m?.issuedQuantity ?? 0) || 0),
+                0,
+              );
+
+              const subJobs = Array.isArray((createSummary as any)?.autoCompletedSubJobOrders)
+                ? (createSummary as any).autoCompletedSubJobOrders
+                : [];
+
+              return (
+                <div className="p-6">
+                  <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-lg p-4">
+                    <div className="text-sm">
+                      <div className="text-gray-600">Job Order</div>
+                      <div className="font-semibold text-gray-900">{joNumber || '—'}</div>
+                    </div>
+                    <div className="text-sm">
+                      <div className="text-gray-600">Status</div>
+                      <div className="font-semibold text-gray-900">{joStatus}</div>
+                    </div>
+                    <div className="text-sm col-span-2">
+                      <div className="text-gray-600">Item</div>
+                      <div className="font-semibold text-gray-900">
+                        {joItemCode ? `${joItemCode} — ${joItemName}` : joItemName || '—'}
+                      </div>
+                    </div>
+                    <div className="text-sm">
+                      <div className="text-gray-600">Quantity</div>
+                      <div className="font-semibold text-gray-900">{joQty}</div>
+                    </div>
+                    <div className="text-sm">
+                      <div className="text-gray-600">Stock Reduced (Issued)</div>
+                      <div className="font-semibold text-gray-900">{totalIssued}</div>
+                    </div>
+                  </div>
+
+                  {subJobs.length ? (
+                    <div className="mt-5">
+                      <div className="font-medium text-gray-800 mb-2">Auto-completed Sub-Assemblies</div>
+                      <div className="text-sm text-gray-700">
+                        {subJobs.map((s: any, idx: number) => {
+                          const n = s?.job_order_number || s?.jobOrderNumber || s?.jobOrder?.job_order_number;
+                          const code = s?.item_code || s?.itemCode;
+                          const name = s?.item_name || s?.itemName;
+                          const q = Number(s?.quantity ?? 0) || 0;
+                          return (
+                            <div key={idx} className="py-1">
+                              <span className="font-semibold text-gray-900">{n || 'JO'}</span>
+                              {code || name ? <span className="text-gray-700"> — {code} {name ? `(${name})` : ''}</span> : null}
+                              {q ? <span className="text-gray-600"> • Qty {q}</span> : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-5">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="font-medium text-gray-800">Materials Issued</div>
+                      <div className="text-xs text-gray-600">Issued reduces stock immediately.</div>
+                    </div>
+                    <div className="overflow-x-auto border rounded-lg">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-gray-50 border-b">
+                          <tr className="text-left text-gray-600">
+                            <th className="py-2 px-3">Item</th>
+                            <th className="py-2 px-3 text-right">Required</th>
+                            <th className="py-2 px-3 text-right">Issued (Reduced)</th>
+                            <th className="py-2 px-3">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {materials.map((m: any) => {
+                            const code = m?.item_code || m?.itemCode || '';
+                            const name = m?.item_name || m?.itemName || '';
+                            const reqQty = Number(m?.required_quantity ?? m?.requiredQuantity ?? 0) || 0;
+                            const issuedQty = Number(m?.issued_quantity ?? m?.issuedQuantity ?? 0) || 0;
+                            const st = m?.status || '-';
+                            return (
+                              <tr key={m?.id || `${code}-${name}`} className="border-b last:border-b-0">
+                                <td className="py-2 px-3">
+                                  <div className="text-gray-900">{code || '-'}</div>
+                                  <div className="text-xs text-gray-600">{name}</div>
+                                </td>
+                                <td className="py-2 px-3 text-right text-gray-900">{reqQty}</td>
+                                <td className="py-2 px-3 text-right font-semibold text-gray-900">{issuedQty}</td>
+                                <td className="py-2 px-3 text-gray-700">{st}</td>
+                              </tr>
+                            );
+                          })}
+                          {materials.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="py-4 px-3 text-center text-gray-600">
+                                No materials returned for this job order.
+                              </td>
+                            </tr>
+                          ) : null}
+                        </tbody>
+                        {materials.length ? (
+                          <tfoot className="bg-gray-50 border-t">
+                            <tr>
+                              <td className="py-2 px-3 font-medium text-gray-700">Totals</td>
+                              <td className="py-2 px-3 text-right font-medium text-gray-900">{totalRequired}</td>
+                              <td className="py-2 px-3 text-right font-semibold text-gray-900">{totalIssued}</td>
+                              <td className="py-2 px-3" />
+                            </tr>
+                          </tfoot>
+                        ) : null}
+                      </table>
+                    </div>
+
+                    <div className="mt-3 text-xs text-gray-600">
+                      Finished goods (UIDs/stock add) happens when the job order is <span className="font-semibold">COMPLETED</span>.
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

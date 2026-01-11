@@ -597,8 +597,8 @@ function PurchaseOrdersContent() {
           }
 
           try {
-            const drawings = await apiClient.get(`/inventory/items/${id}/drawings`);
-            if (!drawings || drawings.length === 0) {
+            const drawings: any[] = await apiClient.get(`/inventory/items/${id}/drawings`);
+            if (!Array.isArray(drawings) || drawings.length === 0) {
               itemsWithoutDrawings.push({ name });
               if (!firstMissing) {
                 firstMissing = {
@@ -1354,6 +1354,7 @@ function PurchaseOrdersContent() {
                 <option value="DRAFT">Draft</option>
                 <option value="SENT">Sent</option>
                 <option value="ACKNOWLEDGED">Acknowledged</option>
+                <option value="APPROVED">Approved</option>
                 <option value="PARTIAL">Partial</option>
                 <option value="COMPLETED">Completed</option>
               </select>
@@ -1507,8 +1508,8 @@ function PurchaseOrdersContent() {
       {/* Create Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
+          <div className="bg-white rounded-lg w-full max-w-[95vw] h-[95vh] flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-gray-200 flex-shrink-0">
               <h2 className="text-2xl font-bold text-gray-900">
                 {editingMode === 'create'
                   ? 'Create Purchase Order'
@@ -1517,8 +1518,7 @@ function PurchaseOrdersContent() {
                     : 'Edit Purchase Order'}
               </h2>
             </div>
-
-            <div className="p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {/* Order Details */}
               <div className="grid grid-cols-2 gap-4">
                 {editingMode === 'create' && (
@@ -1553,18 +1553,16 @@ function PurchaseOrdersContent() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Master Vendor (sets all items)
                   </label>
-                  <select
+                  <SearchableSelect
                     value={formData.vendorId}
-                    onChange={(e) => handleSetAllVendors(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                  >
-                    <option value="">Select Vendor to apply to all items</option>
-                    {vendors.map((vendor) => (
-                      <option key={vendor.id} value={vendor.id}>
-                        {vendor.name} - {vendor.contact_person}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(value) => handleSetAllVendors(String(value || ''))}
+                    options={vendors.map((v) => ({
+                      value: v.id,
+                      label: v.name,
+                      subtitle: v.contact_person,
+                    }))}
+                    placeholder="Search vendor to apply to all items..."
+                  />
                   <p className="text-xs text-gray-500 mt-1">
                     You can override individual item vendors in the items grid below
                   </p>
@@ -1738,8 +1736,9 @@ function PurchaseOrdersContent() {
                 ) : (
                   <div className="space-y-4">
                     {/* Column Headers */}
-                    <div className="grid grid-cols-8 gap-4 px-4 pb-2 border-b border-gray-300">
-                      <div className="col-span-2 text-sm font-semibold text-gray-700">Item</div>
+                    <div className="grid grid-cols-[48px_minmax(280px,3fr)_minmax(220px,2fr)_minmax(90px,1fr)_minmax(90px,1fr)_minmax(110px,1fr)_minmax(90px,1fr)_minmax(170px,1.2fr)] gap-4 px-4 pb-2 border-b border-gray-300">
+                      <div className="text-sm font-semibold text-gray-700">S. No</div>
+                      <div className="text-sm font-semibold text-gray-700">Item</div>
                       <div className="text-sm font-semibold text-gray-700">Vendor</div>
                       <div className="text-sm font-semibold text-gray-700">Quantity</div>
                       <div className="text-sm font-semibold text-gray-700">UOM</div>
@@ -1750,11 +1749,12 @@ function PurchaseOrdersContent() {
                     
                     {formData.items.map((item, index) => (
                       <div key={index} className={`border border-gray-300 rounded-lg p-4 ${pendingItemIndex === index ? 'ring-2 ring-red-300' : ''}`}>
-                        <div className="grid grid-cols-8 gap-4">
-                          <div className="col-span-2">
+                        <div className="grid grid-cols-[48px_minmax(280px,3fr)_minmax(220px,2fr)_minmax(90px,1fr)_minmax(90px,1fr)_minmax(110px,1fr)_minmax(90px,1fr)_minmax(170px,1.2fr)] gap-4 items-start">
+                          <div className="pt-2 text-sm font-medium text-gray-700">{index + 1}</div>
+                          <div className="min-w-0">
                             {item.itemId ? (
                               <div className="space-y-1">
-                                <div className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50">
+                                <div className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 overflow-hidden">
                                   {(() => {
                                     const masterItem = items.find((i) => i.id === item.itemId || i.code === item.itemCode);
                                     const displayCode = item.itemCode || masterItem?.code || '';
@@ -1764,11 +1764,11 @@ function PurchaseOrdersContent() {
 
                                     return (
                                       <>
-                                        <div className="font-medium text-sm">
+                                        <div className="font-medium text-sm leading-snug whitespace-normal break-words">
                                           {displayCode && displayName ? `${displayCode} - ${displayName}` : (displayName || displayCode || 'Selected Item')}
                                         </div>
                                         {resolvedItemId ? (
-                                          <div className="mt-1 flex items-center justify-between gap-2">
+                                          <div className="mt-1 flex items-center justify-between gap-2 min-w-0">
                                             <span className={`text-xs px-2 py-0.5 rounded ${
                                               drawingRequired === 'COMPULSORY'
                                                 ? 'bg-red-100 text-red-800'
@@ -1788,7 +1788,7 @@ function PurchaseOrdersContent() {
                                                 });
                                                 setShowDrawingManager(true);
                                               }}
-                                              className="text-xs text-amber-700 hover:text-amber-900 font-medium"
+                                              className="text-xs text-amber-700 hover:text-amber-900 font-medium shrink-0"
                                             >
                                               Manage Drawings
                                             </button>
@@ -1840,22 +1840,20 @@ function PurchaseOrdersContent() {
                               />
                             )}
                           </div>
-                          <div>
-                            <select
+                          <div className="min-w-0">
+                            <SearchableSelect
                               value={item.vendorId}
-                              onChange={(e) => handleUpdateItem(index, 'vendorId', e.target.value)}
-                              className="w-full border border-gray-300 rounded px-3 py-2"
+                              onChange={(value) => handleUpdateItem(index, 'vendorId', String(value || ''))}
+                              options={vendors.map((v) => ({
+                                value: v.id,
+                                label: v.name,
+                                subtitle: v.contact_person,
+                              }))}
+                              placeholder="Search vendor..."
                               required
-                            >
-                              <option value="">Select Vendor</option>
-                              {vendors.map((vendor) => (
-                                <option key={vendor.id} value={vendor.id}>
-                                  {vendor.name}
-                                </option>
-                              ))}
-                            </select>
+                            />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <input
                                 type="number"
@@ -1867,7 +1865,7 @@ function PurchaseOrdersContent() {
                               />
                             </div>
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <input
                               type="text"
                               value={item.uom || ''}
@@ -1877,7 +1875,7 @@ function PurchaseOrdersContent() {
                               title="UOM is auto-filled from master item"
                             />
                           </div>
-                          <div className="relative">
+                          <div className="relative min-w-0">
                             <div className="flex items-center gap-1">
                               <input
                                 type="number"
@@ -1974,14 +1972,14 @@ function PurchaseOrdersContent() {
                               const key = `${effectiveItemId}-${effectiveVendorId}`;
                               const history = priceHistory[key];
                               if (!history) {
-                                return <div className="mt-1 max-w-[220px] break-words text-[11px] leading-tight text-gray-500">Last: Loading...</div>;
+                                return <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-500">Last: Loading...</div>;
                               }
                               const last = history?.[0];
                               if (!last) {
-                                return <div className="mt-1 max-w-[220px] break-words text-[11px] leading-tight text-gray-500">Last purchase price not available</div>;
+                                return <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-500">Last purchase price not available</div>;
                               }
                               return (
-                                <div className="mt-1 max-w-[220px] break-words text-[11px] leading-tight text-gray-600">
+                                <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-600">
                                   Last: <span className="font-medium text-gray-800">₹{Number(last.unit_price || 0).toFixed(2)}</span>
                                 </div>
                               );
@@ -1996,11 +1994,11 @@ function PurchaseOrdersContent() {
                               className="w-full border border-gray-300 rounded px-3 py-2"
                             />
                           </div>
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between gap-2 min-w-0 pt-2">
                             <span className="font-medium">₹{item.totalPrice.toFixed(2)}</span>
                             <button
                               onClick={() => handleRemoveItem(index)}
-                              className="ml-2 px-2 py-1 bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-800 rounded font-bold text-lg"
+                              className="shrink-0 px-2 py-1 bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-800 rounded font-bold text-lg"
                               title="Remove this item"
                             >
                               ×
@@ -2121,7 +2119,7 @@ function PurchaseOrdersContent() {
               </div>
             </div>
 
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-4">
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-4 flex-shrink-0 bg-white">
               <button
                 onClick={() => {
                   setShowModal(false);

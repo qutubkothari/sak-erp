@@ -51,20 +51,28 @@ export class BomService {
     if (error) throw new BadRequestException(error.message);
     console.log('[BomService] create - BOM header created:', bom.id);
 
-    // Insert BOM items
+    // Insert BOM items (filter out any with empty/null itemId or childBomId)
     if (data.items && data.items.length > 0) {
-      console.log('[BomService] create - Components:', data.items.map((i: any) => `${i.componentType}:${i.itemId || i.childBomId}`));
-      
+      const filteredItems = data.items.filter((item: any) => {
+        if (item.componentType === 'ITEM') return !!item.itemId;
+        if (item.componentType === 'BOM') return !!item.childBomId;
+        return false;
+      });
+      if (filteredItems.length === 0) {
+        throw new BadRequestException('No valid BOM components to insert.');
+      }
+      console.log('[BomService] create - Components:', filteredItems.map((i: any) => `${i.componentType}:${i.itemId || i.childBomId}`));
+
       // Validate no circular references for child BOMs
-      const childBomIds = data.items.filter((i: any) => i.componentType === 'BOM').map((i: any) => i.childBomId);
+      const childBomIds = filteredItems.filter((i: any) => i.componentType === 'BOM').map((i: any) => i.childBomId);
       for (const childId of childBomIds) {
         const hasCycle = await this.validateNoCycle(bom.id, childId);
         if (hasCycle) {
           throw new BadRequestException(`Circular BOM reference detected: Cannot add BOM as it would create a cycle`);
         }
       }
-      
-      const items = data.items.map((item: any, index: number) => ({
+
+      const items = filteredItems.map((item: any, index: number) => ({
         bom_id: bom.id,
         item_id: item.componentType === 'ITEM' ? item.itemId : null,
         child_bom_id: item.componentType === 'BOM' ? item.childBomId : null,
@@ -319,13 +327,30 @@ export class BomService {
     }
 
     if (childBomIds.length > 0) {
-      const { data } = await this.supabase.from('bom_headers').select('*, items(*)').in('id', childBomIds);
+      // Hardening: do not rely on nested joins; always fetch BOM header item_id directly.
+      const { data } = await this.supabase
+        .from('bom_headers')
+        .select('id, item_id, version, is_active')
+        .eq('tenant_id', tenantId)
+        .in('id', childBomIds);
       childBoms = data || [];
+    }
+
+    const childBomItemIds = Array.from(new Set((childBoms || []).map((b: any) => b?.item_id).filter(Boolean)));
+    let childBomItems: any[] = [];
+    if (childBomItemIds.length > 0) {
+      const { data } = await this.supabase
+        .from('items')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .in('id', childBomItemIds);
+      childBomItems = data || [];
     }
 
     // Map items to include details
     const itemsMap = new Map(items.map((i: any) => [i.id, i]));
     const childBomsMap = new Map(childBoms.map((b: any) => [b.id, b]));
+    const childBomItemsMap = new Map(childBomItems.map((i: any) => [i.id, i]));
 
     // Infer subassembly BOMs: if an item with only item_id is a SUBASSEMBLY, fetch its BOM to promote to BOM component
     const subassemblyItemIds = items
@@ -357,11 +382,13 @@ export class BomService {
     const result = bomItems.map((bi: any) => {
       if (bi.child_bom_id) {
         const childBom = childBomsMap.get(bi.child_bom_id);
+        const childItem = childBom ? childBomItemsMap.get(childBom.item_id) : null;
         return {
           ...bi,
-          component_id: childBom?.item_id || bi.child_bom_id,
-          component_code: childBom?.items?.code || 'N/A',
-          component_name: childBom?.items?.name || 'Unknown BOM',
+          // IMPORTANT: component_id must be an item.id (never a bom_headers.id)
+          component_id: childBom?.item_id || null,
+          component_code: childItem?.code || 'N/A',
+          component_name: childItem?.name || 'Unknown BOM',
           component_type: 'BOM'
         };
       } else {
@@ -604,11 +631,11 @@ export class BomService {
     const stockStatus = []; // Track all items with stock info
 
     for (const explodedItem of explodedItems) {
-      // Check current stock from inventory_stock table (new unified table)
+      // Check current stock from stock_entries table (same as Items page uses)
       const [stockRes, itemRes] = await Promise.all([
         this.supabase
-          .from('inventory_stock')
-          .select('available_quantity, reserved_quantity, total_quantity')
+          .from('stock_entries')
+          .select('quantity, available_quantity, allocated_quantity')
           .eq('tenant_id', tenantId)
           .eq('item_id', explodedItem.itemId)
           .maybeSingle(),
@@ -619,9 +646,9 @@ export class BomService {
           .single(),
       ]);
 
-      const totalQty = stockRes.data?.total_quantity ? parseFloat(stockRes.data.total_quantity.toString()) : 0;
+      const totalQty = stockRes.data?.quantity ? parseFloat(stockRes.data.quantity.toString()) : 0;
       const availableQty = stockRes.data?.available_quantity ? parseFloat(stockRes.data.available_quantity.toString()) : 0;
-      const reservedQty = stockRes.data?.reserved_quantity ? parseFloat(stockRes.data.reserved_quantity.toString()) : 0;
+      const reservedQty = stockRes.data?.allocated_quantity ? parseFloat(stockRes.data.allocated_quantity.toString()) : 0;
       const reorderLevel = itemRes.data?.reorder_level ? parseFloat(itemRes.data.reorder_level.toString()) : 0;
       
       // Calculate usable stock (available minus reorder level safety stock)

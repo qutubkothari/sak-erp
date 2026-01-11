@@ -121,7 +121,6 @@ export default function DashboardPage() {
               { name: 'Sales & Dispatch', icon: '🚚', path: '/dashboard/sales' },
               { name: 'UID Tracking', icon: '🔍', path: '/dashboard/uid' },
               { name: 'After-Sales Service', icon: '🛠️', path: '/dashboard/service' },
-              { name: 'HR Management', icon: '👥', path: '/dashboard/hr' },
               { name: 'Document Control', icon: '📄', path: '/dashboard/documents' },
               { name: 'Settings & Users', icon: '⚙️', path: '/dashboard/settings' },
             ].map((module, index) => (

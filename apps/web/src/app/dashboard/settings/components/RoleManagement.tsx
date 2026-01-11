@@ -157,6 +157,9 @@ export default function RoleManagement() {
           {roles.map((role) => (
             (() => {
               const permissions = normalizePermissions((role as any).permissions);
+              const allowedPermissions = permissions.filter(
+                (p) => p.view || p.create || p.edit || p.delete || p.approve,
+              );
               return (
             <div
               key={role.id}
@@ -184,21 +187,27 @@ export default function RoleManagement() {
                   PERMISSIONS
                 </p>
                 <div className="flex flex-wrap gap-1">
-                  {permissions.slice(0, 3).map((perm, idx) => (
+                  {allowedPermissions.length === 0 ? (
+                    <span className="text-xs" style={{ color: '#8B6F47' }}>
+                      None
+                    </span>
+                  ) : (
+                    allowedPermissions.slice(0, 3).map((perm) => (
                     <span
-                      key={idx}
+                      key={perm.module}
                       className="text-xs px-2 py-1 rounded-full"
                       style={{ backgroundColor: '#E8DCC4', color: '#6F4E37' }}
                     >
                       {perm.module}
                     </span>
-                  ))}
-                  {permissions.length > 3 && (
+                    ))
+                  )}
+                  {allowedPermissions.length > 3 && (
                     <span
                       className="text-xs px-2 py-1 rounded-full"
                       style={{ backgroundColor: '#E8DCC4', color: '#6F4E37' }}
                     >
-                      +{permissions.length - 3} more
+                      +{allowedPermissions.length - 3} more
                     </span>
                   )}
                 </div>

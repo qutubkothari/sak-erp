@@ -38,14 +38,16 @@ export class SalesService {
 
     const { data, error } = await query.order('customer_name');
 
-    if (error) throw new BadRequestException(error.message);
+    if (error) {
+      console.error('[SalesService] getCustomers error:', error);
+      throw new BadRequestException(error.message);
+    }
+
     return data;
   }
 
   async createCustomer(req: Request, customerData: any) {
     const { tenantId, userId } = req.user as any;
-
-    console.log('Creating customer with tenantId:', tenantId);
     
     const customerCode = await this.generateCustomerCode(req);
     console.log('Generated customer code:', customerCode);

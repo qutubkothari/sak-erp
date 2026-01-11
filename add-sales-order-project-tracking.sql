@@ -62,6 +62,23 @@ BEGIN
     END IF;
 END $$;
 
+-- Step 4.1: Add sales_order_id to production_job_orders if not exists
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'production_job_orders'
+        AND column_name = 'sales_order_id'
+    ) THEN
+        ALTER TABLE production_job_orders
+        ADD COLUMN sales_order_id UUID REFERENCES sales_orders(id);
+
+        CREATE INDEX IF NOT EXISTS idx_job_orders_so ON production_job_orders(sales_order_id);
+
+        COMMENT ON COLUMN production_job_orders.sales_order_id IS 'Link to sales order (optional)';
+    END IF;
+END $$;
+
 -- Step 5: Update quotation_id to be nullable (to support direct SO creation)
 DO $$ 
 BEGIN
@@ -101,12 +118,17 @@ END $$;
 -- Step 7: Create function to auto-propagate project from SO to Job Orders
 CREATE OR REPLACE FUNCTION propagate_project_to_job_order()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_sales_order_id UUID;
 BEGIN
+    -- Safe access even if sales_order_id column is missing in some environments
+    v_sales_order_id := NULLIF(to_jsonb(NEW)->>'sales_order_id', '')::uuid;
+
     -- If job order has sales_order_id, inherit project from sales order
-    IF NEW.sales_order_id IS NOT NULL THEN
+    IF v_sales_order_id IS NOT NULL THEN
         SELECT project INTO NEW.project
         FROM sales_orders
-        WHERE id = NEW.sales_order_id;
+        WHERE id = v_sales_order_id;
     END IF;
     
     RETURN NEW;

@@ -85,7 +85,10 @@ export class ItemsController {
 
   @Get(':id/vendors/preferred')
   async getPreferredVendor(@Request() req: any, @Param('id') id: string) {
-    return this.itemsService.getPreferredVendor(id);
+    const preferred = await this.itemsService.getPreferredVendor(id);
+    // Returning `null` can be serialized as an empty response by some stacks/proxies;
+    // always return a JSON value so frontend `response.json()` is safe.
+    return preferred ?? {};
   }
 
   @Post(':id/vendors')

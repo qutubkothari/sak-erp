@@ -28,7 +28,9 @@ export class PurchaseOrdersController {
     
     // Check for same vendor + items within last 7 days
     const recentPOs = existing.filter((po: any) => {
-      if (po.vendor_id !== poData.vendor_id) return false;
+      const vendorId = poData.vendorId ?? poData.vendor_id;
+      if (!vendorId) return false;
+      if (po.vendor_id !== vendorId) return false;
       const daysDiff = Math.abs(new Date().getTime() - new Date(po.created_at).getTime()) / (1000 * 3600 * 24);
       return daysDiff <= 7;
     });
@@ -37,23 +39,33 @@ export class PurchaseOrdersController {
       return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
     }
     
-    // Check if items match
+    const incomingLines = (poData.items ?? []).map((item: any) => {
+      const code = item.itemCode ?? item.item_code ?? item.itemId ?? item.item_id ?? '';
+      const qty = item.orderedQty ?? item.ordered_qty ?? item.quantity ?? 0;
+      return `${String(code)}:${Number(qty)}`;
+    });
+    const incomingKey = incomingLines.filter(Boolean).sort().join('|');
+
+    // Check if items match (code + ordered qty)
     for (const recentPO of recentPOs) {
-      const hasSameItems = this.duplicateDetectionService.checkArrayDuplicates(
-        poData.items || [],
-        [recentPO.items || []],
-        ['item_id', 'quantity'],
-      );
-      
-      if (hasSameItems) {
+      const lines = (recentPO.purchase_order_items ?? []).map((row: any) => {
+        const code = row.item_code ?? row.item_id ?? '';
+        const qty = row.ordered_qty ?? row.quantity ?? 0;
+        return `${String(code)}:${Number(qty)}`;
+      });
+      const key = lines.filter(Boolean).sort().join('|');
+
+      if (incomingKey.length > 0 && key.length > 0 && key === incomingKey) {
         return {
           hasDuplicates: true,
-          exactMatches: [{
-            id: recentPO.id,
-            matchScore: 100,
-            matchedFields: ['vendor_id', 'items'],
-            data: recentPO,
-          }],
+          exactMatches: [
+            {
+              id: recentPO.id,
+              matchScore: 100,
+              matchedFields: ['vendor_id', 'items'],
+              data: recentPO,
+            },
+          ],
           fuzzyMatches: [],
           message: 'Identical PO with same vendor and items created in last 7 days',
         };

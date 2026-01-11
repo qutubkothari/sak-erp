@@ -219,22 +219,41 @@ CREATE TRIGGER trigger_track_po_edits
 CREATE OR REPLACE FUNCTION update_pr_item_ordered_qty()
 RETURNS TRIGGER AS $$
 DECLARE
-    v_pr_item_id UUID;
+    new_qty NUMERIC := 0;
+    old_qty NUMERIC := 0;
 BEGIN
+    -- Extract qty safely across schema variants.
+    -- Some schemas use ordered_qty (current), older ones used quantity.
+    IF TG_OP IN ('INSERT', 'UPDATE') THEN
+        new_qty := COALESCE(
+            NULLIF(to_jsonb(NEW)->>'ordered_qty', '')::NUMERIC,
+            NULLIF(to_jsonb(NEW)->>'quantity', '')::NUMERIC,
+            0
+        );
+    END IF;
+
+    IF TG_OP IN ('UPDATE', 'DELETE') THEN
+        old_qty := COALESCE(
+            NULLIF(to_jsonb(OLD)->>'ordered_qty', '')::NUMERIC,
+            NULLIF(to_jsonb(OLD)->>'quantity', '')::NUMERIC,
+            0
+        );
+    END IF;
+
     IF TG_OP = 'INSERT' AND NEW.pr_item_id IS NOT NULL THEN
         -- Add quantity to total_ordered_qty
         UPDATE purchase_requisition_items
-        SET total_ordered_qty = COALESCE(total_ordered_qty, 0) + NEW.quantity
+        SET total_ordered_qty = COALESCE(total_ordered_qty, 0) + new_qty
         WHERE id = NEW.pr_item_id;
     ELSIF TG_OP = 'UPDATE' AND OLD.pr_item_id IS NOT NULL THEN
         -- Adjust quantity if changed
         UPDATE purchase_requisition_items
-        SET total_ordered_qty = COALESCE(total_ordered_qty, 0) - OLD.quantity + NEW.quantity
+        SET total_ordered_qty = COALESCE(total_ordered_qty, 0) - old_qty + new_qty
         WHERE id = NEW.pr_item_id;
     ELSIF TG_OP = 'DELETE' AND OLD.pr_item_id IS NOT NULL THEN
         -- Subtract quantity when PO item is deleted
         UPDATE purchase_requisition_items
-        SET total_ordered_qty = COALESCE(total_ordered_qty, 0) - OLD.quantity
+        SET total_ordered_qty = COALESCE(total_ordered_qty, 0) - old_qty
         WHERE id = OLD.pr_item_id;
         RETURN OLD;
     END IF;
