@@ -682,11 +682,44 @@ export class GrnService {
       const items = Array.isArray(grn?.grn_items) ? grn.grn_items : [];
       if (items.length === 0) return;
 
+      // Some older GRNs may have grn_items.item_id = null (due to payload mapping issues).
+      // Resolve by item_code as a best-effort fallback so stock updates still work.
+      const missingItemIdCodes = Array.from(
+        new Set(
+          items
+            .filter((it: any) => {
+              const acceptedQty = Number(it?.accepted_qty ?? it?.accepted_quantity ?? 0) || 0;
+              const itemId = it?.item_id || it?.item?.id;
+              const itemCode = it?.item_code ?? it?.itemCode;
+              return acceptedQty > 0 && !itemId && !!itemCode;
+            })
+            .map((it: any) => String(it?.item_code ?? it?.itemCode))
+        )
+      );
+
+      const itemIdByCode = new Map<string, string>();
+      if (missingItemIdCodes.length > 0) {
+        const { data: resolvedItems, error: resolvedItemsError } = await this.supabase
+          .from('items')
+          .select('id, code')
+          .eq('tenant_id', tenantId)
+          .in('code', missingItemIdCodes);
+
+        if (resolvedItemsError) {
+          console.error('⚠️ Failed to resolve item IDs by code for GRN stock updates:', resolvedItemsError);
+        } else {
+          for (const it of resolvedItems || []) {
+            if (it?.code && it?.id) itemIdByCode.set(String(it.code), String(it.id));
+          }
+        }
+      }
+
       for (const item of items) {
         const acceptedQty = Number(item?.accepted_qty ?? item?.accepted_quantity ?? 0) || 0;
         if (acceptedQty <= 0) continue;
 
-        const itemId = item?.item_id || item?.item?.id;
+        const itemCode = item?.item_code ?? item?.itemCode ?? item?.item?.code;
+        const itemId = item?.item_id || item?.item?.id || (itemCode ? itemIdByCode.get(String(itemCode)) : undefined);
         const grnItemId = item?.id;
         if (!itemId || !grnItemId) continue;
 
@@ -784,7 +817,7 @@ export class GrnService {
           
           const { data: grnItem, error: grnItemError } = await this.supabase
             .from('grn_items')
-            .select('item_id, grn_id, unit_price, batch_number, item_code')
+            .select('item_id, grn_id, rate, batch_number, item_code')
             .eq('id', item.itemId)
             .single();
 
@@ -811,7 +844,7 @@ export class GrnService {
             quantity: item.acceptedQty,
             available_quantity: item.acceptedQty,
             allocated_quantity: 0,
-            unit_price: grnItem.unit_price,
+            unit_price: grnItem.rate,
             batch_number: grnItem.batch_number,
             grn_reference: grn.grn_number,
             created_from: 'GRN_QC_ACCEPT',

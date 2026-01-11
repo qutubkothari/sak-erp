@@ -538,7 +538,7 @@ function GRNContent() {
         poId: po.id,
         vendorId: po.vendor_id,
         items: po.purchase_order_items.map(item => ({
-          itemId: item.item_id,
+          itemId: item.item_id ?? (item as any).itemId ?? (item as any).item?.id,
           itemCode: item.item_code,
           itemName: item.item_name,
           poItemId: item.id,
