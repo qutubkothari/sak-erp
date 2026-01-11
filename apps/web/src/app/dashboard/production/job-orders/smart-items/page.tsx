@@ -530,6 +530,23 @@ function SmartJobOrdersItemsPageContent() {
       itemNodesByBomId.set(n.bomId, list);
     }
 
+    // Deduplicate items within each BOM level - sum up quantities for same item
+    for (const [bid, items] of itemNodesByBomId.entries()) {
+      const dedupMap = new Map<string, SmartExplosionNode>();
+      for (const item of items) {
+        const key = item.itemId;
+        if (dedupMap.has(key)) {
+          // Merge quantities for duplicate items
+          const existing = dedupMap.get(key)!;
+          existing.requiredQuantity += item.requiredQuantity;
+          existing.shortageQuantity = Math.max(0, existing.requiredQuantity - existing.availableQuantity);
+        } else {
+          dedupMap.set(key, { ...item });
+        }
+      }
+      itemNodesByBomId.set(bid, Array.from(dedupMap.values()));
+    }
+
     // Stable ordering: by level then item code
     for (const [parentId, list] of childBomIdsByParent.entries()) {
       const sorted = [...list].sort((a, b) => {
