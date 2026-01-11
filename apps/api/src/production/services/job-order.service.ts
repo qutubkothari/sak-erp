@@ -64,6 +64,8 @@ export class JobOrderService {
   }
 
   private async issueJobOrderMaterials(tenantId: string, jobOrderId: string) {
+    console.log('[JobOrderService] issueJobOrderMaterials called', { tenantId, jobOrderId });
+    
     const { data: jobOrder } = await this.supabase
       .from('production_job_orders')
       .select('*, job_order_materials(*)')
@@ -77,6 +79,8 @@ export class JobOrderService {
     if (status === 'COMPLETED' || status === 'CANCELLED') {
       throw new BadRequestException('Cannot issue materials for a completed/cancelled job order');
     }
+
+    console.log('[JobOrderService] Found', jobOrder.job_order_materials?.length || 0, 'materials to issue');
 
     for (const material of jobOrder.job_order_materials || []) {
       const requiredQty = Number(material.required_quantity) || 0;
@@ -95,8 +99,17 @@ export class JobOrderService {
 
       const itemIdToConsume = material.selected_variant_id || material.item_id;
       if (!this.isUuid(String(itemIdToConsume || ''))) {
+        console.error('[JobOrderService] Invalid item_id for material:', material.item_code, itemIdToConsume);
         throw new BadRequestException(`Invalid material itemId for consumption: ${String(itemIdToConsume)}`);
       }
+
+      console.log('[JobOrderService] Issuing material:', {
+        code: material.item_code,
+        itemId: itemIdToConsume,
+        requiredQty,
+        alreadyIssued,
+        consumeQty,
+      });
 
       const { data: item } = await this.supabase
         .from('items')
@@ -110,9 +123,10 @@ export class JobOrderService {
         .eq('tenant_id', tenantId)
         .eq('item_id', itemIdToConsume)
         .gt('available_quantity', 0)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true});
 
       if (!stockEntries || stockEntries.length === 0) {
+        console.error('[JobOrderService] No stock entries found for:', item?.code);
         throw new BadRequestException(`Failed to issue ${item?.code || ''}: Item not found in inventory`);
       }
 
@@ -120,6 +134,13 @@ export class JobOrderService {
         (sum, entry) => sum + parseFloat(entry.available_quantity.toString()),
         0,
       );
+
+      console.log('[JobOrderService] Stock available:', {
+        code: item?.code,
+        totalAvailable,
+        needed: consumeQty,
+        entries: stockEntries.length,
+      });
 
       if (totalAvailable < consumeQty) {
         throw new BadRequestException(
@@ -135,6 +156,13 @@ export class JobOrderService {
         const toConsumeFromEntry = Math.min(entryAvailable, remainingToConsume);
         const newAvailable = entryAvailable - toConsumeFromEntry;
 
+        console.log('[JobOrderService] Consuming from stock entry:', {
+          entryId: entry.id,
+          before: entryAvailable,
+          consuming: toConsumeFromEntry,
+          after: newAvailable,
+        });
+
         const { error: updateError } = await this.supabase
           .from('stock_entries')
           .update({
@@ -144,6 +172,7 @@ export class JobOrderService {
           .eq('id', entry.id);
 
         if (updateError) {
+          console.error('[JobOrderService] Failed to update stock entry:', updateError);
           throw new BadRequestException(`Failed to issue ${item?.code || ''}: ${updateError.message}`);
         }
 
@@ -151,6 +180,13 @@ export class JobOrderService {
       }
 
       const nextIssued = alreadyIssued + consumeQty;
+      console.log('[JobOrderService] Material issued successfully:', {
+        code: material.item_code,
+        issued: nextIssued,
+        required: requiredQty,
+        status: nextIssued >= requiredQty ? 'ISSUED' : 'PARTIAL',
+      });
+      
       await this.supabase
         .from('job_order_materials')
         .update({
@@ -1662,8 +1698,15 @@ export class JobOrderService {
     // Smart job order UX expects stock to reduce immediately upon creation.
     // Issue materials for the main job order (does NOT add finished goods stock).
     const shouldAutoIssue = req.autoIssueMaterials !== false;
+    console.log('[JobOrderService] Smart job order created:', {
+      jobOrderId: main.id,
+      jobOrderNumber: main.job_order_number,
+      shouldAutoIssue,
+    });
+    
     if (shouldAutoIssue) {
       await this.issueJobOrderMaterials(tenantId, main.id);
+      console.log('[JobOrderService] Materials issued successfully for', main.job_order_number);
     }
 
     const mainWithMaterials = shouldAutoIssue ? await this.findOne(tenantId, main.id) : main;
