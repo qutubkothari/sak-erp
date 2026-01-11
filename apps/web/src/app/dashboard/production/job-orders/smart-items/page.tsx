@@ -147,8 +147,10 @@ function SmartJobOrdersItemsPageContent() {
     Record<string, { available: number; loading: boolean; error?: string }>
   >({});
   const [expandedBoms, setExpandedBoms] = useState<Set<string>>(new Set());
+  const [showShortageDetails, setShowShortageDetails] = useState(false);
 
   const [creating, setCreating] = useState(false);
+  const [creatingPR, setCreatingPR] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'create' | 'jobOrders'>('create');
   const [jobOrdersLoading, setJobOrdersLoading] = useState(false);
@@ -440,6 +442,66 @@ function SmartJobOrdersItemsPageContent() {
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemId, quantity, salesOrderId, salesOrderItemId]);
+
+  const handlePurchaseShortageItems = async () => {
+    if (!preview) return;
+
+    const itemsWithShortage = preview.nodes.filter(n => {
+      if (n.componentType !== 'ITEM') return false;
+      const key = nodeKey(n);
+      const selectedItemId = selectedItemByNodeKey[key] || n.itemId;
+      const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+      const available = stockState?.available ?? n.availableQuantity;
+      return Number(n.requiredQuantity || 0) > Number(available || 0);
+    });
+
+    const autoMakeItemIds = new Set((preview.subAssembliesToMake || []).map(sa => sa.itemId));
+    const rawMaterialShortages = itemsWithShortage.filter(item => {
+      const selectedItemId = selectedItemByNodeKey[nodeKey(item)] || item.itemId;
+      return !autoMakeItemIds.has(selectedItemId);
+    });
+
+    if (rawMaterialShortages.length === 0) return;
+
+    setCreatingPR(true);
+    try {
+      // Create PR with shortage items
+      const prItems = rawMaterialShortages.map(item => {
+        const key = nodeKey(item);
+        const selectedItemId = selectedItemByNodeKey[key] || item.itemId;
+        const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+        const available = stockState?.available ?? item.availableQuantity;
+        const shortage = Math.max(0, Number(item.requiredQuantity || 0) - Number(available || 0));
+        
+        return {
+          item_id: selectedItemId,
+          quantity: Math.ceil(shortage), // Round up to ensure we have enough
+          description: `For Job Order: ${preview.finishedItem.code} (Shortage)`,
+        };
+      });
+
+      const prData = {
+        pr_date: new Date().toISOString().split('T')[0],
+        description: `Auto-generated PR for Job Order shortage: ${preview.finishedItem.code}`,
+        items: prItems,
+      };
+
+      const result = await apiClient.post('/purchase-requisitions', prData);
+      const prId = result?.id || result?.pr_id;
+      
+      if (prId) {
+        // Navigate to PR page
+        router.push(`/dashboard/purchase/requisitions?prId=${prId}`);
+      } else {
+        alert('✅ Purchase Requisition created successfully!');
+        router.push('/dashboard/purchase/requisitions');
+      }
+    } catch (err: any) {
+      alert(`❌ Failed to create Purchase Requisition: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setCreatingPR(false);
+    }
+  };
 
   const handleCreate = async () => {
     if (!canPreview) {
@@ -1136,69 +1198,133 @@ function SmartJobOrdersItemsPageContent() {
                 </div>
               </div>
 
-              <div className="mt-6 flex items-center justify-between gap-4 sticky bottom-0 bg-white border-t-2 border-amber-200 p-4 shadow-lg rounded-lg">
-                <div className="text-sm text-gray-700">
-                  {(() => {
-                    const itemsWithShortage = preview.nodes.filter(n => {
-                      if (n.componentType !== 'ITEM') return false;
-                      const key = nodeKey(n);
-                      const selectedItemId = selectedItemByNodeKey[key] || n.itemId;
-                      const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
-                      const available = stockState?.available ?? n.availableQuantity;
-                      return Number(n.requiredQuantity || 0) > Number(available || 0);
-                    });
-                    
-                    const autoMakeItemIds = new Set((preview.subAssembliesToMake || []).map(sa => sa.itemId));
-                    const rawMaterialShortages = itemsWithShortage.filter(item => {
-                      const selectedItemId = selectedItemByNodeKey[nodeKey(item)] || item.itemId;
-                      return !autoMakeItemIds.has(selectedItemId);
-                    });
-                    const subAssemblyShortages = itemsWithShortage.filter(item => {
-                      const selectedItemId = selectedItemByNodeKey[nodeKey(item)] || item.itemId;
-                      return autoMakeItemIds.has(selectedItemId);
-                    });
+              <div className="mt-6 sticky bottom-0 bg-white border-t-2 border-amber-200 shadow-lg rounded-lg">
+                {(() => {
+                  const itemsWithShortage = preview.nodes.filter(n => {
+                    if (n.componentType !== 'ITEM') return false;
+                    const key = nodeKey(n);
+                    const selectedItemId = selectedItemByNodeKey[key] || n.itemId;
+                    const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+                    const available = stockState?.available ?? n.availableQuantity;
+                    return Number(n.requiredQuantity || 0) > Number(available || 0);
+                  });
+                  
+                  const autoMakeItemIds = new Set((preview.subAssembliesToMake || []).map(sa => sa.itemId));
+                  const rawMaterialShortages = itemsWithShortage.filter(item => {
+                    const selectedItemId = selectedItemByNodeKey[nodeKey(item)] || item.itemId;
+                    return !autoMakeItemIds.has(selectedItemId);
+                  });
+                  const subAssemblyShortages = itemsWithShortage.filter(item => {
+                    const selectedItemId = selectedItemByNodeKey[nodeKey(item)] || item.itemId;
+                    return autoMakeItemIds.has(selectedItemId);
+                  });
 
-                    if (rawMaterialShortages.length > 0) {
-                      return (
-                        <span className="flex items-center gap-2 text-red-700 font-semibold">
-                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  if (rawMaterialShortages.length > 0) {
+                    return (
+                      <div className="p-4">
+                        <div 
+                          className="flex items-center justify-between cursor-pointer hover:bg-red-50 p-2 rounded transition-colors"
+                          onClick={() => setShowShortageDetails(!showShortageDetails)}
+                        >
+                          <div className="flex items-center gap-2 text-red-700 font-semibold">
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                            </svg>
+                            <span>❌ Blocked: {rawMaterialShortages.length} raw material{rawMaterialShortages.length > 1 ? 's' : ''} out of stock!</span>
+                          </div>
+                          <svg 
+                            className={`w-5 h-5 text-red-700 transition-transform ${showShortageDetails ? 'rotate-180' : ''}`}
+                            fill="currentColor" 
+                            viewBox="0 0 20 20"
+                          >
+                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                           </svg>
-                          ❌ Blocked: {rawMaterialShortages.length} raw material{rawMaterialShortages.length > 1 ? 's' : ''} out of stock!
-                        </span>
-                      );
-                    } else if (subAssemblyShortages.length > 0) {
-                      return (
-                        <span className="flex items-center gap-2 text-amber-700 font-semibold">
-                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                          </svg>
-                          ⚠️ {subAssemblyShortages.length} sub-assembl{subAssemblyShortages.length > 1 ? 'ies' : 'y'} will be auto-created
-                        </span>
-                      );
-                    } else {
-                      return (
-                        <span className="flex items-center gap-2 text-green-700 font-semibold">
-                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                          </svg>
-                          ✓ All materials available in stock
-                        </span>
-                      );
-                    }
-                  })()}
-                </div>
-                <button
-                  onClick={handleCreate}
-                  disabled={creating || !canPreview}
-                  className={`px-6 py-3 rounded-lg font-semibold text-white transition-all ${
-                    creating || !canPreview
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-amber-600 hover:bg-amber-700 shadow-md hover:shadow-lg'
-                  }`}
-                >
-                  {creating ? 'Creating...' : 'Create Job Order'}
-                </button>
+                        </div>
+                        
+                        {showShortageDetails && (
+                          <div className="mt-4 border-t border-red-200 pt-4">
+                            <div className="max-h-60 overflow-y-auto mb-4">
+                              <table className="min-w-full text-sm">
+                                <thead className="bg-red-50">
+                                  <tr>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-red-900">Item</th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-red-900">Required</th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-red-900">In Stock</th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-red-900">Shortage</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-red-100">
+                                  {rawMaterialShortages.map((item, idx) => {
+                                    const key = nodeKey(item);
+                                    const selectedItemId = selectedItemByNodeKey[key] || item.itemId;
+                                    const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+                                    const available = stockState?.available ?? item.availableQuantity;
+                                    const shortage = Math.max(0, Number(item.requiredQuantity || 0) - Number(available || 0));
+                                    
+                                    return (
+                                      <tr key={idx} className="hover:bg-red-50">
+                                        <td className="px-3 py-2 text-gray-900">
+                                          <div className="font-medium">{item.itemCode}</div>
+                                          <div className="text-xs text-gray-600">{item.itemName}</div>
+                                        </td>
+                                        <td className="px-3 py-2 text-right text-gray-900">{formatQuantity(item.requiredQuantity)}</td>
+                                        <td className="px-3 py-2 text-right text-gray-900">{formatQuantity(available)}</td>
+                                        <td className="px-3 py-2 text-right font-semibold text-red-700">{formatQuantity(shortage)}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePurchaseShortageItems();
+                              }}
+                              disabled={creatingPR}
+                              className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                            >
+                              {creatingPR ? 'Creating PR...' : '🛒 Purchase All Shortage Items'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div className="p-4 flex items-center justify-between">
+                        <div className="text-sm text-gray-700">
+                          {subAssemblyShortages.length > 0 ? (
+                            <span className="flex items-center gap-2 text-amber-700 font-semibold">
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                              </svg>
+                              ⚠️ {subAssemblyShortages.length} sub-assembl{subAssemblyShortages.length > 1 ? 'ies' : 'y'} will be auto-created
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-2 text-green-700 font-semibold">
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                              ✓ All materials available in stock
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={handleCreate}
+                          disabled={creating || !canPreview}
+                          className={`px-6 py-3 rounded-lg font-semibold text-white transition-colors ${
+                            creating || !canPreview
+                              ? 'bg-gray-400 cursor-not-allowed'
+                              : 'bg-amber-600 hover:bg-amber-700 shadow-md hover:shadow-lg'
+                          }`}
+                        >
+                          {creating ? 'Creating...' : 'Create Job Order'}
+                        </button>
+                      </div>
+                    );
+                  }
+                })()}
               </div>
             </>
           ) : null}
