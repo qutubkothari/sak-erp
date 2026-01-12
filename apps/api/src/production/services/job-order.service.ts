@@ -1165,6 +1165,32 @@ export class JobOrderService {
     }
 
     try {
+      // 0. Idempotency: avoid adding stock multiple times if QC is submitted again
+      const { data: existingQcStockEntries, error: existingQcStockError } = await this.supabase
+        .from('stock_entries')
+        .select('id, metadata')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', jobOrder.item_id)
+        .eq('metadata->>created_from', 'QC_APPROVAL')
+        .eq('metadata->>job_order_id', jobOrderId);
+
+      if (existingQcStockError) {
+        throw new BadRequestException(existingQcStockError.message);
+      }
+
+      const alreadyApprovedUidSet = new Set<string>();
+      for (const entry of existingQcStockEntries || []) {
+        const approvedList = (entry as any)?.metadata?.approved_uids;
+        if (Array.isArray(approvedList)) {
+          for (const u of approvedList) {
+            const s = String(u || '').trim();
+            if (s) alreadyApprovedUidSet.add(s);
+          }
+        }
+      }
+
+      const newlyApprovedUids = (approvedUids || []).filter((u) => !alreadyApprovedUidSet.has(u));
+
       // 1. Update approved UIDs
       if (approvedUids.length > 0) {
         for (const uid of approvedUids) {
@@ -1181,6 +1207,7 @@ export class JobOrderService {
             .from('uid_registry')
             .update({
               status: 'QC_APPROVED',
+              quality_status: 'PASSED',
               location: 'Warehouse',
               lifecycle: JSON.stringify([
                 ...currentLifecycle,
@@ -1219,6 +1246,7 @@ export class JobOrderService {
             .from('uid_registry')
             .update({
               status: 'QC_REJECTED',
+              quality_status: 'ON_HOLD',
               location: 'Rework/Scrap',
               lifecycle: JSON.stringify([
                 ...currentLifecycle,
@@ -1242,7 +1270,7 @@ export class JobOrderService {
       }
 
       // 3. Add stock ONLY for approved UIDs
-      if (approvedUids.length > 0) {
+      if (newlyApprovedUids.length > 0) {
         // Get warehouse
         const { data: warehouses } = await this.supabase
           .from('warehouses')
@@ -1263,8 +1291,8 @@ export class JobOrderService {
             tenant_id: tenantId,
             item_id: jobOrder.item_id,
             warehouse_id: warehouseId,
-            quantity: approvedUids.length,
-            available_quantity: approvedUids.length,
+            quantity: newlyApprovedUids.length,
+            available_quantity: newlyApprovedUids.length,
             allocated_quantity: 0,
             metadata: {
               created_from: 'QC_APPROVAL',
@@ -1273,7 +1301,7 @@ export class JobOrderService {
               total_produced: totalUids,
               qc_approved: approvedUids.length,
               qc_rejected: rejectedUids.length,
-              approved_uids: approvedUids,
+              approved_uids: newlyApprovedUids,
             },
           });
 
@@ -1284,7 +1312,7 @@ export class JobOrderService {
       }
 
       console.log(`[QC Approval] Job Order ${jobOrder.job_order_number}: ${approvedUids.length} approved, ${rejectedUids.length} rejected`);
-      console.log(`[QC Approval] Added ${approvedUids.length} units to stock`);
+      console.log(`[QC Approval] Added ${newlyApprovedUids.length} new units to stock (idempotent)`);
 
       return {
         jobOrderId,
@@ -1292,13 +1320,78 @@ export class JobOrderService {
         totalProduced: totalUids,
         qcApproved: approvedUids.length,
         qcRejected: rejectedUids.length,
-        stockAdded: approvedUids.length,
-        message: `QC Complete: ${approvedUids.length} approved units added to stock, ${rejectedUids.length} rejected`,
+        stockAdded: newlyApprovedUids.length,
+        message:
+          newlyApprovedUids.length === 0
+            ? `QC already applied: no new approved UIDs to add to stock.`
+            : `QC Complete: ${newlyApprovedUids.length} approved units added to stock, ${rejectedUids.length} rejected`,
       };
     } catch (error) {
       console.error('Error during QC approval:', error);
       throw error;
     }
+  }
+
+  async getQcSummary(tenantId: string, jobOrderId: string) {
+    const { data: jobOrder, error: jobOrderError } = await this.supabase
+      .from('production_job_orders')
+      .select('id, tenant_id, item_id, job_order_number, quantity, status')
+      .eq('tenant_id', tenantId)
+      .eq('id', jobOrderId)
+      .single();
+
+    if (jobOrderError) throw new BadRequestException(jobOrderError.message);
+    if (!jobOrder) throw new NotFoundException('Job order not found');
+
+    const { data: qcStockEntries, error: qcStockError } = await this.supabase
+      .from('stock_entries')
+      .select('id, quantity, available_quantity, metadata, created_at')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', jobOrder.item_id)
+      .eq('metadata->>created_from', 'QC_APPROVAL')
+      .eq('metadata->>job_order_id', jobOrderId);
+
+    if (qcStockError) throw new BadRequestException(qcStockError.message);
+
+    const entries = Array.isArray(qcStockEntries) ? qcStockEntries : [];
+    const stockAdded = entries.reduce(
+      (sum, e: any) => sum + (Number(e?.quantity) || 0),
+      0,
+    );
+
+    const qcAppliedAt = entries.reduce<string | null>((latest, e: any) => {
+      const raw = e?.created_at;
+      if (!raw) return latest;
+      const ts = Date.parse(String(raw));
+      if (Number.isNaN(ts)) return latest;
+
+      if (!latest) return String(raw);
+      const latestTs = Date.parse(String(latest));
+      if (Number.isNaN(latestTs)) return String(raw);
+      return ts > latestTs ? String(raw) : latest;
+    }, null);
+
+    const approvedUidSet = new Set<string>();
+    for (const e of entries) {
+      const approved = (e as any)?.metadata?.approved_uids;
+      if (Array.isArray(approved)) {
+        for (const u of approved) {
+          const s = String(u || '').trim();
+          if (s) approvedUidSet.add(s);
+        }
+      }
+    }
+
+    return {
+      jobOrderId: jobOrder.id,
+      jobOrderNumber: jobOrder.job_order_number,
+      status: jobOrder.status,
+      qcStockEntriesCount: entries.length,
+      stockAdded,
+      approvedUidsCount: approvedUidSet.size,
+      isQcApplied: entries.length > 0,
+      qcAppliedAt,
+    };
   }
 
   async getCompletionPreview(tenantId: string, jobOrderId: string) {

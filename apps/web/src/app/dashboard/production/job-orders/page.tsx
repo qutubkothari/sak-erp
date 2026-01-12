@@ -101,6 +101,17 @@ interface JobOrderUID {
   };
 }
 
+type JobOrderQcSummary = {
+  jobOrderId: string;
+  jobOrderNumber: string;
+  status: string;
+  qcStockEntriesCount: number;
+  stockAdded: number;
+  approvedUidsCount: number;
+  isQcApplied: boolean;
+  qcAppliedAt: string | null;
+};
+
 export default function JobOrdersPage() {
   return (
     <Suspense
@@ -144,8 +155,11 @@ function JobOrdersPageContent() {
   // QC modal state
   const [showQcModal, setShowQcModal] = useState(false);
   const [qcLoading, setQcLoading] = useState(false);
+  const [qcSubmitting, setQcSubmitting] = useState(false);
   const [qcUids, setQcUids] = useState<JobOrderUID[]>([]);
   const [qcIndex, setQcIndex] = useState(0);
+  const [qcAlreadyApplied, setQcAlreadyApplied] = useState(false);
+  const [qcSummary, setQcSummary] = useState<JobOrderQcSummary | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -242,10 +256,23 @@ function JobOrdersPageContent() {
 
     setShowQcModal(true);
     setQcLoading(true);
+    setQcSubmitting(false);
     setQcUids([]);
     setQcIndex(0);
+    setQcAlreadyApplied(false);
+    setQcSummary(null);
 
     try {
+      try {
+        const summary = await apiClient.get<JobOrderQcSummary>(`/job-orders/${selectedJobOrder.id}/qc-summary`);
+        setQcSummary(summary ?? null);
+        setQcAlreadyApplied(Boolean(summary?.isQcApplied));
+      } catch {
+        // Non-blocking: if summary fails, QC can still proceed (API is idempotent).
+        setQcAlreadyApplied(false);
+        setQcSummary(null);
+      }
+
       const response = await apiClient.get<any>(
         `/uid?job_order_id=${selectedJobOrder.id}&limit=5000&sortBy=created_at&sortOrder=asc`,
       );
@@ -270,6 +297,7 @@ function JobOrdersPageContent() {
     if (!selectedJobOrder?.id) return;
 
     setQcLoading(true);
+    setQcSubmitting(false);
     try {
       await apiClient.post(`/job-orders/${selectedJobOrder.id}/ensure-uids`, {});
 
@@ -284,6 +312,15 @@ function JobOrdersPageContent() {
         (u) => String(u?.quality_status || '').toUpperCase() !== 'PASSED',
       );
       setQcIndex(firstPendingIdx >= 0 ? firstPendingIdx : 0);
+
+      try {
+        const summary = await apiClient.get<JobOrderQcSummary>(`/job-orders/${selectedJobOrder.id}/qc-summary`);
+        setQcSummary(summary ?? null);
+        setQcAlreadyApplied(Boolean(summary?.isQcApplied));
+      } catch {
+        setQcAlreadyApplied(false);
+        setQcSummary(null);
+      }
     } catch (error: any) {
       console.error('Error ensuring job order UIDs:', error);
       const errorMsg = error.response?.data?.message || error.message || 'Failed to generate UIDs';
@@ -1539,7 +1576,12 @@ function JobOrdersPageContent() {
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold">Complete QC</h2>
               <button
-                onClick={() => setShowQcModal(false)}
+                onClick={() => {
+                  setShowQcModal(false);
+                  setQcSubmitting(false);
+                  setQcAlreadyApplied(false);
+                  setQcSummary(null);
+                }}
                 className="text-gray-500 hover:text-gray-700"
               >
                 ✕
@@ -1552,6 +1594,23 @@ function JobOrdersPageContent() {
               <div className="text-sm text-gray-600 mt-2">Item</div>
               <div className="font-semibold">{selectedJobOrder.itemCode} - {selectedJobOrder.itemName}</div>
             </div>
+
+            {qcAlreadyApplied && (
+              <div className="mb-4 p-4 rounded border border-green-300 bg-green-50 text-green-900">
+                <div className="font-semibold">QC already submitted</div>
+                <div className="text-sm mt-1">
+                  {qcSummary?.qcAppliedAt
+                    ? `Submitted on ${new Date(qcSummary.qcAppliedAt).toLocaleString()}`
+                    : 'Submitted previously (timestamp unavailable)'}
+                </div>
+                {qcSummary && (
+                  <div className="text-sm mt-2">
+                    Stock added: <span className="font-semibold">{qcSummary.stockAdded}</span> | Approved UIDs: <span className="font-semibold">{qcSummary.approvedUidsCount}</span>
+                  </div>
+                )}
+                <div className="text-sm mt-2">The submit button is disabled to prevent duplicate stock.</div>
+              </div>
+            )}
 
             {qcLoading ? (
               <div className="p-6 text-center text-gray-600">Loading UIDs...</div>
@@ -1682,11 +1741,15 @@ function JobOrdersPageContent() {
 
                 <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded">
                   <p className="text-sm text-gray-700 mb-4">
-                    <strong>Important:</strong> After completing QC inspection for all UIDs, click "Submit QC Results" below. 
+                    <strong>Important:</strong> After completing QC inspection for all UIDs, click &quot;Submit QC Results&quot; below. 
                     Only <strong>PASSED</strong> UIDs will be added to stock. Failed UIDs will be marked for rework/scrap.
                   </p>
                   <button
                     onClick={async () => {
+                      if (qcAlreadyApplied) {
+                        alert('QC is already submitted for this job order. Stock has already been updated.');
+                        return;
+                      }
                       const approvedUids = qcUids.filter(u => String(u?.quality_status || '').toUpperCase() === 'PASSED').map(u => u.uid);
                       const rejectedUids = qcUids.filter(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED').map(u => u.uid);
 
@@ -1699,7 +1762,7 @@ function JobOrdersPageContent() {
                         return;
                       }
 
-                      setQcLoading(true);
+                      setQcSubmitting(true);
                       try {
                         const response = await apiClient.post(`/job-orders/${selectedJobOrder.id}/qc-approve`, {
                           approvedUids,
@@ -1707,6 +1770,7 @@ function JobOrdersPageContent() {
                         });
 
                         alert(`✅ QC Complete!\n\n${response.message || `${approvedUids.length} units added to stock, ${rejectedUids.length} rejected`}`);
+                        setQcAlreadyApplied(true);
                         setShowQcModal(false);
                         setQcUids([]);
                         fetchJobOrders();
@@ -1715,13 +1779,13 @@ function JobOrdersPageContent() {
                         const errorMsg = error.response?.data?.message || error.message || 'Failed to submit QC results';
                         alert(errorMsg);
                       } finally {
-                        setQcLoading(false);
+                        setQcSubmitting(false);
                       }
                     }}
-                    disabled={qcLoading}
+                    disabled={qcLoading || qcSubmitting || qcAlreadyApplied}
                     className="w-full px-6 py-3 bg-blue-600 text-white font-semibold rounded hover:bg-blue-700 disabled:opacity-50"
                   >
-                    Submit QC Results & Add Stock
+                    {qcAlreadyApplied ? 'QC Already Submitted' : qcSubmitting ? 'Submitting QC…' : 'Submit QC Results & Add Stock'}
                   </button>
                 </div>
               </>

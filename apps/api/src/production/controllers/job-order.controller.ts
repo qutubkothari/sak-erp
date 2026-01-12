@@ -138,6 +138,12 @@ export class JobOrderController {
     return this.jobOrderService.approveQC(tenantId, id, approvedUids, rejectedUids, userId);
   }
 
+  @Get(':id/qc-summary')
+  async getQcSummary(@Request() req: any, @Param('id') id: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.jobOrderService.getQcSummary(tenantId, id);
+  }
+
   @Post(':id/ensure-uids')
   async ensureUids(@Request() req: any, @Param('id') id: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];

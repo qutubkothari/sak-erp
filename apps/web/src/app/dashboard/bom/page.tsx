@@ -976,7 +976,7 @@ export default function BOMPage() {
 
                 {formData.items.length === 0 ? (
                   <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
-                    <p className="text-gray-500">No parts or assemblies added. Click "Add Part/Assembly" to get started.</p>
+                    <p className="text-gray-500">No parts or assemblies added. Click &quot;Add Part/Assembly&quot; to get started.</p>
                   </div>
                 ) : (
                   <div className="space-y-4">

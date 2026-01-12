@@ -148,6 +148,39 @@ type Permission = {
   approve?: boolean;
 };
 
+function getUserRoleNames(user: StoredUser | null): string[] {
+  if (!user) return [];
+  const names: string[] = [];
+
+  const rawRoles = (user as { roles?: unknown }).roles;
+  if (Array.isArray(rawRoles)) {
+    rawRoles.forEach((entry) => {
+      if (typeof entry === 'string') {
+        names.push(entry);
+        return;
+      }
+      if (isRecord(entry) && isRecord(entry.role) && typeof entry.role.name === 'string') {
+        names.push(entry.role.name);
+      }
+    });
+  }
+
+  const single = (user as { role?: { name?: unknown } }).role;
+  if (single && typeof single.name === 'string') names.push(single.name);
+  return names;
+}
+
+function shouldHideDashboardForUser(user: StoredUser | null): boolean {
+  const roleNames = getUserRoleNames(user)
+    .map((n) => String(n).toUpperCase().replace(/[_\-]+/g, ' '))
+    .map((n) => n.trim())
+    .filter(Boolean);
+
+  const isHr = roleNames.some((n) => n.includes('HR'));
+  const isAdminLike = roleNames.some((n) => n.includes('ADMIN') || n.includes('SUPER') || n.includes('OWNER'));
+  return isHr && !isAdminLike;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -225,7 +258,6 @@ function getUserPermissions(user: StoredUser | null): unknown {
 
 function getAllowedNavigationNames(user: StoredUser | null): Set<string> {
   const allowed = new Set<string>();
-  allowed.add('Dashboard');
 
   const rawPermissions = getUserPermissions(user);
   if (!Array.isArray(rawPermissions)) return allowed;
@@ -261,6 +293,12 @@ function getAllowedNavigationNames(user: StoredUser | null): Set<string> {
     }
   });
 
+  // Show Dashboard only when the user has a reason to see it.
+  // This prevents HR-only users from seeing the global dashboard.
+  if (enabledModules.has('Reports') || enabledModules.size > 1) {
+    allowed.add('Dashboard');
+  }
+
   return allowed;
 }
 
@@ -295,16 +333,22 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     ? navigation.filter((item) => allowedNavigationNames.has(item.name))
     : navigation;
 
+  const finalNavigation = shouldHideDashboardForUser(currentUser)
+    ? visibleNavigation.filter((item) => item.name !== 'Dashboard')
+    : visibleNavigation;
+
+  const homeHref = finalNavigation[0]?.href || '/dashboard';
+
   // Auto-expand active section
   useEffect(() => {
-    const activeSection = visibleNavigation.find((item) =>
+    const activeSection = finalNavigation.find((item) =>
       item.children?.some((child) => pathname.startsWith(child.href.split('?')[0])),
     );
     if (!activeSection) return;
     setExpandedSections((prev) =>
       prev.includes(activeSection.name) ? prev : [...prev, activeSection.name],
     );
-  }, [pathname, visibleNavigation]);
+  }, [pathname, finalNavigation]);
 
   const isActivePath = (href: string) => {
     const basePath = href.split('?')[0];
@@ -339,7 +383,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       {/* Header */}
       <div className={`h-14 flex items-center border-b-2 border-[#8B6F47]/30 ${collapsed ? 'justify-center px-2' : 'justify-between px-3'}`}>
         {!collapsed && (
-          <Link href="/dashboard" className="flex items-center gap-2">
+          <Link href={homeHref} className="flex items-center gap-2">
             <div className="w-8 h-8 bg-[#8B6F47] rounded-lg flex items-center justify-center shadow-md">
               <span className="text-white font-bold text-sm">S</span>
             </div>
@@ -357,7 +401,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-2">
-        {visibleNavigation.map((item) => {
+        {finalNavigation.map((item) => {
           const Icon = item.icon;
           const isActive = isActivePath(item.href);
           const isExpanded = expandedSections.includes(item.name);
