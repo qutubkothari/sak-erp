@@ -55,6 +55,34 @@ export class JobOrderController {
     return this.jobOrderService.createSmartJobOrder(tenantId, userId, body);
   }
 
+  @Post('smart/create-async')
+  async createSmartJobOrderAsync(
+    @Request() req: any,
+    @Body() body: {
+      itemId: string;
+      quantity: number;
+      startDate?: string;
+      salesOrderId?: string;
+      salesOrderItemId?: string;
+      variantSelections?: Record<string, string>;
+      itemSelections?: Record<string, string>;
+      autoIssueMaterials?: boolean;
+    },
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.startSmartJobOrderCreateAsync(tenantId, userId, body);
+  }
+
+  @Get('smart/create-async/:jobId')
+  async getSmartJobOrderAsyncStatus(
+    @Request() req: any,
+    @Param('jobId') jobId: string,
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.jobOrderService.getSmartJobOrderCreateAsyncStatus(tenantId, jobId);
+  }
+
   @Post()
   async create(@Request() req: any, @Body() dto: CreateJobOrderDto) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
@@ -123,6 +151,27 @@ export class JobOrderController {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id || req.user?.sub;
     return this.jobOrderService.completeJobOrder(tenantId, id, userId);
+  }
+
+  @Post(':id/issue-materials')
+  async issueMaterials(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { autoRepair?: boolean } = {},
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.issueMaterialsForJobOrder(tenantId, id, {
+      userId,
+      autoRepair: body?.autoRepair,
+    });
+  }
+
+  @Post(':id/smart/repair-issue')
+  async repairSmartAndIssue(@Request() req: any, @Param('id') id: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.repairSmartJobOrderAndIssueMaterials(tenantId, userId, id);
   }
 
   @Post(':id/qc-approve')

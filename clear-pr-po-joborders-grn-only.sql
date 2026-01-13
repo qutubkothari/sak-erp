@@ -1,6 +1,7 @@
 -- Delete ONLY PR / PO / Job Orders / GRN transactional data (tenant-scoped)
 --
 -- ✅ Keeps master data (items/vendors/customers/etc.)
+-- ✅ Does NOT delete BOMs or item masters (including sub-assemblies)
 -- ✅ Targets: purchase_requisitions(+items), purchase_orders(+items), grns(+items), production_job_orders(+materials/+operations)
 -- ⚠️ Also removes dependent transactional rows that block deletes (e.g. debit_notes for GRNs)
 --
@@ -19,6 +20,10 @@ DECLARE
   v_tenant_id UUID;
   v_delete_uids boolean := true;
   v_delete_stock_entries boolean := true;
+  v_items_has_type boolean;
+  v_items_has_category boolean;
+  v_items_has_sub_category boolean;
+  v_subassembly_item_condition text;
 BEGIN
   IF v_tenant_id_text IS NULL OR btrim(v_tenant_id_text) = '' OR v_tenant_id_text = 'PUT-TENANT-ID-HERE' THEN
     RAISE EXCEPTION 'Set v_tenant_id_text before running.';
@@ -32,6 +37,46 @@ BEGIN
 
   RAISE NOTICE 'Deleting PR/PO/JO/GRN transactions for tenant: %', v_tenant_id;
 
+  -- Detect optional columns safely (some deployments differ)
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'items' AND column_name = 'type'
+  ) INTO v_items_has_type;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'items' AND column_name = 'category'
+  ) INTO v_items_has_category;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'items' AND column_name = 'sub_category'
+  ) INTO v_items_has_sub_category;
+
+  -- Build a safe sub-assembly selector expression (used inside dynamic SQL)
+  v_subassembly_item_condition := '';
+  IF v_items_has_type THEN
+    v_subassembly_item_condition := v_subassembly_item_condition ||
+      'COALESCE(type::text, '''') = ''SUB_ASSEMBLY''';
+  END IF;
+
+  IF v_items_has_category THEN
+    IF v_subassembly_item_condition <> '' THEN v_subassembly_item_condition := v_subassembly_item_condition || ' OR '; END IF;
+    v_subassembly_item_condition := v_subassembly_item_condition ||
+      '(COALESCE(category, '''') ILIKE ''%SUB%ASSEMBL%'' OR COALESCE(category, '''') ILIKE ''%SUBASSEMBL%'')';
+  END IF;
+
+  IF v_items_has_sub_category THEN
+    IF v_subassembly_item_condition <> '' THEN v_subassembly_item_condition := v_subassembly_item_condition || ' OR '; END IF;
+    v_subassembly_item_condition := v_subassembly_item_condition ||
+      '(COALESCE(sub_category, '''') ILIKE ''%SUB%ASSEMBL%'' OR COALESCE(sub_category, '''') ILIKE ''%SUBASSEMBL%'')';
+  END IF;
+
+  -- If none of the above exists, fall back to BOM headers only.
+  IF v_subassembly_item_condition = '' THEN
+    v_subassembly_item_condition := 'FALSE';
+  END IF;
+
   -- =========================
   -- JOB ORDERS (production)
   -- =========================
@@ -44,6 +89,27 @@ BEGIN
       AND (metadata->>'job_order_id') IN (
         SELECT id::text FROM production_job_orders WHERE tenant_id = v_tenant_id
       );
+  END IF;
+
+  IF v_delete_stock_entries THEN
+    RAISE NOTICE 'Zeroing SUB_ASSEMBLY stock (setting stock_entries quantities to 0) for tenant...';
+    -- IMPORTANT: Only touches stock_entries (does NOT delete items/BOMs).
+    -- We target sub-assemblies by:
+    -- 1) item type/category tags (if present)
+    -- 2) OR any item that has a BOM header (reliable "subassembly" definition)
+    EXECUTE (
+      'UPDATE stock_entries '
+      'SET quantity = 0, available_quantity = 0, allocated_quantity = 0 '
+      'WHERE tenant_id = $1 '
+      '  AND item_id IN ( '
+      '    SELECT i.id FROM items i '
+      '    WHERE i.tenant_id = $1 '
+      '      AND (' || v_subassembly_item_condition || ') '
+      '    UNION '
+      '    SELECT bh.item_id FROM bom_headers bh '
+      '    WHERE bh.tenant_id = $1 '
+      '  )'
+    ) USING v_tenant_id;
   END IF;
 
   IF v_delete_uids THEN
@@ -207,3 +273,4 @@ BEGIN
 
   RAISE NOTICE '✅ Done deleting PR/PO/JO/GRN transactions for tenant: %', v_tenant_id;
 END $$;
+ 

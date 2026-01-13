@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
+import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 
 interface DebitNote {
   id: string;
@@ -37,7 +38,6 @@ export default function DebitNotesPage() {
   const [selectedDebitNote, setSelectedDebitNote] = useState<DebitNote | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchDebitNotes();
@@ -143,11 +143,73 @@ export default function DebitNotesPage() {
     }
   };
 
-  const filteredDebitNotes = debitNotes.filter(dn =>
-    dn.debit_note_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    dn.vendor?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    dn.grn?.grn_number.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const tableColumns: Array<ListTableColumn<DebitNote>> = [
+    {
+      id: 'debit_note_number',
+      label: 'DN Number',
+      accessor: (dn) => dn.debit_note_number,
+      cell: (dn) => <div className="font-semibold text-gray-900">{dn.debit_note_number}</div>,
+    },
+    {
+      id: 'debit_note_date',
+      label: 'Date',
+      accessor: (dn) => dn.debit_note_date,
+      sortAccessor: (dn) => new Date(dn.debit_note_date).getTime(),
+      cell: (dn) => <span className="text-sm text-gray-600">{new Date(dn.debit_note_date).toLocaleDateString()}</span>,
+    },
+    {
+      id: 'grn',
+      label: 'GRN',
+      accessor: (dn) => dn.grn?.grn_number || '',
+      cell: (dn) => <span className="text-sm text-gray-900">{dn.grn?.grn_number || '-'}</span>,
+    },
+    {
+      id: 'vendor',
+      label: 'Vendor',
+      accessor: (dn) => `${dn.vendor?.name || ''} ${dn.vendor?.code || ''}`,
+      cell: (dn) => (
+        <div>
+          <div className="text-sm text-gray-900">{dn.vendor?.name || '-'}</div>
+          <div className="text-xs text-gray-500">{dn.vendor?.code || ''}</div>
+        </div>
+      ),
+    },
+    {
+      id: 'total_amount',
+      label: 'Amount',
+      align: 'right',
+      accessor: (dn) => dn.total_amount,
+      cell: (dn) => (
+        <div className="text-lg font-bold text-red-600">
+          ₹{dn.total_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+        </div>
+      ),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      accessor: (dn) => dn.status,
+      cell: (dn) => (
+        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(dn.status)}`}>
+          {dn.status}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      sortable: false,
+      hideable: false,
+      cell: (dn) => (
+        <button
+          onClick={() => viewDebitNote(dn.id)}
+          className="text-amber-600 hover:text-amber-800 font-medium"
+        >
+          View Details →
+        </button>
+      ),
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 p-8">
@@ -158,90 +220,42 @@ export default function DebitNotesPage() {
           <p className="text-gray-600">Manage supplier debit notes for rejected materials</p>
         </div>
 
-        {/* Filters */}
-        <div className="bg-white rounded-lg shadow-md p-4 mb-6 flex gap-4">
-          <input
-            type="text"
-            placeholder="Search by DN number, vendor, or GRN..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-          />
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-          >
-            <option value="">All Status</option>
-            <option value="DRAFT">Draft</option>
-            <option value="APPROVED">Approved</option>
-            <option value="SENT">Sent</option>
-            <option value="ACKNOWLEDGED">Acknowledged</option>
-            <option value="CLOSED">Closed</option>
-          </select>
-        </div>
-
-        {/* Debit Notes Table */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          {loading ? (
+        {loading ? (
+          <div className="bg-white rounded-lg shadow-md overflow-hidden">
             <div className="p-8 text-center text-gray-500">Loading debit notes...</div>
-          ) : filteredDebitNotes.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="text-6xl mb-4">📄</div>
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Debit Notes Found</h3>
-              <p className="text-gray-500">Debit notes will be auto-created when materials are rejected during QC</p>
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead className="bg-amber-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">DN Number</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">GRN</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Vendor</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-amber-900 uppercase">Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredDebitNotes.map((dn) => (
-                  <tr key={dn.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div className="font-semibold text-gray-900">{dn.debit_note_number}</div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {new Date(dn.debit_note_date).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{dn.grn?.grn_number || '-'}</td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">{dn.vendor?.name}</div>
-                      <div className="text-xs text-gray-500">{dn.vendor?.code}</div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="text-lg font-bold text-red-600">
-                        ₹{dn.total_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(dn.status)}`}>
-                        {dn.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        onClick={() => viewDebitNote(dn.id)}
-                        className="text-amber-600 hover:text-amber-800 font-medium"
-                      >
-                        View Details →
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+          </div>
+        ) : (
+          <ListTable
+            storageKey="debitNotesTable"
+            rows={debitNotes}
+            columns={tableColumns}
+            getRowId={(dn) => dn.id}
+            defaultPageSize={10}
+            pageSizeOptions={[10, 25, 50, 100]}
+            searchPlaceholder="Search by DN number, vendor, or GRN…"
+            toolbarRight={
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-amber-500"
+              >
+                <option value="">All Status</option>
+                <option value="DRAFT">Draft</option>
+                <option value="APPROVED">Approved</option>
+                <option value="SENT">Sent</option>
+                <option value="ACKNOWLEDGED">Acknowledged</option>
+                <option value="CLOSED">Closed</option>
+              </select>
+            }
+            emptyState={
+              <div className="p-12 text-center">
+                <div className="text-6xl mb-4">📄</div>
+                <h3 className="text-xl font-semibold text-gray-700 mb-2">No Debit Notes Found</h3>
+                <p className="text-gray-500">Debit notes will be auto-created when materials are rejected during QC</p>
+              </div>
+            }
+          />
+        )}
       </div>
 
       {/* View Debit Note Modal */}

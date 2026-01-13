@@ -75,6 +75,7 @@ const ITEMS_TABLE_COLUMNS: Array<{ key: ItemsTableColumnKey; label: string }> = 
 ];
 
 const ITEMS_TABLE_COLUMNS_STORAGE_KEY = 'itemsTableColumns:v1';
+const ITEMS_TABLE_PAGE_SIZE_STORAGE_KEY = 'itemsTablePageSize:v1';
 
 export default function ItemsPage() {
   const router = useRouter();
@@ -112,7 +113,7 @@ export default function ItemsPage() {
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   
   // Sorting state
   const [sortColumn, setSortColumn] = useState<string>('code');
@@ -274,11 +275,30 @@ export default function ItemsPage() {
 
   useEffect(() => {
     try {
+      const raw = localStorage.getItem(ITEMS_TABLE_PAGE_SIZE_STORAGE_KEY);
+      if (!raw) return;
+      const next = Number(raw);
+      if ([10, 25, 50, 100].includes(next)) setItemsPerPage(next);
+    } catch {
+      // ignore invalid localStorage value
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
       localStorage.setItem(ITEMS_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns));
     } catch {
       // ignore localStorage write errors
     }
   }, [visibleColumns]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ITEMS_TABLE_PAGE_SIZE_STORAGE_KEY, String(itemsPerPage));
+    } catch {
+      // ignore localStorage write errors
+    }
+  }, [itemsPerPage]);
 
   const fetchItems = async () => {
     try {
@@ -654,7 +674,22 @@ export default function ItemsPage() {
         fetchItemVendors(editingItem.id);
       } catch (error: any) {
         console.error('Error adding vendor:', error);
-        alert(error.message || 'Failed to add vendor');
+        const status = error?.response?.status;
+        const apiMessage =
+          error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          error?.message ||
+          'Failed to add vendor';
+
+        // If vendor is already linked (409), treat as non-fatal and refresh.
+        if (status === 409) {
+          alert(apiMessage);
+          setShowVendorForm(false);
+          fetchItemVendors(editingItem.id);
+          return;
+        }
+
+        alert(apiMessage);
       }
     } else {
       // If creating new item, add to temporary list

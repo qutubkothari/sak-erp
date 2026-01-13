@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 
 @Injectable()
@@ -7,6 +12,12 @@ export class ItemsService {
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_KEY!,
   );
+
+  private isUuid(value: any): boolean {
+    if (typeof value !== 'string') return false;
+    // UUID v1-v5
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+  }
 
   private normalizeNumber(value: any, type: 'int' | 'float' = 'float') {
     if (value === undefined || value === null || value === '') {
@@ -188,7 +199,6 @@ export class ItemsService {
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .or(`code.ilike.%${searchTerm}%,name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
-      .limit(20)
       .order('name', { ascending: true });
 
     if (error) {
@@ -746,17 +756,68 @@ export class ItemsService {
     return { message: 'Drawing deleted successfully' };
   }
 
+  private isMissingItemVendorsTenantIdColumn(error: any): boolean {
+    const message = String(error?.message || '').toLowerCase();
+    return (
+      message.includes('item_vendors') &&
+      message.includes('tenant_id') &&
+      (message.includes('does not exist') || message.includes('column'))
+    );
+  }
+
+  private async assertItemBelongsToTenant(tenantId: string, itemId: string) {
+    const { data, error } = await this.supabase
+      .from('items')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('id', itemId)
+      .maybeSingle();
+
+    if (error) {
+      throw new InternalServerErrorException(`Failed to validate item tenant: ${error.message}`);
+    }
+
+    if (!data?.id) {
+      throw new NotFoundException('Item not found');
+    }
+  }
+
   // Item-Vendor Relationship Methods
   async getItemVendors(tenantId: string, itemId: string) {
-    const { data, error } = await this.supabase
-      .from('item_vendors')
-      .select(`
+    if (!this.isUuid(itemId)) {
+      throw new BadRequestException('Invalid item id');
+    }
+
+    // Ensure tenant scoping even if item_vendors does not have tenant_id
+    await this.assertItemBelongsToTenant(tenantId, itemId);
+
+    const baseSelect = `
         *,
         vendor:vendors(id, code, name, contact_person, email, phone)
-      `)
+      `;
+
+    const { data, error } = await this.supabase
+      .from('item_vendors')
+      .select(baseSelect)
+      .eq('tenant_id', tenantId)
       .eq('item_id', itemId)
       .eq('is_active', true)
       .order('priority', { ascending: true });
+
+    if (error && this.isMissingItemVendorsTenantIdColumn(error)) {
+      const { data: fallbackData, error: fallbackError } = await this.supabase
+        .from('item_vendors')
+        .select(baseSelect)
+        .eq('item_id', itemId)
+        .eq('is_active', true)
+        .order('priority', { ascending: true });
+
+      if (fallbackError) {
+        throw new Error(`Failed to fetch item vendors: ${fallbackError.message}`);
+      }
+
+      return fallbackData || [];
+    }
 
     if (error) {
       throw new Error(`Failed to fetch item vendors: ${error.message}`);
@@ -778,12 +839,128 @@ export class ItemsService {
   }
 
   async addItemVendor(tenantId: string, userId: string, itemId: string, body: any) {
+    const vendorId = body?.vendor_id ?? body?.vendorId;
+    if (!this.isUuid(itemId)) {
+      throw new BadRequestException('Invalid item id');
+    }
+    if (!this.isUuid(vendorId)) {
+      throw new BadRequestException('vendor_id is required and must be a valid UUID');
+    }
+
+    await this.assertItemBelongsToTenant(tenantId, itemId);
+
+    // Idempotency: if the relationship already exists, return it (or reactivate it)
+    // Try scoping by items.tenant_id first (handles schemas where item_vendors has no tenant_id column)
+    const { data: existingRows, error: existingError } = await this.supabase
+      .from('item_vendors')
+      .select('*, items!inner(tenant_id)')
+      .eq('items.tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .eq('vendor_id', vendorId)
+      .limit(1);
+
+    if (existingError && this.isMissingItemVendorsTenantIdColumn(existingError)) {
+      const { data: fallbackExistingRows, error: fallbackExistingError } = await this.supabase
+        .from('item_vendors')
+        .select('*')
+        .eq('item_id', itemId)
+        .eq('vendor_id', vendorId)
+        .limit(1);
+
+      if (fallbackExistingError) {
+        throw new InternalServerErrorException(
+          `Failed to check existing vendor link: ${fallbackExistingError.message}`,
+        );
+      }
+
+      const existing = fallbackExistingRows?.[0];
+      if (existing?.id) {
+        if (existing.is_active) {
+          return existing;
+        }
+
+        const { data: reactivated, error: reactivateError } = await this.supabase
+          .from('item_vendors')
+          .update({ is_active: true, updated_by: userId })
+          .eq('item_id', itemId)
+          .eq('vendor_id', vendorId)
+          .select()
+          .single();
+
+        if (reactivateError) {
+          throw new InternalServerErrorException(
+            `Failed to reactivate vendor link: ${reactivateError.message}`,
+          );
+        }
+
+        return reactivated;
+      }
+
+      const { data, error } = await this.supabase
+        .from('item_vendors')
+        .insert({
+          item_id: itemId,
+          vendor_id: vendorId,
+          priority: this.normalizeNumber(body?.priority, 'int') ?? 1,
+          unit_price: this.normalizeNumber(body.unit_price),
+          lead_time_days: this.normalizeNumber(body.lead_time_days, 'int'),
+          vendor_item_code: body.vendor_item_code || null,
+          minimum_order_quantity: this.normalizeNumber(body.minimum_order_quantity),
+          payment_terms: body.payment_terms || null,
+          notes: body.notes || null,
+          created_by: userId,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        const message = String((error as any)?.message || '').toLowerCase();
+        if (message.includes('duplicate key') || message.includes('item_vendors_unique')) {
+          throw new ConflictException('Vendor is already linked to this item');
+        }
+        throw new InternalServerErrorException(`Failed to add vendor: ${error.message}`);
+      }
+
+      return data;
+    }
+
+    if (existingError) {
+      throw new InternalServerErrorException(
+        `Failed to check existing vendor link: ${existingError.message}`,
+      );
+    }
+
+    const existing = existingRows?.[0];
+    if (existing?.id) {
+      if (existing.is_active) {
+        return existing;
+      }
+
+      const { data: reactivated, error: reactivateError } = await this.supabase
+        .from('item_vendors')
+        .update({ is_active: true, updated_by: userId })
+        .eq('tenant_id', tenantId)
+        .eq('item_id', itemId)
+        .eq('vendor_id', vendorId)
+        .select()
+        .single();
+
+      if (reactivateError) {
+        throw new InternalServerErrorException(
+          `Failed to reactivate vendor link: ${reactivateError.message}`,
+        );
+      }
+
+      return reactivated;
+    }
+
     const { data, error } = await this.supabase
       .from('item_vendors')
       .insert({
+        tenant_id: tenantId,
         item_id: itemId,
-        vendor_id: body.vendor_id,
-        priority: body.priority || 1,
+        vendor_id: vendorId,
+        priority: this.normalizeNumber(body?.priority, 'int') ?? 1,
         unit_price: this.normalizeNumber(body.unit_price),
         lead_time_days: this.normalizeNumber(body.lead_time_days, 'int'),
         vendor_item_code: body.vendor_item_code || null,
@@ -796,17 +973,30 @@ export class ItemsService {
       .single();
 
     if (error) {
-      throw new Error(`Failed to add vendor: ${error.message}`);
+      const message = String((error as any)?.message || '').toLowerCase();
+      if (message.includes('duplicate key') || message.includes('item_vendors_unique')) {
+        throw new ConflictException('Vendor is already linked to this item');
+      }
+      throw new InternalServerErrorException(`Failed to add vendor: ${error.message}`);
     }
 
     return data;
   }
 
   async updateItemVendor(tenantId: string, userId: string, itemId: string, vendorId: string, body: any) {
+    if (!this.isUuid(itemId)) {
+      throw new BadRequestException('Invalid item id');
+    }
+    if (!this.isUuid(vendorId)) {
+      throw new BadRequestException('Invalid vendor id');
+    }
+
+    await this.assertItemBelongsToTenant(tenantId, itemId);
+
     const { data, error } = await this.supabase
       .from('item_vendors')
       .update({
-        priority: body.priority,
+        priority: body?.priority,
         unit_price: this.normalizeNumber(body.unit_price),
         lead_time_days: this.normalizeNumber(body.lead_time_days, 'int'),
         vendor_item_code: body.vendor_item_code,
@@ -816,10 +1006,37 @@ export class ItemsService {
         is_active: body.is_active !== undefined ? body.is_active : true,
         updated_by: userId,
       })
+      .eq('tenant_id', tenantId)
       .eq('item_id', itemId)
       .eq('vendor_id', vendorId)
       .select()
       .single();
+
+    if (error && this.isMissingItemVendorsTenantIdColumn(error)) {
+      const { data: fallbackData, error: fallbackError } = await this.supabase
+        .from('item_vendors')
+        .update({
+          priority: body?.priority,
+          unit_price: this.normalizeNumber(body.unit_price),
+          lead_time_days: this.normalizeNumber(body.lead_time_days, 'int'),
+          vendor_item_code: body.vendor_item_code,
+          minimum_order_quantity: this.normalizeNumber(body.minimum_order_quantity),
+          payment_terms: body.payment_terms,
+          notes: body.notes,
+          is_active: body.is_active !== undefined ? body.is_active : true,
+          updated_by: userId,
+        })
+        .eq('item_id', itemId)
+        .eq('vendor_id', vendorId)
+        .select()
+        .single();
+
+      if (fallbackError) {
+        throw new Error(`Failed to update vendor: ${fallbackError.message}`);
+      }
+
+      return fallbackData;
+    }
 
     if (error) {
       throw new Error(`Failed to update vendor: ${error.message}`);
@@ -829,11 +1046,35 @@ export class ItemsService {
   }
 
   async deleteItemVendor(tenantId: string, itemId: string, vendorId: string) {
+    if (!this.isUuid(itemId)) {
+      throw new BadRequestException('Invalid item id');
+    }
+    if (!this.isUuid(vendorId)) {
+      throw new BadRequestException('Invalid vendor id');
+    }
+
+    await this.assertItemBelongsToTenant(tenantId, itemId);
+
     const { error } = await this.supabase
       .from('item_vendors')
       .update({ is_active: false })
+      .eq('tenant_id', tenantId)
       .eq('item_id', itemId)
       .eq('vendor_id', vendorId);
+
+    if (error && this.isMissingItemVendorsTenantIdColumn(error)) {
+      const { error: fallbackError } = await this.supabase
+        .from('item_vendors')
+        .update({ is_active: false })
+        .eq('item_id', itemId)
+        .eq('vendor_id', vendorId);
+
+      if (fallbackError) {
+        throw new Error(`Failed to remove vendor: ${fallbackError.message}`);
+      }
+
+      return { message: 'Vendor removed successfully' };
+    }
 
     if (error) {
       throw new Error(`Failed to remove vendor: ${error.message}`);

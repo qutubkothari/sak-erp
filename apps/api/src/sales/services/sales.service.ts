@@ -1330,6 +1330,13 @@ export class SalesService {
       const [itemId, warehouseId] = key.split('::');
       if (!itemId || !warehouseId) continue;
 
+      const { data: itemRowForInv } = await this.supabase
+        .from('items')
+        .select('category')
+        .eq('tenant_id', tenantId)
+        .eq('id', itemId)
+        .maybeSingle();
+
       const { data: latestEntry, error: latestEntryError } = await this.supabase
         .from('stock_entries')
         .select('id, quantity, available_quantity')
@@ -1371,6 +1378,18 @@ export class SalesService {
           });
         if (insErr) throw new BadRequestException(insErr.message);
       }
+
+      // Keep inventory_stock in sync with stock_entries
+      const { error: invError } = await this.supabase.rpc('adjust_inventory_stock', {
+        p_tenant_id: tenantId,
+        p_item_id: itemId,
+        p_warehouse_id: warehouseId,
+        p_location_id: null,
+        p_quantity_change: qty,
+        p_category: normalizeInventoryCategory(itemRowForInv?.category, 'RAW_MATERIAL'),
+      });
+
+      if (invError) throw new BadRequestException(invError.message);
 
       // Log reversal movement
       await this.supabase
@@ -1480,6 +1499,13 @@ export class SalesService {
       const requiredQty = Number(item?.quantity) || 0;
       if (!itemId || requiredQty <= 0) continue;
 
+      const { data: itemRowForInv } = await this.supabase
+        .from('items')
+        .select('category')
+        .eq('tenant_id', tenantId)
+        .eq('id', itemId)
+        .maybeSingle();
+
       const { data: stockEntries, error: stockError } = await this.supabase
         .from('stock_entries')
         .select('id, warehouse_id, quantity, available_quantity, created_at')
@@ -1535,6 +1561,23 @@ export class SalesService {
 
         if (updateError) {
           throw new BadRequestException(`Error reducing stock: ${updateError.message}`);
+        }
+
+        // Keep inventory_stock in sync with stock_entries
+        const warehouseId = String(entry.warehouse_id || '').trim();
+        if (warehouseId) {
+          const { error: invError } = await this.supabase.rpc('adjust_inventory_stock', {
+            p_tenant_id: tenantId,
+            p_item_id: itemId,
+            p_warehouse_id: warehouseId,
+            p_location_id: null,
+            p_quantity_change: -toConsume,
+            p_category: normalizeInventoryCategory(itemRowForInv?.category, 'RAW_MATERIAL'),
+          });
+
+          if (invError) {
+            throw new BadRequestException(`Error syncing inventory stock: ${invError.message}`);
+          }
         }
 
         // Create stock movement record for audit trail

@@ -103,6 +103,29 @@ type SmartCreateResponse = {
   jobOrder?: any;
   autoCompletedSubJobOrders?: any[];
   preview?: SmartPreview;
+  issueMaterialsSummary?: any;
+};
+
+type SmartCreateAsyncStartResponse = {
+  jobId: string;
+};
+
+type SmartCreateAsyncStatus = {
+  id: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  progress: {
+    current: number;
+    total: number;
+    phase: string;
+    message: string;
+    itemCode?: string;
+    itemName?: string;
+  };
+  result?: SmartCreateResponse;
+  error?: string;
 };
 
 export default function SmartJobOrdersItemsPage() {
@@ -154,6 +177,10 @@ function SmartJobOrdersItemsPageContent() {
   const [createSummary, setCreateSummary] = useState<SmartCreateResponse | null>(null);
   const [showCreateSummary, setShowCreateSummary] = useState(false);
 
+  const [createJobId, setCreateJobId] = useState('');
+  const [createJobStatus, setCreateJobStatus] = useState<SmartCreateAsyncStatus | null>(null);
+  const [showCreateProgress, setShowCreateProgress] = useState(false);
+
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     if (showCreateSummary) document.body.style.overflow = 'hidden';
@@ -161,6 +188,82 @@ function SmartJobOrdersItemsPageContent() {
       document.body.style.overflow = previousOverflow;
     };
   }, [showCreateSummary]);
+
+  useEffect(() => {
+    if (!createJobId) return;
+
+    let cancelled = false;
+    let done = false;
+
+    const poll = async () => {
+      if (cancelled || done) return;
+      try {
+        const status = await apiClient.get<SmartCreateAsyncStatus>(`/job-orders/smart/create-async/${createJobId}`);
+        if (cancelled) return;
+
+        setCreateJobStatus(status);
+
+        if (status.status === 'COMPLETED') {
+          done = true;
+          setShowCreateProgress(false);
+          setCreating(false);
+          setCreateJobId('');
+
+          const result = status.result || null;
+
+          const issueSummary = (result as any)?.issueMaterialsSummary;
+          if (issueSummary?.error) {
+            console.error('[SmartJO] Materials issue step failed:', issueSummary);
+          } else if (Array.isArray(issueSummary?.failures) && issueSummary.failures.length > 0) {
+            console.error('[SmartJO] Materials issuance failures:', issueSummary.failures);
+            console.error('[SmartJO] Full issueMaterialsSummary:', issueSummary);
+          } else if (issueSummary) {
+            console.log('[SmartJO] issueMaterialsSummary:', issueSummary);
+          }
+
+          setCreateSummary(result);
+          setShowCreateSummary(true);
+          
+          // Show success notification and redirect to Job Orders list after a brief delay
+          setTimeout(() => {
+            alert('✅ Job Order(s) created successfully!');
+            router.push('/dashboard/production/job-orders');
+          }, 1500);
+        }
+
+        if (status.status === 'FAILED') {
+          done = true;
+          setShowCreateProgress(false);
+          setCreating(false);
+          setCreateJobId('');
+          console.error('[SmartJO] Smart Job Order async job FAILED:', status);
+          alert(`❌ Failed to create Smart Job Order: ${status.error || 'Unknown error'}`);
+        }
+      } catch (err: any) {
+        // If polling fails transiently, keep trying.
+        setCreateJobStatus((prev) =>
+          prev
+            ? {
+                ...prev,
+                progress: {
+                  ...prev.progress,
+                  message: prev.progress?.message || 'Working…',
+                },
+              }
+            : prev,
+        );
+      }
+    };
+
+    void poll();
+    const interval = setInterval(poll, 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createJobId]);
 
   const canPreview = Boolean(itemId) && Number(quantity) > 0;
 
@@ -188,6 +291,14 @@ function SmartJobOrdersItemsPageContent() {
       })),
     [allItems],
   );
+
+  const allItemsById = useMemo(() => {
+    const map = new Map<string, FinishedItem>();
+    for (const it of allItems) {
+      if (it?.id) map.set(String(it.id), it);
+    }
+    return map;
+  }, [allItems]);
 
   const fetchItems = async () => {
     setItemsError('');
@@ -264,6 +375,108 @@ function SmartJobOrdersItemsPageContent() {
   };
 
   const nodeKey = (node: SmartExplosionNode) => `${node.bomId}:${node.itemId}`;
+
+  const effectiveSelectedItemId = (node: SmartExplosionNode): string => {
+    const key = nodeKey(node);
+    return String(selectedItemByNodeKey[key] || node.itemId || '').trim();
+  };
+
+  const getAvailableForItemId = (itemId: string, fallbackAvailable?: number): number => {
+    const id = String(itemId || '').trim();
+    if (!id) return Number(fallbackAvailable || 0) || 0;
+    const stockState = stockByItemId[id];
+    const fromStock = stockState?.available;
+    if (fromStock === undefined || fromStock === null) return Number(fallbackAvailable || 0) || 0;
+    return Number(fromStock) || 0;
+  };
+
+  type GroupedShortageRow = {
+    itemId: string;
+    itemCode: string;
+    itemName: string;
+    requiredQuantity: number;
+    availableQuantity: number;
+    shortageQuantity: number;
+  };
+
+  const escapeCsv = (value: unknown) => {
+    const s = String(value ?? '');
+    return `"${s.replace(/"/g, '""')}"`;
+  };
+
+  const downloadCsv = (filename: string, csvText: string) => {
+    try {
+      const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Fallback: open in a new tab
+      const url = `data:text/csv;charset=utf-8,${encodeURIComponent(csvText)}`;
+      window.open(url, '_blank');
+    }
+  };
+
+  const groupShortagesByItem = (nodes: SmartExplosionNode[], autoMakeItemIds: Set<string>): GroupedShortageRow[] => {
+    const byItemId = new Map<
+      string,
+      {
+        itemId: string;
+        itemCode: string;
+        itemName: string;
+        requiredQuantity: number;
+        fallbackAvailableQuantity: number;
+      }
+    >();
+
+    for (const n of nodes || []) {
+      if (n?.componentType !== 'ITEM') continue;
+      const selectedItemId = effectiveSelectedItemId(n);
+      if (!selectedItemId) continue;
+      if (autoMakeItemIds.has(selectedItemId)) continue;
+
+      const required = Number(n.requiredQuantity || 0) || 0;
+      if (required <= 0) continue;
+
+      const meta = allItemsById.get(selectedItemId);
+      const existing = byItemId.get(selectedItemId);
+
+      if (!existing) {
+        byItemId.set(selectedItemId, {
+          itemId: selectedItemId,
+          itemCode: meta?.code || n.itemCode,
+          itemName: meta?.name || n.itemName,
+          requiredQuantity: required,
+          fallbackAvailableQuantity: Number(n.availableQuantity || 0) || 0,
+        });
+      } else {
+        existing.requiredQuantity += required;
+      }
+    }
+
+    const rows: GroupedShortageRow[] = [];
+    for (const entry of byItemId.values()) {
+      const available = getAvailableForItemId(entry.itemId, entry.fallbackAvailableQuantity);
+      const shortage = Math.max(0, Number(entry.requiredQuantity || 0) - Number(available || 0));
+      if (shortage <= 0) continue;
+      rows.push({
+        itemId: entry.itemId,
+        itemCode: entry.itemCode,
+        itemName: entry.itemName,
+        requiredQuantity: entry.requiredQuantity,
+        availableQuantity: available,
+        shortageQuantity: shortage,
+      });
+    }
+
+    return rows.sort((a, b) => b.shortageQuantity - a.shortageQuantity);
+  };
 
   const isUuid = (value: unknown) => {
     if (typeof value !== 'string') return false;
@@ -415,41 +628,20 @@ function SmartJobOrdersItemsPageContent() {
   const handlePurchaseShortageItems = async () => {
     if (!preview) return;
 
-    const itemsWithShortage = preview.nodes.filter(n => {
-      if (n.componentType !== 'ITEM') return false;
-      const key = nodeKey(n);
-      const selectedItemId = selectedItemByNodeKey[key] || n.itemId;
-      const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
-      const available = stockState?.available ?? n.availableQuantity;
-      return Number(n.requiredQuantity || 0) > Number(available || 0);
-    });
-
-    const autoMakeItemIds = new Set((preview.subAssembliesToMake || []).map(sa => sa.itemId));
-    const rawMaterialShortages = itemsWithShortage.filter(item => {
-      const selectedItemId = selectedItemByNodeKey[nodeKey(item)] || item.itemId;
-      return !autoMakeItemIds.has(selectedItemId);
-    });
-
-    if (rawMaterialShortages.length === 0) return;
+    const autoMakeItemIds = new Set((preview.subAssembliesToMake || []).map((sa) => String(sa.itemId)));
+    const groupedShortages = groupShortagesByItem(preview.nodes || [], autoMakeItemIds);
+    if (groupedShortages.length === 0) return;
 
     setCreatingPR(true);
     try {
       // Create PR with shortage items
-      const prItems = rawMaterialShortages.map(item => {
-        const key = nodeKey(item);
-        const selectedItemId = selectedItemByNodeKey[key] || item.itemId;
-        const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
-        const available = stockState?.available ?? item.availableQuantity;
-        const shortage = Math.max(0, Number(item.requiredQuantity || 0) - Number(available || 0));
-        
-        return {
-          itemCode: item.itemCode,
-          itemName: item.itemName,
-          requestedQty: Math.ceil(shortage), // Round up to ensure we have enough
-          description: `For Job Order: ${preview.finishedItem.code} (Shortage)`,
-          uom: 'PCS', // Default unit, can be enhanced later
-        };
-      });
+      const prItems = groupedShortages.map((row) => ({
+        itemCode: row.itemCode,
+        itemName: row.itemName,
+        requestedQty: Math.ceil(row.shortageQuantity), // Round up to ensure we have enough
+        description: `For Job Order: ${preview.finishedItem.code} (Shortage)`,
+        uom: 'PCS', // Default unit, can be enhanced later
+      }));
 
       const prData = {
         requestDate: new Date().toISOString().split('T')[0],
@@ -480,38 +672,25 @@ function SmartJobOrdersItemsPageContent() {
       return;
     }
 
-    // Check if any RAW MATERIALS (items without BOMs) are out of stock
-    const itemsWithShortage = preview?.nodes?.filter(n => {
-      if (n.componentType !== 'ITEM') return false;
-      const key = nodeKey(n);
-      const selectedItemId = selectedItemByNodeKey[key] || n.itemId;
-      const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
-      const available = stockState?.available ?? n.availableQuantity;
-      return Number(n.requiredQuantity || 0) > Number(available || 0);
-    }) || [];
+    // Check if any RAW MATERIALS are out of stock (grouped by item, so repeated components are summed)
+    const autoMakeItemIds = new Set((preview?.subAssembliesToMake || []).map((sa) => String(sa.itemId)));
+    const groupedShortages = groupShortagesByItem(preview?.nodes || [], autoMakeItemIds);
 
-    // Filter out items that can be auto-made (those with BOMs in subAssembliesToMake)
-    const autoMakeItemIds = new Set((preview?.subAssembliesToMake || []).map(sa => sa.itemId));
-    const rawMaterialShortages = itemsWithShortage.filter(item => {
-      const selectedItemId = selectedItemByNodeKey[nodeKey(item)] || item.itemId;
-      return !autoMakeItemIds.has(selectedItemId);
-    });
-
-    if (rawMaterialShortages.length > 0) {
-      const shortageList = rawMaterialShortages.map(item => {
-        const key = nodeKey(item);
-        const selectedItemId = selectedItemByNodeKey[key] || item.itemId;
-        const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
-        const available = stockState?.available ?? item.availableQuantity;
-        const shortage = Number(item.requiredQuantity || 0) - Number(available || 0);
-        return `${item.itemCode} - ${item.itemName}: Need ${formatQuantity(item.requiredQuantity)}, Have ${formatQuantity(available)}, Short ${formatQuantity(shortage)}`;
-      }).join('\n');
+    if (groupedShortages.length > 0) {
+      const shortageList = groupedShortages
+        .map((row) => {
+          return `${row.itemCode} - ${row.itemName}: Need ${formatQuantity(row.requiredQuantity)}, Have ${formatQuantity(row.availableQuantity)}, Short ${formatQuantity(row.shortageQuantity)}`;
+        })
+        .join('\n');
       
       alert(`❌ Cannot create Job Order - Raw materials out of stock:\n\n${shortageList}\n\nPlease purchase or adjust stock before creating this job order.`);
       return;
     }
 
     setCreating(true);
+    setCreateJobStatus(null);
+
+    let startedAsync = false;
     try {
       const itemSelections: Record<string, string> = {};
       if (preview?.nodes?.length) {
@@ -523,23 +702,66 @@ function SmartJobOrdersItemsPageContent() {
         }
       }
 
-      const result = (await apiClient.post('/job-orders/smart/create', {
+      // Start async job to avoid request timeouts (502) for large sub-assembly counts.
+      const started = await apiClient.post<SmartCreateAsyncStartResponse>('/job-orders/smart/create-async', {
         itemId,
         quantity: Number(quantity),
         startDate: new Date().toISOString().slice(0, 10),
         salesOrderId: salesOrderId || undefined,
         salesOrderItemId: salesOrderItemId || undefined,
         itemSelections,
-      })) as SmartCreateResponse;
+      });
 
-      setCreateSummary(result);
-      setShowCreateSummary(true);
+      if (!started?.jobId) {
+        throw new Error('Failed to start Smart Job Order job');
+      }
 
-      await fetchPreview();
+      startedAsync = true;
+      setCreateJobId(started.jobId);
+      setShowCreateProgress(true);
     } catch (err: any) {
-      alert(`❌ Failed to create Smart Job Order: ${err?.message || 'Unknown error'}`);
+      // Fallback to sync endpoint if the async route isn't deployed yet.
+      const msg = String(err?.message || 'Unknown error');
+      const looksLikeNotFound = msg.toLowerCase().includes('404') || msg.toLowerCase().includes('not found');
+
+      if (looksLikeNotFound) {
+        try {
+          const itemSelections: Record<string, string> = {};
+          if (preview?.nodes?.length) {
+            for (const node of preview.nodes) {
+              if (node.componentType !== 'ITEM' || !node.itemId) continue;
+              const key = nodeKey(node);
+              const selected = selectedItemByNodeKey[key];
+              if (selected && isUuid(selected)) itemSelections[key] = selected;
+            }
+          }
+
+          const result = (await apiClient.post('/job-orders/smart/create', {
+            itemId,
+            quantity: Number(quantity),
+            startDate: new Date().toISOString().slice(0, 10),
+            salesOrderId: salesOrderId || undefined,
+            salesOrderItemId: salesOrderItemId || undefined,
+            itemSelections,
+          })) as SmartCreateResponse;
+
+          setCreateSummary(result);
+          setShowCreateSummary(true);
+          
+          // Show success and redirect to Job Orders list
+          setTimeout(() => {
+            alert('✅ Job Order(s) created successfully!');
+            router.push('/dashboard/production/job-orders');
+          }, 1500);
+        } catch (e2: any) {
+          alert(`❌ Failed to create Smart Job Order: ${e2?.message || msg}`);
+        }
+      } else {
+        alert(`❌ Failed to create Smart Job Order: ${msg}`);
+      }
     } finally {
-      setCreating(false);
+      // creating stays true while async job runs; polling will reset it.
+      if (!startedAsync) setCreating(false);
     }
   };
 
@@ -1001,24 +1223,28 @@ function SmartJobOrdersItemsPageContent() {
 
               <div className="mt-6 sticky bottom-0 bg-white border-t-2 border-amber-200 shadow-lg rounded-lg">
                 {(() => {
-                  const itemsWithShortage = preview.nodes.filter(n => {
-                    if (n.componentType !== 'ITEM') return false;
-                    const key = nodeKey(n);
-                    const selectedItemId = selectedItemByNodeKey[key] || n.itemId;
-                    const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
-                    const available = stockState?.available ?? n.availableQuantity;
-                    return Number(n.requiredQuantity || 0) > Number(available || 0);
-                  });
-                  
-                  const autoMakeItemIds = new Set((preview.subAssembliesToMake || []).map(sa => sa.itemId));
-                  const rawMaterialShortages = itemsWithShortage.filter(item => {
-                    const selectedItemId = selectedItemByNodeKey[nodeKey(item)] || item.itemId;
-                    return !autoMakeItemIds.has(selectedItemId);
-                  });
-                  const subAssemblyShortages = itemsWithShortage.filter(item => {
-                    const selectedItemId = selectedItemByNodeKey[nodeKey(item)] || item.itemId;
-                    return autoMakeItemIds.has(selectedItemId);
-                  });
+                  const autoMakeItemIds = new Set((preview.subAssembliesToMake || []).map((sa) => String(sa.itemId)));
+                  const rawMaterialShortages = groupShortagesByItem(preview.nodes || [], autoMakeItemIds);
+
+                  const rawMaterialComponentLines = (preview.nodes || []).filter((n) => {
+                    if (n?.componentType !== 'ITEM') return false;
+                    const selectedItemId = effectiveSelectedItemId(n);
+                    if (!selectedItemId) return false;
+                    if (autoMakeItemIds.has(selectedItemId)) return false;
+                    const required = Number(n.requiredQuantity || 0) || 0;
+                    return required > 0;
+                  }).length;
+
+                  // For the banner count only: count unique auto-make sub-assembly items that are short.
+                  const subAssemblyShortageItemIds = new Set<string>();
+                  for (const sa of preview.subAssembliesToMake || []) {
+                    const id = String(sa?.itemId || '').trim();
+                    if (!id) continue;
+                    const available = getAvailableForItemId(id, Number(sa.availableQuantity || 0) || 0);
+                    const required = Number(sa.requiredQuantity || 0) || 0;
+                    if (required > available) subAssemblyShortageItemIds.add(id);
+                  }
+                  const subAssemblyShortagesCount = subAssemblyShortageItemIds.size;
 
                   if (rawMaterialShortages.length > 0) {
                     return (
@@ -1031,7 +1257,12 @@ function SmartJobOrdersItemsPageContent() {
                             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                             </svg>
-                            <span>❌ Blocked: {rawMaterialShortages.length} raw material{rawMaterialShortages.length > 1 ? 's' : ''} out of stock!</span>
+                            <span>
+                              ❌ Blocked: {rawMaterialShortages.length} raw material{rawMaterialShortages.length > 1 ? 's' : ''} out of stock!
+                              <span className="ml-2 text-xs font-normal text-red-600">
+                                (grouped from {rawMaterialComponentLines} component line{rawMaterialComponentLines !== 1 ? 's' : ''})
+                              </span>
+                            </span>
                           </div>
                           <svg 
                             className={`w-5 h-5 text-red-700 transition-transform ${showShortageDetails ? 'rotate-180' : ''}`}
@@ -1044,6 +1275,50 @@ function SmartJobOrdersItemsPageContent() {
                         
                         {showShortageDetails && (
                           <div className="mt-4 border-t border-red-200 pt-4">
+                            <div className="flex items-center gap-2 mb-3">
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const lines = rawMaterialShortages
+                                      .map((row) => {
+                                        return `${row.itemCode} | Required: ${formatQuantity(row.requiredQuantity)} | InStock: ${formatQuantity(row.availableQuantity)} | Short: ${formatQuantity(row.shortageQuantity)}`;
+                                      })
+                                      .join('\n');
+                                    await navigator.clipboard.writeText(lines);
+                                    alert('✅ Copied grouped shortage list');
+                                  } catch {
+                                    alert('❌ Could not copy to clipboard');
+                                  }
+                                }}
+                                className="px-3 py-1.5 text-xs rounded border border-red-300 text-red-700 hover:bg-red-50"
+                              >
+                                Copy List
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const header = ['Item Code', 'Item Name', 'Required', 'In Stock', 'Shortage'].map(escapeCsv).join(',');
+                                  const rows = rawMaterialShortages
+                                    .map((row) => {
+                                      return [
+                                        escapeCsv(row.itemCode),
+                                        escapeCsv(row.itemName),
+                                        escapeCsv(row.requiredQuantity),
+                                        escapeCsv(row.availableQuantity),
+                                        escapeCsv(row.shortageQuantity),
+                                      ].join(',');
+                                    })
+                                    .join('\n');
+                                  const csv = `${header}\n${rows}\n`;
+                                  const name = `shortages_${preview.finishedItem?.code || 'job_order'}.csv`;
+                                  downloadCsv(name, csv);
+                                }}
+                                className="px-3 py-1.5 text-xs rounded border border-red-300 text-red-700 hover:bg-red-50"
+                              >
+                                Download CSV
+                              </button>
+                            </div>
                             <div className="max-h-60 overflow-y-auto mb-4">
                               <table className="min-w-full text-sm">
                                 <thead className="bg-red-50">
@@ -1055,22 +1330,16 @@ function SmartJobOrdersItemsPageContent() {
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-red-100">
-                                  {rawMaterialShortages.map((item, idx) => {
-                                    const key = nodeKey(item);
-                                    const selectedItemId = selectedItemByNodeKey[key] || item.itemId;
-                                    const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
-                                    const available = stockState?.available ?? item.availableQuantity;
-                                    const shortage = Math.max(0, Number(item.requiredQuantity || 0) - Number(available || 0));
-                                    
+                                  {rawMaterialShortages.map((row, idx) => {
                                     return (
                                       <tr key={idx} className="hover:bg-red-50">
                                         <td className="px-3 py-2 text-gray-900">
-                                          <div className="font-medium">{item.itemCode}</div>
-                                          <div className="text-xs text-gray-600">{item.itemName}</div>
+                                          <div className="font-medium">{row.itemCode}</div>
+                                          <div className="text-xs text-gray-600">{row.itemName}</div>
                                         </td>
-                                        <td className="px-3 py-2 text-right text-gray-900">{formatQuantity(item.requiredQuantity)}</td>
-                                        <td className="px-3 py-2 text-right text-gray-900">{formatQuantity(available)}</td>
-                                        <td className="px-3 py-2 text-right font-semibold text-red-700">{formatQuantity(shortage)}</td>
+                                        <td className="px-3 py-2 text-right text-gray-900">{formatQuantity(row.requiredQuantity)}</td>
+                                        <td className="px-3 py-2 text-right text-gray-900">{formatQuantity(row.availableQuantity)}</td>
+                                        <td className="px-3 py-2 text-right font-semibold text-red-700">{formatQuantity(row.shortageQuantity)}</td>
                                       </tr>
                                     );
                                   })}
@@ -1095,12 +1364,12 @@ function SmartJobOrdersItemsPageContent() {
                     return (
                       <div className="p-4 flex items-center justify-between">
                         <div className="text-sm text-gray-700">
-                          {subAssemblyShortages.length > 0 ? (
+                          {subAssemblyShortagesCount > 0 ? (
                             <span className="flex items-center gap-2 text-amber-700 font-semibold">
                               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                               </svg>
-                              ⚠️ {subAssemblyShortages.length} sub-assembl{subAssemblyShortages.length > 1 ? 'ies' : 'y'} will be auto-created
+                              ⚠️ {subAssemblyShortagesCount} sub-assembl{subAssemblyShortagesCount > 1 ? 'ies' : 'y'} will be auto-created
                             </span>
                           ) : (
                             <span className="flex items-center gap-2 text-green-700 font-semibold">
@@ -1276,6 +1545,63 @@ function SmartJobOrdersItemsPageContent() {
                     <div className="mt-3 text-xs text-gray-600">
                       Finished goods (UIDs/stock add) happens when the job order is <span className="font-semibold">COMPLETED</span>.
                     </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      ) : null}
+
+      {showCreateProgress ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-xl rounded-xl shadow-xl border border-amber-200 overflow-hidden">
+            <div className="px-6 py-4 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+              <div>
+                <div className="text-lg font-semibold text-amber-900">Creating Smart Job Order</div>
+                <div className="text-sm text-amber-800">This may take a few minutes for large BOMs.</div>
+              </div>
+              <button
+                onClick={() => setShowCreateProgress(false)}
+                className="px-3 py-1.5 rounded-md border border-amber-300 text-amber-800 hover:bg-amber-100"
+              >
+                Hide
+              </button>
+            </div>
+
+            {(() => {
+              const st = createJobStatus;
+              const total = Number(st?.progress?.total ?? 0) || 0;
+              const current = Number(st?.progress?.current ?? 0) || 0;
+              const pct = total > 0 ? Math.min(100, Math.max(0, Math.round((current / total) * 100))) : 5;
+
+              const itemLine = st?.progress?.itemCode
+                ? `${st.progress.itemCode}${st.progress.itemName ? ` — ${st.progress.itemName}` : ''}`
+                : '';
+
+              const statusLabel = st?.status || 'PENDING';
+
+              return (
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-sm font-medium text-amber-900">{st?.progress?.message || 'Starting…'}</div>
+                    <div className="text-xs text-amber-800">
+                      {total > 0 ? `${Math.min(current, total)} / ${total}` : statusLabel}
+                    </div>
+                  </div>
+
+                  {itemLine ? <div className="text-xs text-gray-700 mb-3">{itemLine}</div> : null}
+
+                  <div className="w-full bg-amber-100 rounded-full h-3 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-amber-700 to-amber-800 h-3 rounded-full transition-all duration-500 ease-linear"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+
+                  <div className="mt-4 text-xs text-gray-600">
+                    Status: <span className="font-semibold">{statusLabel}</span>
+                    {st?.error ? <span className="text-red-700"> • {st.error}</span> : null}
                   </div>
                 </div>
               );

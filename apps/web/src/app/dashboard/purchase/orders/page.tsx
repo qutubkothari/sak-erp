@@ -7,6 +7,7 @@ import DrawingManager from '../../../../components/DrawingManager';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { useSelection } from '../../../../hooks/useSelection';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
+import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 
 interface PurchaseOrder {
   id: string;
@@ -266,7 +267,8 @@ function PurchaseOrdersContent() {
   const fetchItems = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/inventory/items', {
+      // Include inactive so historical PO lines can still resolve UOM.
+      const response = await fetch('/api/v1/inventory/items?includeInactive=true', {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
@@ -319,8 +321,32 @@ function PurchaseOrdersContent() {
     if (direct) return direct;
     const code = String(poLine?.item?.code || poLine?.item_code || '').trim();
     if (!code) return '';
-    const match = items.find((i) => i.code === code);
+    const normalized = code.toUpperCase();
+    const match = items.find((i) => String(i.code || '').trim().toUpperCase() === normalized);
     return String(match?.id || '').trim();
+  };
+
+  const resolveUomFromPOLine = (poLine: any): string => {
+    const candidates = [
+      poLine?.uom,
+      poLine?.uom_name,
+      poLine?.unit,
+      poLine?.unit_name,
+      poLine?.item?.uom,
+      poLine?.item?.uom_name,
+    ];
+    const direct = candidates
+      .map((v) => String(v || '').trim())
+      .find((v) => v.length > 0);
+    if (direct) return direct;
+
+    const itemId = resolveItemIdFromPOLine(poLine);
+    const code = String(poLine?.item?.code || poLine?.item_code || '').trim();
+    const normalized = code ? code.toUpperCase() : '';
+    const match = items.find(
+      (i) => (itemId && String(i.id || '').trim() === itemId) || (normalized && String(i.code || '').trim().toUpperCase() === normalized),
+    );
+    return String(match?.uom || '').trim();
   };
 
   const fetchStockInfo = async (itemId: string) => {
@@ -1380,6 +1406,159 @@ function PurchaseOrdersContent() {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
+  const ordersTableColumns: Array<ListTableColumn<PurchaseOrder>> = [
+    {
+      id: 'select',
+      label: '',
+      sortable: false,
+      hideable: false,
+      cell: (order) => (
+        <input
+          type="checkbox"
+          checked={orderSelection.isSelected(order.id)}
+          onChange={() => orderSelection.toggleSelection(order.id)}
+          className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+        />
+      ),
+      headerClassName: 'w-12',
+      cellClassName: 'w-12',
+    },
+    {
+      id: 'po_number',
+      label: 'PO Number',
+      accessor: (o) => o.po_number,
+      cell: (o) => <span className="font-medium text-gray-900">{o.po_number}</span>,
+    },
+    {
+      id: 'pr_ref',
+      label: 'PR Ref',
+      accessor: (o) => o.pr?.pr_number || '-',
+    },
+    {
+      id: 'vendor',
+      label: 'Vendor',
+      accessor: (o) => o.vendor?.name || '',
+      searchAccessor: (o) => `${o.vendor?.name || ''} ${o.vendor?.contact_person || ''}`.trim(),
+      cell: (o) => (
+        <div>
+          <div className="text-sm font-medium text-gray-900">{o.vendor?.name || '-'}</div>
+          <div className="text-xs text-gray-500">{o.vendor?.contact_person || ''}</div>
+        </div>
+      ),
+    },
+    {
+      id: 'po_date',
+      label: 'Order Date',
+      accessor: (o) => o.po_date,
+      sortAccessor: (o) => (o.po_date ? new Date(o.po_date).getTime() : 0),
+      cell: (o) => (
+        <span className="text-sm text-gray-600">
+          {o.po_date
+            ? (() => {
+                try {
+                  return new Date(o.po_date).toLocaleDateString();
+                } catch {
+                  return o.po_date;
+                }
+              })()
+            : '-'}
+        </span>
+      ),
+    },
+    {
+      id: 'delivery_date',
+      label: 'Expected',
+      accessor: (o) => o.delivery_date,
+      sortAccessor: (o) => (o.delivery_date ? new Date(o.delivery_date).getTime() : 0),
+      cell: (o) => (
+        <span className="text-sm text-gray-600">
+          {o.delivery_date
+            ? (() => {
+                try {
+                  return new Date(o.delivery_date).toLocaleDateString();
+                } catch {
+                  return o.delivery_date;
+                }
+              })()
+            : '-'}
+        </span>
+      ),
+    },
+    {
+      id: 'items_count',
+      label: 'Items',
+      accessor: (o) => o.purchase_order_items?.length || 0,
+      sortAccessor: (o) => o.purchase_order_items?.length || 0,
+      cell: (o) => <span className="text-sm text-gray-600">{o.purchase_order_items?.length || 0} items</span>,
+    },
+    {
+      id: 'total_amount',
+      label: 'Amount',
+      accessor: (o) => o.total_amount || 0,
+      align: 'right',
+      cell: (o) => (
+        <span className="whitespace-nowrap text-sm font-semibold text-gray-900">₹{o.total_amount?.toLocaleString() || 0}</span>
+      ),
+    },
+    {
+      id: 'payment_status',
+      label: 'Payment',
+      accessor: (o) => o.payment_status || 'UNPAID',
+      cell: (o) => (
+        <span
+          className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+            o.payment_status === 'PAID'
+              ? 'bg-green-100 text-green-700'
+              : o.payment_status === 'CHEQUE_ISSUED'
+                ? 'bg-blue-100 text-blue-700'
+                : o.payment_status === 'OTHER'
+                  ? 'bg-purple-100 text-purple-700'
+                  : 'bg-yellow-100 text-yellow-700'
+          }`}
+        >
+          {o.payment_status === 'CHEQUE_ISSUED' ? 'CHEQUE' : o.payment_status || 'UNPAID'}
+        </span>
+      ),
+      align: 'center',
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      accessor: (o) => o.status,
+      cell: (o) => (
+        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(o.status)}`}>
+          {o.status}
+        </span>
+      ),
+      align: 'center',
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      sortable: false,
+      hideable: false,
+      align: 'right',
+      cell: (o) => (
+        <div className="whitespace-nowrap text-sm">
+          <button
+            type="button"
+            onClick={() => handleViewDetails(o.id)}
+            className="text-amber-600 hover:text-amber-800 font-medium mr-3"
+          >
+            View
+          </button>
+          <button
+            type="button"
+            onClick={() => handleEditDetails(o.id, 'edit')}
+            className="text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Edit
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 p-8">
       <div className="max-w-7xl mx-auto">
@@ -1423,7 +1602,7 @@ function PurchaseOrdersContent() {
 
         {/* Filters */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
               <select
@@ -1439,17 +1618,6 @@ function PurchaseOrdersContent() {
                 <option value="PARTIAL">Partial</option>
                 <option value="COMPLETED">Completed</option>
               </select>
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && fetchOrders()}
-                placeholder="Search by PO number, notes..."
-                className="w-full border border-gray-300 rounded-lg px-4 py-2"
-              />
             </div>
           </div>
           {orders.length > 0 && (
@@ -1478,112 +1646,28 @@ function PurchaseOrdersContent() {
         </div>
 
         {/* Orders List */}
-        <div className="bg-white rounded-lg shadow-md border border-gray-200">
-          <div className="overflow-x-auto">
-          {loading ? (
+        {loading ? (
+          <div className="bg-white rounded-lg shadow-md border border-gray-200">
             <div className="p-8 text-center text-gray-500">Loading orders...</div>
-          ) : orders.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="text-6xl mb-4">📋</div>
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Purchase Orders Yet</h3>
-              <p className="text-gray-500">Create your first purchase order to get started</p>
-            </div>
-          ) : (
-            <table className="w-full min-w-[1000px]">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-12"></th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">PO Number</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">PR Ref</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Vendor</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Order Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Expected</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Items</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Payment</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {orders.map((order) => (
-                  <tr key={order.id} className={`hover:bg-gray-50 transition-colors ${orderSelection.isSelected(order.id) ? 'bg-amber-50' : ''}`}>
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={orderSelection.isSelected(order.id)}
-                        onChange={() => orderSelection.toggleSelection(order.id)}
-                        className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-                      />
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">{order.po_number}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                      {order.pr?.pr_number || '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-gray-900">{order.vendor.name}</div>
-                      <div className="text-xs text-gray-500">{order.vendor.contact_person}</div>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                      {order.po_date ? (() => {
-                        try {
-                          return new Date(order.po_date).toLocaleDateString();
-                        } catch {
-                          return order.po_date;
-                        }
-                      })() : '-'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                      {order.delivery_date ? (() => {
-                        try {
-                          return new Date(order.delivery_date).toLocaleDateString();
-                        } catch {
-                          return order.delivery_date;
-                        }
-                      })() : '-'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                      {order.purchase_order_items.length} items
-                    </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap text-sm font-semibold text-gray-900">
-                      ₹{order.total_amount?.toLocaleString() || 0}
-                    </td>
-                    <td className="px-4 py-3 text-center whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                        order.payment_status === 'PAID' ? 'bg-green-100 text-green-700' :
-                        order.payment_status === 'CHEQUE_ISSUED' ? 'bg-blue-100 text-blue-700' :
-                        order.payment_status === 'OTHER' ? 'bg-purple-100 text-purple-700' :
-                        'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {order.payment_status === 'CHEQUE_ISSUED' ? 'CHEQUE' : order.payment_status || 'UNPAID'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(order.status)}`}>
-                        {order.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap text-sm">
-                      <button 
-                        onClick={() => handleViewDetails(order.id)}
-                        className="text-amber-600 hover:text-amber-800 font-medium mr-3"
-                      >
-                        View
-                      </button>
-                      <button 
-                        onClick={() => handleEditDetails(order.id, 'edit')}
-                        className="text-blue-600 hover:text-blue-800 font-medium"
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
           </div>
-        </div>
+        ) : (
+          <ListTable
+            storageKey="purchaseOrdersTable"
+            rows={orders}
+            columns={ordersTableColumns}
+            getRowId={(o) => o.id}
+            defaultPageSize={10}
+            pageSizeOptions={[10, 25, 50, 100]}
+            searchPlaceholder="Search by PO number, vendor, PR ref, status…"
+            emptyState={
+              <div className="p-12 text-center">
+                <div className="text-6xl mb-4">📋</div>
+                <h3 className="text-xl font-semibold text-gray-700 mb-2">No Purchase Orders Yet</h3>
+                <p className="text-gray-500">Create your first purchase order to get started</p>
+              </div>
+            }
+          />
+        )}
       </div>
 
       {/* Create Modal */}
@@ -2396,7 +2480,7 @@ function PurchaseOrdersContent() {
                               })()}
                             </td>
                             <td className="px-4 py-2 text-right">{item.quantity || item.ordered_qty || 0}</td>
-                            <td className="px-4 py-2 text-center text-sm">{item.uom || item.item?.uom || '-'}</td>
+                            <td className="px-4 py-2 text-center text-sm">{resolveUomFromPOLine(item) || '-'}</td>
                             <td className="px-4 py-2 text-right">
                               <div>₹{(item.rate || 0).toLocaleString()}</div>
                               {(() => {

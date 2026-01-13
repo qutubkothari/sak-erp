@@ -1,7 +1,50 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'crypto';
 import { CreateJobOrderDto, UpdateJobOrderDto, UpdateOperationDto } from '../dto/job-order.dto';
 import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
+import { normalizeInventoryCategory } from '../../inventory/utils/inventory-category';
+
+type JobOrderIssueMaterialsFailure = {
+  materialId: string;
+  itemCode?: string;
+  itemId?: string;
+  step:
+    | 'RESOLVE_ITEM_ID'
+    | 'FETCH_ITEM'
+    | 'FETCH_STOCK'
+    | 'UPDATE_STOCK_ENTRY'
+    | 'UPDATE_MATERIAL'
+    | 'UPDATE_JOB_ORDER';
+  message: string;
+};
+
+type JobOrderIssueMaterialsSummary = {
+  jobOrderId: string;
+  totalMaterials: number;
+  materialsNeedingIssue: number;
+  attempted: number;
+  issuedLines: number;
+  partialLines: number;
+  noStockLines: number;
+  skippedInvalidItemLines: number;
+  failures: JobOrderIssueMaterialsFailure[];
+  durationMs: number;
+  autoRepair?: {
+    requested: boolean;
+    attempted: boolean;
+    triggered: boolean;
+    reason?: string;
+    plannedSubAssembliesToMake?: number;
+    createdSubJobOrders?: number;
+    qcApprovedSubJobOrders?: number;
+  };
+};
+
+type IssueMaterialsOptions = {
+  userId?: string;
+  autoRepair?: boolean;
+};
 
 type SmartJobOrderPreviewRequest = {
   itemId: string;
@@ -20,6 +63,28 @@ type SmartJobOrderCreateRequest = {
   variantSelections?: Record<string, string>;
   itemSelections?: Record<string, string>;
   autoIssueMaterials?: boolean;
+};
+
+type SmartJobOrderCreateProgress = {
+  current: number;
+  total: number;
+  phase: 'PREVIEW' | 'SUB_ASSEMBLIES' | 'MAIN_JOB_ORDER' | 'ISSUE_MATERIALS' | 'DONE';
+  message: string;
+  itemCode?: string;
+  itemName?: string;
+};
+
+type SmartJobOrderCreateAsyncStatus = {
+  id: string;
+  tenantId: string;
+  userId: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  progress: SmartJobOrderCreateProgress;
+  result?: any;
+  error?: string;
 };
 
 type SmartExplosionNode = {
@@ -48,12 +113,121 @@ type SmartSubAssemblyPlan = {
 
 @Injectable()
 export class JobOrderService {
+  private readonly logger = new Logger(JobOrderService.name);
   private supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_KEY!,
   );
 
+  private smartCreateJobs = new Map<string, SmartJobOrderCreateAsyncStatus>();
+  private smartCreateJobTtlMs = 1000 * 60 * 60; // 1 hour
+
   constructor(private readonly uidService: UidSupabaseService) {}
+
+  private pruneSmartCreateJobs(now = Date.now()) {
+    for (const [id, job] of this.smartCreateJobs.entries()) {
+      const createdAt = Date.parse(job.createdAt);
+      const ageMs = Number.isFinite(createdAt) ? now - createdAt : this.smartCreateJobTtlMs + 1;
+      const done = job.status === 'COMPLETED' || job.status === 'FAILED';
+      if (done && ageMs > this.smartCreateJobTtlMs) {
+        this.smartCreateJobs.delete(id);
+      }
+    }
+  }
+
+  async startSmartJobOrderCreateAsync(tenantId: string, userId: string, req: SmartJobOrderCreateRequest) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    if (!userId) throw new BadRequestException('userId is required');
+    if (!req?.itemId) throw new BadRequestException('itemId is required');
+    if (!req?.quantity || Number(req.quantity) <= 0) throw new BadRequestException('quantity must be > 0');
+
+    this.pruneSmartCreateJobs();
+
+    const jobId = randomUUID();
+    const createdAt = new Date().toISOString();
+
+    const job: SmartJobOrderCreateAsyncStatus = {
+      id: jobId,
+      tenantId,
+      userId,
+      status: 'PENDING',
+      createdAt,
+      progress: {
+        current: 0,
+        total: 0,
+        phase: 'PREVIEW',
+        message: 'Preparing Smart Job Order…',
+      },
+    };
+
+    this.smartCreateJobs.set(jobId, job);
+
+    // Run in background (do NOT await) to avoid request timeouts.
+    setTimeout(() => {
+      void this.runSmartJobOrderCreateJob(jobId, req);
+    }, 0);
+
+    return { jobId };
+  }
+
+  async getSmartJobOrderCreateAsyncStatus(tenantId: string, jobId: string) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    this.pruneSmartCreateJobs();
+
+    const job = this.smartCreateJobs.get(jobId);
+    if (!job) throw new NotFoundException('Smart job order create job not found');
+    if (job.tenantId !== tenantId) throw new NotFoundException('Smart job order create job not found');
+
+    // Do not leak tenant/user ids.
+    const { tenantId: _t, userId: _u, ...safe } = job;
+    return safe;
+  }
+
+  private async runSmartJobOrderCreateJob(jobId: string, req: SmartJobOrderCreateRequest) {
+    const job = this.smartCreateJobs.get(jobId);
+    if (!job) return;
+
+    const update = (patch: Partial<SmartJobOrderCreateAsyncStatus>) => {
+      const current = this.smartCreateJobs.get(jobId);
+      if (!current) return;
+      this.smartCreateJobs.set(jobId, {
+        ...current,
+        ...patch,
+        progress: patch.progress ? { ...current.progress, ...patch.progress } : current.progress,
+      });
+    };
+
+    try {
+      update({ status: 'RUNNING', startedAt: new Date().toISOString() });
+
+      const result = await this.createSmartJobOrderInternal(job.tenantId, job.userId, req, (p) => {
+        update({ progress: p });
+      });
+
+      update({
+        status: 'COMPLETED',
+        finishedAt: new Date().toISOString(),
+        progress: {
+          current: result?._progressTotal ?? job.progress.current,
+          total: result?._progressTotal ?? job.progress.total,
+          phase: 'DONE',
+          message: 'Smart Job Order created successfully',
+        },
+        result: {
+          jobOrder: result.jobOrder,
+          autoCompletedSubJobOrders: result.autoCompletedSubJobOrders,
+          preview: result.preview,
+          issueMaterialsSummary: (result as any).issueMaterialsSummary,
+        },
+      });
+    } catch (err: any) {
+      update({
+        status: 'FAILED',
+        finishedAt: new Date().toISOString(),
+        error: err?.message || 'Failed to create Smart Job Order',
+      });
+    }
+  }
 
   private isUuid(value: unknown): value is string {
     if (typeof value !== 'string') return false;
@@ -214,8 +388,11 @@ export class JobOrderService {
     };
   }
 
-  private async issueJobOrderMaterials(tenantId: string, jobOrderId: string) {
-    console.log('[JobOrderService] issueJobOrderMaterials called', { tenantId, jobOrderId });
+  private async issueJobOrderMaterials(tenantId: string, jobOrderId: string): Promise<JobOrderIssueMaterialsSummary> {
+    const startedAt = Date.now();
+
+    this.logger.log('[SmartJO] issueJobOrderMaterials called');
+    this.logger.log(JSON.stringify({ tenantId, jobOrderId }));
     
     const { data: jobOrder } = await this.supabase
       .from('production_job_orders')
@@ -231,7 +408,142 @@ export class JobOrderService {
       throw new BadRequestException('Cannot issue materials for a completed/cancelled job order');
     }
 
-    console.log('[JobOrderService] Found', jobOrder.job_order_materials?.length || 0, 'materials to issue');
+    const totalMaterials = jobOrder.job_order_materials?.length || 0;
+    this.logger.log(`[SmartJO] Found ${totalMaterials} materials on job order`);
+
+    // Some deployments (and some historical rows) store BOM header IDs into job_order_materials.item_id
+    // for BOM-type components. Those are valid UUIDs but not item IDs, so stock lookups will fail.
+    // Normalize any BOM header IDs to their corresponding items up-front.
+    try {
+      const rawMaterials = Array.isArray(jobOrder.job_order_materials) ? jobOrder.job_order_materials : [];
+      const candidateIds = new Set<string>();
+      for (const m of rawMaterials) {
+        const itemId = String(m?.item_id || '').trim();
+        const variantId = String(m?.selected_variant_id || '').trim();
+        if (itemId && this.isUuid(itemId)) candidateIds.add(itemId);
+        if (variantId && this.isUuid(variantId)) candidateIds.add(variantId);
+      }
+
+      const idList = Array.from(candidateIds);
+      if (idList.length) {
+        const { data: existingItems } = await this.supabase
+          .from('items')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .in('id', idList);
+
+        const existingItemIds = new Set((existingItems || []).map((r: any) => String(r?.id || '').trim()).filter(Boolean));
+        const missingIds = idList.filter((id) => !existingItemIds.has(id));
+
+        if (missingIds.length) {
+          const { data: bomHeaders } = await this.supabase
+            .from('bom_headers')
+            .select('id, item_id')
+            .eq('tenant_id', tenantId)
+            .in('id', missingIds);
+
+          const headerIdToItemId = new Map<string, string>();
+          for (const h of bomHeaders || []) {
+            const headerId = String((h as any)?.id || '').trim();
+            const mappedItemId = String((h as any)?.item_id || '').trim();
+            if (headerId && mappedItemId && this.isUuid(mappedItemId)) {
+              headerIdToItemId.set(headerId, mappedItemId);
+            }
+          }
+
+          if (headerIdToItemId.size) {
+            for (const m of rawMaterials) {
+              const currentItemId = String(m?.item_id || '').trim();
+              const currentVariantId = String(m?.selected_variant_id || '').trim();
+              const mappedItemId = currentItemId ? headerIdToItemId.get(currentItemId) : undefined;
+              const mappedVariantId = currentVariantId ? headerIdToItemId.get(currentVariantId) : undefined;
+
+              const patch: any = {};
+              if (mappedItemId && mappedItemId !== currentItemId) patch.item_id = mappedItemId;
+              if (mappedVariantId && mappedVariantId !== currentVariantId) patch.selected_variant_id = mappedVariantId;
+
+              if (Object.keys(patch).length) {
+                await this.supabase
+                  .from('job_order_materials')
+                  .update(patch)
+                  .eq('id', m.id);
+              }
+            }
+
+            // Keep the in-memory copy consistent for this request.
+            jobOrder.job_order_materials = rawMaterials.map((m: any) => {
+              const currentItemId = String(m?.item_id || '').trim();
+              const currentVariantId = String(m?.selected_variant_id || '').trim();
+              const mappedItemId = currentItemId ? headerIdToItemId.get(currentItemId) : undefined;
+              const mappedVariantId = currentVariantId ? headerIdToItemId.get(currentVariantId) : undefined;
+              return {
+                ...m,
+                item_id: mappedItemId || m.item_id,
+                selected_variant_id: mappedVariantId || m.selected_variant_id,
+              };
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // Never block issuing because of normalization; proceed with best-effort.
+      this.logger.warn('[SmartJO] Material ID normalization skipped due to error');
+      this.logger.warn(String((e as any)?.message || e));
+    }
+
+    // Some legacy/edge flows can create job_order_materials with missing/invalid UUIDs.
+    // If we just skip them, the JO appears to stop issuing around N lines.
+    // Resolve missing item ids from item_code up-front so we can issue all materials.
+    const normalizeCode = (value: unknown) => String(value || '').trim().toUpperCase();
+    const resolveCodeCandidate = (m: any) => {
+      const fromItemCode = normalizeCode(m?.item_code);
+      if (fromItemCode) return fromItemCode;
+
+      // Some buggy historical rows stored item_code into selected_variant_id / item_id.
+      const sv = String(m?.selected_variant_id || '').trim();
+      if (sv && !this.isUuid(sv)) return normalizeCode(sv);
+
+      const itemId = String(m?.item_id || '').trim();
+      if (itemId && !this.isUuid(itemId)) return normalizeCode(itemId);
+
+      return '';
+    };
+
+    const materialsNeedingIssue = (jobOrder.job_order_materials || []).filter((m: any) => {
+      const requiredQty = Number(m.required_quantity) || 0;
+      const alreadyIssued = Number(m.issued_quantity) || 0;
+      return Math.max(0, requiredQty - alreadyIssued) > 0;
+    });
+
+    const failures: JobOrderIssueMaterialsFailure[] = [];
+    let attempted = 0;
+    let issuedLines = 0;
+    let partialLines = 0;
+    let noStockLines = 0;
+    let skippedInvalidItemLines = 0;
+
+    const codesToResolve = Array.from(
+      new Set(materialsNeedingIssue.map((m: any) => resolveCodeCandidate(m)).filter(Boolean)),
+    );
+
+    const itemIdByCode = new Map<string, string>();
+    for (const code of codesToResolve) {
+      try {
+        const { data: found } = await this.supabase
+          .from('items')
+          .select('id, code')
+          .eq('tenant_id', tenantId)
+          .ilike('code', code)
+          .limit(1);
+
+        const row = Array.isArray(found) ? found[0] : null;
+        if (row?.id) {
+          itemIdByCode.set(code, String(row.id));
+        }
+      } catch (e) {
+        console.warn('[JobOrderService] Failed resolving item_id from code', { tenantId, code, e });
+      }
+    }
 
     for (const material of jobOrder.job_order_materials || []) {
       const requiredQty = Number(material.required_quantity) || 0;
@@ -248,71 +560,192 @@ export class JobOrderService {
         continue;
       }
 
-      const itemIdToConsume = material.selected_variant_id || material.item_id;
-      if (!this.isUuid(String(itemIdToConsume || ''))) {
-        console.error('[JobOrderService] Invalid item_id for material:', material.item_code, itemIdToConsume);
-        throw new BadRequestException(`Invalid material itemId for consumption: ${String(itemIdToConsume)}`);
+      attempted += 1;
+
+      try {
+
+      let itemIdToConsume = material.selected_variant_id || material.item_id;
+
+      const normalizedCode = resolveCodeCandidate(material);
+
+      // If we have a UUID, still validate it exists and matches the material code.
+      // Some legacy rows have a UUID that points to the wrong item.
+      if (this.isUuid(String(itemIdToConsume || ''))) {
+        const { data: existingItem, error: existingItemError } = await this.supabase
+          .from('items')
+          .select('id, code')
+          .eq('tenant_id', tenantId)
+          .eq('id', itemIdToConsume)
+          .maybeSingle();
+
+        const resolvedByCode = normalizedCode ? itemIdByCode.get(normalizedCode) : undefined;
+
+        const existingCode = normalizeCode(existingItem?.code);
+        const isMissing = Boolean(existingItemError) || !existingItem;
+        const isMismatch = Boolean(existingItem && normalizedCode && existingCode && existingCode !== normalizedCode);
+
+        if ((isMissing || isMismatch) && resolvedByCode && this.isUuid(String(resolvedByCode))) {
+          console.warn('[JobOrderService] Corrected material item_id using item_code', {
+            materialId: material.id,
+            item_code: material.item_code,
+            from: itemIdToConsume,
+            to: resolvedByCode,
+            reason: isMissing ? 'MISSING_ITEM' : 'CODE_MISMATCH',
+          });
+
+          itemIdToConsume = resolvedByCode;
+          const patch: any = { item_id: resolvedByCode };
+          if (material.selected_variant_id && !this.isUuid(String(material.selected_variant_id || ''))) {
+            patch.selected_variant_id = null;
+          }
+          await this.supabase
+            .from('job_order_materials')
+            .update(patch)
+            .eq('id', material.id);
+        }
       }
 
-      console.log('[JobOrderService] Issuing material:', {
+      if (!this.isUuid(String(itemIdToConsume || ''))) {
+        const resolved = normalizedCode ? itemIdByCode.get(normalizedCode) : undefined;
+
+        if (resolved && this.isUuid(String(resolved))) {
+          console.warn('[JobOrderService] Backfilled missing item_id from item_code', {
+            materialId: material.id,
+            item_code: material.item_code,
+            from: itemIdToConsume,
+            to: resolved,
+          });
+
+          itemIdToConsume = resolved;
+
+          // Persist the fix so subsequent actions (edit/issue/complete) are consistent.
+          const patch: any = { item_id: resolved };
+          if (material.selected_variant_id && !this.isUuid(String(material.selected_variant_id || ''))) {
+            patch.selected_variant_id = null;
+          }
+          await this.supabase
+            .from('job_order_materials')
+            .update(patch)
+            .eq('id', material.id);
+        } else {
+          skippedInvalidItemLines += 1;
+          failures.push({
+            materialId: String(material.id),
+            itemCode: material.item_code,
+            itemId: String(itemIdToConsume || ''),
+            step: 'RESOLVE_ITEM_ID',
+            message: 'Skipping material with invalid item_id (cannot resolve)'
+          });
+          this.logger.error('[SmartJO] Skipping material: invalid item_id cannot resolve');
+          this.logger.error(JSON.stringify({ tenantId, jobOrderId, materialId: material.id, item_code: material.item_code, itemIdToConsume }));
+          // Keep pending; continue processing remaining materials.
+          continue;
+        }
+      }
+
+      this.logger.log('[SmartJO] Issuing material');
+      this.logger.log(
+        JSON.stringify({
         code: material.item_code,
         itemId: itemIdToConsume,
         requiredQty,
         alreadyIssued,
         consumeQty,
-      });
+        }),
+      );
 
-      const { data: item } = await this.supabase
+      const { data: item, error: itemErr } = await this.supabase
         .from('items')
-        .select('code, name')
+        .select('code, name, category')
         .eq('id', itemIdToConsume)
         .single();
 
-      const { data: stockEntries } = await this.supabase
+      if (itemErr) {
+        failures.push({
+          materialId: String(material.id),
+          itemCode: material.item_code,
+          itemId: String(itemIdToConsume || ''),
+          step: 'FETCH_ITEM',
+          message: itemErr.message,
+        });
+        this.logger.error('[SmartJO] Failed fetching item for material');
+        this.logger.error(JSON.stringify({ tenantId, jobOrderId, materialId: material.id, itemIdToConsume, error: itemErr }));
+        continue;
+      }
+
+      const { data: stockEntries, error: stockErr } = await this.supabase
         .from('stock_entries')
         .select('*')
         .eq('tenant_id', tenantId)
         .eq('item_id', itemIdToConsume)
         .gt('available_quantity', 0)
-        .order('created_at', { ascending: true});
+        .order('created_at', { ascending: true });
 
-      if (!stockEntries || stockEntries.length === 0) {
-        console.error('[JobOrderService] No stock entries found for:', item?.code);
-        throw new BadRequestException(`Failed to issue ${item?.code || ''}: Item not found in inventory`);
+      if (stockErr) {
+        failures.push({
+          materialId: String(material.id),
+          itemCode: material.item_code,
+          itemId: String(itemIdToConsume || ''),
+          step: 'FETCH_STOCK',
+          message: stockErr.message,
+        });
+        this.logger.error('[SmartJO] Failed fetching stock entries for material');
+        this.logger.error(JSON.stringify({ tenantId, jobOrderId, materialId: material.id, itemIdToConsume, error: stockErr }));
+        continue;
       }
 
-      const totalAvailable = stockEntries.reduce(
+      const safeEntries = Array.isArray(stockEntries) ? stockEntries : [];
+      const totalAvailable = safeEntries.reduce(
         (sum, entry) => sum + parseFloat(entry.available_quantity.toString()),
         0,
       );
 
-      console.log('[JobOrderService] Stock available:', {
-        code: item?.code,
-        totalAvailable,
-        needed: consumeQty,
-        entries: stockEntries.length,
-      });
+      this.logger.log('[SmartJO] Stock available');
+      this.logger.log(JSON.stringify({ code: item?.code, totalAvailable, needed: consumeQty, entries: safeEntries.length }));
 
-      if (totalAvailable < consumeQty) {
-        throw new BadRequestException(
-          `Failed to issue ${item?.code || ''}: Insufficient stock. Need ${consumeQty}, have ${totalAvailable}`,
+      // Best-effort issuing: consume up to what's available, never throw for missing/insufficient stock.
+      // Smart Job Orders often start with shortages and should still be created.
+      const issueNow = Math.max(0, Math.min(consumeQty, totalAvailable));
+      if (issueNow <= 0) {
+        // Nothing to issue; keep issued_quantity as-is.
+        noStockLines += 1;
+        failures.push({
+          materialId: String(material.id),
+          itemCode: material.item_code,
+          itemId: String(itemIdToConsume || ''),
+          step: 'FETCH_STOCK',
+          message: 'NO_STOCK_AVAILABLE',
+        });
+
+        this.logger.warn('[SmartJO] No stock available for material; leaving PENDING');
+        this.logger.warn(
+          JSON.stringify({
+            tenantId,
+            jobOrderId,
+            materialId: material.id,
+            code: material.item_code,
+            itemId: itemIdToConsume,
+            requiredQty,
+            alreadyIssued,
+            consumeQty,
+            totalAvailable,
+            entryCount: safeEntries.length,
+          }),
         );
+        continue;
       }
 
-      let remainingToConsume = consumeQty;
-      for (const entry of stockEntries) {
+      let remainingToConsume = issueNow;
+      let updateFailed = false;
+      for (const entry of safeEntries) {
         if (remainingToConsume <= 0) break;
 
         const entryAvailable = parseFloat(entry.available_quantity.toString());
         const toConsumeFromEntry = Math.min(entryAvailable, remainingToConsume);
         const newAvailable = entryAvailable - toConsumeFromEntry;
 
-        console.log('[JobOrderService] Consuming from stock entry:', {
-          entryId: entry.id,
-          before: entryAvailable,
-          consuming: toConsumeFromEntry,
-          after: newAvailable,
-        });
+        this.logger.log('[SmartJO] Consuming from stock entry');
+        this.logger.log(JSON.stringify({ entryId: entry.id, before: entryAvailable, consuming: toConsumeFromEntry, after: newAvailable }));
 
         const { error: updateError } = await this.supabase
           .from('stock_entries')
@@ -323,38 +756,505 @@ export class JobOrderService {
           .eq('id', entry.id);
 
         if (updateError) {
-          console.error('[JobOrderService] Failed to update stock entry:', updateError);
-          throw new BadRequestException(`Failed to issue ${item?.code || ''}: ${updateError.message}`);
+          updateFailed = true;
+          failures.push({
+            materialId: String(material.id),
+            itemCode: material.item_code,
+            itemId: String(itemIdToConsume || ''),
+            step: 'UPDATE_STOCK_ENTRY',
+            message: updateError.message,
+          });
+          this.logger.error('[SmartJO] Failed to update stock entry');
+          this.logger.error(
+            JSON.stringify({ tenantId, jobOrderId, materialId: material.id, itemIdToConsume, entryId: entry.id, error: updateError }),
+          );
+          break; // Exit this material's stock entry loop, move to next material
+        }
+
+        // Keep inventory_stock consistent with stock_entries.
+        // Smart JO preview uses stock checks and other modules rely on inventory_stock.
+        const warehouseId = String((entry as any)?.warehouse_id || '').trim();
+        if (warehouseId && this.isUuid(warehouseId)) {
+          const { error: invError } = await this.supabase.rpc('adjust_inventory_stock', {
+            p_tenant_id: tenantId,
+            p_item_id: itemIdToConsume,
+            p_warehouse_id: warehouseId,
+            p_location_id: null,
+            p_quantity_change: -toConsumeFromEntry,
+            p_category: normalizeInventoryCategory((item as any)?.category, 'RAW_MATERIAL'),
+          });
+
+          if (invError) {
+            failures.push({
+              materialId: String(material.id),
+              itemCode: material.item_code,
+              itemId: String(itemIdToConsume || ''),
+              step: 'UPDATE_STOCK_ENTRY',
+              message: `INVENTORY_STOCK_SYNC_FAILED: ${invError.message}`,
+            });
+            this.logger.error('[SmartJO] Failed syncing inventory_stock after consuming stock entry');
+            this.logger.error(
+              JSON.stringify({
+                tenantId,
+                jobOrderId,
+                materialId: material.id,
+                itemIdToConsume,
+                warehouseId,
+                consumed: toConsumeFromEntry,
+                error: invError,
+              }),
+            );
+          }
         }
 
         remainingToConsume -= toConsumeFromEntry;
       }
 
-      const nextIssued = alreadyIssued + consumeQty;
-      console.log('[JobOrderService] Material issued successfully:', {
-        code: material.item_code,
-        issued: nextIssued,
-        required: requiredQty,
-        status: nextIssued >= requiredQty ? 'ISSUED' : 'PARTIAL',
-      });
+      const actuallyConsumed = Math.max(0, issueNow - remainingToConsume);
+      if (actuallyConsumed <= 0) {
+        // If we planned to consume but couldn't update any stock entries, keep material unchanged.
+        if (updateFailed) {
+          this.logger.warn('[SmartJO] Planned consumption but consumed 0 due to stock update failure');
+        }
+        continue;
+      }
+
+      const nextIssued = alreadyIssued + actuallyConsumed;
+      const nextStatus = nextIssued >= requiredQty ? 'ISSUED' : 'PARTIAL';
+      if (nextStatus === 'ISSUED') issuedLines += 1;
+      else partialLines += 1;
+
+      this.logger.log('[SmartJO] Material issued');
+      this.logger.log(JSON.stringify({ code: material.item_code, issued: nextIssued, required: requiredQty, status: nextStatus }));
       
-      await this.supabase
+      const { error: matUpdateErr } = await this.supabase
         .from('job_order_materials')
         .update({
           issued_quantity: nextIssued,
-          status: nextIssued >= requiredQty ? 'ISSUED' : 'PARTIAL',
+          status: nextStatus,
         })
         .eq('id', material.id);
+
+      if (matUpdateErr) {
+        failures.push({
+          materialId: String(material.id),
+          itemCode: material.item_code,
+          itemId: String(itemIdToConsume || ''),
+          step: 'UPDATE_MATERIAL',
+          message: matUpdateErr.message,
+        });
+        this.logger.error('[SmartJO] Failed to update job_order_materials');
+        this.logger.error(JSON.stringify({ tenantId, jobOrderId, materialId: material.id, error: matUpdateErr }));
+      }
+      } catch (e: any) {
+        failures.push({
+          materialId: String(material.id),
+          itemCode: material.item_code,
+          itemId: String(material.selected_variant_id || material.item_id || ''),
+          step: 'UPDATE_MATERIAL',
+          message: e?.message || 'Unknown error while issuing material',
+        });
+        this.logger.error('[SmartJO] Unexpected error issuing material');
+        this.logger.error(
+          JSON.stringify({ tenantId, jobOrderId, materialId: material.id, item_code: material.item_code, error: e?.message || e }),
+        );
+        continue;
+      }
     }
 
     // Move JO to IN_PROGRESS once materials are issued
     if (status !== 'IN_PROGRESS') {
-      await this.supabase
+      const { error: joUpdateErr } = await this.supabase
         .from('production_job_orders')
         .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
         .eq('tenant_id', tenantId)
         .eq('id', jobOrderId);
+
+      if (joUpdateErr) {
+        failures.push({
+          materialId: '',
+          step: 'UPDATE_JOB_ORDER',
+          message: joUpdateErr.message,
+        });
+        this.logger.error('[SmartJO] Failed to update job order status to IN_PROGRESS');
+        this.logger.error(JSON.stringify({ tenantId, jobOrderId, error: joUpdateErr }));
+      }
     }
+
+    const durationMs = Date.now() - startedAt;
+    const summary: JobOrderIssueMaterialsSummary = {
+      jobOrderId,
+      totalMaterials,
+      materialsNeedingIssue: materialsNeedingIssue.length,
+      attempted,
+      issuedLines,
+      partialLines,
+      noStockLines,
+      skippedInvalidItemLines,
+      failures,
+      durationMs,
+    };
+
+    this.logger.log('[SmartJO] issueJobOrderMaterials summary');
+    this.logger.log(JSON.stringify(summary));
+    return summary;
+  }
+
+  async issueMaterialsForJobOrder(
+    tenantId: string,
+    jobOrderId: string,
+    options: IssueMaterialsOptions = {},
+  ): Promise<JobOrderIssueMaterialsSummary> {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    if (!jobOrderId) throw new BadRequestException('jobOrderId is required');
+
+    const autoRepairRequested = options.autoRepair !== false;
+    const userId = String(options.userId || '').trim();
+
+    const first = await this.issueJobOrderMaterials(tenantId, jobOrderId);
+    first.autoRepair = {
+      requested: autoRepairRequested,
+      attempted: false,
+      triggered: false,
+    };
+
+    if (!autoRepairRequested) return first;
+
+    // Only attempt auto-repair if issuing is completely blocked by NO_STOCK.
+    // This is aimed at legacy Smart JOs created before the improved BOM explosion logic.
+    const hasIssuedAnything = (first.issuedLines || 0) > 0 || (first.partialLines || 0) > 0;
+    const hasNoStock = (first.noStockLines || 0) > 0;
+    const isFullyBlocked = !hasIssuedAnything && hasNoStock;
+    if (!isFullyBlocked) {
+      first.autoRepair.reason = 'NOT_FULLY_BLOCKED';
+      return first;
+    }
+
+    // Only for Smart JOs (avoid creating sub-job-orders for normal/manual JOs).
+    const { data: joRow, error: joErr } = await this.supabase
+      .from('production_job_orders')
+      .select('id, job_order_number, notes')
+      .eq('tenant_id', tenantId)
+      .eq('id', jobOrderId)
+      .single();
+
+    if (joErr) {
+      first.autoRepair.reason = `JOB_ORDER_FETCH_FAILED: ${joErr.message}`;
+      return first;
+    }
+
+    const notes = String((joRow as any)?.notes || '');
+    const looksSmart = /\bsmart\s+job\s+order\b/i.test(notes);
+    if (!looksSmart) {
+      first.autoRepair.reason = 'NOT_SMART_JOB_ORDER';
+      return first;
+    }
+
+    if (!userId) {
+      first.autoRepair.reason = 'MISSING_USER_ID_FOR_REPAIR';
+      return first;
+    }
+
+    // Additionally, only trigger if NO_STOCK is the dominant failure mode.
+    const failures = Array.isArray(first.failures) ? first.failures : [];
+    const noStockFailures = failures.filter((f) => String(f?.message || '') === 'NO_STOCK_AVAILABLE');
+    if (noStockFailures.length === 0) {
+      first.autoRepair.reason = 'NO_NO_STOCK_FAILURES';
+      return first;
+    }
+
+    this.logger.log('[SmartJO][AutoRepair] Triggering smart repair+issue from issue-materials endpoint');
+    this.logger.log(
+      JSON.stringify({ tenantId, jobOrderId, jobOrderNumber: (joRow as any)?.job_order_number || null, noStockFailures: noStockFailures.length }),
+    );
+
+    first.autoRepair.attempted = true;
+
+    try {
+      const repaired = await this.repairSmartJobOrderAndIssueMaterials(tenantId, userId, jobOrderId);
+      const finalSummary = repaired.issueMaterialsSummary;
+      finalSummary.autoRepair = {
+        requested: true,
+        attempted: true,
+        triggered: true,
+        reason: 'SMART_REPAIR_RAN',
+        plannedSubAssembliesToMake: repaired.plannedSubAssembliesToMake,
+        createdSubJobOrders: repaired.createdSubJobOrders,
+        qcApprovedSubJobOrders: repaired.qcApprovedSubJobOrders,
+      };
+      return finalSummary;
+    } catch (e: any) {
+      first.autoRepair.triggered = true;
+      first.autoRepair.reason = `SMART_REPAIR_FAILED: ${e?.message || 'Unknown error'}`;
+      this.logger.error('[SmartJO][AutoRepair] Smart repair failed');
+      this.logger.error(JSON.stringify({ tenantId, jobOrderId, error: e?.message || e }));
+      return first;
+    }
+  }
+
+  async repairSmartJobOrderAndIssueMaterials(
+    tenantId: string,
+    userId: string,
+    jobOrderId: string,
+  ): Promise<{
+    jobOrderId: string;
+    jobOrderNumber: string;
+    preview: any;
+    plannedSubAssembliesToMake: number;
+    createdSubJobOrders: number;
+    qcApprovedSubJobOrders: number;
+    issueMaterialsSummary: JobOrderIssueMaterialsSummary;
+  }> {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    if (!userId) throw new BadRequestException('userId is required');
+    if (!jobOrderId) throw new BadRequestException('jobOrderId is required');
+
+    const { data: jobOrder, error: jobOrderError } = await this.supabase
+      .from('production_job_orders')
+      .select('id, tenant_id, item_id, job_order_number, quantity, start_date, status')
+      .eq('tenant_id', tenantId)
+      .eq('id', jobOrderId)
+      .single();
+
+    if (jobOrderError) throw new BadRequestException(jobOrderError.message);
+    if (!jobOrder) throw new NotFoundException('Job order not found');
+
+    const status = String(jobOrder.status || '');
+    if (status === 'COMPLETED' || status === 'CANCELLED') {
+      throw new BadRequestException('Cannot repair/issue materials for a completed/cancelled job order');
+    }
+
+    const startDate = this.toStartDate(String((jobOrder as any).start_date || ''));
+
+    // Rebuild Smart JO preview using the *current* BOM explosion logic.
+    // This is the key fix for legacy Smart JOs created before BOM-detection improvements.
+    const preview = await this.getSmartJobOrderPreview(tenantId, {
+      itemId: String((jobOrder as any).item_id || ''),
+      quantity: Number((jobOrder as any).quantity || 0),
+    });
+
+    const completedSubJobOrders: any[] = [];
+    let qcApprovedSubJobOrders = 0;
+
+    const normalizeCode = (value: unknown) => String(value || '').trim().toUpperCase();
+
+    const createCompleteAndQcApprove = async (args: {
+      itemId: string;
+      itemCode?: string;
+      bomId: string;
+      quantity: number;
+      reason: string;
+    }) => {
+      this.logger.log('[SmartJO][Repair] Creating sub-assembly');
+      this.logger.log(
+        JSON.stringify({
+          itemId: args.itemId,
+          itemCode: args.itemCode,
+          bomId: args.bomId,
+          quantity: args.quantity,
+          forJobOrder: jobOrder.job_order_number,
+          reason: args.reason,
+        }),
+      );
+
+      const created = await this.createFromBOMWithVariantSelections(tenantId, userId, {
+        itemId: args.itemId,
+        bomId: args.bomId,
+        quantity: args.quantity,
+        startDate,
+        priority: 'NORMAL',
+        notes: `Auto-created by Smart JO Repair for ${jobOrder.job_order_number} (${args.reason})`,
+      } as any);
+
+      // Ensure status is IN_PROGRESS so completeJobOrder can run.
+      await this.supabase
+        .from('production_job_orders')
+        .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
+        .eq('id', created.id);
+
+      const completed = await this.completeJobOrder(tenantId, created.id, userId, {
+        allowPartialConsumption: true,
+      } as any);
+      completedSubJobOrders.push(completed);
+
+      // Auto-approve QC to immediately create stock for this sub-assembly.
+      const { data: uidRows, error: uidErr } = await this.supabase
+        .from('uid_registry')
+        .select('uid')
+        .eq('tenant_id', tenantId)
+        .eq('job_order_id', created.id);
+
+      if (uidErr) throw new BadRequestException(uidErr.message);
+      const uids = (uidRows || []).map((r: any) => String(r?.uid || '').trim()).filter(Boolean);
+      if (uids.length === 0) {
+        throw new BadRequestException(
+          `Failed to auto-approve QC during Smart JO repair for ${args.itemCode || args.itemId}: no UIDs found for job order ${created.id}`,
+        );
+      }
+
+      await this.approveQC(tenantId, created.id, uids, [], userId);
+      qcApprovedSubJobOrders += 1;
+    };
+
+    // Create deeper sub-assemblies first to satisfy nested BOM dependencies.
+    const subAssemblyLevelByKey = new Map<string, number>();
+    for (const n of (preview.nodes || []) as any[]) {
+      if (n?.componentType !== 'BOM') continue;
+      const key = `${String(n.bomId)}:${String(n.itemId)}`;
+      const lvl = Number(n.level) || 0;
+      const existing = subAssemblyLevelByKey.get(key);
+      if (existing === undefined || lvl > existing) subAssemblyLevelByKey.set(key, lvl);
+    }
+
+    const subAssembliesToMakeAll = ([...(preview.subAssembliesToMake || [])] as any[]).sort((a, b) => {
+      const aKey = `${String(a.bomId)}:${String(a.itemId)}`;
+      const bKey = `${String(b.bomId)}:${String(b.itemId)}`;
+      const aLvl = subAssemblyLevelByKey.get(aKey) ?? 0;
+      const bLvl = subAssemblyLevelByKey.get(bKey) ?? 0;
+      if (aLvl !== bLvl) return bLvl - aLvl; // deeper first
+      return (Number(b.toMakeQuantity) || 0) - (Number(a.toMakeQuantity) || 0);
+    });
+
+    const subAssembliesToMake = subAssembliesToMakeAll.filter((sa) => Number(sa?.toMakeQuantity || 0) > 0);
+
+    this.logger.log('[SmartJO][Repair] Planning sub-assembly rebuild');
+    this.logger.log(
+      JSON.stringify({
+        tenantId,
+        jobOrderId,
+        jobOrderNumber: jobOrder.job_order_number,
+        planned: subAssembliesToMake.length,
+      }),
+    );
+
+    for (const sa of subAssembliesToMake) {
+      await createCompleteAndQcApprove({
+        itemId: String(sa.itemId),
+        itemCode: sa.itemCode,
+        bomId: String(sa.bomId),
+        quantity: Number(sa.toMakeQuantity),
+        reason: 'SMART_PREVIEW',
+      });
+    }
+
+    // IMPORTANT: Legacy Smart JOs may have been created with user selections (alternate items/variants)
+    // that the current preview call doesn't know about. So after preview-based rebuild, we ALSO ensure
+    // stock for the *actual pending materials* on the existing job order.
+    const { data: joMaterials, error: joMaterialsErr } = await this.supabase
+      .from('job_order_materials')
+      .select('id, item_id, item_code, required_quantity, issued_quantity, status')
+      .eq('job_order_id', jobOrderId);
+
+    if (joMaterialsErr) throw new BadRequestException(joMaterialsErr.message);
+    const materialsRows = Array.isArray(joMaterials) ? joMaterials : [];
+    const pendingMaterials = materialsRows.filter((m: any) => {
+      const required = Number(m?.required_quantity) || 0;
+      const issued = Number(m?.issued_quantity) || 0;
+      return required - issued > 0;
+    });
+
+    const pendingCodes = Array.from(
+      new Set(
+        pendingMaterials
+          .map((m: any) => normalizeCode(String(m?.item_code || '')))
+          .filter(Boolean),
+      ),
+    );
+
+    const itemIdByCode = new Map<string, string>();
+    if (pendingCodes.length > 0) {
+      const { data: itemsByCode } = await this.supabase
+        .from('items')
+        .select('id, code')
+        .eq('tenant_id', tenantId)
+        .in('code', pendingCodes);
+
+      (itemsByCode || []).forEach((i: any) => {
+        const c = normalizeCode(String(i?.code || ''));
+        const id = String(i?.id || '').trim();
+        if (c && this.isUuid(id)) itemIdByCode.set(c, id);
+      });
+    }
+
+    const neededByItemId = new Map<string, { itemId: string; itemCode: string; needed: number }>();
+    for (const m of pendingMaterials) {
+      const itemCode = normalizeCode(String((m as any)?.item_code || ''));
+      let itemId = String((m as any)?.item_id || '').trim();
+      if (!this.isUuid(itemId) && itemCode) {
+        const resolved = itemIdByCode.get(itemCode);
+        if (resolved) itemId = resolved;
+      }
+      if (!this.isUuid(itemId) || !itemCode) continue;
+
+      const required = Number((m as any)?.required_quantity) || 0;
+      const issued = Number((m as any)?.issued_quantity) || 0;
+      const needed = Math.max(0, required - issued);
+      if (needed <= 0) continue;
+
+      const existing = neededByItemId.get(itemId);
+      if (existing) existing.needed += needed;
+      else neededByItemId.set(itemId, { itemId, itemCode, needed });
+    }
+
+    const targeted = Array.from(neededByItemId.values());
+    this.logger.log('[SmartJO][Repair] Ensuring stock for pending BOM materials');
+    this.logger.log(
+      JSON.stringify({
+        tenantId,
+        jobOrderId,
+        jobOrderNumber: jobOrder.job_order_number,
+        pendingMaterialItems: targeted.length,
+      }),
+    );
+
+    for (const t of targeted) {
+      // Match issuing behavior: use stock_entries.available_quantity (not inventory_stock)
+      const { data: stockEntries, error: stockErr } = await this.supabase
+        .from('stock_entries')
+        .select('available_quantity')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', t.itemId)
+        .gt('available_quantity', 0);
+
+      if (stockErr) {
+        this.logger.error('[SmartJO][Repair] Failed fetching stock for pending material');
+        this.logger.error(JSON.stringify({ tenantId, jobOrderId, itemId: t.itemId, itemCode: t.itemCode, error: stockErr }));
+        continue;
+      }
+
+      const entries = Array.isArray(stockEntries) ? stockEntries : [];
+      const available = entries.reduce((sum: number, e: any) => sum + (Number(e?.available_quantity) || 0), 0);
+      const shortage = Math.max(0, (Number(t.needed) || 0) - available);
+      if (shortage <= 0) continue;
+
+      const bom = await this.getActiveBomForItem(tenantId, t.itemId);
+      if (!bom?.id) {
+        this.logger.warn('[SmartJO][Repair] Pending material has no BOM; cannot auto-build');
+        this.logger.warn(JSON.stringify({ tenantId, jobOrderId, itemId: t.itemId, itemCode: t.itemCode, needed: t.needed, available }));
+        continue;
+      }
+
+      await createCompleteAndQcApprove({
+        itemId: t.itemId,
+        itemCode: t.itemCode,
+        bomId: String(bom.id),
+        quantity: shortage,
+        reason: 'PENDING_MATERIAL_SHORTAGE',
+      });
+    }
+
+    // Finally, re-issue materials for the existing main job order.
+    const issueMaterialsSummary = await this.issueJobOrderMaterials(tenantId, jobOrderId);
+
+    return {
+      jobOrderId,
+      jobOrderNumber: String(jobOrder.job_order_number || ''),
+      preview,
+      plannedSubAssembliesToMake: subAssembliesToMake.length,
+      createdSubJobOrders: completedSubJobOrders.length,
+      qcApprovedSubJobOrders,
+      issueMaterialsSummary,
+    };
   }
 
   private async normalizeMaterialIds(
@@ -445,14 +1345,18 @@ export class JobOrderService {
 
     const normalizedMaterials = await this.normalizeMaterialIds(tenantId, dto.materials || []);
 
-    // Check material availability if materials are provided
-    if (normalizedMaterials && normalizedMaterials.length > 0) {
+    // Only enforce material availability if explicitly requested.
+    // (For production planning / Smart Job Orders, shortages are expected and should not block creation.)
+    if (dto.validateMaterialsOnCreate && normalizedMaterials && normalizedMaterials.length > 0) {
       const availability = await this.checkMaterialAvailability(tenantId, normalizedMaterials, dto.quantity);
       if (!availability.available) {
         throw new BadRequestException(
-          `Insufficient materials:\n${availability.shortages.map(s => 
-            `${s.itemCode} - ${s.itemName}: Need ${s.required}, Available ${s.available}, Short ${s.shortage}`
-          ).join('\n')}`
+          `Insufficient materials:\n${availability.shortages
+            .map(
+              (s) =>
+                `${s.itemCode} - ${s.itemName}: Need ${s.required}, Available ${s.available}, Short ${s.shortage}`,
+            )
+            .join('\n')}`,
         );
       }
     }
@@ -961,7 +1865,7 @@ export class JobOrderService {
     };
   }
 
-  async completeJobOrder(tenantId: string, jobOrderId: string, userId?: string) {
+  async completeJobOrder(tenantId: string, jobOrderId: string, userId?: string, options?: { allowPartialConsumption?: boolean }) {
     // Get job order with materials
     const { data: jobOrder } = await this.supabase
       .from('production_job_orders')
@@ -974,6 +1878,8 @@ export class JobOrderService {
     if (jobOrder.status !== 'IN_PROGRESS') {
       throw new BadRequestException('Job order must be IN_PROGRESS to complete');
     }
+
+    const allowPartial = Boolean(options?.allowPartialConsumption);
 
     // Start transaction-like operations
     try {
@@ -1007,6 +1913,10 @@ export class JobOrderService {
           .order('created_at', { ascending: true });
 
         if (!stockEntries || stockEntries.length === 0) {
+          if (allowPartial) {
+            console.warn(`[completeJobOrder] Skipping material ${item?.code}: not found in inventory (partial consumption mode)`);
+            continue;
+          }
           throw new BadRequestException(`Failed to consume ${item?.code}: Item not found in inventory`);
         }
 
@@ -1017,9 +1927,14 @@ export class JobOrderService {
         );
 
         if (totalAvailable < consumeQty) {
-          throw new BadRequestException(
-            `Failed to consume ${item?.code}: Insufficient stock. Need ${consumeQty}, have ${totalAvailable}`,
-          );
+          if (allowPartial) {
+            console.warn(`[completeJobOrder] Partial consumption for ${item?.code}: need ${consumeQty}, have ${totalAvailable}`);
+            // Will consume what's available below
+          } else {
+            throw new BadRequestException(
+              `Failed to consume ${item?.code}: Insufficient stock. Need ${consumeQty}, have ${totalAvailable}`,
+            );
+          }
         }
 
         // Consume from stock entries using FIFO
@@ -1284,6 +2199,17 @@ export class JobOrderService {
 
         const warehouseId = warehouses[0].id;
 
+        const { data: itemRow, error: itemErr } = await this.supabase
+          .from('items')
+          .select('category')
+          .eq('tenant_id', tenantId)
+          .eq('id', jobOrder.item_id)
+          .single();
+
+        if (itemErr) {
+          throw new BadRequestException(itemErr.message);
+        }
+
         // Add stock entry for approved quantity
         const { error: addError } = await this.supabase
           .from('stock_entries')
@@ -1308,6 +2234,21 @@ export class JobOrderService {
         if (addError) {
           console.error('Error adding approved stock:', addError);
           throw new BadRequestException(`Failed to add stock: ${addError.message}`);
+        }
+
+        // Keep inventory_stock in sync (used by Smart JO preview + other modules)
+        const { error: invError } = await this.supabase.rpc('adjust_inventory_stock', {
+          p_tenant_id: tenantId,
+          p_item_id: jobOrder.item_id,
+          p_warehouse_id: warehouseId,
+          p_location_id: null,
+          p_quantity_change: newlyApprovedUids.length,
+          p_category: normalizeInventoryCategory(itemRow?.category, 'WIP'),
+        });
+
+        if (invError) {
+          console.error('Error syncing inventory_stock after QC approval:', invError);
+          throw new BadRequestException(`Failed to sync inventory stock: ${invError.message}`);
         }
       }
 
@@ -1514,13 +2455,20 @@ export class JobOrderService {
   }
 
   private async getAvailableStock(tenantId: string, itemId: string): Promise<number> {
-    const { data } = await this.supabase.rpc('get_item_stock_summary', {
-      p_item_id: itemId,
-      p_tenant_id: tenantId,
-    });
+    // IMPORTANT: Smart JO issuing consumes from stock_entries FIFO.
+    // If we use inventory_stock here, Smart preview can be wrong when inventory_stock
+    // drifts (e.g. when some flows only update stock_entries).
+    const { data: entries, error } = await this.supabase
+      .from('stock_entries')
+      .select('available_quantity')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .gt('available_quantity', 0);
 
-    const summary = Array.isArray(data) && data.length > 0 ? data[0] : null;
-    return Number(summary?.available_quantity) || 0;
+    if (error) throw new BadRequestException(error.message);
+
+    const safe = Array.isArray(entries) ? entries : [];
+    return safe.reduce((sum: number, e: any) => sum + (Number(e?.available_quantity) || 0), 0);
   }
 
   private async getActiveBomForItem(tenantId: string, itemId: string): Promise<any | null> {
@@ -1695,13 +2643,14 @@ export class JobOrderService {
           });
         }
 
-        const shouldExplodeChild = Boolean(options?.includeAllComponents) || toMakeQuantity > 0;
+        // Always explode full required quantity (not just shortage) to include all raw materials
+        // This ensures consistent shortage reporting across quantity changes
+        const shouldExplodeChild = Boolean(options?.includeAllComponents) || requiredQuantity > 0;
         if (shouldExplodeChild) {
-          const nextMultiplier = Boolean(options?.includeAllComponents) ? requiredQuantity : toMakeQuantity;
           const childResult = await this.buildSmartExplosion(
             tenantId,
             childBomId,
-            nextMultiplier,
+            requiredQuantity,
             level + 1,
             new Set(visitedBomIds),
             caches,
@@ -1722,66 +2671,64 @@ export class JobOrderService {
           caches.itemById.set(itemId, item);
         }
 
-        // Infer if this item is actually a subassembly and should be treated as BOM
-        const isSubassembly = item.category === 'SUBASSEMBLY' || item.type === 'SUBASSEMBLY';
-        if (isSubassembly) {
-          // Attempt to find an active BOM for this subassembly
-          const subBom = await this.getActiveBomForItem(tenantId, itemId);
-          if (subBom) {
-            caches.bomById.set(subBom.id, subBom);
+        // If this item has its own BOM, treat it as a sub-assembly even if category/type is not set.
+        // Many BOMs reference assemblies via item_id (without child_bom_id), so relying only on
+        // category/type can cause assemblies to be treated as plain items and appear as "NO_STOCK".
+        const subBom = await this.getActiveBomForItem(tenantId, itemId);
+        if (subBom) {
+          caches.bomById.set(subBom.id, subBom);
 
-            let available = caches.stockByItemId.get(itemId);
-            if (available === undefined) {
-              available = await this.getAvailableStock(tenantId, itemId);
-              caches.stockByItemId.set(itemId, available);
-            }
+          let available = caches.stockByItemId.get(itemId);
+          if (available === undefined) {
+            available = await this.getAvailableStock(tenantId, itemId);
+            caches.stockByItemId.set(itemId, available);
+          }
 
-            const toMakeQuantity = Math.max(0, requiredQuantity - available);
+          const toMakeQuantity = Math.max(0, requiredQuantity - available);
 
-            nodes.push({
-              level,
-              componentType: 'BOM',
+          nodes.push({
+            level,
+            componentType: 'BOM',
+            bomId: subBom.id,
+            parentBomId: bomId,
+            itemId,
+            itemCode: item.code,
+            itemName: item.name,
+            requiredQuantity,
+            availableQuantity: available,
+            toMakeQuantity,
+            shortageQuantity: 0,
+          });
+
+          if (toMakeQuantity > 0) {
+            subAssemblies.push({
               bomId: subBom.id,
-              parentBomId: bomId,
               itemId,
               itemCode: item.code,
               itemName: item.name,
               requiredQuantity,
               availableQuantity: available,
               toMakeQuantity,
-              shortageQuantity: 0,
             });
-
-            if (toMakeQuantity > 0) {
-              subAssemblies.push({
-                bomId: subBom.id,
-                itemId,
-                itemCode: item.code,
-                itemName: item.name,
-                requiredQuantity,
-                availableQuantity: available,
-                toMakeQuantity,
-              });
-            }
-
-            const shouldExplodeChild = Boolean(options?.includeAllComponents) || toMakeQuantity > 0;
-            if (shouldExplodeChild) {
-              const nextMultiplier = Boolean(options?.includeAllComponents) ? requiredQuantity : toMakeQuantity;
-              const childResult = await this.buildSmartExplosion(
-                tenantId,
-                subBom.id,
-                nextMultiplier,
-                level + 1,
-                new Set(visitedBomIds),
-                caches,
-                options,
-              );
-              nodes.push(...childResult.nodes);
-              subAssemblies.push(...childResult.subAssemblies);
-            }
-
-            continue;
           }
+
+          const shouldExplodeChild = Boolean(options?.includeAllComponents) || toMakeQuantity > 0;
+          if (shouldExplodeChild) {
+            const nextMultiplier = Boolean(options?.includeAllComponents) ? requiredQuantity : toMakeQuantity;
+            const childResult = await this.buildSmartExplosion(
+              tenantId,
+              subBom.id,
+              nextMultiplier,
+              level + 1,
+              new Set(visitedBomIds),
+              caches,
+              options,
+            );
+            nodes.push(...childResult.nodes);
+            subAssemblies.push(...childResult.subAssemblies);
+          }
+
+          continue;
         }
 
         // Standard ITEM component (not a subassembly or no BOM found)
@@ -1868,10 +2815,26 @@ export class JobOrderService {
   }
 
   async createSmartJobOrder(tenantId: string, userId: string, req: SmartJobOrderCreateRequest) {
+    const result = await this.createSmartJobOrderInternal(tenantId, userId, req);
+    return {
+      jobOrder: result.jobOrder,
+      autoCompletedSubJobOrders: result.autoCompletedSubJobOrders,
+      preview: result.preview,
+    };
+  }
+
+  private async createSmartJobOrderInternal(
+    tenantId: string,
+    userId: string,
+    req: SmartJobOrderCreateRequest,
+    onProgress?: (p: SmartJobOrderCreateProgress) => void,
+  ) {
     if (!req?.itemId) throw new BadRequestException('itemId is required');
     if (!req?.quantity || Number(req.quantity) <= 0) throw new BadRequestException('quantity must be > 0');
 
     const startDate = this.toStartDate(req.startDate);
+    onProgress?.({ current: 0, total: 0, phase: 'PREVIEW', message: 'Building preview…' });
+
     const preview = await this.getSmartJobOrderPreview(tenantId, {
       itemId: req.itemId,
       quantity: Number(req.quantity),
@@ -1881,9 +2844,47 @@ export class JobOrderService {
 
     const completedSubJobOrders: any[] = [];
 
+    // Create deeper sub-assemblies first to satisfy nested BOM dependencies.
+    const subAssemblyLevelByKey = new Map<string, number>();
+    for (const n of (preview.nodes || []) as SmartExplosionNode[]) {
+      if (n?.componentType !== 'BOM') continue;
+      const key = `${String(n.bomId)}:${String(n.itemId)}`;
+      const lvl = Number(n.level) || 0;
+      const existing = subAssemblyLevelByKey.get(key);
+      if (existing === undefined || lvl > existing) subAssemblyLevelByKey.set(key, lvl);
+    }
+
+    const subAssembliesToMakeAll = ([...(preview.subAssembliesToMake as SmartSubAssemblyPlan[])] || []).sort((a, b) => {
+      const aKey = `${String(a.bomId)}:${String(a.itemId)}`;
+      const bKey = `${String(b.bomId)}:${String(b.itemId)}`;
+      const aLvl = subAssemblyLevelByKey.get(aKey) ?? 0;
+      const bLvl = subAssemblyLevelByKey.get(bKey) ?? 0;
+      if (aLvl !== bLvl) return bLvl - aLvl; // deeper first
+      return (Number(b.toMakeQuantity) || 0) - (Number(a.toMakeQuantity) || 0);
+    });
+
+    const subAssembliesToMake = subAssembliesToMakeAll.filter((sa) => Number(sa?.toMakeQuantity || 0) > 0);
+    const totalSteps = subAssembliesToMake.length + 1; // +1 for main job order
+    let currentStep = 0;
+
+    onProgress?.({
+      current: 0,
+      total: totalSteps,
+      phase: 'SUB_ASSEMBLIES',
+      message: subAssembliesToMake.length ? `Creating ${subAssembliesToMake.length} sub-assemblies…` : 'No sub-assemblies required',
+    });
+
     // Auto-create and auto-complete missing sub assemblies.
-    for (const sa of preview.subAssembliesToMake as SmartSubAssemblyPlan[]) {
-      if (sa.toMakeQuantity <= 0) continue;
+    for (const sa of subAssembliesToMake) {
+      currentStep += 1;
+      onProgress?.({
+        current: currentStep,
+        total: totalSteps,
+        phase: 'SUB_ASSEMBLIES',
+        message: `Creating sub-assembly ${currentStep} of ${subAssembliesToMake.length}`,
+        itemCode: sa.itemCode,
+        itemName: sa.itemName,
+      });
 
       console.log('[JobOrderService] Creating sub-assembly:', {
         itemId: sa.itemId,
@@ -1909,11 +2910,42 @@ export class JobOrderService {
         .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
         .eq('id', created.id);
 
-      const completed = await this.completeJobOrder(tenantId, created.id, userId);
+      const completed = await this.completeJobOrder(tenantId, created.id, userId, { allowPartialConsumption: true });
       completedSubJobOrders.push(completed);
+
+      // IMPORTANT: completeJobOrder does NOT add finished stock entries anymore.
+      // For Smart Job Orders we need the sub-assembly stock to exist immediately so the main
+      // finished-goods job order can consume it. Auto-approve QC for all generated UIDs.
+      const { data: uidRows, error: uidErr } = await this.supabase
+        .from('uid_registry')
+        .select('uid')
+        .eq('tenant_id', tenantId)
+        .eq('job_order_id', created.id);
+
+      if (uidErr) throw new BadRequestException(uidErr.message);
+      const uids = (uidRows || [])
+        .map((r: any) => String(r?.uid || '').trim())
+        .filter(Boolean);
+
+      if (uids.length === 0) {
+        throw new BadRequestException(
+          `Failed to auto-approve QC for sub-assembly ${sa.itemCode}: no UIDs found for job order ${created.id}`,
+        );
+      }
+
+      await this.approveQC(tenantId, created.id, uids, [], userId);
     }
 
     // Create the main finished-goods job order. Keep it as-is (typically PLANNED) for shop floor execution.
+    onProgress?.({
+      current: subAssembliesToMake.length + 1,
+      total: totalSteps,
+      phase: 'MAIN_JOB_ORDER',
+      message: 'Creating main finished-goods job order…',
+      itemCode: preview.finishedItem.code,
+      itemName: preview.finishedItem.name,
+    });
+
     const mainNotesParts: string[] = ['Created via Smart Job Order'];
     if (preview.source?.salesOrderId) mainNotesParts.push(`SalesOrder: ${preview.source.salesOrderId}`);
     if (preview.source?.salesOrderItemId) mainNotesParts.push(`SOItem: ${preview.source.salesOrderItemId}`);
@@ -1929,26 +2961,136 @@ export class JobOrderService {
       itemSelections: req.itemSelections,
     });
 
-    // Smart job order UX expects stock to reduce immediately upon creation.
-    // Issue materials for the main job order (does NOT add finished goods stock).
-    const shouldAutoIssue = req.autoIssueMaterials !== false;
+    // Issue materials for the main job order (reduce stock for sub-assemblies + raw materials).
+    // At this point, all raw materials should already be in stock (user fulfilled shortages during planning),
+    // and sub-assemblies were just created and QC-approved above.
     console.log('[JobOrderService] Smart job order created:', {
       jobOrderId: main.id,
       jobOrderNumber: main.job_order_number,
-      shouldAutoIssue,
+      note: 'Issuing materials (sub-assemblies + raw materials)',
     });
-    
-    if (shouldAutoIssue) {
-      await this.issueJobOrderMaterials(tenantId, main.id);
-      console.log('[JobOrderService] Materials issued successfully for', main.job_order_number);
+
+    onProgress?.({
+      current: totalSteps,
+      total: totalSteps,
+      phase: 'ISSUE_MATERIALS',
+      message: 'Issuing materials (reducing stock)…',
+    });
+
+    // CRITICAL FIX: Retry issuing with inline repair for nested sub-assemblies.
+    // The preview may only capture ONE level of missing sub-assemblies, but deeper nested
+    // items won't have stock until we recursively build them.
+    const MAX_ISSUE_RETRIES = 5;
+    let issueMaterialsSummary: JobOrderIssueMaterialsSummary | { error: string } | null = null;
+    let retryCount = 0;
+
+    while (retryCount < MAX_ISSUE_RETRIES) {
+      retryCount += 1;
+      try {
+        const summary = await this.issueJobOrderMaterials(tenantId, main.id);
+        issueMaterialsSummary = summary;
+
+        // If all materials are issued (no noStockLines), we're done
+        if (summary.noStockLines === 0) {
+          console.log(`[JobOrderService] All materials issued for ${main.job_order_number} on attempt ${retryCount}`);
+          break;
+        }
+
+        console.log(`[JobOrderService] Issuing attempt ${retryCount}: ${summary.issuedLines} issued, ${summary.noStockLines} no-stock`);
+
+        // Still have no-stock lines - identify which items need sub-assemblies built
+        const noStockItemIds = summary.failures
+          .filter((f) => f.message === 'NO_STOCK_AVAILABLE' && f.itemId)
+          .map((f) => f.itemId!);
+
+        if (noStockItemIds.length === 0) {
+          console.log('[JobOrderService] No recoverable no-stock items, stopping retry loop');
+          break;
+        }
+
+        // For each no-stock item, check if it has a BOM and build it
+        let builtAny = false;
+        for (const itemId of noStockItemIds) {
+          const bom = await this.getActiveBomForItem(tenantId, itemId);
+          if (!bom?.id) continue; // No BOM = raw material, can't auto-build
+
+          // Check current stock
+          const currentStock = await this.getAvailableStock(tenantId, itemId);
+          if (currentStock > 0) continue; // Already have some stock now
+
+          // Find required quantity from pending materials
+          const { data: pendingMat } = await this.supabase
+            .from('job_order_materials')
+            .select('item_id, item_code, required_quantity, issued_quantity')
+            .eq('job_order_id', main.id)
+            .eq('item_id', itemId)
+            .single();
+
+          const needed = Math.max(0, (Number(pendingMat?.required_quantity) || 1) - (Number(pendingMat?.issued_quantity) || 0));
+          if (needed <= 0) continue;
+
+          console.log(`[JobOrderService] Auto-building missing sub-assembly: ${pendingMat?.item_code || itemId} x${needed}`);
+
+          // Create, complete, and QC approve the sub-assembly
+          const created = await this.createFromBOMWithVariantSelections(tenantId, userId, {
+            itemId,
+            bomId: bom.id,
+            quantity: needed,
+            startDate,
+            priority: 'NORMAL',
+            notes: `Auto-created by Smart JO for ${main.job_order_number} (nested dependency)`,
+            variantSelections: req.variantSelections,
+            itemSelections: req.itemSelections,
+          });
+
+          await this.supabase
+            .from('production_job_orders')
+            .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
+            .eq('id', created.id);
+
+          await this.completeJobOrder(tenantId, created.id, userId, { allowPartialConsumption: true });
+          completedSubJobOrders.push(created);
+
+          const { data: uidRows } = await this.supabase
+            .from('uid_registry')
+            .select('uid')
+            .eq('tenant_id', tenantId)
+            .eq('job_order_id', created.id);
+
+          const uids = (uidRows || []).map((r: any) => String(r?.uid || '').trim()).filter(Boolean);
+          if (uids.length > 0) {
+            await this.approveQC(tenantId, created.id, uids, [], userId);
+          }
+
+          builtAny = true;
+        }
+
+        if (!builtAny) {
+          console.log('[JobOrderService] Could not build any more sub-assemblies, stopping retry loop');
+          break;
+        }
+
+        // Loop will retry issuing with the newly created stock
+      } catch (issueError: any) {
+        console.error(`[JobOrderService] Issue attempt ${retryCount} failed:`, issueError);
+        issueMaterialsSummary = { error: issueError?.message || 'Failed to issue materials' };
+        break;
+      }
     }
 
-    const mainWithMaterials = shouldAutoIssue ? await this.findOne(tenantId, main.id) : main;
+    if (retryCount >= MAX_ISSUE_RETRIES) {
+      console.warn(`[JobOrderService] Reached max retries (${MAX_ISSUE_RETRIES}) for issuing materials`);
+    }
+
+    const mainWithMaterials = await this.findOne(tenantId, main.id);
+    onProgress?.({ current: totalSteps, total: totalSteps, phase: 'DONE', message: 'Done' });
 
     return {
       jobOrder: mainWithMaterials,
       autoCompletedSubJobOrders: completedSubJobOrders,
       preview,
+      issueMaterialsSummary,
+      _progressTotal: totalSteps,
     };
   }
 }

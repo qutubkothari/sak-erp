@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
+import { normalizeInventoryCategory } from '../../inventory/utils/inventory-category';
 import { mkdir, writeFile, unlink } from 'fs/promises';
 import { extname, join, resolve } from 'path';
 import { randomUUID } from 'crypto';
@@ -394,6 +395,31 @@ export class GrnService {
   async submit(tenantId: string, id: string, userId: string) {
     // Get GRN details with items
     const grn = await this.findOne(tenantId, id);
+
+    // Submit should not bypass QC. Allow legacy records where item-level QC is done but header flag isn't updated.
+    if (!grn.qc_completed) {
+      const items = Array.isArray(grn.grn_items) ? grn.grn_items : [];
+      const qcStatusDecidedForAll =
+        items.length > 0 &&
+        items.every((i: any) => {
+          const qcStatus = String(i.qc_status || '').toUpperCase();
+          return qcStatus === 'ACCEPTED' || qcStatus === 'REJECTED' || qcStatus === 'PARTIAL';
+        });
+
+      if (!qcStatusDecidedForAll) {
+        throw new BadRequestException(
+          'Cannot submit GRN: QC inspection must be completed first. Please complete QC via the QC Accept action.',
+        );
+      }
+
+      await this.supabase
+        .from('grns')
+        .update({ qc_completed: true, updated_at: new Date().toISOString() })
+        .eq('tenant_id', tenantId)
+        .eq('id', grn.id);
+
+      grn.qc_completed = true;
+    }
     
     // Update GRN status
     const { error } = await this.supabase
@@ -445,23 +471,21 @@ export class GrnService {
       // Check if QC is completed
       if (!grn.qc_completed) {
         const items = Array.isArray(grn.grn_items) ? grn.grn_items : [];
-        const qcDecidedForAll =
+        const qcStatusDecidedForAll =
           items.length > 0 &&
           items.every((i: any) => {
-            const accepted = Number(i.accepted_qty ?? i.accepted_quantity ?? 0) || 0;
-            const rejected = Number(i.rejected_qty ?? i.rejected_quantity ?? 0) || 0;
-            const received = Number(i.received_qty ?? i.received_quantity ?? 0) || 0;
-            return accepted + rejected === received;
+            const qcStatus = String(i.qc_status || '').toUpperCase();
+            return qcStatus === 'ACCEPTED' || qcStatus === 'REJECTED' || qcStatus === 'PARTIAL';
           });
 
-        if (!qcDecidedForAll) {
+        if (!qcStatusDecidedForAll) {
           throw new BadRequestException(
             'Cannot approve GRN: QC inspection must be completed first. Please complete QC via the QC Accept action.',
           );
         }
 
-        // Backward compatible: if QC has effectively been decided (accepted+rejected == received),
-        // mark QC completed so approval can proceed.
+        // Backward compatible: QC was completed on items but header flag wasn't updated.
+        // Mark qc_completed so approval can proceed.
         await this.supabase
           .from('grns')
           .update({ qc_completed: true, updated_at: new Date().toISOString() })
@@ -567,7 +591,17 @@ export class GrnService {
       
       if (count && count > 0) {
         console.log(`UIDs already exist for item ${item.code} in this GRN (${count} UIDs found). Skipping generation to prevent duplicates.`);
-        return existingUIDs.map(u => u.uid);
+
+        // Keep grn_items.uid_count in sync so list views show the right UID totals.
+        // Some historical flows may have created UIDs without updating uid_count.
+        if (grnItem?.id) {
+          await this.supabase
+            .from('grn_items')
+            .update({ uid_count: count, uid_generated: true })
+            .eq('id', grnItem.id);
+        }
+
+        return (existingUIDs || []).map((u: any) => u.uid);
       }
 
       // Determine entity type based on item category
@@ -1188,7 +1222,7 @@ export class GrnService {
         p_warehouse_id: stockData.warehouse_id,
         p_location_id: null, // Assuming null location for now
         p_quantity_change: quantityChange,
-        p_category: item?.category || 'RAW_MATERIAL'
+        p_category: normalizeInventoryCategory(item?.category, 'RAW_MATERIAL'),
       });
 
       if (error) {

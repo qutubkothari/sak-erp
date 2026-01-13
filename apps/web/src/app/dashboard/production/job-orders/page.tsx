@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import SearchableSelect from '../../../../components/SearchableSelect';
+import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 
 interface Item {
   id: string;
@@ -875,6 +876,81 @@ function JobOrdersPageContent() {
     }
   };
 
+  const handleRetryIssueMaterials = async () => {
+    if (!selectedJobOrder?.id) return;
+    setLoading(true);
+    const joToRefresh = selectedJobOrder;
+    try {
+      const summary = await apiClient.post(`/job-orders/${joToRefresh.id}/issue-materials`, { autoRepair: true });
+
+      // Important: don't keep the whole modal "locked" while we refetch details.
+      // If the details call is slow/hangs, buttons should still be usable.
+      setLoading(false);
+      void openJobOrderDetails(joToRefresh);
+
+      const failuresCount = Array.isArray((summary as any)?.failures) ? (summary as any).failures.length : 0;
+      const autoRepair = (summary as any)?.autoRepair;
+      const autoRepairText = autoRepair?.triggered
+        ? `\n\nAuto-repair:\n` +
+          `Triggered: ${autoRepair?.triggered ? 'YES' : 'NO'}\n` +
+          `Reason: ${autoRepair?.reason ?? '-'}\n` +
+          `Planned sub-assemblies: ${autoRepair?.plannedSubAssembliesToMake ?? '-'}\n` +
+          `Created sub-JOs: ${autoRepair?.createdSubJobOrders ?? '-'}\n` +
+          `QC auto-approved: ${autoRepair?.qcApprovedSubJobOrders ?? '-'}\n`
+        : '';
+      alert(
+        `Issue Materials finished.\n\n` +
+          `Attempted: ${(summary as any)?.attempted ?? '-'}\n` +
+          `Issued lines: ${(summary as any)?.issuedLines ?? '-'}\n` +
+          `Partial lines: ${(summary as any)?.partialLines ?? '-'}\n` +
+          `No stock lines: ${(summary as any)?.noStockLines ?? '-'}\n` +
+          `Invalid item lines: ${(summary as any)?.skippedInvalidItemLines ?? '-'}\n` +
+          `Failures: ${failuresCount}` +
+          autoRepairText,
+      );
+    } catch (error: any) {
+      console.error('Error issuing materials:', error);
+      setLoading(false);
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to issue materials';
+      alert(errorMsg);
+    }
+  };
+
+  const handleRepairSmartAndIssue = async () => {
+    if (!selectedJobOrder?.id) return;
+    setLoading(true);
+    const joToRefresh = selectedJobOrder;
+    try {
+      const result = await apiClient.post(`/job-orders/${joToRefresh.id}/smart/repair-issue`, {});
+
+      // Important: don't keep the whole modal "locked" while we refetch details.
+      // If the details call is slow/hangs, buttons should still be usable.
+      setLoading(false);
+      void openJobOrderDetails(joToRefresh);
+
+      const issueSummary = (result as any)?.issueMaterialsSummary || {};
+      const failuresCount = Array.isArray(issueSummary?.failures) ? issueSummary.failures.length : 0;
+      alert(
+        `Smart Repair finished.\n\n` +
+          `Sub-assemblies planned: ${(result as any)?.plannedSubAssembliesToMake ?? '-'}\n` +
+          `Sub-assemblies created: ${(result as any)?.createdSubJobOrders ?? '-'}\n` +
+          `QC auto-approved: ${(result as any)?.qcApprovedSubJobOrders ?? '-'}\n\n` +
+          `Issue Materials summary:\n` +
+          `Attempted: ${issueSummary?.attempted ?? '-'}\n` +
+          `Issued lines: ${issueSummary?.issuedLines ?? '-'}\n` +
+          `Partial lines: ${issueSummary?.partialLines ?? '-'}\n` +
+          `No stock lines: ${issueSummary?.noStockLines ?? '-'}\n` +
+          `Invalid item lines: ${issueSummary?.skippedInvalidItemLines ?? '-'}\n` +
+          `Failures: ${failuresCount}`,
+      );
+    } catch (error: any) {
+      console.error('Error repairing smart issuance:', error);
+      setLoading(false);
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to repair Smart Job Order issuance';
+      alert(errorMsg);
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       itemId: '',
@@ -903,6 +979,113 @@ function JobOrdersPageContent() {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
+  const jobOrdersTableColumns: Array<ListTableColumn<JobOrder>> = [
+    {
+      id: 'jobOrderNumber',
+      label: 'Job Order #',
+      accessor: (jo) => jo.jobOrderNumber,
+      cell: (jo) => <span className="font-medium text-gray-900">{jo.jobOrderNumber}</span>,
+    },
+    {
+      id: 'item',
+      label: 'Item',
+      accessor: (jo) => jo.itemCode,
+      searchAccessor: (jo) => `${jo.itemCode} ${jo.itemName}`.trim(),
+      cell: (jo) => (
+        <div className="min-w-[280px] max-w-[520px]">
+          <div className="font-medium text-gray-900 whitespace-nowrap">{jo.itemCode}</div>
+          <div className="text-sm text-gray-500 whitespace-normal break-words" title={jo.itemName}>
+            {jo.itemName}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'quantity',
+      label: 'Quantity',
+      accessor: (jo) => jo.quantity,
+      sortAccessor: (jo) => Number(jo.quantity || 0),
+    },
+    {
+      id: 'startDate',
+      label: 'Start Date',
+      accessor: (jo) => jo.startDate,
+      sortAccessor: (jo) => (jo.startDate ? new Date(jo.startDate).getTime() : 0),
+      cell: (jo) => <span>{jo.startDate ? new Date(jo.startDate).toLocaleDateString() : '-'}</span>,
+    },
+    {
+      id: 'priority',
+      label: 'Priority',
+      accessor: (jo) => jo.priority,
+      cell: (jo) => (
+        <span
+          className={`px-2 py-1 text-xs rounded ${
+            jo.priority === 'HIGH'
+              ? 'bg-red-100 text-red-800'
+              : jo.priority === 'URGENT'
+                ? 'bg-red-200 text-red-900'
+                : 'bg-gray-100 text-gray-800'
+          }`}
+        >
+          {jo.priority}
+        </span>
+      ),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      accessor: (jo) => jo.status,
+      cell: (jo) => (
+        <span className={`px-2 py-1 text-xs rounded ${getStatusColor(jo.status)}`}>{jo.status}</span>
+      ),
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      sortable: false,
+      hideable: false,
+      cell: (jo) => (
+        <div className="whitespace-nowrap text-sm">
+          <button
+            type="button"
+            onClick={() => openJobOrderDetails(jo)}
+            className="text-blue-600 hover:text-blue-800 mr-3"
+          >
+            View
+          </button>
+          {jo.status === 'DRAFT' && (
+            <button
+              type="button"
+              onClick={() => handleUpdateStatus(jo.id, 'SCHEDULED')}
+              className="text-green-600 hover:text-green-800 mr-3"
+            >
+              Schedule
+            </button>
+          )}
+          {jo.status === 'SCHEDULED' && (
+            <button
+              type="button"
+              onClick={() => handleUpdateStatus(jo.id, 'IN_PROGRESS')}
+              className="text-yellow-600 hover:text-yellow-800 mr-3"
+            >
+              Start
+            </button>
+          )}
+          {jo.status === 'IN_PROGRESS' && (
+            <button
+              type="button"
+              onClick={() => handleCompleteJobOrder(jo.id)}
+              className="text-green-600 hover:text-green-800"
+              disabled={loading}
+            >
+              Complete
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="p-6 min-h-screen bg-gradient-to-br from-[#FAF9F6] to-[#E8DCC4]">
       <div className="flex justify-between items-center mb-6">
@@ -930,83 +1113,21 @@ function JobOrdersPageContent() {
       </div>
 
       {/* Job Orders List */}
-      <div className="bg-[#FAF9F6] rounded-lg shadow-lg border border-[#E8DCC4] overflow-x-auto">
-        <table className="min-w-[980px] w-full divide-y divide-[#E8DCC4]">
-          <thead className="bg-[#E8DCC4]">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Job Order #</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase w-[420px]">Item</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Quantity</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Start Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Priority</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#6F4E37] uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-[#FAF9F6] divide-y divide-[#E8DCC4]">
-            {jobOrders.map((jo) => (
-              <tr key={jo.id} className="hover:bg-[#E8DCC4]">
-                <td className="px-6 py-4 whitespace-nowrap font-medium">{jo.jobOrderNumber}</td>
-                <td className="px-6 py-4 min-w-[280px] max-w-[520px]">
-                  <div className="font-medium text-[#36454F] whitespace-nowrap">{jo.itemCode}</div>
-                  <div className="text-sm text-gray-500 whitespace-normal break-words" title={jo.itemName}>
-                    {jo.itemName}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">{jo.quantity}</td>
-                <td className="px-6 py-4 whitespace-nowrap">{new Date(jo.startDate).toLocaleDateString()}</td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 py-1 text-xs rounded ${
-                    jo.priority === 'HIGH' ? 'bg-red-100 text-red-800' :
-                    jo.priority === 'URGENT' ? 'bg-red-200 text-red-900' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {jo.priority}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 py-1 text-xs rounded ${getStatusColor(jo.status)}`}>
-                    {jo.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <button
-                    onClick={() => openJobOrderDetails(jo)}
-                    className="text-blue-600 hover:text-blue-800 mr-3"
-                  >
-                    View
-                  </button>
-                  {jo.status === 'DRAFT' && (
-                    <button
-                      onClick={() => handleUpdateStatus(jo.id, 'SCHEDULED')}
-                      className="text-green-600 hover:text-green-800 mr-3"
-                    >
-                      Schedule
-                    </button>
-                  )}
-                  {jo.status === 'SCHEDULED' && (
-                    <button
-                      onClick={() => handleUpdateStatus(jo.id, 'IN_PROGRESS')}
-                      className="text-yellow-600 hover:text-yellow-800 mr-3"
-                    >
-                      Start
-                    </button>
-                  )}
-                  {jo.status === 'IN_PROGRESS' && (
-                    <button
-                      onClick={() => handleCompleteJobOrder(jo.id)}
-                      className="text-green-600 hover:text-green-800"
-                      disabled={loading}
-                    >
-                      Complete
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ListTable
+        storageKey="jobOrdersTable"
+        rows={jobOrders}
+        columns={jobOrdersTableColumns}
+        getRowId={(jo) => jo.id}
+        defaultPageSize={10}
+        pageSizeOptions={[10, 25, 50, 100]}
+        searchPlaceholder="Search by job order #, item, status, priority…"
+        emptyState={
+          <div className="py-10">
+            <div className="text-lg font-semibold text-gray-700">No Job Orders Yet</div>
+            <div className="text-sm text-gray-500">Create your first job order to get started</div>
+          </div>
+        }
+      />
 
       {/* Create Job Order Modal */}
       {showCreateModal && (
@@ -1431,6 +1552,22 @@ function JobOrdersPageContent() {
               </div>
 
               <div className="col-span-2 flex justify-end">
+                <button
+                  onClick={handleRetryIssueMaterials}
+                  disabled={loading || ['COMPLETED', 'CANCELLED'].includes(String(selectedJobOrder.status || '').toUpperCase())}
+                  className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-800 disabled:opacity-50 mr-2"
+                  title="Re-run material issuing for this job order"
+                >
+                  Retry Issue Materials
+                </button>
+                <button
+                  onClick={handleRepairSmartAndIssue}
+                  disabled={loading || ['COMPLETED', 'CANCELLED'].includes(String(selectedJobOrder.status || '').toUpperCase())}
+                  className="px-4 py-2 bg-indigo-700 text-white rounded hover:bg-indigo-800 disabled:opacity-50 mr-2"
+                  title="Auto-create missing sub-assemblies (with QC auto-approval) then re-issue materials"
+                >
+                  Repair Smart + Issue
+                </button>
                 <button
                   onClick={openQcModal}
                   disabled={selectedJobOrder.status !== 'COMPLETED'}

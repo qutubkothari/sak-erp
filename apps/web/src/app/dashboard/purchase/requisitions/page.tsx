@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
+import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 
 interface PRItem {
   id: string;
@@ -98,7 +99,6 @@ function PRContent() {
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
   const [loadingRequisitions, setLoadingRequisitions] = useState(true);
   const [filterStatus, setFilterStatus] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
   const [selectedPR, setSelectedPR] = useState<PRDetail | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -149,6 +149,107 @@ function PRContent() {
   const [rfqPreviewData, setRfqPreviewData] = useState<any>(null);
   const [rfqPreviewIndex, setRfqPreviewIndex] = useState(0);
   const [rfqPreviewLoading, setRfqPreviewLoading] = useState(false);
+
+  const requisitionsTableColumns: Array<ListTableColumn<Requisition>> = [
+    {
+      id: 'pr_number',
+      label: 'PR Number',
+      accessor: (r) => r.pr_number,
+      cell: (r) => <span className="font-medium text-gray-900">{r.pr_number}</span>,
+    },
+    {
+      id: 'department',
+      label: 'Department',
+      accessor: (r) => r.department,
+    },
+    {
+      id: 'required_date',
+      label: 'Required Date',
+      accessor: (r) => r.required_date,
+      sortAccessor: (r) => new Date(r.required_date).getTime(),
+      cell: (r) => <span>{new Date(r.required_date).toLocaleDateString()}</span>,
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      accessor: (r) => r.status,
+      cell: (r) => (
+        <span
+          className={`px-2 py-1 text-xs font-semibold rounded-full ${
+            r.status === 'APPROVED'
+              ? 'bg-green-100 text-green-800'
+              : r.status === 'SUBMITTED'
+                ? 'bg-blue-100 text-blue-800'
+                : r.status === 'DRAFT'
+                  ? 'bg-yellow-100 text-yellow-800'
+                  : r.status === 'REJECTED'
+                    ? 'bg-red-100 text-red-800'
+                    : 'bg-gray-100 text-gray-800'
+          }`}
+        >
+          {r.status}
+        </span>
+      ),
+    },
+    {
+      id: 'created_at',
+      label: 'Created',
+      accessor: (r) => r.created_at,
+      sortAccessor: (r) => new Date(r.created_at).getTime(),
+      cell: (r) => <span>{new Date(r.created_at).toLocaleDateString()}</span>,
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      sortable: false,
+      hideable: false,
+      cell: (req) => (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => handleViewDetails(req.id)}
+            className="text-amber-600 hover:text-amber-900 font-medium"
+          >
+            View Details
+          </button>
+          {(req.status === 'DRAFT' || req.status === 'SUBMITTED' || req.status === 'REJECTED') && (
+            <button
+              type="button"
+              onClick={() => handleEditPR(req.id)}
+              className="text-blue-600 hover:text-blue-900 font-medium"
+            >
+              Edit
+            </button>
+          )}
+          {(req.status === 'DRAFT' || req.status === 'SUBMITTED') && (
+            <>
+              <button
+                type="button"
+                onClick={() => handleApprove(req.id)}
+                className="text-green-600 hover:text-green-900 font-medium"
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                onClick={() => handleReject(req.id)}
+                className="text-red-600 hover:text-red-900 font-medium"
+              >
+                Reject
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => handleDelete(req.id)}
+            className="text-gray-600 hover:text-gray-900 font-medium"
+          >
+            Delete
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   // Helper to get selected vendor IDs
   const getSelectedVendorIds = () => {
@@ -484,6 +585,10 @@ function PRContent() {
     setRfqItemVendors({});
     setRfqResponseDate('');
     setRfqRemarks('');
+    if (masterItems.length === 0) {
+      // Ensure we can resolve UOM from Item Master in the detail modal.
+      fetchMasterItems();
+    }
     try {
       const data = await apiClient.get(`/purchase/requisitions/${prId}`);
       setSelectedPR(data);
@@ -496,15 +601,40 @@ function PRContent() {
     }
   };
 
+  const resolveUomForPRDetailItem = (prItem: PRDetailItem): string => {
+    const byId = prItem.item_id
+      ? masterItems.find((mi) => mi.id === String(prItem.item_id))
+      : undefined;
+
+    if (byId?.uom) return byId.uom;
+
+    const code = String(prItem.item_code || '').trim().toLowerCase();
+    const byCode = code
+      ? masterItems.find((mi) => mi.code.trim().toLowerCase() === code)
+      : undefined;
+
+    return byCode?.uom || prItem.uom || '-';
+  };
+
   const handleEditPR = async (prId: string) => {
     try {
       const data = await apiClient.get(`/purchase/requisitions/${prId}`);
+
+      const toDateInputValue = (value: any): string => {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        // Already in yyyy-mm-dd
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+        const parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) return '';
+        return parsed.toISOString().split('T')[0];
+      };
       
       // Populate form with existing PR data
       setFormData({
-        department: data.department,
-        requiredDate: data.required_date.split('T')[0],
-        priority: data.priority,
+        department: data.department || '',
+        requiredDate: toDateInputValue(data.required_date ?? data.requiredDate),
+        priority: data.priority || 'MEDIUM',
         notes: data.notes || '',
       });
 
@@ -519,7 +649,13 @@ function PRContent() {
         id: String(item?.id || ''),
         itemCode: item?.item_code || item?.itemCode || '',
         itemName: item?.item_name || item?.itemName || '',
-        uom: item?.uom || undefined,
+        uom:
+          item?.uom ||
+          item?.uom_name ||
+          item?.item?.uom ||
+          item?.item?.uom_name ||
+          item?.item_uom ||
+          undefined,
         vendorId: item?.vendor_id || item?.vendorId || undefined,
         vendorName: item?.vendor_name || item?.vendorName || undefined,
         quantity: item?.requested_qty ?? item?.quantity ?? 0,
@@ -534,7 +670,8 @@ function PRContent() {
       setShowCreateForm(true);
     } catch (error) {
       console.error('Error loading PR for edit:', error);
-      alert('Failed to load PR for editing');
+      const msg = (error as any)?.message ? String((error as any).message) : '';
+      alert(msg ? `Failed to load PR for editing: ${msg}` : 'Failed to load PR for editing');
     }
   };
 
@@ -1319,135 +1456,47 @@ function PRContent() {
         )}
 
         {/* List View */}
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="p-6 border-b bg-gray-50">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-gray-900">All Requisitions</h3>
-              <div className="flex gap-2">
-                <select 
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-                >
-                  <option value="">All Status</option>
-                  <option value="DRAFT">Draft</option>
-                  <option value="SUBMITTED">Submitted</option>
-                  <option value="APPROVED">Approved</option>
-                  <option value="REJECTED">Rejected</option>
-                </select>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search..."
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-            </div>
-          </div>
+        <div className="mb-4">
+          <h3 className="text-lg font-bold text-gray-900">All Requisitions</h3>
+        </div>
 
-          {loadingRequisitions ? (
+        {loadingRequisitions ? (
+          <div className="bg-white rounded-lg shadow-lg overflow-hidden">
             <div className="p-6 text-center text-gray-500">
               <p>Loading requisitions...</p>
             </div>
-          ) : requisitions.length === 0 ? (
+          </div>
+        ) : requisitions.length === 0 ? (
+          <div className="bg-white rounded-lg shadow-lg overflow-hidden">
             <div className="p-6 text-center text-gray-500">
               <p className="text-lg mb-2">No purchase requisitions yet</p>
               <p className="text-sm">Click &ldquo;New Requisition&rdquo; to create your first purchase request</p>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">PR Number</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Required Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {requisitions
-                    .filter(req => !filterStatus || req.status === filterStatus)
-                    .filter(req => !searchQuery || 
-                      req.pr_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      req.department.toLowerCase().includes(searchQuery.toLowerCase())
-                    )
-                    .map((req) => (
-                      <tr key={req.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{req.pr_number}</td>
-                        <td className="px-6 py-4 text-sm text-gray-700">{req.department}</td>
-                        <td className="px-6 py-4 text-sm text-gray-700">
-                          {new Date(req.required_date).toLocaleDateString()}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                            req.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
-                            req.status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
-                            req.status === 'DRAFT' ? 'bg-yellow-100 text-yellow-800' :
-                            req.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {req.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-700">
-                          {new Date(req.created_at).toLocaleDateString()}
-                        </td>
-                        <td className="px-6 py-4 text-sm">
-                          <div className="flex gap-2">
-                            <button 
-                              type="button"
-                              onClick={() => handleViewDetails(req.id)}
-                              className="text-amber-600 hover:text-amber-900 font-medium"
-                            >
-                              View Details
-                            </button>
-                            {(req.status === 'DRAFT' || req.status === 'SUBMITTED') && (
-                              <button
-                                type="button"
-                                onClick={() => handleEditPR(req.id)}
-                                className="text-blue-600 hover:text-blue-900 font-medium"
-                              >
-                                Edit
-                              </button>
-                            )}
-                            {(req.status === 'DRAFT' || req.status === 'SUBMITTED') && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => handleApprove(req.id)}
-                                  className="text-green-600 hover:text-green-900 font-medium"
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleReject(req.id)}
-                                  className="text-red-600 hover:text-red-900 font-medium"
-                                >
-                                  Reject
-                                </button>
-                              </>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(req.id)}
-                              className="text-gray-600 hover:text-gray-900 font-medium"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <ListTable
+            storageKey="requisitionsTable"
+            rows={requisitions.filter((r) => (!filterStatus ? true : r.status === filterStatus))}
+            columns={requisitionsTableColumns}
+            getRowId={(r) => r.id}
+            defaultPageSize={10}
+            pageSizeOptions={[10, 25, 50, 100]}
+            searchPlaceholder="Search by PR number, department, status…"
+            toolbarRight={
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-amber-500"
+              >
+                <option value="">All Status</option>
+                <option value="DRAFT">Draft</option>
+                <option value="SUBMITTED">Submitted</option>
+                <option value="APPROVED">Approved</option>
+                <option value="REJECTED">Rejected</option>
+              </select>
+            }
+          />
+        )}
 
         {/* PR Detail Modal */}
         {showDetailModal && (
@@ -1592,7 +1641,7 @@ function PRContent() {
                                   </td>
                                 )}
                                 <td className="px-4 py-2 text-sm text-right">{item.requested_qty}</td>
-                                <td className="px-4 py-2 text-sm text-center">{item.uom || '-'}</td>
+                                <td className="px-4 py-2 text-sm text-center">{resolveUomForPRDetailItem(item)}</td>
                                 <td className="px-4 py-2 text-sm text-right">{item.total_ordered_qty || 0}</td>
                                 <td className="px-4 py-2 text-sm text-right font-medium text-blue-700">{item.remaining_qty ?? item.requested_qty}</td>
                                 <td className="px-4 py-2 text-center">

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Request } from 'express';
 import { EmailService } from '../../email/email.service';
+import { normalizeInventoryCategory } from '../utils/inventory-category';
 
 @Injectable()
 export class InventoryService {
@@ -252,7 +253,7 @@ export class InventoryService {
       p_warehouse_id: warehouseId,
       p_location_id: locationId,
       p_quantity_change: quantityChange,
-      p_category: category || 'RAW_MATERIAL',
+      p_category: normalizeInventoryCategory(category, 'RAW_MATERIAL'),
     });
 
     if (error) {

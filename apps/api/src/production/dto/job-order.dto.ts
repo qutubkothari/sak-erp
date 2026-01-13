@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsUUID, IsNumber, IsOptional, IsString, IsArray, ValidateNested, IsDateString } from 'class-validator';
+import { IsNotEmpty, IsUUID, IsNumber, IsOptional, IsString, IsArray, ValidateNested, IsDateString, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class JobOrderOperationDto {
@@ -104,6 +104,10 @@ export class CreateJobOrderDto {
   @ValidateNested({ each: true })
   @Type(() => JobOrderMaterialDto)
   materials?: JobOrderMaterialDto[];
+
+  @IsOptional()
+  @IsBoolean()
+  validateMaterialsOnCreate?: boolean;
 }
 
 export class UpdateJobOrderDto {

@@ -80,6 +80,29 @@ type SmartCreateResponse = {
   jobOrder?: any;
   autoCompletedSubJobOrders?: any[];
   preview?: SmartPreview;
+  issueMaterialsSummary?: any;
+};
+
+type SmartCreateAsyncStartResponse = {
+  jobId: string;
+};
+
+type SmartCreateAsyncStatus = {
+  id: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  progress: {
+    current: number;
+    total: number;
+    phase: string;
+    message: string;
+    itemCode?: string;
+    itemName?: string;
+  };
+  result?: SmartCreateResponse;
+  error?: string;
 };
 
 export default function SmartJobOrdersPage() {
@@ -128,6 +151,10 @@ function SmartJobOrdersPageContent() {
   const [showCreateSummary, setShowCreateSummary] = useState(false);
 
   const [creating, setCreating] = useState(false);
+
+  const [createJobId, setCreateJobId] = useState<string>('');
+  const [createJobStatus, setCreateJobStatus] = useState<SmartCreateAsyncStatus | null>(null);
+  const [showCreateProgress, setShowCreateProgress] = useState(false);
 
   const canPreview = Boolean(itemId) && Number(quantity) > 0;
 
@@ -342,6 +369,77 @@ function SmartJobOrdersPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemId, quantity, salesOrderId, salesOrderItemId]);
 
+  useEffect(() => {
+    if (!createJobId) return;
+
+    let cancelled = false;
+    let done = false;
+
+    const poll = async () => {
+      if (cancelled || done) return;
+      try {
+        const status = await apiClient.get<SmartCreateAsyncStatus>(`/job-orders/smart/create-async/${createJobId}`);
+        if (cancelled) return;
+
+        setCreateJobStatus(status);
+
+        if (status.status === 'COMPLETED') {
+          done = true;
+          setShowCreateProgress(false);
+          setCreating(false);
+          setCreateJobId('');
+
+          const result = status.result || null;
+
+          const issueSummary = (result as any)?.issueMaterialsSummary;
+          if (issueSummary?.error) {
+            console.error('[SmartJO] Materials issue step failed:', issueSummary);
+          } else if (Array.isArray(issueSummary?.failures) && issueSummary.failures.length > 0) {
+            console.error('[SmartJO] Materials issuance failures:', issueSummary.failures);
+            console.error('[SmartJO] Full issueMaterialsSummary:', issueSummary);
+          } else if (issueSummary) {
+            console.log('[SmartJO] issueMaterialsSummary:', issueSummary);
+          }
+
+          setCreateSummary(result);
+          setShowCreateSummary(true);
+          await fetchPreview();
+        }
+
+        if (status.status === 'FAILED') {
+          done = true;
+          setShowCreateProgress(false);
+          setCreating(false);
+          setCreateJobId('');
+          console.error('[SmartJO] Smart Job Order async job FAILED:', status);
+          alert(`❌ Failed to create Smart Job Order: ${status.error || 'Unknown error'}`);
+        }
+      } catch (err: any) {
+        // If polling fails transiently, keep trying.
+        setCreateJobStatus((prev) =>
+          prev
+            ? {
+                ...prev,
+                progress: {
+                  ...prev.progress,
+                  message: prev.progress?.message || 'Working…',
+                },
+              }
+            : prev,
+        );
+      }
+    };
+
+    void poll();
+    const interval = setInterval(poll, 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createJobId]);
+
   const handleCreate = async () => {
     if (!canPreview) {
       alert('Please select a Finished Good item and quantity');
@@ -349,6 +447,9 @@ function SmartJobOrdersPageContent() {
     }
 
     setCreating(true);
+    setCreateJobStatus(null);
+
+    let startedAsync = false;
     try {
       const variantSelections: Record<string, string> = {};
       if (preview?.nodes?.length) {
@@ -360,24 +461,61 @@ function SmartJobOrdersPageContent() {
         }
       }
 
-      const result = (await apiClient.post('/job-orders/smart/create', {
+      // Start async job to avoid request timeouts (502) for large sub-assembly counts.
+      const started = await apiClient.post<SmartCreateAsyncStartResponse>('/job-orders/smart/create-async', {
         itemId,
         quantity: Number(quantity),
         startDate: new Date().toISOString().slice(0, 10),
         salesOrderId: salesOrderId || undefined,
         salesOrderItemId: salesOrderItemId || undefined,
         variantSelections,
-      })) as SmartCreateResponse;
+      });
 
-      setCreateSummary(result);
-      setShowCreateSummary(true);
+      if (!started?.jobId) {
+        throw new Error('Failed to start Smart Job Order job');
+      }
 
-      // refresh preview (stock changed due to auto-completion)
-      await fetchPreview();
+      startedAsync = true;
+      setCreateJobId(started.jobId);
+      setShowCreateProgress(true);
     } catch (err: any) {
-      alert(`❌ Failed to create Smart Job Order: ${err?.message || 'Unknown error'}`);
+      // Fallback to sync endpoint if the async route isn't deployed yet.
+      const msg = String(err?.message || 'Unknown error');
+      const looksLikeNotFound = msg.toLowerCase().includes('404') || msg.toLowerCase().includes('not found');
+
+      if (looksLikeNotFound) {
+        try {
+          const variantSelections: Record<string, string> = {};
+          if (preview?.nodes?.length) {
+            for (const node of preview.nodes) {
+              if (node.componentType !== 'ITEM') continue;
+              const key = nodeKey(node);
+              const selected = selectedVariantByNodeKey[key];
+              if (selected) variantSelections[key] = selected;
+            }
+          }
+
+          const result = (await apiClient.post('/job-orders/smart/create', {
+            itemId,
+            quantity: Number(quantity),
+            startDate: new Date().toISOString().slice(0, 10),
+            salesOrderId: salesOrderId || undefined,
+            salesOrderItemId: salesOrderItemId || undefined,
+            variantSelections,
+          })) as SmartCreateResponse;
+
+          setCreateSummary(result);
+          setShowCreateSummary(true);
+          await fetchPreview();
+        } catch (e2: any) {
+          alert(`❌ Failed to create Smart Job Order: ${e2?.message || msg}`);
+        }
+      } else {
+        alert(`❌ Failed to create Smart Job Order: ${msg}`);
+      }
     } finally {
-      setCreating(false);
+      // creating stays true while async job runs; polling will reset it.
+      if (!startedAsync) setCreating(false);
     }
   };
 
@@ -774,6 +912,63 @@ function SmartJobOrdersPageContent() {
                     <div className="mt-3 text-xs text-gray-600">
                       Finished goods (UIDs/stock add) happens when the job order is <span className="font-semibold">COMPLETED</span>.
                     </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      ) : null}
+
+      {showCreateProgress ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-xl rounded-xl shadow-xl border border-amber-200 overflow-hidden">
+            <div className="px-6 py-4 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+              <div>
+                <div className="text-lg font-semibold text-amber-900">Creating Smart Job Order</div>
+                <div className="text-sm text-amber-800">This may take a few minutes for large BOMs.</div>
+              </div>
+              <button
+                onClick={() => setShowCreateProgress(false)}
+                className="px-3 py-1.5 rounded-md border border-amber-300 text-amber-800 hover:bg-amber-100"
+              >
+                Hide
+              </button>
+            </div>
+
+            {(() => {
+              const st = createJobStatus;
+              const total = Number(st?.progress?.total ?? 0) || 0;
+              const current = Number(st?.progress?.current ?? 0) || 0;
+              const pct = total > 0 ? Math.min(100, Math.max(0, Math.round((current / total) * 100))) : 5;
+
+              const itemLine = st?.progress?.itemCode
+                ? `${st.progress.itemCode}${st.progress.itemName ? ` — ${st.progress.itemName}` : ''}`
+                : '';
+
+              const statusLabel = st?.status || 'PENDING';
+
+              return (
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-sm font-medium text-amber-900">{st?.progress?.message || 'Starting…'}</div>
+                    <div className="text-xs text-amber-800">
+                      {total > 0 ? `${Math.min(current, total)} / ${total}` : statusLabel}
+                    </div>
+                  </div>
+
+                  {itemLine ? <div className="text-xs text-gray-700 mb-3">{itemLine}</div> : null}
+
+                  <div className="w-full bg-amber-100 rounded-full h-3 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-amber-700 to-amber-800 h-3 rounded-full transition-all duration-500 ease-linear"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+
+                  <div className="mt-4 text-xs text-gray-600">
+                    Status: <span className="font-semibold">{statusLabel}</span>
+                    {st?.error ? <span className="text-red-700"> • {st.error}</span> : null}
                   </div>
                 </div>
               );

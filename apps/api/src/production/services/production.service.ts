@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
+import { normalizeInventoryCategory } from '../../inventory/utils/inventory-category';
 
 @Injectable()
 export class ProductionService {
@@ -320,7 +321,7 @@ export class ProductionService {
             p_warehouse_id: stockEntry.warehouse_id,
             p_location_id: null,
             p_quantity_change: -1,
-            p_category: item?.category || 'RAW_MATERIAL'
+            p_category: normalizeInventoryCategory(item?.category, 'RAW_MATERIAL'),
         });
       }
 
@@ -361,7 +362,7 @@ export class ProductionService {
       p_warehouse_id: warehouse?.id,
       p_location_id: null,
       p_quantity_change: 1,
-      p_category: item?.category || 'FINISHED_GOODS'
+      p_category: normalizeInventoryCategory(item?.category, 'FINISHED_GOODS'),
     });
 
     // Log inventory movement for finished goods

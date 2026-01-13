@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 
 function getApiV1BaseUrl(): string | null {
   const raw = (process.env.NEXT_PUBLIC_API_URL || '').trim();
@@ -134,6 +135,13 @@ type ItemUidConfig = {
   batch_quantity?: number;
 };
 
+type ItemMasterMini = {
+  id: string;
+  code: string;
+  uom?: string;
+  name?: string;
+};
+
 function GRNContent() {
   // const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
@@ -149,8 +157,11 @@ function GRNContent() {
   const [purchaseTrail, setPurchaseTrail] = useState<PurchaseTrail | null>(null);
   const [loadingTrail, setLoadingTrail] = useState(false);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [purchaseOrdersById, setPurchaseOrdersById] = useState<Record<string, PurchaseOrder>>({});
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [itemUidConfigById, setItemUidConfigById] = useState<Record<string, ItemUidConfig>>({});
+  const [itemMasterById, setItemMasterById] = useState<Record<string, ItemMasterMini>>({});
+  const [itemMasterByCode, setItemMasterByCode] = useState<Record<string, ItemMasterMini>>({});
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -435,17 +446,33 @@ function GRNContent() {
         const data = await response.json();
         const items = Array.isArray(data) ? data : [];
         const next: Record<string, ItemUidConfig> = {};
+        const nextMasterById: Record<string, ItemMasterMini> = {};
+        const nextMasterByCode: Record<string, ItemMasterMini> = {};
         for (const it of items) {
           if (!it?.id) continue;
-          next[String(it.id)] = {
+          const id = String(it.id);
+          next[id] = {
             id: String(it.id),
             uid_tracking: it.uid_tracking,
             uid_strategy: it.uid_strategy,
             batch_uom: it.batch_uom,
             batch_quantity: typeof it.batch_quantity === 'number' ? it.batch_quantity : Number(it.batch_quantity) || undefined,
           };
+
+          const code = String(it.code || '').trim();
+          const normalizedCode = code.toUpperCase();
+          const mini: ItemMasterMini = {
+            id,
+            code,
+            uom: it.uom ? String(it.uom) : undefined,
+            name: it.name ? String(it.name) : undefined,
+          };
+          nextMasterById[id] = mini;
+          if (normalizedCode) nextMasterByCode[normalizedCode] = mini;
         }
         setItemUidConfigById(next);
+        setItemMasterById(nextMasterById);
+        setItemMasterByCode(nextMasterByCode);
       } catch {
         // Best-effort UI enhancement only.
       }
@@ -453,6 +480,131 @@ function GRNContent() {
 
     fetchItemUidConfig();
   }, []);
+
+  const resolveUom = (row: { uom?: string; itemId?: string; itemCode?: string } | null | undefined): string => {
+    if (!row) return '';
+    const direct = String(row.uom || '').trim();
+    if (direct) return direct;
+    const itemId = String(row.itemId || '').trim();
+    const itemCode = String(row.itemCode || '').trim();
+    const normalizedCode = itemCode.toUpperCase();
+    const fromId = itemId ? String(itemMasterById[itemId]?.uom || '').trim() : '';
+    if (fromId) return fromId;
+    const fromCode = normalizedCode ? String(itemMasterByCode[normalizedCode]?.uom || '').trim() : '';
+    return fromCode;
+  };
+
+  const resolveItemIdFromCode = (itemCode: string): string => {
+    const code = String(itemCode || '').trim();
+    if (!code) return '';
+    return String(itemMasterByCode[code.toUpperCase()]?.id || '').trim();
+  };
+
+  const resolvePOFromGRN = (grnLike: any): PurchaseOrder | null => {
+    const poId = String(grnLike?.po_id || grnLike?.poId || grnLike?.purchase_order_id || grnLike?.purchaseOrderId || grnLike?.purchase_order?.id || '').trim();
+    if (poId && purchaseOrdersById[poId]) return purchaseOrdersById[poId];
+
+    const poNumber = String(grnLike?.purchase_order?.po_number || grnLike?.purchase_order?.poNumber || grnLike?.po_number || '').trim();
+    if (!poNumber) return null;
+    const all = Object.values(purchaseOrdersById);
+    return all.find((po) => String(po?.po_number || '').trim() === poNumber) || null;
+  };
+
+  const resolvePOItemId = (po: PurchaseOrder | null, itemCode: string, itemId: string): string => {
+    if (!po) return '';
+    const code = String(itemCode || '').trim();
+    const normalizedCode = code.toUpperCase();
+    const id = String(itemId || '').trim();
+    const lines = Array.isArray(po.purchase_order_items) ? po.purchase_order_items : [];
+    const match =
+      lines.find(
+        (l) =>
+          String(l.item_id || '').trim() === id &&
+          String(l.item_code || '').trim().toUpperCase() === normalizedCode,
+      ) ||
+      lines.find((l) => String(l.item_id || '').trim() === id) ||
+      lines.find((l) => String(l.item_code || '').trim().toUpperCase() === normalizedCode);
+    return String(match?.id || '').trim();
+  };
+
+  const ensurePurchaseOrderHydrated = async (grnLike: any): Promise<PurchaseOrder | null> => {
+    const poId = String(
+      grnLike?.po_id ||
+        grnLike?.poId ||
+        grnLike?.purchase_order_id ||
+        grnLike?.purchaseOrderId ||
+        grnLike?.purchase_order?.id ||
+        '',
+    ).trim();
+
+    const existing = poId ? purchaseOrdersById[poId] : null;
+    const existingLines = Array.isArray((existing as any)?.purchase_order_items)
+      ? (existing as any).purchase_order_items
+      : [];
+    if (existing && existingLines.length > 0) return existing;
+
+    if (!poId) {
+      // Fall back to whatever we can resolve from PO number.
+      return resolvePOFromGRN(grnLike);
+    }
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const resp = await fetch(`/api/v1/purchase/orders/${poId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!resp.ok) return existing;
+      const full = await resp.json();
+      if (full?.id) {
+        setPurchaseOrdersById((prev) => ({ ...prev, [String(full.id)]: full }));
+      }
+      return full || existing;
+    } catch {
+      return existing;
+    }
+  };
+
+  const backfillEditItems = (itemsIn: any[], grnLike: any): any[] => {
+    const po = resolvePOFromGRN(grnLike);
+    const poLines = Array.isArray(po?.purchase_order_items) ? po!.purchase_order_items : [];
+
+    return (Array.isArray(itemsIn) ? itemsIn : []).map((row: any) => {
+      const itemCode = String(row?.itemCode || row?.item_code || row?.item?.code || '').trim();
+      const normalizedCode = itemCode.toUpperCase();
+      const currentItemId = String(row?.itemId || row?.item_id || row?.item?.id || '').trim();
+
+      const itemIdFromPO =
+        (normalizedCode
+          ? poLines.find((l) => String(l.item_code || '').trim().toUpperCase() === normalizedCode)?.item_id
+          : '') ||
+        '';
+      const resolvedItemId = currentItemId || String(itemIdFromPO || '').trim() || resolveItemIdFromCode(itemCode);
+
+      const currentPoItemId = String(row?.poItemId || row?.po_item_id || '').trim();
+      const resolvedPoItemId = currentPoItemId || resolvePOItemId(po, itemCode, resolvedItemId);
+
+      const uomFromPO =
+        (normalizedCode
+          ? poLines.find((l) => String(l.item_code || '').trim().toUpperCase() === normalizedCode)?.uom
+          : '') ||
+        '';
+      const resolvedUom =
+        String(row?.uom || '').trim() ||
+        String(uomFromPO || '').trim() ||
+        resolveUom({ uom: row?.uom, itemId: resolvedItemId, itemCode });
+
+      return {
+        ...row,
+        itemId: resolvedItemId,
+        poItemId: resolvedPoItemId,
+        itemCode,
+        uom: resolvedUom,
+      };
+    });
+  };
 
   const fetchPurchaseOrders = async () => {
     try {
@@ -474,6 +626,14 @@ function GRNContent() {
       }
       
       const allPOs = await poResponse.json();
+
+      const allPOsList = Array.isArray(allPOs) ? allPOs : [];
+      const nextById: Record<string, PurchaseOrder> = {};
+      for (const po of allPOsList) {
+        if (!po?.id) continue;
+        nextById[String(po.id)] = po;
+      }
+      setPurchaseOrdersById(nextById);
       
       // Fetch all GRNs to check which POs already have GRNs
       const grnResponse = await fetch('/api/v1/purchase/grn', {
@@ -490,7 +650,7 @@ function GRNContent() {
       }
       
       // Filter out POs that already have GRNs
-      const availablePOs = Array.isArray(allPOs) ? allPOs.filter((po: any) => !poIdsWithGRNs.has(po.id)) : [];
+      const availablePOs = allPOsList.filter((po: any) => !poIdsWithGRNs.has(po.id));
       
       console.log('Available POs (without GRNs):', availablePOs);
       setPurchaseOrders(availablePOs);
@@ -542,10 +702,15 @@ function GRNContent() {
           itemCode: item.item_code,
           itemName: item.item_name,
           poItemId: item.id,
-          uom: item.uom || '',
+          uom:
+            String(item.uom || '').trim() ||
+            String(itemMasterById[String(item.item_id || '')]?.uom || '').trim() ||
+            String(itemMasterByCode[String(item.item_code || '')]?.uom || '').trim() ||
+            '',
           orderedQuantity: item.ordered_qty,
           receivedQuantity: item.ordered_qty,
-          acceptedQuantity: item.ordered_qty,
+          // QC must be explicitly recorded via QC Accept.
+          acceptedQuantity: 0,
           rejectedQuantity: 0,
           unitPrice: item.rate,
           batchNumber: '',
@@ -558,6 +723,26 @@ function GRNContent() {
       });
     }
   };
+
+  // Once item master data loads, backfill missing UOMs in Create GRN.
+  useEffect(() => {
+    if (Object.keys(itemMasterById).length === 0 && Object.keys(itemMasterByCode).length === 0) return;
+    if (!Array.isArray(formData.items) || formData.items.length === 0) return;
+
+    let changed = false;
+    const nextItems = formData.items.map((row) => {
+      const uom = resolveUom({ uom: row.uom, itemId: row.itemId, itemCode: row.itemCode });
+      if (!String(row.uom || '').trim() && uom) {
+        changed = true;
+        return { ...row, uom };
+      }
+      return row;
+    });
+
+    if (changed) {
+      setFormData((prev) => ({ ...prev, items: nextItems }));
+    }
+  }, [itemMasterById, itemMasterByCode, formData.items]);
 
   const fetchGRNs = async () => {
     try {
@@ -579,11 +764,28 @@ function GRNContent() {
     if (!selectedGRN) return;
     
     try {
-      const missingIds = editFormData.items.some((it) => !it.itemId || !it.poItemId);
-      if (missingIds) {
-        alert('Some GRN items are missing Item/PO Item IDs. Please close and re-open Edit.');
+      // Ensure we have PO line items available for resolving poItemId.
+      const hydratedPO = await ensurePurchaseOrderHydrated(selectedGRN);
+      const patchedItems = backfillEditItems(
+        editFormData.items as any[],
+        hydratedPO && hydratedPO.id ? { ...selectedGRN, po_id: hydratedPO.id } : selectedGRN,
+      );
+      const missing = patchedItems.filter((it: any) => !String(it.itemId || '').trim() || !String(it.poItemId || '').trim());
+      if (missing.length > 0) {
+        const codes = missing
+          .map((it: any) => String(it.itemCode || '').trim())
+          .filter(Boolean)
+          .join(', ');
+        alert(
+          codes
+            ? `Some GRN items are missing Item/PO Item IDs: ${codes}. Please re-open Edit or contact support.`
+            : 'Some GRN items are missing Item/PO Item IDs. Please re-open Edit or contact support.',
+        );
         return;
       }
+
+      // Keep UI state in sync so the user doesn't hit the same validation again.
+      setEditFormData((prev) => ({ ...prev, items: patchedItems as any }));
 
       await apiClient.put(`/purchase/grn/${selectedGRN.id}`, {
         invoiceNumber: editFormData.invoiceNumber,
@@ -594,7 +796,7 @@ function GRNContent() {
         invoiceFileSize: editFormData.invoiceFileSize || null,
         warehouseId: editFormData.warehouseId,
         remarks: editFormData.notes,
-        items: editFormData.items.map(item => ({
+        items: (patchedItems as any[]).map((item: any) => ({
           itemId: item.itemId,
           poItemId: item.poItemId,
           itemCode: item.itemCode,
@@ -939,6 +1141,247 @@ function GRNContent() {
       : 'bg-gray-100 text-gray-800';
   };
 
+  const grnTableColumns: Array<ListTableColumn<GRN>> = [
+    {
+      id: 'grn_number',
+      label: 'GRN Number',
+      accessor: (g) => g.grn_number,
+      cell: (g) => <span className="font-medium text-gray-900">{g.grn_number}</span>,
+    },
+    {
+      id: 'po_number',
+      label: 'PO Number',
+      accessor: (g) => g.purchase_order?.po_number || '-',
+    },
+    {
+      id: 'vendor',
+      label: 'Vendor',
+      accessor: (g) => g.vendor?.name || '',
+      searchAccessor: (g) => `${g.vendor?.name || ''} ${g.vendor?.code || ''}`.trim(),
+      cell: (g) => (
+        <div>
+          <div className="text-sm font-medium text-gray-900">{g.vendor?.name || '-'}</div>
+          <div className="text-xs text-gray-500">{g.vendor?.code || ''}</div>
+        </div>
+      ),
+    },
+    {
+      id: 'grn_date',
+      label: 'Receipt Date',
+      accessor: (g) => g.grn_date,
+      sortAccessor: (g) => (g.grn_date ? new Date(g.grn_date).getTime() : 0),
+      cell: (g) => <span className="text-sm text-gray-600">{g.grn_date ? new Date(g.grn_date).toLocaleDateString() : '-'}</span>,
+    },
+    {
+      id: 'invoice',
+      label: 'Invoice',
+      accessor: (g) => g.invoice_number || '',
+      searchAccessor: (g) => `${g.invoice_number || ''} ${g.invoice_date || ''}`.trim(),
+      cell: (g) => (
+        <div className="text-sm text-gray-600 whitespace-nowrap">
+          <div>{g.invoice_number || '-'}</div>
+          {g.invoice_date && <div className="text-xs text-gray-400">{new Date(g.invoice_date).toLocaleDateString()}</div>}
+          {g.invoice_file_url && (
+            <button
+              type="button"
+              onClick={() => handleViewInvoice(g.invoice_file_url!, g.invoice_file_name)}
+              className="text-xs text-blue-600 hover:text-blue-800 underline cursor-pointer"
+            >
+              View Invoice
+            </button>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'warehouse',
+      label: 'Warehouse',
+      accessor: (g) => g.warehouse?.name || '-',
+    },
+    {
+      id: 'items_uids',
+      label: 'Items / UIDs',
+      sortable: false,
+      accessor: (g) => (Array.isArray(g.grn_items) ? g.grn_items.length : 0),
+      cell: (g) => {
+        const items: any[] = Array.isArray(g.grn_items) ? (g.grn_items as any[]) : [];
+        const accepted = items.reduce((sum, item) => sum + (Number(item.accepted_qty || item.accepted_quantity) || 0), 0);
+        const rejected = items.reduce((sum, item) => sum + (Number(item.rejected_qty || item.rejected_quantity) || 0), 0);
+        const uidTotal = items.reduce((sum, item) => sum + (Number((item as any).uid_count) || 0), 0);
+        const hasUids = items.some((item) => (Number((item as any).uid_count) || 0) > 0);
+
+        return (
+          <div className="text-sm text-gray-600">
+            <div className="font-medium">{items.length} items</div>
+            <div className="text-xs text-gray-400">
+              Accepted: {accepted}
+              {rejected > 0 && <span className="text-red-600 ml-2">Rejected: {rejected}</span>}
+            </div>
+            {hasUids ? (
+              <div className="mt-1">
+                <span className="text-xs text-green-600 font-medium">✓ {uidTotal} UIDs</span>
+                <div className="text-[11px] text-gray-400">
+                  UIDs are generated only for UID-tracked items (batched items may generate fewer UIDs than accepted qty).
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-amber-500 mt-1">⚠️ UIDs pending</div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      accessor: (g) => g.status,
+      cell: (g) => (
+        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(g.status)}`}>
+          {g.status}
+        </span>
+      ),
+      align: 'center',
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      sortable: false,
+      hideable: false,
+      align: 'right',
+      cell: (grn) => (
+        <div className="whitespace-nowrap text-sm">
+          <button
+            type="button"
+            onClick={async () => {
+              console.log('View clicked for GRN:', grn);
+
+              // Fetch full GRN details with items
+              try {
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch(`/api/v1/purchase/grn/${grn.id}`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                const detailedGRN = await response.json();
+                console.log('Detailed GRN data:', detailedGRN);
+                setSelectedGRN(detailedGRN);
+              } catch (error) {
+                console.error('Error fetching GRN details:', error);
+                setSelectedGRN(grn); // Fallback to list data
+              }
+
+              setShowViewModal(true);
+              setEditMode(false);
+            }}
+            className="text-amber-600 hover:text-amber-900 mr-3 font-medium"
+          >
+            View
+          </button>
+
+          {grn.status === 'COMPLETED' && (
+            <button
+              type="button"
+              onClick={() => {
+                console.log('UIDs clicked for GRN:', grn.id);
+                fetchGRNUIDs(grn.id);
+              }}
+              className="text-green-600 hover:text-green-900 mr-3 font-medium"
+            >
+              🔍 UIDs
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch(`/api/v1/purchase/grn/${grn.id}`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                const detailedGRN = await response.json();
+                setSelectedGRN(detailedGRN);
+
+                const rawItems = Array.isArray(detailedGRN.grn_items) ? detailedGRN.grn_items : [];
+                const hydratedItems = backfillEditItems(
+                  rawItems.map((item: any) => ({
+                    id: item.id,
+                    itemId: item.item_id || item.itemId || item.item?.id || '',
+                    poItemId: item.po_item_id || item.poItemId || '',
+                    itemCode: item.item_code || item.item?.code || '',
+                    itemName: item.item_name || item.item?.name || '',
+                    uom: item.uom || item.item?.uom || '',
+                    orderedQuantity:
+                      Number(item.ordered_qty || item.ordered_quantity) ||
+                      Number(item.received_qty || item.received_quantity) ||
+                      0,
+                    receivedQty: Number(item.received_qty || item.received_quantity) || 0,
+                    acceptedQty: Number(item.accepted_qty || item.accepted_quantity) || 0,
+                    rejectedQty: Number(item.rejected_qty || item.rejected_quantity) || 0,
+                    unitPrice: Number(item.unit_price || item.unitPrice) || 0,
+                    batchNumber: item.batch_number || '',
+                    expiryDate: item.expiry_date || '',
+                    notes: item.notes || '',
+                  })),
+                  detailedGRN,
+                );
+
+                setEditFormData({
+                  invoiceNumber: detailedGRN.invoice_number || '',
+                  invoiceDate: detailedGRN.invoice_date || '',
+                  invoiceFileUrl: detailedGRN.invoice_file_url || '',
+                  invoiceFileName: detailedGRN.invoice_file_name || '',
+                  invoiceFileType: detailedGRN.invoice_file_type || '',
+                  invoiceFileSize: detailedGRN.invoice_file_size || 0,
+                  warehouseId: detailedGRN.warehouse?.id || '',
+                  notes: detailedGRN.remarks || detailedGRN.notes || '',
+                  items: hydratedItems as any,
+                });
+              } catch (error) {
+                console.error('Error fetching GRN details for edit:', error);
+                setSelectedGRN(grn);
+                setEditFormData({
+                  invoiceNumber: grn.invoice_number || '',
+                  invoiceDate: grn.invoice_date || '',
+                  invoiceFileUrl: grn.invoice_file_url || '',
+                  invoiceFileName: grn.invoice_file_name || '',
+                  invoiceFileType: grn.invoice_file_type || '',
+                  invoiceFileSize: grn.invoice_file_size || 0,
+                  warehouseId: grn.warehouse?.id || '',
+                  notes: grn.remarks || '',
+                  items: (Array.isArray(grn.grn_items) ? grn.grn_items : []).map((item: any) => ({
+                    id: item.id,
+                    itemId: item.item_id || item.itemId || item.item?.id || '',
+                    poItemId: item.po_item_id || item.poItemId || '',
+                    itemCode: item.item_code || item.item?.code || '',
+                    itemName: item.item_name || item.item?.name || '',
+                    uom: item.uom || item.item?.uom || '',
+                    orderedQuantity:
+                      Number(item.ordered_qty || item.ordered_quantity) ||
+                      Number(item.received_qty || item.received_quantity) ||
+                      0,
+                    receivedQty: Number(item.received_qty || item.received_quantity) || 0,
+                    acceptedQty: Number(item.accepted_qty || item.accepted_quantity) || 0,
+                    rejectedQty: Number(item.rejected_qty || item.rejected_quantity) || 0,
+                    unitPrice: Number(item.unit_price || item.unitPrice) || 0,
+                    batchNumber: item.batch_number || '',
+                    expiryDate: item.expiry_date || '',
+                    notes: item.notes || '',
+                  })),
+                });
+              }
+
+              setShowViewModal(true);
+              setEditMode(true);
+            }}
+            className="text-blue-600 hover:text-blue-900"
+          >
+            Edit
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 p-8">
       <div className="max-w-7xl mx-auto">
@@ -962,256 +1405,41 @@ function GRNContent() {
           </button>
         </div>
 
-        {/* Filters */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+        {/* GRN List */}
+        {loading ? (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-8 text-center text-gray-500">Loading GRNs...</div>
+          </div>
+        ) : (
+          <ListTable
+            storageKey="grnTable"
+            rows={grns.filter((g) => (filterStatus === 'ALL' ? true : g.status === filterStatus))}
+            columns={grnTableColumns}
+            getRowId={(g) => g.id}
+            defaultPageSize={10}
+            pageSizeOptions={[10, 25, 50, 100]}
+            searchPlaceholder="Search by GRN number, PO number, vendor, invoice…"
+            toolbarRight={
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-amber-500"
               >
                 <option value="ALL">All Status</option>
                 <option value="DRAFT">Draft</option>
                 <option value="COMPLETED">Completed</option>
                 <option value="CANCELLED">Cancelled</option>
               </select>
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && fetchGRNs()}
-                placeholder="Search by GRN number, invoice number..."
-                className="w-full border border-gray-300 rounded-lg px-4 py-2"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* GRN List */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="overflow-x-auto">
-          {loading ? (
-            <div className="p-8 text-center text-gray-500">Loading GRNs...</div>
-          ) : grns.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="text-6xl mb-4">📦</div>
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No GRNs Yet</h3>
-              <p className="text-gray-500">Create your first goods receipt note to track incoming inventory</p>
-            </div>
-          ) : (
-            <table className="w-full min-w-[1100px]">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">GRN Number</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">PO Number</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Vendor</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Receipt Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Invoice</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Warehouse</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Items / UIDs</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {grns.map((grn) => (
-                  <tr key={grn.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">{grn.grn_number}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                      {grn.purchase_order?.po_number || '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-gray-900">{grn.vendor.name}</div>
-                      <div className="text-xs text-gray-500">{grn.vendor.code}</div>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                      {grn.grn_date ? new Date(grn.grn_date).toLocaleDateString() : '-'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                      <div>{grn.invoice_number || '-'}</div>
-                      {grn.invoice_date && (
-                        <div className="text-xs text-gray-400">{new Date(grn.invoice_date).toLocaleDateString()}</div>
-                      )}
-                      {grn.invoice_file_url && (
-                        <button
-                          onClick={() => handleViewInvoice(grn.invoice_file_url!, grn.invoice_file_name)}
-                          className="text-xs text-blue-600 hover:text-blue-800 underline cursor-pointer"
-                        >
-                          View Invoice
-                        </button>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                      {grn.warehouse?.name || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      <div className="font-medium">{grn.grn_items.length} items</div>
-                      <div className="text-xs text-gray-400">
-                        Accepted: {grn.grn_items.reduce((sum, item) => sum + (Number(item.accepted_qty || item.accepted_quantity) || 0), 0)}
-                        {grn.grn_items.some((i) => (Number(i.rejected_qty || i.rejected_quantity) || 0) > 0) && (
-                          <span className="text-red-600 ml-2">
-                            Rejected: {grn.grn_items.reduce((sum, item) => sum + (Number(item.rejected_qty || item.rejected_quantity) || 0), 0)}
-                          </span>
-                        )}
-                      </div>
-                      {/* Display UID count instead of individual UIDs */}
-                      {grn.grn_items.some((item: any) => item.uid_count > 0) ? (
-                        <div className="mt-1">
-                          <span className="text-xs text-green-600 font-medium">
-                            ✓ {grn.grn_items.reduce((sum: number, item: any) => sum + (item.uid_count || 0), 0)} UIDs
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-amber-500 mt-1">
-                          ⚠️ UIDs pending
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(grn.status)}`}>
-                        {grn.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap text-sm">
-                      <button 
-                        type="button"
-                        onClick={async (e: React.MouseEvent<HTMLButtonElement>) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log('View clicked for GRN:', grn);
-                          
-                          // Fetch full GRN details with items
-                          try {
-                            const token = localStorage.getItem('accessToken');
-                            const response = await fetch(`/api/v1/purchase/grn/${grn.id}`, {
-                              headers: { Authorization: `Bearer ${token}` },
-                            });
-                            const detailedGRN = await response.json();
-                            console.log('Detailed GRN data:', detailedGRN);
-                            setSelectedGRN(detailedGRN);
-                          } catch (error) {
-                            console.error('Error fetching GRN details:', error);
-                            setSelectedGRN(grn); // Fallback to list data
-                          }
-                          
-                          setShowViewModal(true);
-                          setEditMode(false);
-                        }}
-                        className="text-amber-600 hover:text-amber-900 mr-3 font-medium"
-                      >
-                        View
-                      </button>
-                      {grn.status === 'COMPLETED' && (
-                        <button 
-                          type="button"
-                          onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            console.log('UIDs clicked for GRN:', grn.id);
-                            fetchGRNUIDs(grn.id);
-                          }}
-                          className="text-green-600 hover:text-green-900 mr-3 font-medium"
-                        >
-                          🔍 UIDs
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={async (e: React.MouseEvent<HTMLButtonElement>) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-
-                          try {
-                            const token = localStorage.getItem('accessToken');
-                            const response = await fetch(`/api/v1/purchase/grn/${grn.id}`, {
-                              headers: { Authorization: `Bearer ${token}` },
-                            });
-                            const detailedGRN = await response.json();
-                            setSelectedGRN(detailedGRN);
-
-                            setEditFormData({
-                              invoiceNumber: detailedGRN.invoice_number || '',
-                              invoiceDate: detailedGRN.invoice_date || '',
-                              invoiceFileUrl: detailedGRN.invoice_file_url || '',
-                              invoiceFileName: detailedGRN.invoice_file_name || '',
-                              invoiceFileType: detailedGRN.invoice_file_type || '',
-                              invoiceFileSize: detailedGRN.invoice_file_size || 0,
-                              warehouseId: detailedGRN.warehouse?.id || '',
-                              notes: detailedGRN.remarks || detailedGRN.notes || '',
-                              items: (Array.isArray(detailedGRN.grn_items) ? detailedGRN.grn_items : []).map((item: any) => ({
-                                id: item.id,
-                                itemId: item.item_id || item.itemId || item.item?.id || '',
-                                poItemId: item.po_item_id || item.poItemId || '',
-                                itemCode: item.item_code || item.item?.code || '',
-                                itemName: item.item_name || item.item?.name || '',
-                                uom: item.uom || item.item?.uom || '',
-                                orderedQuantity:
-                                  Number(item.ordered_qty || item.ordered_quantity) ||
-                                  Number(item.received_qty || item.received_quantity) ||
-                                  0,
-                                receivedQty: Number(item.received_qty || item.received_quantity) || 0,
-                                acceptedQty: Number(item.accepted_qty || item.accepted_quantity) || 0,
-                                rejectedQty: Number(item.rejected_qty || item.rejected_quantity) || 0,
-                                unitPrice: Number(item.unit_price || item.unitPrice) || 0,
-                                batchNumber: item.batch_number || '',
-                                expiryDate: item.expiry_date || '',
-                                notes: item.notes || '',
-                              })),
-                            });
-                          } catch (error) {
-                            console.error('Error fetching GRN details for edit:', error);
-                            setSelectedGRN(grn);
-                            setEditFormData({
-                              invoiceNumber: grn.invoice_number || '',
-                              invoiceDate: grn.invoice_date || '',
-                              invoiceFileUrl: grn.invoice_file_url || '',
-                              invoiceFileName: grn.invoice_file_name || '',
-                              invoiceFileType: grn.invoice_file_type || '',
-                              invoiceFileSize: grn.invoice_file_size || 0,
-                              warehouseId: grn.warehouse?.id || '',
-                              notes: grn.remarks || '',
-                              items: (Array.isArray(grn.grn_items) ? grn.grn_items : []).map((item: any) => ({
-                                id: item.id,
-                                itemId: item.item_id || item.itemId || item.item?.id || '',
-                                poItemId: item.po_item_id || item.poItemId || '',
-                                itemCode: item.item_code || item.item?.code || '',
-                                itemName: item.item_name || item.item?.name || '',
-                                uom: item.uom || item.item?.uom || '',
-                                orderedQuantity:
-                                  Number(item.ordered_qty || item.ordered_quantity) ||
-                                  Number(item.received_qty || item.received_quantity) ||
-                                  0,
-                                receivedQty: Number(item.received_qty || item.received_quantity) || 0,
-                                acceptedQty: Number(item.accepted_qty || item.accepted_quantity) || 0,
-                                rejectedQty: Number(item.rejected_qty || item.rejected_quantity) || 0,
-                                unitPrice: Number(item.unit_price || item.unitPrice) || 0,
-                                batchNumber: item.batch_number || '',
-                                expiryDate: item.expiry_date || '',
-                                notes: item.notes || '',
-                              })),
-                            });
-                          }
-
-                          setShowViewModal(true);
-                          setEditMode(true);
-                        }}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          </div>
-        </div>
+            }
+            emptyState={
+              <div className="p-12 text-center">
+                <div className="text-6xl mb-4">📦</div>
+                <h3 className="text-xl font-semibold text-gray-700 mb-2">No GRNs Yet</h3>
+                <p className="text-gray-500">Create your first goods receipt note to track incoming inventory</p>
+              </div>
+            }
+          />
+        )}
       </div>
 
       {/* Create Modal */}
@@ -1675,7 +1903,7 @@ function GRNContent() {
                           <td className="px-4 py-2 text-sm text-gray-700 text-center">{idx + 1}</td>
                           <td className="px-4 py-2 text-sm text-gray-900">{item.itemCode}</td>
                           <td className="px-4 py-2 text-sm text-gray-900">{item.itemName}</td>
-                          <td className="px-4 py-2 text-sm text-gray-900 text-center">{item.uom || '-'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-900 text-center">{resolveUom(item) || '-'}</td>
                           <td className="px-4 py-2 text-sm text-gray-900 text-right">
                             <input
                               type="number"
@@ -1733,7 +1961,11 @@ function GRNContent() {
                           <td className="px-4 py-2 text-sm text-gray-700 text-center">{idx + 1}</td>
                           <td className="px-4 py-2 text-sm text-gray-900">{item.item_code || item.item?.code || '-'}</td>
                           <td className="px-4 py-2 text-sm text-gray-900">{item.item_name || item.item?.name || '-'}</td>
-                          <td className="px-4 py-2 text-sm text-gray-900 text-center">{(item as any).uom || (item.item as any)?.uom || '-'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-900 text-center">{resolveUom({
+                            uom: (item as any).uom || (item as any).uom_name || (item as any).unit || (item as any).unit_name || (item as any).item?.uom,
+                            itemId: (item as any).item_id || (item as any).itemId || (item as any).item?.id,
+                            itemCode: item.item_code || (item as any).item?.code,
+                          }) || '-'}</td>
                           <td className="px-4 py-2 text-sm text-gray-900 text-right">{Number(item.received_qty || item.received_quantity) || 0}</td>
                           <td className="px-4 py-2 text-sm text-green-600 text-right font-semibold">{Number(item.accepted_qty || item.accepted_quantity) || 0}</td>
                           <td className="px-4 py-2 text-sm text-red-600 text-right font-semibold">{Number(item.rejected_qty || item.rejected_quantity) || 0}</td>
