@@ -20,6 +20,8 @@ DECLARE
   v_tenant_id UUID;
   v_delete_uids boolean := true;
   v_delete_stock_entries boolean := true;
+  v_delete_inventory_stock boolean := true;
+  v_stock_entries_has_created_from boolean;
   v_items_has_type boolean;
   v_items_has_category boolean;
   v_items_has_sub_category boolean;
@@ -37,7 +39,15 @@ BEGIN
 
   RAISE NOTICE 'Deleting PR/PO/JO/GRN transactions for tenant: %', v_tenant_id;
 
-  -- Detect optional columns safely (some deployments differ)
+  -- Detect optional columns/tables safely (some deployments differ)
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'stock_entries'
+      AND column_name = 'created_from'
+  ) INTO v_stock_entries_has_created_from;
+
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name = 'items' AND column_name = 'type'
@@ -83,12 +93,21 @@ BEGIN
 
   IF v_delete_stock_entries THEN
     RAISE NOTICE 'Deleting QC stock_entries (QC_APPROVAL) for tenant...';
-    DELETE FROM stock_entries
-    WHERE tenant_id = v_tenant_id
-      AND metadata->>'created_from' = 'QC_APPROVAL'
-      AND (metadata->>'job_order_id') IN (
-        SELECT id::text FROM production_job_orders WHERE tenant_id = v_tenant_id
-      );
+    IF v_stock_entries_has_created_from THEN
+      DELETE FROM stock_entries
+      WHERE tenant_id = v_tenant_id
+        AND created_from = 'QC_APPROVAL'
+        AND (metadata->>'job_order_id') IN (
+          SELECT id::text FROM production_job_orders WHERE tenant_id = v_tenant_id
+        );
+    ELSE
+      DELETE FROM stock_entries
+      WHERE tenant_id = v_tenant_id
+        AND metadata->>'created_from' = 'QC_APPROVAL'
+        AND (metadata->>'job_order_id') IN (
+          SELECT id::text FROM production_job_orders WHERE tenant_id = v_tenant_id
+        );
+    END IF;
   END IF;
 
   IF v_delete_stock_entries THEN
@@ -110,6 +129,11 @@ BEGIN
       '    WHERE bh.tenant_id = $1 '
       '  )'
     ) USING v_tenant_id;
+  END IF;
+
+  IF v_delete_stock_entries AND v_delete_inventory_stock AND to_regclass('public.inventory_stock') IS NOT NULL THEN
+    RAISE NOTICE 'Deleting inventory_stock rows for tenant (keeps stock_entries as the source of truth after cleanup)...';
+    DELETE FROM inventory_stock WHERE tenant_id = v_tenant_id;
   END IF;
 
   IF v_delete_uids THEN
@@ -205,13 +229,7 @@ BEGIN
 
   IF v_delete_stock_entries THEN
     RAISE NOTICE 'Deleting GRN stock_entries (GRN_*) for tenant...';
-    IF EXISTS (
-      SELECT 1
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'stock_entries'
-        AND column_name = 'created_from'
-    ) THEN
+    IF v_stock_entries_has_created_from THEN
       EXECUTE '
         DELETE FROM stock_entries
         WHERE tenant_id = $1
