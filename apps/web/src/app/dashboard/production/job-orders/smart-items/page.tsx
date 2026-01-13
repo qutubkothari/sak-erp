@@ -424,6 +424,14 @@ function SmartJobOrdersItemsPageContent() {
   };
 
   const groupShortagesByItem = (nodes: SmartExplosionNode[], autoMakeItemIds: Set<string>): GroupedShortageRow[] => {
+    // Also collect all item codes that are sub-assemblies (have BOMs)
+    const subAssemblyItemCodes = new Set<string>();
+    for (const n of nodes || []) {
+      if (n?.componentType === 'BOM' && n.itemCode) {
+        subAssemblyItemCodes.add(n.itemCode);
+      }
+    }
+
     const byItemId = new Map<
       string,
       {
@@ -440,6 +448,9 @@ function SmartJobOrdersItemsPageContent() {
       const selectedItemId = effectiveSelectedItemId(n);
       if (!selectedItemId) continue;
       if (autoMakeItemIds.has(selectedItemId)) continue;
+      
+      // Also skip if this item appears as a BOM node elsewhere (it's a sub-assembly)
+      if (n.itemCode && subAssemblyItemCodes.has(n.itemCode)) continue;
 
       const required = Number(n.requiredQuantity || 0) || 0;
       if (required <= 0) continue;
