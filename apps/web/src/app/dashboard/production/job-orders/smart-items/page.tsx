@@ -424,13 +424,30 @@ function SmartJobOrdersItemsPageContent() {
   };
 
   const groupShortagesByItem = (nodes: SmartExplosionNode[], autoMakeItemIds: Set<string>): GroupedShortageRow[] => {
-    // Also collect all item codes that are sub-assemblies (have BOMs)
+    // Collect ALL item IDs that are sub-assemblies (have BOMs = componentType 'BOM')
+    // These will be auto-created, so we should skip them in raw material shortage check
+    const subAssemblyItemIds = new Set<string>();
     const subAssemblyItemCodes = new Set<string>();
     for (const n of nodes || []) {
-      if (n?.componentType === 'BOM' && n.itemCode) {
-        subAssemblyItemCodes.add(n.itemCode);
+      if (n?.componentType === 'BOM') {
+        if (n.itemId) subAssemblyItemIds.add(String(n.itemId));
+        if (n.itemCode) subAssemblyItemCodes.add(n.itemCode);
       }
     }
+
+    // Helper to detect if an item looks like a sub-assembly by name/code pattern
+    // This catches items that should be sub-assemblies but might not have BOMs yet
+    const looksLikeSubAssembly = (code?: string, name?: string): boolean => {
+      const c = (code || '').toUpperCase();
+      const n = (name || '').toUpperCase();
+      // Skip items with "ASSY" or "ASSEMBLY" in name
+      if (n.includes('ASSY') || n.includes('ASSEMBLY')) return true;
+      // Skip items with SA- prefix (sub-assembly code pattern)
+      if (c.startsWith('SA-')) return true;
+      // Skip FG- prefix (finished goods)
+      if (c.startsWith('FG-')) return true;
+      return false;
+    };
 
     const byItemId = new Map<
       string,
@@ -447,10 +464,16 @@ function SmartJobOrdersItemsPageContent() {
       if (n?.componentType !== 'ITEM') continue;
       const selectedItemId = effectiveSelectedItemId(n);
       if (!selectedItemId) continue;
-      if (autoMakeItemIds.has(selectedItemId)) continue;
       
-      // Also skip if this item appears as a BOM node elsewhere (it's a sub-assembly)
+      // Skip if this item is a sub-assembly (will be auto-created)
+      // Check by: itemId in autoMakeItemIds, itemId in BOM nodes, or itemCode matches a BOM node
+      if (autoMakeItemIds.has(selectedItemId)) continue;
+      if (subAssemblyItemIds.has(selectedItemId)) continue;
       if (n.itemCode && subAssemblyItemCodes.has(n.itemCode)) continue;
+      
+      // Also skip items that LOOK like sub-assemblies by name/code pattern
+      // This catches items that should have BOMs but don't (data issue)
+      if (looksLikeSubAssembly(n.itemCode, n.itemName)) continue;
 
       const required = Number(n.requiredQuantity || 0) || 0;
       if (required <= 0) continue;
