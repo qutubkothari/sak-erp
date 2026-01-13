@@ -2789,11 +2789,19 @@ export class JobOrderService {
 
     // Log explosion results for debugging
     const bomNodes = nodes.filter((n: any) => n.componentType === 'BOM');
+    const bomNodesWithStock = bomNodes.filter((n: any) => n.toMakeQuantity === 0);
+    const bomNodesNeedMake = bomNodes.filter((n: any) => n.toMakeQuantity > 0);
     console.log(`[SmartJO Preview] Explosion results:`, {
       totalNodes: nodes.length,
       bomNodes: bomNodes.length,
+      subAssembliesWithStock: bomNodesWithStock.length,
+      subAssembliesNeedToMake: bomNodesNeedMake.length,
       subAssembliesBeforeDedup: subAssemblies.length,
     });
+    if (bomNodesWithStock.length > 0) {
+      console.log(`[SmartJO Preview] Sub-assemblies with existing stock (skipped):`, 
+        bomNodesWithStock.map((n: any) => `${n.itemCode} (has ${n.availableQuantity})`).join(', '));
+    }
 
     // De-dup sub assemblies by (bomId,itemId) keeping the max-toMake (covers repeated usage).
     const planMap = new Map<string, SmartSubAssemblyPlan>();
