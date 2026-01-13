@@ -793,6 +793,20 @@ export class GrnService {
     return { message: 'GRN deleted successfully' };
   }
 
+  async rebuildStockEntries(tenantId: string, grnId: string) {
+    const { data: grn, error } = await this.supabase
+      .from('grns')
+      .select('id, tenant_id, warehouse_id, grn_number, grn_items(*)')
+      .eq('tenant_id', tenantId)
+      .eq('id', grnId)
+      .single();
+
+    if (error || !grn) throw new NotFoundException('GRN not found');
+
+    await this.ensureStockEntriesForGrnAccepted(tenantId, grn);
+    return { message: 'Stock rebuild triggered', grnId };
+  }
+
   async qcAccept(tenantId: string, grnId: string, userId: string, body: any) {
     // body contains: items array with { itemId, acceptedQty, rejectedQty, qcNotes, rejectionReason }
     console.log('=== QC ACCEPT START ===');
@@ -1145,6 +1159,17 @@ export class GrnService {
       console.log('=== CREATE STOCK ENTRY CALLED ===');
       console.log('Stock Data:', JSON.stringify(stockData, null, 2));
 
+      const tenantId = stockData?.tenant_id as string | undefined;
+      if (!tenantId) {
+        console.error('❌ createStockEntry: missing tenant_id; skipping');
+        return;
+      }
+
+      if (!stockData?.warehouse_id) {
+        console.error('❌ createStockEntry: missing warehouse_id; skipping');
+        return;
+      }
+
       // Idempotency for GRN flows: if we have a grn_item_id, ensure we don't double-add stock.
       const grnItemIdForDedup =
         stockData?.metadata && typeof stockData.metadata === 'object'
@@ -1167,6 +1192,10 @@ export class GrnService {
       }
 
       const quantityChange = Number(stockData.quantity ?? 0) || 0;
+      if (quantityChange === 0) {
+        console.log('ℹ️ createStockEntry: zero quantity; skipping');
+        return;
+      }
       const availableQuantity =
         stockData.available_quantity === undefined || stockData.available_quantity === null
           ? quantityChange
@@ -1179,6 +1208,77 @@ export class GrnService {
 
       const metadataFromCaller =
         stockData.metadata && typeof stockData.metadata === 'object' ? stockData.metadata : {};
+
+      // Some older GRN flows stored item_code but did not set item_id.
+      // Resolve item_id from tenant_id + item_code as a best-effort so inventory stays consistent.
+      let resolvedItemCategory: string | undefined;
+      if (!stockData?.item_id) {
+        const candidateItemCode =
+          (typeof stockData?.item_code === 'string' && stockData.item_code) ||
+          (typeof stockData?.itemCode === 'string' && stockData.itemCode) ||
+          (typeof metadataFromCaller?.item_code === 'string' && metadataFromCaller.item_code);
+
+        const normalizedCode = typeof candidateItemCode === 'string' ? candidateItemCode.trim() : '';
+        if (normalizedCode) {
+          const tryResolve = async (useIlike: boolean) => {
+            const q = this.supabase
+              .from('items')
+              .select('id, category, code')
+              .eq('tenant_id', tenantId);
+
+            return useIlike ? q.ilike('code', normalizedCode).limit(5) : q.eq('code', normalizedCode).limit(5);
+          };
+
+          const { data: exactMatches, error: exactError } = await tryResolve(false);
+          if (exactError) {
+            console.error('⚠️ createStockEntry: failed to resolve item by exact code:', normalizedCode, exactError);
+          }
+
+          const matches = Array.isArray(exactMatches) && exactMatches.length > 0 ? exactMatches : undefined;
+          const { data: ilikeMatches, error: ilikeError } =
+            !matches ? await tryResolve(true) : { data: undefined, error: null };
+          if (ilikeError) {
+            console.error('⚠️ createStockEntry: failed to resolve item by ilike code:', normalizedCode, ilikeError);
+          }
+
+          const resolvedList = matches || (Array.isArray(ilikeMatches) ? ilikeMatches : []);
+          if (resolvedList.length > 1) {
+            console.error(
+              '⚠️ createStockEntry: multiple items matched code; using first match',
+              normalizedCode,
+              resolvedList.map((r) => r?.id)
+            );
+          }
+          if (resolvedList.length >= 1 && resolvedList[0]?.id) {
+            stockData.item_id = String(resolvedList[0].id);
+            if (resolvedList[0]?.category) resolvedItemCategory = String(resolvedList[0].category);
+
+            // Best-effort backfill for grn_items.item_id so future reads have it.
+            if (grnItemIdForDedup) {
+              const { error: backfillError } = await this.supabase
+                .from('grn_items')
+                .update({ item_id: stockData.item_id })
+                .eq('tenant_id', tenantId)
+                .eq('id', grnItemIdForDedup)
+                .is('item_id', null);
+
+              if (backfillError) {
+                console.error('⚠️ createStockEntry: failed to backfill grn_items.item_id:', grnItemIdForDedup, backfillError);
+              }
+            }
+          }
+        }
+      }
+
+      if (!stockData?.item_id) {
+        console.error('❌ createStockEntry: missing item_id; cannot create stock entry', {
+          tenant_id: tenantId,
+          warehouse_id: stockData?.warehouse_id,
+          item_code: metadataFromCaller?.item_code ?? stockData?.item_code,
+          metadata: metadataFromCaller,
+        });
+        return;
+      }
 
       const metadata = {
         ...metadataFromCaller,
@@ -1222,7 +1322,7 @@ export class GrnService {
         p_warehouse_id: stockData.warehouse_id,
         p_location_id: null, // Assuming null location for now
         p_quantity_change: quantityChange,
-        p_category: normalizeInventoryCategory(item?.category, 'RAW_MATERIAL'),
+        p_category: normalizeInventoryCategory(resolvedItemCategory ?? item?.category, 'RAW_MATERIAL'),
       });
 
       if (error) {

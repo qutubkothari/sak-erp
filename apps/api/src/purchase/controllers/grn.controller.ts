@@ -200,6 +200,11 @@ export class GrnController {
     return this.grnService.qcAccept(req.user.tenantId, id, req.user.userId, body);
   }
 
+  @Post(':id/rebuild-stock')
+  async rebuildStock(@Request() req: any, @Param('id') id: string) {
+    return this.grnService.rebuildStockEntries(req.user.tenantId, id);
+  }
+
   @Post('items/:itemId/generate-uids')
   async generateUIDs(@Request() req: any, @Param('itemId') itemId: string, @Body() body: any) {
     return this.grnService.generateUIDs(req.user.tenantId, itemId, body);
