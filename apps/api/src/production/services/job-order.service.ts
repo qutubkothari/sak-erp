@@ -2675,6 +2675,12 @@ export class JobOrderService {
         // Many BOMs reference assemblies via item_id (without child_bom_id), so relying only on
         // category/type can cause assemblies to be treated as plain items and appear as "NO_STOCK".
         const subBom = await this.getActiveBomForItem(tenantId, itemId);
+        
+        // Debug: Log when an item has/doesn't have a BOM
+        if (!subBom && (item.code?.startsWith('SA-') || item.code?.startsWith('ITEM-06'))) {
+          console.log(`[SmartJO Explosion] Item ${item.code} (${itemId}) has NO BOM - treating as ITEM`);
+        }
+        
         if (subBom) {
           caches.bomById.set(subBom.id, subBom);
 
@@ -2880,6 +2886,14 @@ export class JobOrderService {
     });
 
     const subAssembliesToMake = subAssembliesToMakeAll.filter((sa) => Number(sa?.toMakeQuantity || 0) > 0);
+
+    // Log the processing order for debugging
+    console.log('[SmartJO] Sub-assembly processing order (deepest first):');
+    for (const sa of subAssembliesToMake) {
+      const key = `${String(sa.bomId)}:${String(sa.itemId)}`;
+      const lvl = subAssemblyLevelByKey.get(key) ?? 0;
+      console.log(`  Level ${lvl}: ${sa.itemCode} (qty: ${sa.toMakeQuantity})`);
+    }
     const totalSteps = subAssembliesToMake.length + 1; // +1 for main job order
     let currentStep = 0;
 
