@@ -1888,6 +1888,15 @@ export class JobOrderService {
     const allowPartial = Boolean(options?.allowPartialConsumption);
     const autoBuildMissingSubAssemblies = options?.autoBuildMissingSubAssemblies ?? true;
 
+    console.log('[completeJobOrder] Starting completion', {
+      jobOrderId,
+      jobOrderNumber: jobOrder.job_order_number,
+      status: jobOrder.status,
+      materialsCount: (jobOrder.job_order_materials || []).length,
+      allowPartial,
+      autoBuildMissingSubAssemblies,
+    });
+
     // Normalize legacy/buggy material rows (some historical flows stored bom_header IDs in item_id/selected_variant_id).
     try {
       jobOrder.job_order_materials = await this.normalizeJobOrderMaterialRows(
@@ -1902,28 +1911,40 @@ export class JobOrderService {
     // This runs BEFORE consumption regardless of partial mode (tries to create what's needed first).
     // Only triggers for items that have an active BOM.
     if (autoBuildMissingSubAssemblies) {
+      console.log('[completeJobOrder] Auto-build enabled, checking materials for shortages');
       if (!userId) {
         throw new BadRequestException('userId is required to auto-build missing sub-assemblies');
       }
 
       const startDate = this.toStartDate(String((jobOrder as any)?.start_date || ''));
       const materials = Array.isArray(jobOrder.job_order_materials) ? jobOrder.job_order_materials : [];
+      console.log('[completeJobOrder] Materials to check:', materials.length);
 
       for (const material of materials) {
         const requiredQty = Number(material.required_quantity) || 0;
         const alreadyIssued = Number(material.issued_quantity) || 0;
         const consumeQty = Math.max(0, requiredQty - alreadyIssued);
-        if (consumeQty <= 0) continue;
+        if (consumeQty <= 0) {
+          console.log('[completeJobOrder] Skipping material (already issued):', material.item_id);
+          continue;
+        }
 
         const itemIdToConsume = material.selected_variant_id || material.item_id;
-        if (!this.isUuid(String(itemIdToConsume || ''))) continue;
+        if (!this.isUuid(String(itemIdToConsume || ''))) {
+          console.log('[completeJobOrder] Skipping material (invalid UUID):', itemIdToConsume);
+          continue;
+        }
 
         const available = await this.getAvailableStock(tenantId, String(itemIdToConsume));
         const shortage = Math.max(0, consumeQty - available);
+        console.log('[completeJobOrder] Material check:', { itemIdToConsume, consumeQty, available, shortage });
         if (shortage <= 0) continue;
 
         const bom = await this.getActiveBomForItem(tenantId, String(itemIdToConsume));
-        if (!bom?.id) continue; // No BOM => raw material; cannot auto-build.
+        if (!bom?.id) {
+          console.log('[completeJobOrder] No BOM for item (raw material):', itemIdToConsume);
+          continue; // No BOM => raw material; cannot auto-build.
+        }
 
         // Build the missing sub-assembly quantity, complete it, then QC-approve so stock is created.
         const itemBasic = await this.getItemBasic(String(itemIdToConsume));
