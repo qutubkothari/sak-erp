@@ -2567,8 +2567,19 @@ export class JobOrderService {
       const toConsume = Number(material?.required_quantity) || 0;
       const currentStock = materialStock.available;
       const reservedStock = materialStock.allocated;
-      const newStock = currentStock - toConsume;
       const autoBuildable = Boolean(materialItemId && bomItemIdSet.has(materialItemId));
+
+      // If an item has a BOM, completion can auto-build the missing quantity before consuming.
+      // In that case, avoid showing negative "newStock" in preview; report what will be built.
+      const autoBuildQuantity = autoBuildable ? Math.max(0, toConsume - currentStock) : 0;
+      const newStock = autoBuildable && currentStock < toConsume ? 0 : currentStock - toConsume;
+
+      const status =
+        autoBuildQuantity > 0
+          ? 'AUTO_BUILD'
+          : currentStock >= toConsume
+            ? 'OK'
+            : 'INSUFFICIENT';
       return {
         itemId: materialItemId,
         itemCode: materialItem?.code || 'Unknown',
@@ -2578,6 +2589,8 @@ export class JobOrderService {
         reservedStock,
         newStock,
         autoBuildable,
+        autoBuildQuantity,
+        status,
         sufficient: currentStock >= toConsume || autoBuildable,
       };
     });
