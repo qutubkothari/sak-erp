@@ -1865,7 +1865,12 @@ export class JobOrderService {
     };
   }
 
-  async completeJobOrder(tenantId: string, jobOrderId: string, userId?: string, options?: { allowPartialConsumption?: boolean }) {
+  async completeJobOrder(
+    tenantId: string,
+    jobOrderId: string,
+    userId?: string,
+    options?: { allowPartialConsumption?: boolean; autoBuildMissingSubAssemblies?: boolean },
+  ) {
     // Get job order with materials
     const { data: jobOrder } = await this.supabase
       .from('production_job_orders')
@@ -1880,6 +1885,7 @@ export class JobOrderService {
     }
 
     const allowPartial = Boolean(options?.allowPartialConsumption);
+    const autoBuildMissingSubAssemblies = options?.autoBuildMissingSubAssemblies !== false;
 
     // Normalize legacy/buggy material rows (some historical flows stored bom_header IDs in item_id/selected_variant_id).
     try {
@@ -1889,6 +1895,89 @@ export class JobOrderService {
       );
     } catch (e: any) {
       console.warn('[completeJobOrder] Material normalization failed:', e?.message || e);
+    }
+
+    // Auto-build missing sub-assemblies if the job order is blocked by assembly shortages.
+    // This is intentionally conservative: only triggers for items that have an active BOM.
+    if (!allowPartial && autoBuildMissingSubAssemblies) {
+      if (!userId) {
+        throw new BadRequestException('userId is required to auto-build missing sub-assemblies');
+      }
+
+      const startDate = this.toStartDate(String((jobOrder as any)?.start_date || ''));
+      const materials = Array.isArray(jobOrder.job_order_materials) ? jobOrder.job_order_materials : [];
+
+      for (const material of materials) {
+        const requiredQty = Number(material.required_quantity) || 0;
+        const alreadyIssued = Number(material.issued_quantity) || 0;
+        const consumeQty = Math.max(0, requiredQty - alreadyIssued);
+        if (consumeQty <= 0) continue;
+
+        const itemIdToConsume = material.selected_variant_id || material.item_id;
+        if (!this.isUuid(String(itemIdToConsume || ''))) continue;
+
+        const available = await this.getAvailableStock(tenantId, String(itemIdToConsume));
+        const shortage = Math.max(0, consumeQty - available);
+        if (shortage <= 0) continue;
+
+        const bom = await this.getActiveBomForItem(tenantId, String(itemIdToConsume));
+        if (!bom?.id) continue; // No BOM => raw material; cannot auto-build.
+
+        // Build the missing sub-assembly quantity, complete it, then QC-approve so stock is created.
+        const itemBasic = await this.getItemBasic(String(itemIdToConsume));
+        console.log('[completeJobOrder] Auto-building missing sub-assembly', {
+          jobOrderId,
+          jobOrderNumber: jobOrder.job_order_number,
+          itemId: itemIdToConsume,
+          itemCode: itemBasic?.code,
+          shortage,
+          bomId: bom.id,
+        });
+
+        const created = await this.createFromBOMWithVariantSelections(tenantId, userId, {
+          itemId: String(itemIdToConsume),
+          bomId: String(bom.id),
+          quantity: shortage,
+          startDate,
+          priority: 'NORMAL',
+          notes: `Auto-created during completion of ${jobOrder.job_order_number} (missing sub-assembly)`,
+        } as any);
+
+        await this.supabase
+          .from('production_job_orders')
+          .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
+          .eq('id', created.id);
+
+        await this.completeJobOrder(tenantId, created.id, userId, {
+          allowPartialConsumption: false,
+          autoBuildMissingSubAssemblies: true,
+        } as any);
+
+        const { data: uidRows, error: uidErr } = await this.supabase
+          .from('uid_registry')
+          .select('uid')
+          .eq('tenant_id', tenantId)
+          .eq('job_order_id', created.id);
+
+        if (uidErr) throw new BadRequestException(uidErr.message);
+        const uids = (uidRows || []).map((r: any) => String(r?.uid || '').trim()).filter(Boolean);
+        if (uids.length > 0) {
+          await this.approveQC(tenantId, created.id, uids, [], userId);
+        } else {
+          throw new BadRequestException(`Failed to auto-approve QC for sub-assembly ${itemBasic?.code || itemIdToConsume}: no UIDs found`);
+        }
+      }
+
+      // Re-load materials after auto-build (issued quantities / ids may have changed)
+      const { data: refreshed } = await this.supabase
+        .from('production_job_orders')
+        .select('*, job_order_materials(*)')
+        .eq('tenant_id', tenantId)
+        .eq('id', jobOrderId)
+        .single();
+      if (refreshed?.job_order_materials) {
+        jobOrder.job_order_materials = refreshed.job_order_materials;
+      }
     }
 
     // Start transaction-like operations
@@ -2393,17 +2482,22 @@ export class JobOrderService {
     if (!jobOrder) throw new NotFoundException('Job order not found');
 
     // Get materials (no embeds; item joins can be ambiguous when multiple FKs exist)
-    const { data: materials, error: materialsError } = await this.supabase
+    const { data: materialsRaw, error: materialsError } = await this.supabase
       .from('job_order_materials')
-      .select('item_id, required_quantity')
+      .select('id, item_id, selected_variant_id, required_quantity')
       .eq('job_order_id', jobOrderId);
 
     if (materialsError) throw new BadRequestException(materialsError.message);
-    const materialsList = Array.isArray(materials) ? materials : [];
+    let materialsList = Array.isArray(materialsRaw) ? materialsRaw : [];
+    try {
+      materialsList = await this.normalizeJobOrderMaterialRows(tenantId, materialsList);
+    } catch (e: any) {
+      console.warn('[getCompletionPreview] Material normalization failed:', e?.message || e);
+    }
 
     const itemIds = Array.from(
       new Set(
-        [jobOrder.item_id, ...materialsList.map((m: any) => m?.item_id)]
+        [jobOrder.item_id, ...materialsList.map((m: any) => (m?.selected_variant_id || m?.item_id))]
           .map((v) => String(v || '').trim())
           .filter(Boolean),
       ),
@@ -2450,7 +2544,7 @@ export class JobOrderService {
     const newFinishedStock = currentFinishedStock + quantityToAdd;
 
     const materialsToConsume = materialsList.map((material: any) => {
-      const materialItemId = String(material?.item_id || '').trim();
+      const materialItemId = String((material?.selected_variant_id || material?.item_id) || '').trim();
       const materialItem = itemById.get(materialItemId);
       const materialStock = stockByItemId.get(materialItemId) || { available: 0, allocated: 0 };
       const toConsume = Number(material?.required_quantity) || 0;
