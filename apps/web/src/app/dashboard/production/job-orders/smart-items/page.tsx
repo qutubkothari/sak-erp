@@ -1581,12 +1581,25 @@ function SmartJobOrdersItemsPageContent() {
 
               const statusLabel = st?.status || 'PENDING';
 
+              // Show sub-assembly count (total - 1 for FG)
+              const subAssemblyCount = total > 1 ? total - 1 : 0;
+              const progressText = (() => {
+                if (total <= 0) return statusLabel;
+                if (st?.progress?.phase === 'ISSUE_MATERIALS') {
+                  return `Issuing for ${subAssemblyCount} sub-assemblies + 1 FG`;
+                }
+                if (st?.progress?.phase === 'SUB_ASSEMBLIES') {
+                  return `${Math.min(current, subAssemblyCount)} / ${subAssemblyCount} sub-assemblies`;
+                }
+                return `${Math.min(current, total)} / ${total}`;
+              })();
+
               return (
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-sm font-medium text-amber-900">{st?.progress?.message || 'Starting…'}</div>
                     <div className="text-xs text-amber-800">
-                      {total > 0 ? `${Math.min(current, total)} / ${total}` : statusLabel}
+                      {progressText}
                     </div>
                   </div>
 
