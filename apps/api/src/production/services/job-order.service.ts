@@ -2514,6 +2514,23 @@ export class JobOrderService {
       if (it?.id) itemById.set(String(it.id), { code: it.code, name: it.name });
     });
 
+    // Determine which materials are sub-assemblies (have a BOM header) so the UI can
+    // allow completion even when assembly stock is currently 0 (it will be auto-built).
+    const { data: bomHeaders, error: bomHeadersError } = itemIds.length
+      ? await this.supabase
+          .from('bom_headers')
+          .select('item_id')
+          .eq('tenant_id', tenantId)
+          .in('item_id', itemIds)
+      : { data: [], error: null };
+
+    if (bomHeadersError) throw new BadRequestException(bomHeadersError.message);
+    const bomItemIdSet = new Set(
+      (bomHeaders || [])
+        .map((h: any) => String(h?.item_id || '').trim())
+        .filter(Boolean),
+    );
+
     // Fetch stock entries for all relevant items in one shot
     const { data: stockEntries, error: stockError } = itemIds.length
       ? await this.supabase
@@ -2551,6 +2568,7 @@ export class JobOrderService {
       const currentStock = materialStock.available;
       const reservedStock = materialStock.allocated;
       const newStock = currentStock - toConsume;
+      const autoBuildable = Boolean(materialItemId && bomItemIdSet.has(materialItemId));
       return {
         itemId: materialItemId,
         itemCode: materialItem?.code || 'Unknown',
@@ -2559,9 +2577,14 @@ export class JobOrderService {
         currentStock,
         reservedStock,
         newStock,
-        sufficient: currentStock >= toConsume,
+        autoBuildable,
+        sufficient: currentStock >= toConsume || autoBuildable,
       };
     });
+
+    const autoBuildMaterials = materialsToConsume.filter(
+      (m: any) => m.autoBuildable && Number(m.currentStock) < Number(m.toConsume),
+    );
 
     return {
       jobOrderId,
@@ -2574,6 +2597,7 @@ export class JobOrderService {
         newStock: newFinishedStock,
       },
       materialsToConsume,
+      autoBuildMaterials,
       canComplete: materialsToConsume.every((m) => m.sufficient),
       insufficientMaterials: materialsToConsume.filter((m) => !m.sufficient),
     };
