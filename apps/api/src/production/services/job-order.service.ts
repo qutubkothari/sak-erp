@@ -1881,6 +1881,16 @@ export class JobOrderService {
 
     const allowPartial = Boolean(options?.allowPartialConsumption);
 
+    // Normalize legacy/buggy material rows (some historical flows stored bom_header IDs in item_id/selected_variant_id).
+    try {
+      jobOrder.job_order_materials = await this.normalizeJobOrderMaterialRows(
+        tenantId,
+        jobOrder.job_order_materials || [],
+      );
+    } catch (e: any) {
+      console.warn('[completeJobOrder] Material normalization failed:', e?.message || e);
+    }
+
     // Start transaction-like operations
     try {
       // 1. Consume materials from inventory (stock_entries)
@@ -1895,6 +1905,13 @@ export class JobOrderService {
 
         // Use selected_variant_id if available, otherwise use item_id
         const itemIdToConsume = material.selected_variant_id || material.item_id;
+        if (!this.isUuid(String(itemIdToConsume || ''))) {
+          if (allowPartial) {
+            console.warn('[completeJobOrder] Skipping material with invalid item id (partial consumption mode)');
+            continue;
+          }
+          throw new BadRequestException('Failed to consume material: invalid item id');
+        }
 
         // Get item details
         const { data: item } = await this.supabase
@@ -1959,15 +1976,43 @@ export class JobOrderService {
             throw new BadRequestException(`Failed to consume ${item?.code}: ${updateError.message}`);
           }
 
+          // Keep inventory_stock consistent with stock_entries.
+          const warehouseId = String((entry as any)?.warehouse_id || '').trim();
+          if (warehouseId && this.isUuid(warehouseId)) {
+            const { error: invError } = await this.supabase.rpc('adjust_inventory_stock', {
+              p_tenant_id: tenantId,
+              p_item_id: itemIdToConsume,
+              p_warehouse_id: warehouseId,
+              p_location_id: null,
+              p_quantity_change: -toConsumeFromEntry,
+              p_category: normalizeInventoryCategory((item as any)?.category, 'RAW_MATERIAL'),
+            });
+
+            if (invError) {
+              console.error('Error syncing inventory_stock after consumption:', invError);
+              throw new BadRequestException(`Failed to sync inventory stock: ${invError.message}`);
+            }
+          }
+
           remainingToConsume -= toConsumeFromEntry;
         }
 
-        // Update material issued quantity
+        const actuallyConsumed = Math.max(0, consumeQty - remainingToConsume);
+        if (actuallyConsumed <= 0) {
+          if (allowPartial) {
+            continue;
+          }
+          throw new BadRequestException(`Failed to consume ${item?.code}: Unable to consume from stock`);
+        }
+
+        // Update material issued quantity (accurate for partial consumption)
+        const nextIssued = alreadyIssued + actuallyConsumed;
+        const nextStatus = nextIssued >= requiredQty ? 'ISSUED' : 'PARTIAL';
         await this.supabase
           .from('job_order_materials')
-          .update({ 
-            issued_quantity: alreadyIssued + consumeQty,
-            status: 'ISSUED'
+          .update({
+            issued_quantity: nextIssued,
+            status: nextStatus,
           })
           .eq('id', material.id);
       }
@@ -2471,6 +2516,89 @@ export class JobOrderService {
     return safe.reduce((sum: number, e: any) => sum + (Number(e?.available_quantity) || 0), 0);
   }
 
+  private async normalizeJobOrderMaterialRows(tenantId: string, materials: any[]): Promise<any[]> {
+    const safeMaterials = Array.isArray(materials) ? materials : [];
+    if (safeMaterials.length === 0) return safeMaterials;
+
+    const candidateIds = new Set<string>();
+    for (const m of safeMaterials) {
+      const itemId = String(m?.item_id || '').trim();
+      const variantId = String(m?.selected_variant_id || '').trim();
+      if (itemId && this.isUuid(itemId)) candidateIds.add(itemId);
+      if (variantId && this.isUuid(variantId)) candidateIds.add(variantId);
+    }
+
+    const idList = Array.from(candidateIds);
+    if (idList.length === 0) return safeMaterials;
+
+    const { data: existingItems } = await this.supabase
+      .from('items')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .in('id', idList);
+
+    const existingItemIds = new Set(
+      (existingItems || [])
+        .map((r: any) => String(r?.id || '').trim())
+        .filter(Boolean),
+    );
+
+    const missingIds = idList.filter((id) => !existingItemIds.has(id));
+    if (missingIds.length === 0) return safeMaterials;
+
+    const { data: bomHeaders } = await this.supabase
+      .from('bom_headers')
+      .select('id, item_id')
+      .eq('tenant_id', tenantId)
+      .in('id', missingIds);
+
+    const headerIdToItemId = new Map<string, string>();
+    for (const h of bomHeaders || []) {
+      const headerId = String((h as any)?.id || '').trim();
+      const mappedItemId = String((h as any)?.item_id || '').trim();
+      if (headerId && mappedItemId && this.isUuid(mappedItemId)) {
+        headerIdToItemId.set(headerId, mappedItemId);
+      }
+    }
+
+    if (headerIdToItemId.size === 0) return safeMaterials;
+
+    const nextMaterials = safeMaterials.map((m: any) => {
+      const currentItemId = String(m?.item_id || '').trim();
+      const currentVariantId = String(m?.selected_variant_id || '').trim();
+      const mappedItemId = currentItemId ? headerIdToItemId.get(currentItemId) : undefined;
+      const mappedVariantId = currentVariantId ? headerIdToItemId.get(currentVariantId) : undefined;
+      return {
+        ...m,
+        item_id: mappedItemId || m.item_id,
+        selected_variant_id: mappedVariantId || m.selected_variant_id,
+      };
+    });
+
+    for (let i = 0; i < safeMaterials.length; i += 1) {
+      const before = safeMaterials[i];
+      const after = nextMaterials[i];
+      const patch: any = {};
+
+      const beforeItemId = String(before?.item_id || '').trim();
+      const afterItemId = String(after?.item_id || '').trim();
+      const beforeVariantId = String(before?.selected_variant_id || '').trim();
+      const afterVariantId = String(after?.selected_variant_id || '').trim();
+
+      if (afterItemId && afterItemId !== beforeItemId) patch.item_id = afterItemId;
+      if (afterVariantId !== beforeVariantId) patch.selected_variant_id = afterVariantId || null;
+
+      if (Object.keys(patch).length) {
+        await this.supabase
+          .from('job_order_materials')
+          .update(patch)
+          .eq('id', before.id);
+      }
+    }
+
+    return nextMaterials;
+  }
+
   private async getActiveBomForItem(tenantId: string, itemId: string): Promise<any | null> {
     // Prefer active BOM. If is_active is not present or no active exists, fall back to latest version.
     const { data: active } = await this.supabase
@@ -2962,17 +3090,31 @@ export class JobOrderService {
         const { sa, jobOrder } = entry;
 
         // Check if this sub-assembly's materials are now available
-        const { data: materials } = await this.supabase
+        const { data: materialsRaw } = await this.supabase
           .from('job_order_materials')
-          .select('item_id, required_quantity')
+          .select('id, item_id, selected_variant_id, required_quantity')
           .eq('job_order_id', jobOrder.id);
+
+        let materials = Array.isArray(materialsRaw) ? materialsRaw : [];
+        try {
+          materials = await this.normalizeJobOrderMaterialRows(tenantId, materials);
+        } catch (e: any) {
+          console.warn('[SmartJO] Material normalization skipped during availability check:', e?.message || e);
+        }
 
         let allMaterialsAvailable = true;
         for (const mat of (materials || [])) {
           const needed = Number(mat.required_quantity) || 0;
           if (needed <= 0) continue;
 
-          const available = await this.getAvailableStock(tenantId, mat.item_id);
+          const itemIdToCheck = (mat as any)?.selected_variant_id || (mat as any)?.item_id;
+          if (!this.isUuid(String(itemIdToCheck || ''))) {
+            allMaterialsAvailable = false;
+            console.log(`[SmartJO] ${sa.itemCode}: Material has invalid item id (cannot check stock)`);
+            break;
+          }
+
+          const available = await this.getAvailableStock(tenantId, itemIdToCheck);
           if (available < needed) {
             allMaterialsAvailable = false;
             console.log(`[SmartJO] ${sa.itemCode}: Material ${mat.item_id} insufficient (need ${needed}, have ${available})`);
