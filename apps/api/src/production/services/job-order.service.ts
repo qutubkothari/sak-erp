@@ -2787,6 +2787,14 @@ export class JobOrderService {
       { includeAllComponents: Boolean(req.includeAllComponents) },
     );
 
+    // Log explosion results for debugging
+    const bomNodes = nodes.filter((n: any) => n.componentType === 'BOM');
+    console.log(`[SmartJO Preview] Explosion results:`, {
+      totalNodes: nodes.length,
+      bomNodes: bomNodes.length,
+      subAssembliesBeforeDedup: subAssemblies.length,
+    });
+
     // De-dup sub assemblies by (bomId,itemId) keeping the max-toMake (covers repeated usage).
     const planMap = new Map<string, SmartSubAssemblyPlan>();
     for (const sa of subAssemblies) {
