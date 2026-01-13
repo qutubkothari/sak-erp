@@ -1074,6 +1074,7 @@ export class JobOrderService {
 
       const completed = await this.completeJobOrder(tenantId, created.id, userId, {
         allowPartialConsumption: true,
+        autoBuildMissingSubAssemblies: true,
       } as any);
       completedSubJobOrders.push(completed);
 
@@ -1898,8 +1899,9 @@ export class JobOrderService {
     }
 
     // Auto-build missing sub-assemblies if the job order is blocked by assembly shortages.
-    // This is intentionally conservative: only triggers for items that have an active BOM.
-    if (!allowPartial && autoBuildMissingSubAssemblies) {
+    // This runs BEFORE consumption regardless of partial mode (tries to create what's needed first).
+    // Only triggers for items that have an active BOM.
+    if (autoBuildMissingSubAssemblies) {
       if (!userId) {
         throw new BadRequestException('userId is required to auto-build missing sub-assemblies');
       }
@@ -3423,7 +3425,7 @@ export class JobOrderService {
             .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
             .eq('id', created.id);
 
-          await this.completeJobOrder(tenantId, created.id, userId, { allowPartialConsumption: true });
+          await this.completeJobOrder(tenantId, created.id, userId, { allowPartialConsumption: true, autoBuildMissingSubAssemblies: true });
           completedSubJobOrders.push(created);
 
           const { data: uidRows } = await this.supabase
