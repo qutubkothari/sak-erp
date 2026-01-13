@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../lib/api-client';
+import { ListTable, type ListTableColumn } from '../../../components/ui/ListTable';
 
 interface WorkStation {
   id: string;
@@ -19,6 +20,72 @@ export default function WorkStationsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const workStationsColumns: ListTableColumn<WorkStation>[] = [
+    {
+      id: 'station_code',
+      label: 'Code',
+      accessor: (r) => r.station_code,
+    },
+    {
+      id: 'station_name',
+      label: 'Name',
+      accessor: (r) => r.station_name,
+    },
+    {
+      id: 'station_type',
+      label: 'Type',
+      accessor: (r) => r.station_type,
+    },
+    {
+      id: 'capacity',
+      label: 'Capacity',
+      accessor: (r) => `${r.capacity} operator${r.capacity !== 1 ? 's' : ''}`,
+      sortAccessor: (r) => r.capacity,
+      align: 'right',
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      cell: (r) => (
+        <span
+          className={`px-2 py-1 rounded-full text-xs font-medium ${
+            r.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+          }`}
+        >
+          {r.is_active ? 'Active' : 'Inactive'}
+        </span>
+      ),
+      sortAccessor: (r) => (r.is_active ? 1 : 0),
+      searchAccessor: (r) => (r.is_active ? 'active' : 'inactive'),
+      align: 'center',
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      cell: (station) => (
+        <div className="text-sm space-x-2">
+          <button
+            type="button"
+            onClick={() => handleEdit(station)}
+            className="text-blue-600 hover:text-blue-900 font-medium"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDelete(station.id)}
+            className="text-red-600 hover:text-red-900 font-medium"
+          >
+            Delete
+          </button>
+        </div>
+      ),
+      sortable: false,
+      hideable: false,
+      align: 'left',
+    },
+  ];
 
   // Form state
   const [formData, setFormData] = useState({
@@ -265,75 +332,15 @@ export default function WorkStationsPage() {
             No work stations found. Create one to get started.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Code
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Capacity
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {workStations.map((station) => (
-                  <tr key={station.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {station.station_code}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      {station.station_name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {station.station_type}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {station.capacity} operator{station.capacity !== 1 ? 's' : ''}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          station.is_active
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {station.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                      <button
-                        onClick={() => handleEdit(station)}
-                        className="text-blue-600 hover:text-blue-900 font-medium"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(station.id)}
-                        className="text-red-600 hover:text-red-900 font-medium"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ListTable
+            storageKey="workStationsTable"
+            rows={workStations}
+            columns={workStationsColumns}
+            getRowId={(r) => r.id}
+            defaultPageSize={10}
+            pageSizeOptions={[10, 25, 50, 100]}
+            searchPlaceholder="Search by code, name, type, status…"
+          />
         )}
       </div>
     </div>

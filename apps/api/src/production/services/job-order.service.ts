@@ -2874,7 +2874,10 @@ export class JobOrderService {
       message: subAssembliesToMake.length ? `Creating ${subAssembliesToMake.length} sub-assemblies…` : 'No sub-assemblies required',
     });
 
-    // Auto-create and auto-complete missing sub assemblies.
+    // PHASE 1: Create ALL sub-assembly job orders first (without completing).
+    // This ensures they all exist before we try to complete any of them.
+    const createdSubJobOrders: Array<{ sa: SmartSubAssemblyPlan; jobOrder: any; completed: boolean }> = [];
+    
     for (const sa of subAssembliesToMake) {
       currentStep += 1;
       onProgress?.({
@@ -2886,11 +2889,12 @@ export class JobOrderService {
         itemName: sa.itemName,
       });
 
-      console.log('[JobOrderService] Creating sub-assembly:', {
+      console.log('[SmartJO] Creating sub-assembly job order:', {
         itemId: sa.itemId,
         itemCode: sa.itemCode,
         bomId: sa.bomId,
         quantity: sa.toMakeQuantity,
+        level: subAssemblyLevelByKey.get(`${sa.bomId}:${sa.itemId}`) ?? 'unknown',
       });
 
       const created = await this.createFromBOMWithVariantSelections(tenantId, userId, {
@@ -2904,36 +2908,104 @@ export class JobOrderService {
         itemSelections: req.itemSelections,
       });
 
-      // Ensure status is IN_PROGRESS so completeJobOrder can run.
-      await this.supabase
-        .from('production_job_orders')
-        .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
-        .eq('id', created.id);
+      createdSubJobOrders.push({ sa, jobOrder: created, completed: false });
+    }
 
-      const completed = await this.completeJobOrder(tenantId, created.id, userId, { allowPartialConsumption: true });
-      completedSubJobOrders.push(completed);
+    console.log(`[SmartJO] Created ${createdSubJobOrders.length} sub-assembly job orders. Starting multi-pass completion...`);
 
-      // IMPORTANT: completeJobOrder does NOT add finished stock entries anymore.
-      // For Smart Job Orders we need the sub-assembly stock to exist immediately so the main
-      // finished-goods job order can consume it. Auto-approve QC for all generated UIDs.
-      const { data: uidRows, error: uidErr } = await this.supabase
-        .from('uid_registry')
-        .select('uid')
-        .eq('tenant_id', tenantId)
-        .eq('job_order_id', created.id);
+    // PHASE 2: Complete sub-assemblies in multiple passes (deepest first).
+    // Each pass completes sub-assemblies whose materials are now available.
+    // This handles nested dependencies where SUB-A needs SUB-B's output.
+    const MAX_COMPLETION_PASSES = 10;
+    let passNumber = 0;
+    let completedInLastPass = 0;
 
-      if (uidErr) throw new BadRequestException(uidErr.message);
-      const uids = (uidRows || [])
-        .map((r: any) => String(r?.uid || '').trim())
-        .filter(Boolean);
+    do {
+      passNumber += 1;
+      completedInLastPass = 0;
 
-      if (uids.length === 0) {
-        throw new BadRequestException(
-          `Failed to auto-approve QC for sub-assembly ${sa.itemCode}: no UIDs found for job order ${created.id}`,
-        );
+      console.log(`[SmartJO] Completion pass ${passNumber}/${MAX_COMPLETION_PASSES}...`);
+
+      for (const entry of createdSubJobOrders) {
+        if (entry.completed) continue;
+
+        const { sa, jobOrder } = entry;
+
+        // Check if this sub-assembly's materials are now available
+        const { data: materials } = await this.supabase
+          .from('job_order_materials')
+          .select('item_id, required_quantity')
+          .eq('job_order_id', jobOrder.id);
+
+        let allMaterialsAvailable = true;
+        for (const mat of (materials || [])) {
+          const needed = Number(mat.required_quantity) || 0;
+          if (needed <= 0) continue;
+
+          const available = await this.getAvailableStock(tenantId, mat.item_id);
+          if (available < needed) {
+            allMaterialsAvailable = false;
+            console.log(`[SmartJO] ${sa.itemCode}: Material ${mat.item_id} insufficient (need ${needed}, have ${available})`);
+            break;
+          }
+        }
+
+        if (!allMaterialsAvailable) {
+          console.log(`[SmartJO] ${sa.itemCode}: Skipping completion pass ${passNumber} - materials not yet available`);
+          continue;
+        }
+
+        try {
+          // Set to IN_PROGRESS so completeJobOrder can run
+          await this.supabase
+            .from('production_job_orders')
+            .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
+            .eq('id', jobOrder.id);
+
+          // Complete the job order (consume materials, generate UIDs)
+          const completed = await this.completeJobOrder(tenantId, jobOrder.id, userId, { allowPartialConsumption: false });
+          completedSubJobOrders.push(completed);
+
+          // Auto-approve QC to create stock immediately
+          const { data: uidRows, error: uidErr } = await this.supabase
+            .from('uid_registry')
+            .select('uid')
+            .eq('tenant_id', tenantId)
+            .eq('job_order_id', jobOrder.id);
+
+          if (uidErr) throw new BadRequestException(uidErr.message);
+          const uids = (uidRows || [])
+            .map((r: any) => String(r?.uid || '').trim())
+            .filter(Boolean);
+
+          if (uids.length === 0) {
+            throw new BadRequestException(
+              `Failed to auto-approve QC for sub-assembly ${sa.itemCode}: no UIDs found for job order ${jobOrder.id}`,
+            );
+          }
+
+          await this.approveQC(tenantId, jobOrder.id, uids, [], userId);
+
+          entry.completed = true;
+          completedInLastPass += 1;
+          console.log(`[SmartJO] ${sa.itemCode}: Completed and QC approved (pass ${passNumber})`);
+        } catch (err: any) {
+          console.error(`[SmartJO] ${sa.itemCode}: Failed to complete in pass ${passNumber}:`, err?.message || err);
+          // Don't throw - try again in next pass
+        }
       }
 
-      await this.approveQC(tenantId, created.id, uids, [], userId);
+      console.log(`[SmartJO] Pass ${passNumber} completed: ${completedInLastPass} sub-assemblies finished`);
+
+    } while (completedInLastPass > 0 && passNumber < MAX_COMPLETION_PASSES);
+
+    // Check if all sub-assemblies were completed
+    const incompleteSubAssemblies = createdSubJobOrders.filter((e) => !e.completed);
+    if (incompleteSubAssemblies.length > 0) {
+      const incompleteList = incompleteSubAssemblies.map((e) => e.sa.itemCode).join(', ');
+      console.warn(`[SmartJO] ${incompleteSubAssemblies.length} sub-assemblies could not be completed: ${incompleteList}`);
+      console.warn(`[SmartJO] This usually means raw materials are missing. Please GRN the required materials first.`);
+      // Don't throw - let the main JO be created, user can see the issue in the materials preview
     }
 
     // Create the main finished-goods job order. Keep it as-is (typically PLANNED) for shop floor execution.

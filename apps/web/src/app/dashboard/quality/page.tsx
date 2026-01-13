@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
+import { ListTable, type ListTableColumn } from '../../../components/ui/ListTable';
 
 interface Inspection {
   id: string;
@@ -434,6 +435,201 @@ export default function QualityPage() {
     return colors[grade] || 'bg-gray-500 text-white';
   };
 
+  const inspectionColumns: Array<ListTableColumn<Inspection>> = [
+    {
+      id: 'inspection_number',
+      label: 'Inspection #',
+      accessor: (r) => r.inspection_number,
+      cell: (r) => <span className="font-medium text-amber-600">{r.inspection_number}</span>,
+      sortable: true,
+      hideable: false,
+    },
+    {
+      id: 'inspection_type',
+      label: 'Type',
+      accessor: (r) => r.inspection_type,
+      cell: (r) => (
+        <span className="px-2 py-1 text-xs rounded bg-purple-100 text-purple-800">{r.inspection_type}</span>
+      ),
+      sortable: true,
+    },
+    {
+      id: 'inspection_date',
+      label: 'Date',
+      accessor: (r) => r.inspection_date,
+      sortAccessor: (r) => new Date(r.inspection_date),
+      cell: (r) => new Date(r.inspection_date).toLocaleDateString(),
+      sortable: true,
+    },
+    {
+      id: 'item_name',
+      label: 'Item',
+      accessor: (r) => r.item_name,
+      sortable: true,
+    },
+    {
+      id: 'inspected_quantity',
+      label: 'Qty Inspected',
+      accessor: (r) => r.inspected_quantity,
+      align: 'right',
+      sortable: true,
+    },
+    {
+      id: 'accepted_quantity',
+      label: 'Accepted',
+      accessor: (r) => r.accepted_quantity ?? 0,
+      align: 'right',
+      cell: (r) => <span className="text-green-600">{r.accepted_quantity || 0}</span>,
+      sortable: true,
+    },
+    {
+      id: 'rejected_quantity',
+      label: 'Rejected',
+      accessor: (r) => r.rejected_quantity ?? 0,
+      align: 'right',
+      cell: (r) => <span className="text-red-600">{r.rejected_quantity || 0}</span>,
+      sortable: true,
+    },
+    {
+      id: 'defect_rate',
+      label: 'Defect Rate',
+      accessor: (r) => r.defect_rate,
+      align: 'right',
+      cell: (r) => (typeof r.defect_rate === 'number' ? `${r.defect_rate.toFixed(2)}%` : '-'),
+      sortable: true,
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      accessor: (r) => r.status,
+      cell: (r) => <span className={`px-2 py-1 text-xs rounded ${getStatusColor(r.status)}`}>{r.status}</span>,
+      sortable: true,
+    },
+    {
+      id: 'inspector_name',
+      label: 'Inspector',
+      accessor: (r) => r.inspector_name,
+      sortable: true,
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      hideable: false,
+      sortable: false,
+      cell: (inspection) => (
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          <button onClick={() => setViewingInspection(inspection)} className="text-gray-600 hover:text-gray-800">
+            View
+          </button>
+          {inspection.status === 'PENDING' && (
+            <>
+              <button onClick={() => handleEditInspection(inspection)} className="text-blue-600 hover:text-blue-800">
+                Edit
+              </button>
+              <button onClick={() => setShowDeleteConfirm(inspection.id)} className="text-red-600 hover:text-red-800">
+                Delete
+              </button>
+            </>
+          )}
+          {(inspection.status === 'PENDING' || inspection.status === 'IN_PROGRESS') && (
+            <button
+              onClick={() => {
+                setCompleteInspectionId(inspection.id);
+                setCompleteForm((prev) => ({
+                  ...prev,
+                  quantity_accepted: inspection.inspected_quantity,
+                }));
+                setShowCompleteForm(true);
+              }}
+              className="text-amber-600 hover:text-amber-800"
+            >
+              Complete
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const ncrColumns: Array<ListTableColumn<NCR>> = [
+    {
+      id: 'ncr_number',
+      label: 'NCR #',
+      accessor: (r) => r.ncr_number,
+      cell: (r) => <span className="font-medium text-red-600">{r.ncr_number}</span>,
+      sortable: true,
+      hideable: false,
+    },
+    {
+      id: 'ncr_date',
+      label: 'Raised Date',
+      accessor: (r) => r.ncr_date,
+      sortAccessor: (r) => new Date(r.ncr_date),
+      cell: (r) => new Date(r.ncr_date).toLocaleDateString(),
+      sortable: true,
+    },
+    {
+      id: 'item',
+      label: 'Item/Part',
+      accessor: (r) => r.item_name || '',
+      cell: (r) =>
+        r.item_name ? (
+          <div>
+            <div className="font-medium">{r.item_name}</div>
+            {r.quantity_affected ? <div className="text-xs text-gray-500">Qty: {r.quantity_affected}</div> : null}
+          </div>
+        ) : (
+          <span className="text-gray-400">-</span>
+        ),
+      sortable: true,
+    },
+    {
+      id: 'description',
+      label: 'Issue Description',
+      accessor: (r) => r.description,
+      cell: (r) => <span className="block max-w-xs truncate">{r.description}</span>,
+      sortable: true,
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      accessor: (r) => r.status,
+      cell: (r) => (
+        <span className={`px-2 py-1 text-xs rounded ${getStatusColor(r.status)}`}>{r.status.replace(/_/g, ' ')}</span>
+      ),
+      sortable: true,
+    },
+    {
+      id: 'root_cause',
+      label: 'Root Cause',
+      accessor: (r) => r.root_cause,
+      cell: (r) => (
+        <span className="block max-w-xs truncate">
+          {r.root_cause ? r.root_cause : <span className="text-gray-400">Pending investigation</span>}
+        </span>
+      ),
+      sortable: true,
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      hideable: false,
+      sortable: false,
+      cell: (ncr) => (
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          <button onClick={() => setViewingNCR(ncr)} className="text-gray-600 hover:text-gray-800">
+            View
+          </button>
+          {ncr.status !== 'CLOSED' && (
+            <button onClick={() => setEditingNCR(ncr)} className="text-blue-600 hover:text-blue-800">
+              Update
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="p-6">
       <div className="mb-6">
@@ -498,160 +694,26 @@ export default function QualityPage() {
 
       {/* Inspections Tab */}
       {activeTab === 'inspections' && (
-        <div className="bg-white rounded-lg shadow">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inspection #</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Qty Inspected</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accepted</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rejected</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Defect Rate</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inspector</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {inspections.map((inspection) => (
-                  <tr key={inspection.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-amber-600">{inspection.inspection_number}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className="px-2 py-1 text-xs rounded bg-purple-100 text-purple-800">
-                        {inspection.inspection_type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(inspection.inspection_date).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 text-sm">{inspection.item_name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">{inspection.inspected_quantity}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600">{inspection.accepted_quantity || 0}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600">{inspection.rejected_quantity || 0}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                      {inspection.defect_rate ? `${inspection.defect_rate.toFixed(2)}%` : '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(inspection.status)}`}>
-                        {inspection.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{inspection.inspector_name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => setViewingInspection(inspection)}
-                          className="text-gray-600 hover:text-gray-800"
-                        >
-                          View
-                        </button>
-                        {inspection.status === 'PENDING' && (
-                          <>
-                            <button
-                              onClick={() => handleEditInspection(inspection)}
-                              className="text-blue-600 hover:text-blue-800"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => setShowDeleteConfirm(inspection.id)}
-                              className="text-red-600 hover:text-red-800"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-                        {(inspection.status === 'PENDING' || inspection.status === 'IN_PROGRESS') && (
-                          <button
-                            onClick={() => {
-                              setCompleteInspectionId(inspection.id);
-                              setCompleteForm({
-                                ...completeForm,
-                                quantity_accepted: inspection.inspected_quantity
-                              });
-                              setShowCompleteForm(true);
-                            }}
-                            className="text-amber-600 hover:text-amber-800"
-                          >
-                            Complete
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <ListTable
+          storageKey="qualityInspectionsTable"
+          rows={inspections}
+          columns={inspectionColumns}
+          getRowId={(r) => r.id}
+          searchPlaceholder="Search inspections…"
+          emptyState="No inspections"
+        />
       )}
 
       {/* NCR Tab */}
       {activeTab === 'ncr' && (
-        <div className="bg-white rounded-lg shadow">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">NCR #</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Raised Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item/Part</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Issue Description</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Root Cause</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {ncrs.map((ncr) => (
-                  <tr key={ncr.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">{ncr.ncr_number}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(ncr.ncr_date).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 text-sm">
-                      {ncr.item_name ? (
-                        <div>
-                          <div className="font-medium">{ncr.item_name}</div>
-                          {ncr.quantity_affected && (
-                            <div className="text-xs text-gray-500">Qty: {ncr.quantity_affected}</div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.description}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(ncr.status)}`}>
-                        {ncr.status.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm max-w-xs truncate">{ncr.root_cause || <span className="text-gray-400">Pending investigation</span>}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => setViewingNCR(ncr)}
-                          className="text-gray-600 hover:text-gray-800"
-                        >
-                          View
-                        </button>
-                        {ncr.status !== 'CLOSED' && (
-                          <button
-                            onClick={() => setEditingNCR(ncr)}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            Update
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <ListTable
+          storageKey="qualityNcrTable"
+          rows={ncrs}
+          columns={ncrColumns}
+          getRowId={(r) => r.id}
+          searchPlaceholder="Search NCRs…"
+          emptyState="No NCRs"
+        />
       )}
 
       {/* Vendor Ratings Tab */}
