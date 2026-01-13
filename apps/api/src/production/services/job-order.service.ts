@@ -1885,7 +1885,7 @@ export class JobOrderService {
     }
 
     const allowPartial = Boolean(options?.allowPartialConsumption);
-    const autoBuildMissingSubAssemblies = options?.autoBuildMissingSubAssemblies !== false;
+    const autoBuildMissingSubAssemblies = options?.autoBuildMissingSubAssemblies ?? true;
 
     // Normalize legacy/buggy material rows (some historical flows stored bom_header IDs in item_id/selected_variant_id).
     try {

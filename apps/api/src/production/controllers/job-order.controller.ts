@@ -147,10 +147,13 @@ export class JobOrderController {
   }
 
   @Post(':id/complete')
-  async completeJobOrder(@Request() req: any, @Param('id') id: string) {
+  async completeJobOrder(@Request() req: any, @Param('id') id: string, @Body() body?: { allowPartialConsumption?: boolean; autoBuildMissingSubAssemblies?: boolean }) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id || req.user?.sub;
-    return this.jobOrderService.completeJobOrder(tenantId, id, userId);
+    return this.jobOrderService.completeJobOrder(tenantId, id, userId, {
+      allowPartialConsumption: body?.allowPartialConsumption ?? false,
+      autoBuildMissingSubAssemblies: body?.autoBuildMissingSubAssemblies ?? true,
+    });
   }
 
   @Post(':id/issue-materials')
