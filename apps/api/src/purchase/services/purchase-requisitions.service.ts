@@ -538,7 +538,7 @@ export class PurchaseRequisitionsService {
         if (recipient.vendorId && itemVendors.length > 0) {
           // Get items assigned to this vendor
           const assignedItemIds = itemVendors
-            .filter(iv => iv.vendorIds.includes(recipient.vendorId))
+            .filter(iv => iv.vendorIds.includes(recipient.vendorId as string))
             .map(iv => iv.itemId);
           
           vendorItems = vendorItems.filter((item: any) => 

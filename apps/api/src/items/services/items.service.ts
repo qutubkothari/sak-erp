@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 

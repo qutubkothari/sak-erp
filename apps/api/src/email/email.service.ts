@@ -30,7 +30,7 @@ export class EmailService {
 
   private getTransportUser(): string | undefined {
     if (this.gmailOAuth2Service?.isConfigured()) {
-      return this.configService.get('GMAIL_USER', this.configService.get('SMTP_USER'));
+      return this.configService.get('GMAIL_USER') || this.configService.get('SMTP_USER');
     }
     return this.configService.get('SMTP_USER');
   }

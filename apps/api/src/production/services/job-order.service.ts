@@ -536,16 +536,17 @@ export class JobOrderService {
     const itemIdByCode = new Map<string, string>();
     for (const code of codesToResolve) {
       try {
+        const codeStr = String(code);
         const { data: found } = await this.supabase
           .from('items')
           .select('id, code')
           .eq('tenant_id', tenantId)
-          .ilike('code', code)
+          .ilike('code', codeStr)
           .limit(1);
 
         const row = Array.isArray(found) ? found[0] : null;
         if (row?.id) {
-          itemIdByCode.set(code, String(row.id));
+          itemIdByCode.set(codeStr, String(row.id));
         }
       } catch (e) {
         console.warn('[JobOrderService] Failed resolving item_id from code', { tenantId, code, e });
@@ -3165,7 +3166,7 @@ export class JobOrderService {
       if (existing === undefined || lvl > existing) subAssemblyLevelByKey.set(key, lvl);
     }
 
-    const subAssembliesToMakeAll = ([...(preview.subAssembliesToMake as SmartSubAssemblyPlan[])] || []).sort((a, b) => {
+    const subAssembliesToMakeAll = ([...(preview.subAssembliesToMake as SmartSubAssemblyPlan[] || [])]).sort((a, b) => {
       const aKey = `${String(a.bomId)}:${String(a.itemId)}`;
       const bKey = `${String(b.bomId)}:${String(b.itemId)}`;
       const aLvl = subAssemblyLevelByKey.get(aKey) ?? 0;

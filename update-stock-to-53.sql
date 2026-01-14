@@ -8,7 +8,7 @@ BEGIN;
 -- So we only update quantity and reserved_quantity, available_quantity will auto-calculate
 UPDATE inventory_stock
 SET 
-  quantity = 53.00,
+  quantity = 100.00,
   reserved_quantity = 0.00,
   updated_at = NOW()
 WHERE quantity = 50.00;
@@ -16,8 +16,8 @@ WHERE quantity = 50.00;
 -- Update stock_entries to 53 (this is what Items page reads)
 UPDATE stock_entries
 SET 
-  quantity = 53.00,
-  available_quantity = 53.00,
+  quantity = 100.00,
+  available_quantity = 100.00,
   updated_at = NOW()
 WHERE quantity = 50.00 OR available_quantity = 50.00;
 
@@ -26,8 +26,8 @@ COMMIT;
 -- Verify the update
 SELECT 'inventory_stock' AS table_name, COUNT(*) AS rows_with_53 
 FROM inventory_stock 
-WHERE quantity = 53.00
+WHERE quantity = 100.00
 UNION ALL
 SELECT 'stock_entries', COUNT(*) 
 FROM stock_entries 
-WHERE available_quantity = 53.00;
+WHERE available_quantity = 100.00;

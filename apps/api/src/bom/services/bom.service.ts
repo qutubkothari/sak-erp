@@ -317,8 +317,8 @@ export class BomService {
     console.log('[BomService] getBomItems - Item IDs to fetch:', itemIds);
     console.log('[BomService] getBomItems - Child BOM IDs:', childBomIds);
 
-    let items = [];
-    let childBoms = [];
+    let items: any[] = [];
+    let childBoms: any[] = [];
 
     if (itemIds.length > 0) {
       const { data } = await this.supabase.from('items').select('*').in('id', itemIds);
