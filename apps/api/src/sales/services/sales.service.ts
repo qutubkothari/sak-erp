@@ -1005,14 +1005,19 @@ export class SalesService {
   async createDispatch(req: Request, dispatchData: any) {
     const { tenantId, userId } = req.user as any;
 
-    // Get sales order to extract customer_id
+    // Get sales order to extract customer_id and check status
     const { data: salesOrder } = await this.supabase
       .from('sales_orders')
-      .select('customer_id')
+      .select('customer_id, status')
       .eq('id', dispatchData.sales_order_id)
       .single();
 
     if (!salesOrder) throw new NotFoundException('Sales order not found');
+    
+    // Prevent dispatch creation if sales order is fully dispatched
+    if (salesOrder.status === 'COMPLETED') {
+      throw new BadRequestException('Cannot create dispatch for a fully dispatched sales order');
+    }
 
     const dnNumber = await this.generateDNNumber(req);
 

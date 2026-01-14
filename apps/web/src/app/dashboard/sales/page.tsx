@@ -2479,9 +2479,9 @@ export default function SalesPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             onClick={() => openSmartJOForSO(order)}
-                            className="text-amber-600 hover:text-amber-900 disabled:opacity-50"
-                            title="Create a Smart Job Order from this Sales Order"
-                            disabled={smartJOLoading}
+                            className="text-amber-600 hover:text-amber-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={order.status === 'COMPLETED' ? 'Cannot create job order - sales order is fully dispatched' : 'Create a Smart Job Order from this Sales Order'}
+                            disabled={smartJOLoading || order.status === 'COMPLETED'}
                           >
                             {smartJOLoading ? 'Loading…' : 'Create Job Order'}
                           </button>
@@ -2509,6 +2509,11 @@ export default function SalesPage() {
                             >
                               Create Dispatch
                             </button>
+                          )}
+                          {order.status === 'COMPLETED' && (
+                            <span className="text-xs text-gray-500 italic">
+                              ✓ Fully dispatched
+                            </span>
                           )}
 
                           <button
