@@ -101,6 +101,10 @@ function PRContent() {
   const [filterStatus, setFilterStatus] = useState('');
   const [selectedPR, setSelectedPR] = useState<PRDetail | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [sortColumn, setSortColumn] = useState<string>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingPRId, setEditingPRId] = useState<string | null>(null);
@@ -260,6 +264,10 @@ function PRContent() {
   useEffect(() => {
     fetchRequisitions();
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterStatus]);
 
   useEffect(() => {
     if (showCreateForm) {

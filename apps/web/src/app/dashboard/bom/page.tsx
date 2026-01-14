@@ -140,6 +140,14 @@ export default function BOMPage() {
   const [showDrawingManager, setShowDrawingManager] = useState(false);
   const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string } | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  
+  // Sorting state
+  const [sortColumn, setSortColumn] = useState<string>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   const [formData, setFormData] = useState({
     itemId: '',
@@ -187,6 +195,11 @@ export default function BOMPage() {
       });
     }
   }, [boms, loading]);
+
+  // Reset to page 1 when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   const fetchAvailableBOMs = async () => {
     try {
@@ -646,6 +659,7 @@ export default function BOMPage() {
                 <p className="text-gray-500">Create your first BOM to define product structure</p>
               </div>
             ) : (() => {
+              // Filter BOMs
               const filteredBoms = boms.filter((bom) => {
                 if (!searchQuery) return true;
                 const query = searchQuery.toLowerCase();
@@ -654,6 +668,73 @@ export default function BOMPage() {
                 const version = String(bom.version);
                 return itemName.includes(query) || itemCode.includes(query) || version.includes(query);
               });
+
+              // Sort BOMs
+              const sortedBoms = [...filteredBoms].sort((a, b) => {
+                let aVal: any;
+                let bVal: any;
+
+                switch (sortColumn) {
+                  case 'item_name':
+                    aVal = a.item?.name || '';
+                    bVal = b.item?.name || '';
+                    break;
+                  case 'item_code':
+                    aVal = a.item?.code || '';
+                    bVal = b.item?.code || '';
+                    break;
+                  case 'version':
+                    aVal = a.version || 0;
+                    bVal = b.version || 0;
+                    break;
+                  case 'components':
+                    aVal = a.bom_items?.length || 0;
+                    bVal = b.bom_items?.length || 0;
+                    break;
+                  case 'is_active':
+                    aVal = a.is_active ? 1 : 0;
+                    bVal = b.is_active ? 1 : 0;
+                    break;
+                  case 'effective_from':
+                    aVal = a.effective_from || '';
+                    bVal = b.effective_from || '';
+                    break;
+                  case 'created_at':
+                  default:
+                    aVal = a.created_at || '';
+                    bVal = b.created_at || '';
+                    break;
+                }
+
+                if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+                if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+
+                if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+                if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+              });
+
+              // Paginate BOMs
+              const totalItems = sortedBoms.length;
+              const totalPages = Math.ceil(totalItems / itemsPerPage);
+              const startIndex = (currentPage - 1) * itemsPerPage;
+              const endIndex = startIndex + itemsPerPage;
+              const paginatedBoms = sortedBoms.slice(startIndex, endIndex);
+
+              // Handle sort
+              const handleSort = (column: string) => {
+                if (sortColumn === column) {
+                  setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+                } else {
+                  setSortColumn(column);
+                  setSortDirection('asc');
+                }
+              };
+
+              // Handle pagination
+              const goToPage = (page: number) => {
+                setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+              };
 
               if (filteredBoms.length === 0) {
                 return (
@@ -666,222 +747,503 @@ export default function BOMPage() {
               }
 
               return (
-                <table className="w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Product
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Item Code
-                      </th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Version
-                      </th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Components
-                      </th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Effective From
-                      </th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredBoms.map((bom) => (
-                      <tr key={bom.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">{bom.item?.name || 'Unknown Item'}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-500">{bom.item?.code || 'N/A'}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span className="text-sm font-medium text-gray-900">v{bom.version}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                            {bom.bom_items?.length || 0} {(bom.bom_items?.length || 0) === 1 ? 'part' : 'parts'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span
-                            className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                              bom.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                            }`}
-                          >
-                            {bom.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {bom.effective_from ? formatDate(bom.effective_from) : 'N/A'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => setSelectedBom(bom)}
-                              className="text-amber-600 hover:text-amber-900"
-                              title="View Details"
-                            >
-                              👁️
-                            </button>
-                            <button
-                              onClick={() => openEditModal(bom)}
-                              className="text-blue-600 hover:text-blue-900"
-                              title="Edit"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              onClick={() => router.push(`/dashboard/bom/${bom.id}/routing`)}
-                              className="text-indigo-600 hover:text-indigo-900"
-                              title="Routing"
-                            >
-                              🔄
-                            </button>
-                            <button
-                              onClick={() => handleGeneratePR(bom.id)}
-                              className="text-green-600 hover:text-green-900"
-                              title="Generate PR"
-                            >
-                              📋
-                            </button>
+                <>
+                  <table className="w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th 
+                          onClick={() => handleSort('item_name')}
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        >
+                          <div className="flex items-center gap-1">
+                            Product
+                            {sortColumn === 'item_name' && (
+                              <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                            )}
                           </div>
-                        </td>
+                        </th>
+                        <th 
+                          onClick={() => handleSort('item_code')}
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        >
+                          <div className="flex items-center gap-1">
+                            Item Code
+                            {sortColumn === 'item_code' && (
+                              <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                            )}
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleSort('version')}
+                          className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            Version
+                            {sortColumn === 'version' && (
+                              <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                            )}
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleSort('components')}
+                          className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            Components
+                            {sortColumn === 'components' && (
+                              <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                            )}
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleSort('is_active')}
+                          className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            Status
+                            {sortColumn === 'is_active' && (
+                              <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                            )}
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleSort('effective_from')}
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        >
+                          <div className="flex items-center gap-1">
+                            Effective From
+                            {sortColumn === 'effective_from' && (
+                              <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                            )}
+                          </div>
+                        </th>
+                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {paginatedBoms.map((bom) => (
+                        <tr key={bom.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">{bom.item?.name || 'Unknown Item'}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-500">{bom.item?.code || 'N/A'}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <span className="text-sm font-medium text-gray-900">v{bom.version}</span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                              {bom.bom_items?.length || 0} {(bom.bom_items?.length || 0) === 1 ? 'part' : 'parts'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <span
+                              className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                bom.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                              }`}
+                            >
+                              {bom.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {bom.effective_from ? formatDate(bom.effective_from) : 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => setSelectedBom(bom)}
+                                className="text-amber-600 hover:text-amber-900"
+                                title="View Details"
+                              >
+                                👁️
+                              </button>
+                              <button
+                                onClick={() => openEditModal(bom)}
+                                className="text-blue-600 hover:text-blue-900"
+                                title="Edit"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                onClick={() => router.push(`/dashboard/bom/${bom.id}/routing`)}
+                                className="text-indigo-600 hover:text-indigo-900"
+                                title="Routing"
+                              >
+                                🔄
+                              </button>
+                              <button
+                                onClick={() => handleGeneratePR(bom.id)}
+                                className="text-green-600 hover:text-green-900"
+                                title="Generate PR"
+                              >
+                                📋
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+                      <div className="flex-1 flex justify-between sm:hidden">
+                        <button
+                          onClick={() => goToPage(currentPage - 1)}
+                          disabled={currentPage === 1}
+                          className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Previous
+                        </button>
+                        <button
+                          onClick={() => goToPage(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                          className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                      <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                        <div className="flex gap-4 items-center">
+                          <div className="text-sm text-gray-700">
+                            Showing <span className="font-medium">{startIndex + 1}</span> to{' '}
+                            <span className="font-medium">{Math.min(endIndex, totalItems)}</span> of{' '}
+                            <span className="font-medium">{totalItems}</span> results
+                          </div>
+                          <select
+                            value={itemsPerPage}
+                            onChange={(e) => {
+                              setItemsPerPage(Number(e.target.value));
+                              setCurrentPage(1);
+                            }}
+                            className="px-3 py-1 border border-gray-300 rounded text-sm"
+                          >
+                            <option value={10}>10 per page</option>
+                            <option value={25}>25 per page</option>
+                            <option value={50}>50 per page</option>
+                            <option value={100}>100 per page</option>
+                          </select>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => goToPage(1)}
+                            disabled={currentPage === 1}
+                            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            First
+                          </button>
+                          <button
+                            onClick={() => goToPage(currentPage - 1)}
+                            disabled={currentPage === 1}
+                            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Previous
+                          </button>
+                          
+                          {/* Page Numbers */}
+                          <div className="flex gap-1">
+                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                              let pageNum;
+                              if (totalPages <= 5) {
+                                pageNum = i + 1;
+                              } else if (currentPage <= 3) {
+                                pageNum = i + 1;
+                              } else if (currentPage >= totalPages - 2) {
+                                pageNum = totalPages - 4 + i;
+                              } else {
+                                pageNum = currentPage - 2 + i;
+                              }
+                              
+                              return (
+                                <button
+                                  key={pageNum}
+                                  onClick={() => goToPage(pageNum)}
+                                  className={`px-3 py-1 border rounded text-sm ${
+                                    currentPage === pageNum
+                                      ? 'bg-amber-600 text-white border-amber-600'
+                                      : 'border-gray-300 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  {pageNum}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          
+                          <button
+                            onClick={() => goToPage(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Next
+                          </button>
+                          <button
+                            onClick={() => goToPage(totalPages)}
+                            disabled={currentPage === totalPages}
+                            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Last
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               );
             })()}
           </div>
         ) : (
           // CARD VIEW
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {loading ? (
-            <div className="col-span-full text-center py-12 text-gray-500">Loading BOMs...</div>
-          ) : boms.length === 0 ? (
-            <div className="col-span-full text-center py-12">
-              <div className="text-6xl mb-4">📋</div>
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No BOMs Found</h3>
-              <p className="text-gray-500">Create your first BOM to define product structure</p>
-            </div>
-          ) : (() => {
-            const filteredBoms = boms.filter((bom) => {
-              if (!searchQuery) return true;
-              const query = searchQuery.toLowerCase();
-              const itemName = bom.item?.name?.toLowerCase() || '';
-              const itemCode = bom.item?.code?.toLowerCase() || '';
-              const version = String(bom.version);
-              return itemName.includes(query) || itemCode.includes(query) || version.includes(query);
-            });
+          <>
+            {loading ? (
+              <div className="text-center py-12 text-gray-500">Loading BOMs...</div>
+            ) : boms.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">📋</div>
+                <h3 className="text-xl font-semibold text-gray-700 mb-2">No BOMs Found</h3>
+                <p className="text-gray-500">Create your first BOM to define product structure</p>
+              </div>
+            ) : (() => {
+              // Filter BOMs
+              const filteredBoms = boms.filter((bom) => {
+                if (!searchQuery) return true;
+                const query = searchQuery.toLowerCase();
+                const itemName = bom.item?.name?.toLowerCase() || '';
+                const itemCode = bom.item?.code?.toLowerCase() || '';
+                const version = String(bom.version);
+                return itemName.includes(query) || itemCode.includes(query) || version.includes(query);
+              });
 
-            if (filteredBoms.length === 0) {
-              return (
-                <div className="col-span-full text-center py-12">
-                  <div className="text-6xl mb-4">🔍</div>
-                  <h3 className="text-xl font-semibold text-gray-700 mb-2">No BOMs Match Your Search</h3>
-                  <p className="text-gray-500">Try different keywords or clear the search</p>
-                </div>
-              );
-            }
+              // Paginate BOMs
+              const totalItems = filteredBoms.length;
+              const totalPages = Math.ceil(totalItems / itemsPerPage);
+              const startIndex = (currentPage - 1) * itemsPerPage;
+              const endIndex = startIndex + itemsPerPage;
+              const paginatedBoms = filteredBoms.slice(startIndex, endIndex);
 
-            return filteredBoms.map((bom) => (
-              <div key={bom.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-900">{bom.item?.name || 'Unknown Item'}</h3>
-                    <p className="text-sm text-gray-500">{bom.item?.code || 'N/A'} - Version {bom.version}</p>
+              // Handle pagination
+              const goToPage = (page: number) => {
+                setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+              };
+
+              if (filteredBoms.length === 0) {
+                return (
+                  <div className="text-center py-12">
+                    <div className="text-6xl mb-4">🔍</div>
+                    <h3 className="text-xl font-semibold text-gray-700 mb-2">No BOMs Match Your Search</h3>
+                    <p className="text-gray-500">Try different keywords or clear the search</p>
                   </div>
-                  <span
-                    className={`px-2 py-1 text-xs rounded-full ${
-                      bom.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                    }`}
-                  >
-                    {bom.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
+                );
+              }
 
-                <div className="mb-4">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Components ({bom.bom_items?.length || 0})</h4>
-                  <div className="space-y-2">
-                    {bom.bom_items?.slice(0, 3).map((item) => {
-                      const isChildBom = item.component_type === 'BOM';
-                      const componentCode = isChildBom
-                        ? item.child_bom?.item?.code || 'BOM'
-                        : item.item?.code || 'N/A';
-                      const componentName = isChildBom
-                        ? `${item.child_bom?.item?.name || 'Unknown'} (v${item.child_bom?.version ?? '?'})`
-                        : item.item?.name || 'Unknown';
-                      const componentUom = isChildBom
-                        ? item.child_bom?.item?.uom || 'set'
-                        : item.item?.uom || 'units';
-
-                      return (
-                        <div key={item.id} className="flex justify-between text-sm">
-                          <span className="text-gray-600">
-                            {componentCode} - {componentName}
+              return (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {paginatedBoms.map((bom) => (
+                      <div key={bom.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <h3 className="text-lg font-bold text-gray-900">{bom.item?.name || 'Unknown Item'}</h3>
+                            <p className="text-sm text-gray-500">{bom.item?.code || 'N/A'} - Version {bom.version}</p>
+                          </div>
+                          <span
+                            className={`px-2 py-1 text-xs rounded-full ${
+                              bom.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            {bom.is_active ? 'Active' : 'Inactive'}
                           </span>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">
-                              {item.quantity} {componentUom}
-                            </span>
-                            {item.drawing_url && (
-                              <span className="text-blue-600" title="Drawing attached">📎</span>
+                        </div>
+
+                        <div className="mb-4">
+                          <h4 className="text-sm font-semibold text-gray-700 mb-2">Components ({bom.bom_items?.length || 0})</h4>
+                          <div className="space-y-2">
+                            {bom.bom_items?.slice(0, 3).map((item) => {
+                              const isChildBom = item.component_type === 'BOM';
+                              const componentCode = isChildBom
+                                ? item.child_bom?.item?.code || 'BOM'
+                                : item.item?.code || 'N/A';
+                              const componentName = isChildBom
+                                ? `${item.child_bom?.item?.name || 'Unknown'} (v${item.child_bom?.version ?? '?'})`
+                                : item.item?.name || 'Unknown';
+                              const componentUom = isChildBom
+                                ? item.child_bom?.item?.uom || 'set'
+                                : item.item?.uom || 'units';
+
+                              return (
+                                <div key={item.id} className="flex justify-between text-sm">
+                                  <span className="text-gray-600">
+                                    {componentCode} - {componentName}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">
+                                      {item.quantity} {componentUom}
+                                    </span>
+                                    {item.drawing_url && (
+                                      <span className="text-blue-600" title="Drawing attached">📎</span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {(bom.bom_items?.length || 0) > 3 && (
+                              <p className="text-xs text-gray-500">+ {(bom.bom_items?.length || 0) - 3} more items</p>
                             )}
                           </div>
                         </div>
-                      );
-                    })}
-                    {(bom.bom_items?.length || 0) > 3 && (
-                      <p className="text-xs text-gray-500">+ {(bom.bom_items?.length || 0) - 3} more items</p>
-                    )}
-                  </div>
-                </div>
 
-                <div className="flex gap-2 pt-4 border-t">
-                  <button
-                    onClick={() => {
-                      console.log('[BOM] View Details clicked:', bom.id);
-                      setSelectedBom(bom);
-                    }}
-                    className="flex-1 bg-amber-100 text-amber-700 px-4 py-2 rounded hover:bg-amber-200 text-sm"
-                  >
-                    View Details
-                  </button>
-                  <button
-                    onClick={() => {
-                      openEditModal(bom);
-                    }}
-                    className="flex-1 bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 text-sm"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => router.push(`/dashboard/bom/${bom.id}/routing`)}
-                    className="flex-1 bg-blue-100 text-blue-700 px-4 py-2 rounded hover:bg-blue-200 text-sm"
-                  >
-                    Routing
-                  </button>
-                  <button
-                    onClick={() => {
-                      console.log('[BOM] Generate PR clicked:', bom.id);
-                      handleGeneratePR(bom.id);
-                    }}
-                    className="flex-1 bg-green-100 text-green-700 px-4 py-2 rounded hover:bg-green-200 text-sm"
-                  >
-                    Generate PR
-                  </button>
-                </div>
-              </div>
-            ));
-          })()}
-        </div>
+                        <div className="flex gap-2 pt-4 border-t">
+                          <button
+                            onClick={() => {
+                              console.log('[BOM] View Details clicked:', bom.id);
+                              setSelectedBom(bom);
+                            }}
+                            className="flex-1 bg-amber-100 text-amber-700 px-4 py-2 rounded hover:bg-amber-200 text-sm"
+                          >
+                            View Details
+                          </button>
+                          <button
+                            onClick={() => {
+                              openEditModal(bom);
+                            }}
+                            className="flex-1 bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 text-sm"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => router.push(`/dashboard/bom/${bom.id}/routing`)}
+                            className="flex-1 bg-blue-100 text-blue-700 px-4 py-2 rounded hover:bg-blue-200 text-sm"
+                          >
+                            Routing
+                          </button>
+                          <button
+                            onClick={() => {
+                              console.log('[BOM] Generate PR clicked:', bom.id);
+                              handleGeneratePR(bom.id);
+                            }}
+                            className="flex-1 bg-green-100 text-green-700 px-4 py-2 rounded hover:bg-green-200 text-sm"
+                          >
+                            Generate PR
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Pagination Controls for Card View */}
+                  {totalPages > 1 && (
+                    <div className="mt-6 bg-white px-4 py-3 rounded-lg shadow flex items-center justify-between border-t border-gray-200 sm:px-6">
+                      <div className="flex-1 flex justify-between sm:hidden">
+                        <button
+                          onClick={() => goToPage(currentPage - 1)}
+                          disabled={currentPage === 1}
+                          className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Previous
+                        </button>
+                        <button
+                          onClick={() => goToPage(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                          className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                      <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                        <div className="flex gap-4 items-center">
+                          <div className="text-sm text-gray-700">
+                            Showing <span className="font-medium">{startIndex + 1}</span> to{' '}
+                            <span className="font-medium">{Math.min(endIndex, totalItems)}</span> of{' '}
+                            <span className="font-medium">{totalItems}</span> results
+                          </div>
+                          <select
+                            value={itemsPerPage}
+                            onChange={(e) => {
+                              setItemsPerPage(Number(e.target.value));
+                              setCurrentPage(1);
+                            }}
+                            className="px-3 py-1 border border-gray-300 rounded text-sm"
+                          >
+                            <option value={10}>10 per page</option>
+                            <option value={25}>25 per page</option>
+                            <option value={50}>50 per page</option>
+                            <option value={100}>100 per page</option>
+                          </select>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => goToPage(1)}
+                            disabled={currentPage === 1}
+                            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            First
+                          </button>
+                          <button
+                            onClick={() => goToPage(currentPage - 1)}
+                            disabled={currentPage === 1}
+                            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Previous
+                          </button>
+                          
+                          {/* Page Numbers */}
+                          <div className="flex gap-1">
+                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                              let pageNum;
+                              if (totalPages <= 5) {
+                                pageNum = i + 1;
+                              } else if (currentPage <= 3) {
+                                pageNum = i + 1;
+                              } else if (currentPage >= totalPages - 2) {
+                                pageNum = totalPages - 4 + i;
+                              } else {
+                                pageNum = currentPage - 2 + i;
+                              }
+                              
+                              return (
+                                <button
+                                  key={pageNum}
+                                  onClick={() => goToPage(pageNum)}
+                                  className={`px-3 py-1 border rounded text-sm ${
+                                    currentPage === pageNum
+                                      ? 'bg-amber-600 text-white border-amber-600'
+                                      : 'border-gray-300 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  {pageNum}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          
+                          <button
+                            onClick={() => goToPage(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Next
+                          </button>
+                          <button
+                            onClick={() => goToPage(totalPages)}
+                            disabled={currentPage === totalPages}
+                            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Last
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </>
         )}
       </div>
 

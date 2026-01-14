@@ -69,6 +69,10 @@ export default function QualityPage() {
   const [ncrs, setNcrs] = useState<NCR[]>([]);
   const [vendorRatings, setVendorRatings] = useState<VendorRating[]>([]);
   const [dashboard, setDashboard] = useState<QualityDashboard | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [sortColumn, setSortColumn] = useState<string>('inspection_date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   
   // Dropdown data
   const [grns, setGrns] = useState<any[]>([]);
@@ -125,6 +129,10 @@ export default function QualityPage() {
 
   useEffect(() => {
     fetchData();
+  }, [activeTab]);
+
+  useEffect(() => {
+    setCurrentPage(1);
   }, [activeTab]);
 
   useEffect(() => {

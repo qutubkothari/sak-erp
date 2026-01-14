@@ -126,6 +126,10 @@ export default function SalesPage() {
   const [dispatches, setDispatches] = useState<DispatchNote[]>([]);
   const [warranties, setWarranties] = useState<Warranty[]>([]);
   const [items, setItems] = useState<any[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [sortColumn, setSortColumn] = useState<string>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [availableUIDs, setAvailableUIDs] = useState<{ [key: string]: UIDRecord[] }>({});
   const [loadingUIDs, setLoadingUIDs] = useState<{ [key: number]: boolean }>({});
   const [loading, setLoading] = useState(false);
@@ -510,6 +514,10 @@ export default function SalesPage() {
     } else if (activeTab === 'warranties') {
       fetchWarranties();
     }
+  }, [activeTab]);
+
+  useEffect(() => {
+    setCurrentPage(1);
   }, [activeTab]);
 
   const fetchItems = async () => {
@@ -1317,6 +1325,101 @@ export default function SalesPage() {
     }
   };
 
+  // Pagination and sorting helpers
+  const getPaginatedAndSortedData = <T extends Record<string, any>>(data: T[], sortKey: keyof T = 'created_at' as keyof T) => {
+    // Sort data
+    const sortedData = [...data].sort((a, b) => {
+      const aVal = a[sortColumn as keyof T] ?? a[sortKey];
+      const bVal = b[sortColumn as keyof T] ?? b[sortKey];
+      
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
+      
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      
+      if (aVal instanceof Date && bVal instanceof Date) {
+        return sortDirection === 'asc' ? aVal.getTime() - bVal.getTime() : bVal.getTime() - aVal.getTime();
+      }
+      
+      const aNum = typeof aVal === 'number' ? aVal : new Date(aVal as string).getTime();
+      const bNum = typeof bVal === 'number' ? bVal : new Date(bVal as string).getTime();
+      
+      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+    });
+    
+    // Paginate
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedData = sortedData.slice(startIndex, endIndex);
+    const totalPages = Math.ceil(sortedData.length / itemsPerPage);
+    
+    return { paginatedData, totalPages, totalItems: sortedData.length };
+  };
+
+  const renderPagination = (totalPages: number, totalItems: number) => {
+    if (totalPages <= 1) return null;
+    
+    return (
+      <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-3 bg-gray-50 border-t">
+        <div className="text-sm text-gray-700">
+          Showing {Math.min((currentPage - 1) * itemsPerPage + 1, totalItems)} to {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems} entries
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1 border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
+          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+            let pageNum: number;
+            if (totalPages <= 5) {
+              pageNum = i + 1;
+            } else if (currentPage <= 3) {
+              pageNum = i + 1;
+            } else if (currentPage >= totalPages - 2) {
+              pageNum = totalPages - 4 + i;
+            } else {
+              pageNum = currentPage - 2 + i;
+            }
+            return (
+              <button
+                key={pageNum}
+                onClick={() => setCurrentPage(pageNum)}
+                className={`px-3 py-1 border rounded ${currentPage === pageNum ? 'bg-amber-600 text-white' : 'hover:bg-gray-100'}`}
+              >
+                {pageNum}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => {
+              setItemsPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="ml-2 px-2 py-1 border rounded"
+          >
+            <option value={10}>10 / page</option>
+            <option value={25}>25 / page</option>
+            <option value={50}>50 / page</option>
+            <option value={100}>100 / page</option>
+          </select>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6">
       <div className="mb-6">
@@ -1382,6 +1485,7 @@ export default function SalesPage() {
           {loading ? (
             <p className="text-gray-600">Loading customers...</p>
           ) : (
+            <>
             <div className="bg-white rounded-lg shadow overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -1397,54 +1501,66 @@ export default function SalesPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {customers.map((customer) => (
-                    <tr key={customer.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {customer.customer_code}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{customer.customer_name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{customer.customer_type}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {customer.contact_person || '-'}
-                        <br />
-                        <span className="text-xs">{customer.mobile || customer.phone || '-'}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{customer.city || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        ₹{customer.credit_limit.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            customer.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {customer.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleEditCustomer(customer)}
-                            className="text-amber-600 hover:text-amber-800"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteCustomer(customer)}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {(() => {
+                    const { paginatedData, totalPages, totalItems } = getPaginatedAndSortedData(customers, 'customer_code');
+                    return (
+                      <>
+                        {paginatedData.map((customer) => (
+                          <tr key={customer.id}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {customer.customer_code}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{customer.customer_name}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{customer.customer_type}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              {customer.contact_person || '-'}
+                              <br />
+                              <span className="text-xs">{customer.mobile || customer.phone || '-'}</span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{customer.city || '-'}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              ₹{customer.credit_limit.toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span
+                                className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                  customer.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                }`}
+                              >
+                                {customer.is_active ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditCustomer(customer)}
+                                  className="text-amber-600 hover:text-amber-800"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCustomer(customer)}
+                                  className="text-red-600 hover:text-red-800"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
+            {(() => {
+              const { totalPages, totalItems } = getPaginatedAndSortedData(customers, 'customer_code');
+              return renderPagination(totalPages, totalItems);
+            })()}
+            </>
           )}
 
           {/* Customer Form Modal */}
@@ -1657,6 +1773,7 @@ export default function SalesPage() {
           {loading ? (
             <p className="text-gray-600">Loading quotations...</p>
           ) : (
+            <>
             <div className="bg-white rounded-lg shadow overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -1671,8 +1788,12 @@ export default function SalesPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {quotations.map((quotation) => (
-                    <tr key={quotation.id}>
+                  {(() => {
+                    const { paginatedData, totalPages, totalItems } = getPaginatedAndSortedData(quotations, 'quotation_date');
+                    return (
+                      <>
+                        {paginatedData.map((quotation) => (
+                          <tr key={quotation.id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {quotation.quotation_number}
                       </td>
@@ -1763,9 +1884,17 @@ export default function SalesPage() {
                       </td>
                     </tr>
                   ))}
+                      </>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
+            {(() => {
+              const { totalPages, totalItems } = getPaginatedAndSortedData(quotations, 'quotation_date');
+              return renderPagination(totalPages, totalItems);
+            })()}
+            </>
           )}
 
           {/* SO Conversion Form Modal */}

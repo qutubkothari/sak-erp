@@ -2,8 +2,9 @@
 --
 -- ✅ Keeps master data (items/vendors/customers/etc.)
 -- ✅ Does NOT delete BOMs or item masters (including sub-assemblies)
--- ✅ Targets: purchase_requisitions(+items), purchase_orders(+items), grns(+items), production_job_orders(+materials/+operations)
+-- ✅ Targets: purchase_requisitions(+items), purchase_orders(+items), grns(+items), production_job_orders(+materials/+operations), UIDs
 -- ⚠️ Also removes dependent transactional rows that block deletes (e.g. debit_notes for GRNs)
+-- ⚠️ Deletes ALL UIDs (uid_registry, product_deployment_history, uid_deployment, grn_uids, etc.)
 --
 -- HOW TO USE:
 -- 1) BACKUP your database (Supabase has backups / point-in-time options).

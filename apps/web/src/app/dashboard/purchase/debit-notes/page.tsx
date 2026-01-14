@@ -38,6 +38,10 @@ export default function DebitNotesPage() {
   const [selectedDebitNote, setSelectedDebitNote] = useState<DebitNote | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [sortColumn, setSortColumn] = useState<string>('debit_note_date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     fetchDebitNotes();

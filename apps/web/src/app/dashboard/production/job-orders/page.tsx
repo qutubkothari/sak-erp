@@ -148,6 +148,10 @@ function JobOrdersPageContent() {
   const [selectedJobOrderLoading, setSelectedJobOrderLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [completionPreview, setCompletionPreview] = useState<any>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [sortColumn, setSortColumn] = useState<string>('createdAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [completionJobOrderId, setCompletionJobOrderId] = useState<string | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [stockErrorModal, setStockErrorModal] = useState<{show: boolean, shortages: any[]}>({show: false, shortages: []});

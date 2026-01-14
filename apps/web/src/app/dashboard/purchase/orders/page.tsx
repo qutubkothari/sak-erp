@@ -80,6 +80,10 @@ function PurchaseOrdersContent() {
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [loadingPR, setLoadingPR] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [sortColumn, setSortColumn] = useState<string>('po_date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [submitting, setSubmitting] = useState(false);
   const [showDrawingManager, setShowDrawingManager] = useState(false);
   const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string; mandatory: boolean } | null>(null);
@@ -138,6 +142,10 @@ function PurchaseOrdersContent() {
       loadPRData(prId);
     }
   }, [filterStatus, prId]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterStatus, searchTerm]);
 
   useEffect(() => {
     if (!showModal) return;

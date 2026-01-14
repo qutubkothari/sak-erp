@@ -110,6 +110,10 @@ export default function ServicePage() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [sortColumn, setSortColumn] = useState<string>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   
   // Data for dropdowns
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -193,6 +197,10 @@ export default function ServicePage() {
     } else if (activeTab === 'reports') {
       fetchReports();
     }
+  }, [activeTab]);
+
+  useEffect(() => {
+    setCurrentPage(1);
   }, [activeTab]);
 
   useEffect(() => {
@@ -566,6 +574,101 @@ export default function ServicePage() {
 
   const router = useRouter();
 
+  // Pagination and sorting helpers
+  const getPaginatedAndSortedData = <T extends Record<string, any>>(data: T[], sortKey: keyof T = 'created_at' as keyof T) => {
+    // Sort data
+    const sortedData = [...data].sort((a, b) => {
+      const aVal = a[sortColumn as keyof T] ?? a[sortKey];
+      const bVal = b[sortColumn as keyof T] ?? b[sortKey];
+      
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
+      
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      
+      if (aVal instanceof Date && bVal instanceof Date) {
+        return sortDirection === 'asc' ? aVal.getTime() - bVal.getTime() : bVal.getTime() - aVal.getTime();
+      }
+      
+      const aNum = typeof aVal === 'number' ? aVal : new Date(aVal as string).getTime();
+      const bNum = typeof bVal === 'number' ? bVal : new Date(bVal as string).getTime();
+      
+      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+    });
+    
+    // Paginate
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedData = sortedData.slice(startIndex, endIndex);
+    const totalPages = Math.ceil(sortedData.length / itemsPerPage);
+    
+    return { paginatedData, totalPages, totalItems: sortedData.length };
+  };
+
+  const renderPagination = (totalPages: number, totalItems: number) => {
+    if (totalPages <= 1) return null;
+    
+    return (
+      <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-3 bg-gray-50 border-t">
+        <div className="text-sm text-gray-700">
+          Showing {Math.min((currentPage - 1) * itemsPerPage + 1, totalItems)} to {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems} entries
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1 border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
+          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+            let pageNum: number;
+            if (totalPages <= 5) {
+              pageNum = i + 1;
+            } else if (currentPage <= 3) {
+              pageNum = i + 1;
+            } else if (currentPage >= totalPages - 2) {
+              pageNum = totalPages - 4 + i;
+            } else {
+              pageNum = currentPage - 2 + i;
+            }
+            return (
+              <button
+                key={pageNum}
+                onClick={() => setCurrentPage(pageNum)}
+                className={`px-3 py-1 border rounded ${currentPage === pageNum ? 'bg-amber-600 text-white' : 'hover:bg-gray-100'}`}
+              >
+                {pageNum}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => {
+              setItemsPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="ml-2 px-2 py-1 border rounded"
+          >
+            <option value={10}>10 / page</option>
+            <option value={25}>25 / page</option>
+            <option value={50}>50 / page</option>
+            <option value={100}>100 / page</option>
+          </select>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6">
       <div className="mb-6">
@@ -627,6 +730,7 @@ export default function ServicePage() {
           {loading ? (
             <p className="text-gray-600">Loading service tickets...</p>
           ) : (
+            <>
             <div className="bg-white rounded-lg shadow overflow-hidden">
               {/* Desktop Table */}
               <div className="hidden md:block overflow-x-auto">
@@ -645,7 +749,11 @@ export default function ServicePage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {tickets.map((ticket) => (
+                  {(() => {
+                    const { paginatedData, totalPages, totalItems } = getPaginatedAndSortedData(tickets, 'complaint_date');
+                    return (
+                      <>
+                        {paginatedData.map((ticket) => (
                     <tr key={ticket.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {ticket.ticket_number}
@@ -720,14 +828,19 @@ export default function ServicePage() {
                       </td>
                     </tr>
                   ))}
+                      </>
+                    );
+                  })()}
                 </tbody>
               </table>
               </div>
               
               {/* Mobile Card View */}
               <div className="md:hidden space-y-4 p-4">
-                {tickets.map((ticket) => (
-                  <div key={ticket.id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                {(() => {
+                  const { paginatedData } = getPaginatedAndSortedData(tickets, 'complaint_date');
+                  return paginatedData.map((ticket) => (
+                    <div key={ticket.id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
                     <div className="flex justify-between items-start mb-2">
                       <span className="font-semibold text-amber-600">{ticket.ticket_number}</span>
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(ticket.status)}`}>
@@ -784,9 +897,15 @@ export default function ServicePage() {
                       </button>
                     </div>
                   </div>
-                ))}
+                ));
+                })()}
               </div>
             </div>
+            {(() => {
+              const { totalPages, totalItems } = getPaginatedAndSortedData(tickets, 'complaint_date');
+              return renderPagination(totalPages, totalItems);
+            })()}
+            </>
           )}
 
           {/* Ticket Form Modal */}
