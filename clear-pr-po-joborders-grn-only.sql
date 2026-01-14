@@ -292,4 +292,30 @@ BEGIN
 
   RAISE NOTICE '✅ Done deleting PR/PO/JO/GRN transactions for tenant: %', v_tenant_id;
 END $$;
+
+-- ========================================
+-- OPTIONAL: Standalone query to zero all sub-assembly stock
+-- ========================================
+-- Run this independently if you only want to zero sub-assembly stock without deleting transactions
+-- 
+-- USAGE: Replace 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c' with your tenant_id, then execute
+/*
+UPDATE stock_entries
+SET quantity = 0, available_quantity = 0, allocated_quantity = 0
+WHERE tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c'
+  AND item_id IN (
+    -- Sub-assemblies by type/category
+    SELECT i.id FROM items i
+    WHERE i.tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c'
+      AND (
+        COALESCE(type::text, '') = 'SUB_ASSEMBLY'
+        OR COALESCE(category, '') ILIKE '%SUB%ASSEMBL%'
+        OR COALESCE(sub_category, '') ILIKE '%SUB%ASSEMBL%'
+      )
+    UNION
+    -- Items that have BOM headers (reliable sub-assembly indicator)
+    SELECT bh.item_id FROM bom_headers bh
+    WHERE bh.tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c'
+  );
+*/
  

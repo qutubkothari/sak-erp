@@ -203,6 +203,13 @@ export class JobOrderController {
     return this.jobOrderService.ensureUidsForJobOrder(tenantId, id, userId);
   }
 
+  @Post(':id/force-auto-complete')
+  async forceAutoComplete(@Request() req: any, @Param('id') id: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.forceAutoCompleteDraftJobOrder(tenantId, id, userId);
+  }
+
   @Get(':id/completion-preview')
   async getCompletionPreview(@Request() req: any, @Param('id') id: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];

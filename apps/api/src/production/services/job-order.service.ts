@@ -3491,4 +3491,65 @@ export class JobOrderService {
       _progressTotal: totalSteps,
     };
   }
+
+  /**
+   * Force auto-complete DRAFT job orders with sub-assemblies.
+   * Transitions DRAFT → IN_PROGRESS → COMPLETED with auto-approval.
+   * Used when BOMs have sub-assemblies and should auto-complete like other job orders.
+   */
+  async forceAutoCompleteDraftJobOrder(
+    tenantId: string,
+    jobOrderId: string,
+    userId?: string,
+  ) {
+    const { data: jobOrder, error: joErr } = await this.supabase
+      .from('production_job_orders')
+      .select('*, job_order_materials(*)')
+      .eq('tenant_id', tenantId)
+      .eq('id', jobOrderId)
+      .single();
+
+    if (joErr || !jobOrder) throw new NotFoundException('Job order not found');
+    if (jobOrder.status !== 'DRAFT') {
+      throw new BadRequestException(`Cannot force-complete job order with status ${jobOrder.status}. Only DRAFT jobs can be force-completed.`);
+    }
+
+    this.logger.log('[ForceAutoComplete] Starting for DRAFT job order:', {
+      jobOrderId,
+      jobOrderNumber: jobOrder.job_order_number,
+      hasMaterials: Array.isArray(jobOrder.job_order_materials),
+    });
+
+    // Transition DRAFT → IN_PROGRESS
+    await this.supabase
+      .from('production_job_orders')
+      .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
+      .eq('id', jobOrderId);
+
+    // Complete the job order
+    const completed = await this.completeJobOrder(tenantId, jobOrderId, userId, {
+      allowPartialConsumption: true,
+      autoBuildMissingSubAssemblies: true,
+    });
+
+    // Auto-approve QC to immediately create stock
+    const { data: uidRows, error: uidErr } = await this.supabase
+      .from('uid_registry')
+      .select('uid')
+      .eq('tenant_id', tenantId)
+      .eq('job_order_id', jobOrderId);
+
+    if (!uidErr && uidRows && uidRows.length > 0) {
+      const uids = uidRows.map((r: any) => String(r?.uid || '').trim()).filter(Boolean);
+      try {
+        await this.approveQC(tenantId, jobOrderId, uids, [], userId);
+        this.logger.log('[ForceAutoComplete] QC auto-approved for UIDs:', uids.length);
+      } catch (qcErr: any) {
+        this.logger.warn('[ForceAutoComplete] QC auto-approval failed (non-fatal):', qcErr?.message);
+      }
+    }
+
+    this.logger.log('[ForceAutoComplete] Completed successfully');
+    return completed;
+  }
 }
