@@ -926,6 +926,14 @@ export default function SalesPage() {
 
   const handleCreateDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate all items have UIDs selected
+    const itemsWithoutUIDs = dispatchForm.items.filter(item => !item.uid || item.uid.length === 0);
+    if (itemsWithoutUIDs.length > 0) {
+      alert('❌ All dispatch items must have UIDs selected.\n\nPlease select at least one UID for each item before creating the dispatch.');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     try {
