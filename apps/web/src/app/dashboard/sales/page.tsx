@@ -2851,7 +2851,7 @@ export default function SalesPage() {
                     return;
                   }
                   router.push(
-                    `/dashboard/production/job-orders/smart?salesOrderId=${encodeURIComponent(smartJOOrder.id)}` +
+                    `/dashboard/production/job-orders/smart-items?salesOrderId=${encodeURIComponent(smartJOOrder.id)}` +
                       `&salesOrderItemId=${encodeURIComponent(soItem.id)}` +
                       `&itemId=${encodeURIComponent(soItem.item_id)}` +
                       `&quantity=${encodeURIComponent(String(soItem.remainingQty))}`,

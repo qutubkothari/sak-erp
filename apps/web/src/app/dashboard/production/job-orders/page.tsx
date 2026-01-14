@@ -1448,25 +1448,6 @@ function JobOrdersPageContent() {
                       />
                     </div>
 
-                    {mat.variants && mat.variants.length > 0 && (
-                      <div className="flex-1">
-                        <label className="block text-xs font-medium mb-1">
-                          Variant/Brand {mat.variants.find((v: any) => v.is_default_variant) && <span className="text-green-600">(Default)</span>}
-                        </label>
-                        <SearchableSelect
-                          options={mat.variants.map((variant: any) => ({
-                            value: String(variant.id),
-                            label: String(variant.variant_name || variant.name || 'Variant'),
-                            subtitle: variant.is_default_variant ? 'Default' : undefined,
-                          }))}
-                          value={mat.selectedVariantId || mat.itemId}
-                          onChange={(value) => updateMaterialVariant(idx, value)}
-                          placeholder="Search brand/variant..."
-                          className="text-sm"
-                        />
-                      </div>
-                    )}
-
                     <div className="w-32">
                       <label className="block text-xs font-medium mb-1">Quantity</label>
                       <input
