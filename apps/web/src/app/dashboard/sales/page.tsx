@@ -3433,17 +3433,25 @@ export default function SalesPage() {
                     {directSOForm.items.map((item, index) => (
                       <div key={index} className="grid grid-cols-12 gap-2 items-start border-b pb-3">
                         <div className="col-span-4">
-                          <label className="block text-xs text-gray-600 mb-1">Item Description *</label>
-                          <input
-                            type="text"
-                            value={item.item_description}
-                            onChange={(e) => {
+                          <label className="block text-xs text-gray-600 mb-1">Item *</label>
+                          <SearchableSelect
+                            options={items.map(i => ({ 
+                              label: `${i.code} - ${i.name || i.description || i.item_name}`, 
+                              value: i.id 
+                            }))}
+                            value={item.item_id || ''}
+                            onChange={(value) => {
+                              const selectedItem = items.find(i => i.id === value);
                               const newItems = [...directSOForm.items];
-                              newItems[index].item_description = e.target.value;
+                              newItems[index] = {
+                                ...newItems[index],
+                                item_id: value,
+                                item_description: selectedItem?.name || selectedItem?.description || selectedItem?.item_name || '',
+                                unit_price: selectedItem?.selling_price || selectedItem?.standard_cost || 0,
+                              };
                               setDirectSOForm({ ...directSOForm, items: newItems });
                             }}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                            placeholder="Item description"
+                            placeholder="Search & select item..."
                             required
                           />
                         </div>
