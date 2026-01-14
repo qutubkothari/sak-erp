@@ -1343,8 +1343,13 @@ export default function SalesPage() {
         return sortDirection === 'asc' ? aVal.getTime() - bVal.getTime() : bVal.getTime() - aVal.getTime();
       }
       
-      const aNum = typeof aVal === 'number' ? aVal : new Date(aVal as string).getTime();
-      const bNum = typeof bVal === 'number' ? bVal : new Date(bVal as string).getTime();
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      
+      // Try to parse as dates if they're strings
+      const aNum = typeof aVal === 'number' ? aVal : (typeof aVal === 'string' ? new Date(aVal).getTime() : 0);
+      const bNum = typeof bVal === 'number' ? bVal : (typeof bVal === 'string' ? new Date(bVal).getTime() : 0);
       
       return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
     });
