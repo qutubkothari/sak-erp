@@ -524,20 +524,23 @@ function PRContent() {
     const item = items.find(it => it.id === id);
     if (!item) return;
 
+    // Resolve UOM from master items to get latest value
+    const matchedItem = masterItems.find(mi => mi.code === item.itemCode);
+    const resolvedUom = matchedItem ? resolveUomFromItem(matchedItem) : (item.uom || '');
+
     setEditingItemId(id);
     setItemForm({
       itemName: item.itemName,
       vendorId: item.vendorId || '',
       vendorName: item.vendorName || '',
       quantity: item.quantity.toString(),
-      uom: item.uom || '',
+      uom: resolvedUom,
       estimatedPrice: item.estimatedPrice?.toString() || '',
       specifications: item.specifications || '',
       paymentTerms: item.paymentTerms || '',
       deliveryTerms: item.deliveryTerms || '',
     });
     setSearchTerm(item.itemName);
-    const matchedItem = masterItems.find(mi => mi.code === item.itemCode);
     if (matchedItem) {
       setSelectedItemId(matchedItem.id);
     }
@@ -1379,7 +1382,11 @@ function PRContent() {
                               </td>
                               <td className="px-4 py-2">
                                 {item.quantity}
-                                {item.uom ? <span className="ml-1 text-xs text-gray-600">{item.uom}</span> : null}
+                                {(() => {
+                                  const matchedItem = masterItems.find(mi => mi.code === item.itemCode);
+                                  const uom = matchedItem ? resolveUomFromItem(matchedItem) : item.uom;
+                                  return uom ? <span className="ml-1 text-xs text-gray-600">{uom}</span> : null;
+                                })()}
                               </td>
                               <td className="px-4 py-2">
                                 {item.estimatedPrice ? `₹${item.estimatedPrice.toFixed(2)}` : '-'}
