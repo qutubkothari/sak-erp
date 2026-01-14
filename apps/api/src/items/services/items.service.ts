@@ -973,6 +973,31 @@ export class ItemsService {
       .single();
 
     if (error) {
+      if (this.isMissingItemVendorsTenantIdColumn(error)) {
+        const { data: fallbackData, error: fallbackError } = await this.supabase
+          .from('item_vendors')
+          .insert({
+            item_id: itemId,
+            vendor_id: vendorId,
+            priority: this.normalizeNumber(body?.priority, 'int') ?? 1,
+            unit_price: this.normalizeNumber(body.unit_price),
+            lead_time_days: this.normalizeNumber(body.lead_time_days, 'int'),
+            vendor_item_code: body.vendor_item_code || null,
+            minimum_order_quantity: this.normalizeNumber(body.minimum_order_quantity),
+            payment_terms: body.payment_terms || null,
+            notes: body.notes || null,
+            created_by: userId,
+          })
+          .select()
+          .single();
+
+        if (fallbackError) {
+          throw new InternalServerErrorException(`Failed to add vendor: ${fallbackError.message}`);
+        }
+
+        return fallbackData;
+      }
+
       const message = String((error as any)?.message || '').toLowerCase();
       if (message.includes('duplicate key') || message.includes('item_vendors_unique')) {
         throw new ConflictException('Vendor is already linked to this item');
