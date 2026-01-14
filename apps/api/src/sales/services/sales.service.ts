@@ -1082,24 +1082,22 @@ export class SalesService {
       }
     }
 
+    // Validate all items have UIDs (required for finished goods tracking)
+    const itemsWithoutUids = dispatchData.items.filter((item: any) => {
+      const uids = Array.isArray(item.uid) ? item.uid : (item.uid ? [item.uid] : []);
+      return uids.length === 0;
+    });
+
+    if (itemsWithoutUids.length > 0) {
+      throw new BadRequestException(
+        'All dispatch items must have UIDs assigned. Please assign UIDs to all items before creating dispatch.'
+      );
+    }
+
     // Insert dispatch items with UID assignment
     // Each item can have multiple UIDs, so we create one dispatch_item per UID
     const dispatchItems = dispatchData.items.flatMap((item: any) => {
       const uids = Array.isArray(item.uid) ? item.uid : (item.uid ? [item.uid] : []);
-      
-      // If no UIDs, create one item with quantity
-      if (uids.length === 0) {
-        return [{
-          dispatch_note_id: dispatchRecord.id,
-          sales_order_item_id: item.sales_order_item_id,
-          item_id: item.item_id,
-          uid: null,
-          quantity: item.quantity,
-          batch_number: item.batch_number,
-          serial_number: item.serial_number,
-          notes: item.notes,
-        }];
-      }
       
       // Create one dispatch_item per UID with quantity 1
       return uids.map((uid: string) => ({
