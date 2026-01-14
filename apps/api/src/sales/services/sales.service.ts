@@ -1220,13 +1220,21 @@ export class SalesService {
       .eq('id', dispatchData.sales_order_id);
 
     // Create warranties for dispatched items
-    await this.createWarrantiesForDispatch(req, dispatchRecord.id, {
-      ...dispatchData,
-      customer_id: salesOrder.customer_id,
-    });
+    try {
+      await this.createWarrantiesForDispatch(req, dispatchRecord.id, {
+        ...dispatchData,
+        customer_id: salesOrder.customer_id,
+      });
+    } catch (e) {
+      console.error('[Dispatch] Warranty creation failed (non-fatal):', e);
+    }
 
     // 🎫 Generate and email issue certificate for final products
-    await this.generateAndEmailCertificate(req, dispatchRecord, salesOrder, dispatchData);
+    try {
+      await this.generateAndEmailCertificate(req, dispatchRecord, salesOrder, dispatchData);
+    } catch (e) {
+      console.error('[Dispatch] Certificate generation failed (non-fatal):', e);
+    }
 
     return dispatchRecord;
   }
