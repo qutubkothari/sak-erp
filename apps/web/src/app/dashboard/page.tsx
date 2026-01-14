@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../lib/api-client';
+import { getDefaultLandingPath, isAdminLike, readStoredUser } from '../../lib/rbac';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,38 +26,6 @@ export default function DashboardPage() {
   });
   const [loading, setLoading] = useState(true);
 
-  const shouldHideDashboardForCurrentUser = (): boolean => {
-    if (typeof window === 'undefined') return false;
-    try {
-      const raw = localStorage.getItem('user');
-      if (!raw) return false;
-      const user = JSON.parse(raw) as any;
-
-      const roleNames: string[] = [];
-      if (Array.isArray(user?.roles)) {
-        user.roles.forEach((entry: any) => {
-          if (typeof entry === 'string') roleNames.push(entry);
-          else if (entry?.role?.name) roleNames.push(String(entry.role.name));
-        });
-      }
-      if (user?.role?.name) roleNames.push(String(user.role.name));
-
-      const normalized = roleNames
-        .map((n) => String(n).toUpperCase().replace(/[_\-]+/g, ' '))
-        .map((n) => n.trim())
-        .filter(Boolean);
-
-      const isHr = normalized.some((n) => n.includes('HR'));
-      const isAdminLike = normalized.some(
-        (n) => n.includes('ADMIN') || n.includes('SUPER') || n.includes('OWNER'),
-      );
-
-      return isHr && !isAdminLike;
-    } catch {
-      return false;
-    }
-  };
-
   useEffect(() => {
     // Check if user is authenticated
     if (!apiClient.isAuthenticated()) {
@@ -64,9 +33,10 @@ export default function DashboardPage() {
       return;
     }
 
-    // HR-only users should not see the global dashboard.
-    if (shouldHideDashboardForCurrentUser()) {
-      router.replace('/dashboard/hr');
+    // Global dashboard should not be accessible for non-admin users.
+    const user = readStoredUser();
+    if (!isAdminLike(user)) {
+      router.replace(getDefaultLandingPath(user));
       return;
     }
 

@@ -181,6 +181,15 @@ function shouldHideDashboardForUser(user: StoredUser | null): boolean {
   return isHr && !isAdminLike;
 }
 
+function isAdminLike(user: StoredUser | null): boolean {
+  const roleNames = getUserRoleNames(user)
+    .map((n) => String(n).toUpperCase().replace(/[_\-]+/g, ' '))
+    .map((n) => n.trim())
+    .filter(Boolean);
+
+  return roleNames.some((n) => n.includes('ADMIN') || n.includes('SUPER') || n.includes('OWNER'));
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -293,9 +302,9 @@ function getAllowedNavigationNames(user: StoredUser | null): Set<string> {
     }
   });
 
-  // Show Dashboard only when the user has a reason to see it.
-  // This prevents HR-only users from seeing the global dashboard.
-  if (enabledModules.has('Reports') || enabledModules.size > 1) {
+  // The global dashboard is restricted to admin-like users.
+  // Non-admin users should land directly in their permitted module(s).
+  if (isAdminLike(user)) {
     allowed.add('Dashboard');
   }
 
@@ -333,9 +342,10 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     ? navigation.filter((item) => allowedNavigationNames.has(item.name))
     : navigation;
 
-  const finalNavigation = shouldHideDashboardForUser(currentUser)
-    ? visibleNavigation.filter((item) => item.name !== 'Dashboard')
-    : visibleNavigation;
+  const finalNavigation =
+    shouldHideDashboardForUser(currentUser) || (currentUser !== null && !isAdminLike(currentUser))
+      ? visibleNavigation.filter((item) => item.name !== 'Dashboard')
+      : visibleNavigation;
 
   const homeHref = finalNavigation[0]?.href || '/dashboard';
 

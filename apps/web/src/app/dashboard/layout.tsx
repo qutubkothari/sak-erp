@@ -1,13 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from '../../components/Sidebar';
+import {
+  getDefaultLandingPath,
+  isPathAllowedForUser,
+  readStoredUser,
+} from '../../lib/rbac';
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Persist sidebar state
@@ -23,6 +31,16 @@ export default function DashboardLayout({
     setSidebarCollapsed(newState);
     localStorage.setItem('sidebarCollapsed', JSON.stringify(newState));
   };
+
+  // Enforce module-level navigation based on role permissions.
+  // This prevents users from opening unauthorized modules by typing URLs.
+  useEffect(() => {
+    if (!pathname) return;
+    const user = readStoredUser();
+    if (!isPathAllowedForUser(user, pathname)) {
+      router.replace(getDefaultLandingPath(user));
+    }
+  }, [pathname, router]);
 
   return (
     <div className="min-h-screen bg-gray-50">
