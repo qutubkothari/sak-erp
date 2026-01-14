@@ -677,8 +677,12 @@ function SmartJobOrdersItemsPageContent() {
         uom: 'PCS', // Default unit, can be enhanced later
       }));
 
+      const today = new Date();
+      const requiredDate = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+      
       const prData = {
-        requestDate: new Date().toISOString().split('T')[0],
+        requestDate: today.toISOString().split('T')[0],
+        requiredDate: requiredDate.toISOString().split('T')[0],
         purpose: `Auto-generated PR for Job Order shortage: ${preview.finishedItem.code}`,
         items: prItems,
       };
