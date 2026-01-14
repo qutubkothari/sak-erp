@@ -10,10 +10,6 @@ const tabs = [
     label: 'Smart Create (Item Swap)',
   },
   {
-    href: '/dashboard/production/job-orders/smart',
-    label: 'Smart Create (Variant)',
-  },
-  {
     href: '/dashboard/production/job-orders',
     label: 'Job Orders',
   },
