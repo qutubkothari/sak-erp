@@ -257,6 +257,14 @@ export class JobOrderService {
     if (quantity <= 0) return [];
 
     const entityType = this.resolveUidEntityTypeFromItemCategory(finishedItem?.category);
+    
+    // Only generate UIDs for Sub-Assemblies (SA) and Finished Goods (FG)
+    // Skip UIDs for Raw Materials (RM) and Components (CP)
+    if (entityType !== 'SA' && entityType !== 'FG') {
+      console.log(`[JobOrder] Skipping UID generation for ${finishedItem?.code} (${entityType}) - UIDs only for SA and FG`);
+      return [];
+    }
+
     const uidsCreated: string[] = [];
 
     console.log(`[JobOrder] Generating ${quantity} UIDs for ${finishedItem?.code}, entityType: ${entityType}, reason: ${reason}`);
