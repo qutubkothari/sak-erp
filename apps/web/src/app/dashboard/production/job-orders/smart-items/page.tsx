@@ -1074,9 +1074,6 @@ function SmartJobOrdersItemsPageContent() {
           <div>
             <h1 className="text-4xl font-bold text-[#36454F]">Smart Job Order (Item Swap)</h1>
             <p className="text-[#6F4E37]">{headerSubtitle}</p>
-            <p className="text-xs text-[#6F4E37] mt-2">
-              Variant version: /dashboard/production/job-orders/smart
-            </p>
           </div>
 
           <div className="flex gap-3">

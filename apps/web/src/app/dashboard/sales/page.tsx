@@ -1314,7 +1314,7 @@ export default function SalesPage() {
       if (remaining.length === 1) {
         const soItem = remaining[0];
         router.push(
-          `/dashboard/production/job-orders/smart?salesOrderId=${encodeURIComponent(order.id)}` +
+          `/dashboard/production/job-orders/smart-items?salesOrderId=${encodeURIComponent(order.id)}` +
             `&salesOrderItemId=${encodeURIComponent(soItem.id)}` +
             `&itemId=${encodeURIComponent(soItem.item_id)}` +
             `&quantity=${encodeURIComponent(String(soItem.remainingQty))}`,
