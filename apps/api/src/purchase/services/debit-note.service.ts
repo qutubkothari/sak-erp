@@ -211,43 +211,61 @@ export class DebitNoteService {
 
   // Get vendor-wise payables summary
   async getVendorPayables(tenantId: string) {
-    const { data, error } = await this.supabase
+    // First, fetch all GRNs with completed status and payable amount > 0
+    const { data: grnsData, error: grnsError } = await this.supabase
       .from('grns')
       .select(`
         id,
         vendor_id,
         gross_amount,
         debit_note_amount,
-        net_payable_amount,
-        vendor:vendors(id, name, code)
+        net_payable_amount
       `)
       .eq('tenant_id', tenantId)
       .eq('status', 'COMPLETED')
       .gt('net_payable_amount', 0);
 
-    if (error) throw error;
+    if (grnsError) throw grnsError;
 
-    // Group by vendor
+    if (!grnsData || grnsData.length === 0) {
+      return [];
+    }
+
+    // Get unique vendor IDs
+    const vendorIds = [...new Set(grnsData.map((grn: any) => grn.vendor_id))];
+
+    // Fetch vendor details
+    const { data: vendorsData, error: vendorsError } = await this.supabase
+      .from('vendors')
+      .select('id, name, code')
+      .eq('tenant_id', tenantId)
+      .in('id', vendorIds);
+
+    if (vendorsError) throw vendorsError;
+
+    // Create vendor map for quick lookup
     const vendorMap = new Map();
-    data.forEach((grn: any) => {
-      const vendorId = grn.vendor_id;
-      if (!vendorMap.has(vendorId)) {
-        vendorMap.set(vendorId, {
-          vendor_id: vendorId,
-          vendor_name: grn.vendor?.name,
-          vendor_code: grn.vendor?.code,
-          total_gross: 0,
-          total_debit: 0,
-          total_payable: 0,
-          grn_count: 0,
-        });
+    vendorsData?.forEach((vendor: any) => {
+      vendorMap.set(vendor.id, {
+        vendor_id: vendor.id,
+        vendor_name: vendor.name,
+        vendor_code: vendor.code,
+        total_gross: 0,
+        total_debit: 0,
+        total_payable: 0,
+        grn_count: 0,
+      });
+    });
+
+    // Aggregate GRN data by vendor
+    grnsData.forEach((grn: any) => {
+      const vendor = vendorMap.get(grn.vendor_id);
+      if (vendor) {
+        vendor.total_gross += parseFloat(grn.gross_amount || 0);
+        vendor.total_debit += parseFloat(grn.debit_note_amount || 0);
+        vendor.total_payable += parseFloat(grn.net_payable_amount || 0);
+        vendor.grn_count += 1;
       }
-      
-      const vendor = vendorMap.get(vendorId);
-      vendor.total_gross += parseFloat(grn.gross_amount || 0);
-      vendor.total_debit += parseFloat(grn.debit_note_amount || 0);
-      vendor.total_payable += parseFloat(grn.net_payable_amount || 0);
-      vendor.grn_count += 1;
     });
 
     return Array.from(vendorMap.values());
