@@ -175,6 +175,15 @@ export class GrnService {
       });
     }
     
+    // Validate mandatory fields
+    if (!data.invoiceNumber || !data.invoiceNumber.trim()) {
+      throw new BadRequestException('Invoice Number is required');
+    }
+    
+    if (!data.invoiceDate) {
+      throw new BadRequestException('Invoice Date is required');
+    }
+    
     // Check if GRN already exists for this PO
     const { data: existingGRN } = await this.supabase
       .from('grns')

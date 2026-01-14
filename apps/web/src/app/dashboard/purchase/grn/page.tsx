@@ -939,6 +939,16 @@ function GRNContent() {
       return;
     }
     
+    if (!formData.invoiceNumber || !formData.invoiceNumber.trim()) {
+      alert('Invoice Number is required');
+      return;
+    }
+    
+    if (!formData.invoiceDate) {
+      alert('Invoice Date is required');
+      return;
+    }
+    
     if (formData.items.length === 0) {
       alert('No items to receive. Please select a PO with items.');
       return;
@@ -1509,21 +1519,28 @@ function GRNContent() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Invoice Number</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Invoice Number <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     value={formData.invoiceNumber}
                     onChange={(e) => setFormData({ ...formData, invoiceNumber: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    required
+                    placeholder="Enter invoice number"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Invoice Date</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Invoice Date <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="date"
                     value={formData.invoiceDate}
                     onChange={(e) => setFormData({ ...formData, invoiceDate: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    required
                   />
                 </div>
 
