@@ -280,7 +280,10 @@ function PurchaseOrdersContent() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
-      setItems(data || []);
+      const normalized = Array.isArray(data)
+        ? data.map((item: any) => ({ ...item, uom: resolveUomFromItem(item) }))
+        : [];
+      setItems(normalized);
     } catch (error) {
       console.error('Error fetching items:', error);
     }
@@ -355,6 +358,15 @@ function PurchaseOrdersContent() {
       (i) => (itemId && String(i.id || '').trim() === itemId) || (normalized && String(i.code || '').trim().toUpperCase() === normalized),
     );
     return String(match?.uom || '').trim();
+  };
+
+  const resolveUomFromItem = (item: any): string => {
+    return (
+      String(item?.uom || '').trim() ||
+      String(item?.uom_name || '').trim() ||
+      String(item?.unit || '').trim() ||
+      String(item?.unit_name || '').trim()
+    );
   };
 
   const fetchStockInfo = async (itemId: string) => {
@@ -475,11 +487,11 @@ function PurchaseOrdersContent() {
         const totalWithTax = subtotal + (subtotal * 18 / 100);
         
         // Get UOM from PR item or master item
-        let uom = item.uom || '';
+        let uom = resolveUomFromItem(item);
         if (!uom && itemId && freshItems.length > 0) {
           const masterItem = freshItems.find((i: any) => i.id === itemId);
           if (masterItem) {
-            uom = masterItem.uom || '';
+            uom = resolveUomFromItem(masterItem);
           }
         }
         
@@ -1007,7 +1019,7 @@ function PurchaseOrdersContent() {
           itemId: value,
           itemCode: selectedItem.code,
           itemName: selectedItem.name,
-          uom: selectedItem.uom || '',
+          uom: resolveUomFromItem(selectedItem),
           unitPrice: selectedItem.standard_cost || selectedItem.selling_price || 0,
         };
         
