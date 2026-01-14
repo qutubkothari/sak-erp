@@ -263,6 +263,18 @@ export class UserService {
   }
 
   async delete(id: string, tenantId: string) {
+    // First check if user exists
+    const { data: user, error: findError } = await this.supabase
+      .from('users')
+      .select('email, first_name, last_name')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (findError || !user) {
+      throw new NotFoundException('User not found');
+    }
+
     const { error } = await this.supabase
       .from('users')
       .delete()
@@ -270,6 +282,13 @@ export class UserService {
       .eq('tenant_id', tenantId);
 
     if (error) {
+      // Check if it's a foreign key constraint error
+      if (error.code === '23503') {
+        throw new Error(
+          `Cannot delete user ${user.first_name} ${user.last_name} (${user.email}) because they have associated records in the system. ` +
+          `Please reassign or delete their records first, or deactivate the user instead.`
+        );
+      }
       throw new Error(`Failed to delete user: ${error.message}`);
     }
 

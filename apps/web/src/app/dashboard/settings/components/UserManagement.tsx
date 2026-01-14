@@ -76,9 +76,11 @@ export default function UserManagement() {
     }
     try {
       await apiClient.delete(`/users/${userId}`);
+      alert('User deleted successfully');
       fetchUsers();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete user:', error);
+      alert(`Failed to delete user: ${error.message || 'Unknown error'}`);
     }
   };
 
