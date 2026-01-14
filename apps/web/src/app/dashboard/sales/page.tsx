@@ -1329,8 +1329,8 @@ export default function SalesPage() {
   const getPaginatedAndSortedData = <T extends Record<string, any>>(data: T[], sortKey: keyof T = 'created_at' as keyof T) => {
     // Sort data
     const sortedData = [...data].sort((a, b) => {
-      const aVal = a[sortColumn as keyof T] ?? a[sortKey];
-      const bVal = b[sortColumn as keyof T] ?? b[sortKey];
+      const aVal: any = a[sortColumn as keyof T] ?? a[sortKey];
+      const bVal: any = b[sortColumn as keyof T] ?? b[sortKey];
       
       if (aVal === null || aVal === undefined) return 1;
       if (bVal === null || bVal === undefined) return -1;
