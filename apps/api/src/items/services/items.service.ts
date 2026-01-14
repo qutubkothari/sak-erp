@@ -805,18 +805,9 @@ export class ItemsService {
       .order('priority', { ascending: true });
 
     if (error && this.isMissingItemVendorsTenantIdColumn(error)) {
-      const { data: fallbackData, error: fallbackError } = await this.supabase
-        .from('item_vendors')
-        .select(baseSelect)
-        .eq('item_id', itemId)
-        .eq('is_active', true)
-        .order('priority', { ascending: true });
-
-      if (fallbackError) {
-        throw new Error(`Failed to fetch item vendors: ${fallbackError.message}`);
-      }
-
-      return fallbackData || [];
+      throw new InternalServerErrorException(
+        'item_vendors.tenant_id is required. Run migration add-tenant-id-to-item-vendors.sql',
+      );
     }
 
     if (error) {
@@ -860,68 +851,9 @@ export class ItemsService {
       .limit(1);
 
     if (existingError && this.isMissingItemVendorsTenantIdColumn(existingError)) {
-      const { data: fallbackExistingRows, error: fallbackExistingError } = await this.supabase
-        .from('item_vendors')
-        .select('*')
-        .eq('item_id', itemId)
-        .eq('vendor_id', vendorId)
-        .limit(1);
-
-      if (fallbackExistingError) {
-        throw new InternalServerErrorException(
-          `Failed to check existing vendor link: ${fallbackExistingError.message}`,
-        );
-      }
-
-      const existing = fallbackExistingRows?.[0];
-      if (existing?.id) {
-        if (existing.is_active) {
-          return existing;
-        }
-
-        const { data: reactivated, error: reactivateError } = await this.supabase
-          .from('item_vendors')
-          .update({ is_active: true, updated_by: userId })
-          .eq('item_id', itemId)
-          .eq('vendor_id', vendorId)
-          .select()
-          .single();
-
-        if (reactivateError) {
-          throw new InternalServerErrorException(
-            `Failed to reactivate vendor link: ${reactivateError.message}`,
-          );
-        }
-
-        return reactivated;
-      }
-
-      const { data, error } = await this.supabase
-        .from('item_vendors')
-        .insert({
-          item_id: itemId,
-          vendor_id: vendorId,
-          priority: this.normalizeNumber(body?.priority, 'int') ?? 1,
-          unit_price: this.normalizeNumber(body.unit_price),
-          lead_time_days: this.normalizeNumber(body.lead_time_days, 'int'),
-          vendor_item_code: body.vendor_item_code || null,
-          minimum_order_quantity: this.normalizeNumber(body.minimum_order_quantity),
-          payment_terms: body.payment_terms || null,
-          notes: body.notes || null,
-          created_by: userId,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        const message = String((error as any)?.message || '').toLowerCase();
-        if (message.includes('duplicate key') || message.includes('item_vendors_unique')) {
-          throw new ConflictException('Vendor is already linked to this item');
-        }
-        throw new InternalServerErrorException(`Failed to add vendor: ${error.message}`);
-      }
-
-      return data;
+      throw new InternalServerErrorException(
+        'item_vendors.tenant_id is required. Run migration add-tenant-id-to-item-vendors.sql',
+      );
     }
 
     if (existingError) {
@@ -973,31 +905,6 @@ export class ItemsService {
       .single();
 
     if (error) {
-      if (this.isMissingItemVendorsTenantIdColumn(error)) {
-        const { data: fallbackData, error: fallbackError } = await this.supabase
-          .from('item_vendors')
-          .insert({
-            item_id: itemId,
-            vendor_id: vendorId,
-            priority: this.normalizeNumber(body?.priority, 'int') ?? 1,
-            unit_price: this.normalizeNumber(body.unit_price),
-            lead_time_days: this.normalizeNumber(body.lead_time_days, 'int'),
-            vendor_item_code: body.vendor_item_code || null,
-            minimum_order_quantity: this.normalizeNumber(body.minimum_order_quantity),
-            payment_terms: body.payment_terms || null,
-            notes: body.notes || null,
-            created_by: userId,
-          })
-          .select()
-          .single();
-
-        if (fallbackError) {
-          throw new InternalServerErrorException(`Failed to add vendor: ${fallbackError.message}`);
-        }
-
-        return fallbackData;
-      }
-
       const message = String((error as any)?.message || '').toLowerCase();
       if (message.includes('duplicate key') || message.includes('item_vendors_unique')) {
         throw new ConflictException('Vendor is already linked to this item');
@@ -1038,29 +945,9 @@ export class ItemsService {
       .single();
 
     if (error && this.isMissingItemVendorsTenantIdColumn(error)) {
-      const { data: fallbackData, error: fallbackError } = await this.supabase
-        .from('item_vendors')
-        .update({
-          priority: body?.priority,
-          unit_price: this.normalizeNumber(body.unit_price),
-          lead_time_days: this.normalizeNumber(body.lead_time_days, 'int'),
-          vendor_item_code: body.vendor_item_code,
-          minimum_order_quantity: this.normalizeNumber(body.minimum_order_quantity),
-          payment_terms: body.payment_terms,
-          notes: body.notes,
-          is_active: body.is_active !== undefined ? body.is_active : true,
-          updated_by: userId,
-        })
-        .eq('item_id', itemId)
-        .eq('vendor_id', vendorId)
-        .select()
-        .single();
-
-      if (fallbackError) {
-        throw new Error(`Failed to update vendor: ${fallbackError.message}`);
-      }
-
-      return fallbackData;
+      throw new InternalServerErrorException(
+        'item_vendors.tenant_id is required. Run migration add-tenant-id-to-item-vendors.sql',
+      );
     }
 
     if (error) {
@@ -1088,17 +975,9 @@ export class ItemsService {
       .eq('vendor_id', vendorId);
 
     if (error && this.isMissingItemVendorsTenantIdColumn(error)) {
-      const { error: fallbackError } = await this.supabase
-        .from('item_vendors')
-        .update({ is_active: false })
-        .eq('item_id', itemId)
-        .eq('vendor_id', vendorId);
-
-      if (fallbackError) {
-        throw new Error(`Failed to remove vendor: ${fallbackError.message}`);
-      }
-
-      return { message: 'Vendor removed successfully' };
+      throw new InternalServerErrorException(
+        'item_vendors.tenant_id is required. Run migration add-tenant-id-to-item-vendors.sql',
+      );
     }
 
     if (error) {
