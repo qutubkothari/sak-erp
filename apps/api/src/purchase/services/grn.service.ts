@@ -442,6 +442,9 @@ export class GrnService {
 
     if (error) throw new BadRequestException(error.message);
 
+    // Calculate and update financial amounts with GST
+    await this.updateGRNFinancialAmounts(tenantId, id);
+
     // Ensure stock entries exist for accepted quantities.
     await this.ensureStockEntriesForGrnAccepted(tenantId, grn);
 
@@ -547,6 +550,11 @@ export class GrnService {
       .eq('id', id);
 
     if (error) throw new BadRequestException(error.message);
+
+    // If status is COMPLETED, calculate financial amounts with GST
+    if (dbStatus === 'COMPLETED') {
+      await this.updateGRNFinancialAmounts(tenantId, id);
+    }
 
     return this.findOne(tenantId, id);
   }
@@ -1144,12 +1152,23 @@ export class GrnService {
         sum + (parseFloat(item.unit_price) * parseFloat(item.received_qty)), 0
       ) || 0;
 
+      // Get current GST percentage (default 18%)
+      const { data: currentGRN } = await this.supabase
+        .from('grns')
+        .select('gst_percentage')
+        .eq('id', grnId)
+        .single();
+
+      const gstPercentage = currentGRN?.gst_percentage || 18;
+      const taxAmount = Math.round(grossAmount * (gstPercentage / 100) * 100) / 100;
+
       await this.supabase
         .from('grns')
         .update({
           gross_amount: grossAmount,
+          tax_amount: taxAmount,
           debit_note_amount: totalAmount,
-          net_payable_amount: grossAmount - totalAmount,
+          net_payable_amount: grossAmount + taxAmount - totalAmount,
         })
         .eq('id', grnId)
         .eq('tenant_id', tenantId);
@@ -1476,6 +1495,55 @@ export class GrnService {
         })
         .eq('id', grnId);
     }
+  }
+
+  /**
+   * Helper method to calculate and update GRN financial amounts including GST
+   */
+  private async updateGRNFinancialAmounts(tenantId: string, grnId: string) {
+    // Get all GRN items
+    const { data: grnItems } = await this.supabase
+      .from('grn_items')
+      .select('rate, received_qty, amount')
+      .eq('grn_id', grnId);
+
+    // Calculate gross amount (pre-tax)
+    const grossAmount = grnItems?.reduce((sum: number, item: any) => {
+      const itemTotal = item.amount || (parseFloat(item.rate || 0) * parseFloat(item.received_qty || 0));
+      return sum + itemTotal;
+    }, 0) || 0;
+
+    // Get current GRN to get GST percentage
+    const { data: currentGRN } = await this.supabase
+      .from('grns')
+      .select('gst_percentage, debit_note_amount')
+      .eq('id', grnId)
+      .single();
+
+    const gstPercentage = currentGRN?.gst_percentage || 18;
+    const taxAmount = Math.round(grossAmount * (gstPercentage / 100) * 100) / 100;
+    const debitNoteAmount = currentGRN?.debit_note_amount || 0;
+    const netPayableAmount = grossAmount + taxAmount - debitNoteAmount;
+
+    // Update GRN with calculated amounts
+    await this.supabase
+      .from('grns')
+      .update({
+        gross_amount: grossAmount,
+        tax_amount: taxAmount,
+        net_payable_amount: netPayableAmount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', grnId)
+      .eq('tenant_id', tenantId);
+
+    console.log(`GRN ${grnId} financial amounts updated:`, {
+      gross_amount: grossAmount,
+      tax_amount: taxAmount,
+      gst_percentage: gstPercentage,
+      debit_note_amount: debitNoteAmount,
+      net_payable_amount: netPayableAmount,
+    });
   }
 
   private async generateGRNNumber(tenantId: string): Promise<string> {
