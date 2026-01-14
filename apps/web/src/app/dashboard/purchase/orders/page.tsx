@@ -2053,7 +2053,10 @@ function PurchaseOrdersContent() {
                           <div className="min-w-0">
                             <input
                               type="text"
-                              value={item.uom || ''}
+                              value={(() => {
+                                const masterItem = items.find((i) => i.id === item.itemId || i.code === item.itemCode);
+                                return masterItem ? resolveUomFromItem(masterItem) : (item.uom || '');
+                              })()}
                               readOnly
                               placeholder="UOM"
                               className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 cursor-not-allowed"
