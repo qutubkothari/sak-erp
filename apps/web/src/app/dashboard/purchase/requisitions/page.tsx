@@ -90,6 +90,16 @@ interface Vendor {
   is_active: boolean;
 }
 
+const resolveUomFromItem = (item: any): string => {
+  return (
+    String(item?.uom || '').trim() ||
+    String(item?.uom_name || '').trim() ||
+    String(item?.unit || '').trim() ||
+    String(item?.unit_name || '').trim() ||
+    String(item?.unit_of_measure || '').trim()
+  );
+};
+
 function PRContent() {
   const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
@@ -314,7 +324,7 @@ function PRContent() {
           id: String(raw.id ?? raw.item_id ?? ''),
           code: String(raw.code ?? raw.item_code ?? ''),
           name: String(raw.name ?? raw.item_name ?? ''),
-          uom: String(raw.uom ?? raw.unit ?? raw.unit_of_measure ?? ''),
+          uom: resolveUomFromItem(raw),
           standard_cost:
             typeof raw.standard_cost === 'number'
               ? raw.standard_cost
@@ -458,7 +468,7 @@ function PRContent() {
       id: Date.now().toString(),
       itemCode: selectedItem?.code || '',
       itemName: useManualEntry ? itemForm.itemName : searchTerm,
-      uom: useManualEntry ? (itemForm.uom || undefined) : (selectedItem?.uom || undefined),
+      uom: useManualEntry ? (itemForm.uom || undefined) : (resolveUomFromItem(selectedItem) || undefined),
       vendorId: itemForm.vendorId || undefined,
       vendorName: itemForm.vendorName || undefined,
       quantity: parseFloat(itemForm.quantity),
@@ -567,7 +577,9 @@ function PRContent() {
         ...item,
         itemCode: selectedItem?.code || item.itemCode,
         itemName: useManualEntry ? itemForm.itemName : searchTerm,
-        uom: useManualEntry ? (itemForm.uom || item.uom) : (selectedItem?.uom || item.uom),
+        uom: useManualEntry
+          ? (itemForm.uom || item.uom)
+          : (resolveUomFromItem(selectedItem) || item.uom),
         vendorId: itemForm.vendorId || undefined,
         vendorName: itemForm.vendorName || undefined,
         quantity: parseFloat(itemForm.quantity),
@@ -657,13 +669,7 @@ function PRContent() {
         id: String(item?.id || ''),
         itemCode: item?.item_code || item?.itemCode || '',
         itemName: item?.item_name || item?.itemName || '',
-        uom:
-          item?.uom ||
-          item?.uom_name ||
-          item?.item?.uom ||
-          item?.item?.uom_name ||
-          item?.item_uom ||
-          undefined,
+        uom: resolveUomFromItem(item?.item || item),
         vendorId: item?.vendor_id || item?.vendorId || undefined,
         vendorName: item?.vendor_name || item?.vendorName || undefined,
         quantity: item?.requested_qty ?? item?.quantity ?? 0,
