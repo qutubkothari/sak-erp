@@ -3,6 +3,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Request } from 'express';
 import { EmailService } from '../../email/email.service';
 import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
+import { normalizeInventoryCategory } from '../../inventory/utils/inventory-category';
 
 @Injectable()
 export class SalesService {
