@@ -2480,8 +2480,8 @@ export default function SalesPage() {
                           <button
                             onClick={() => openSmartJOForSO(order)}
                             className="text-amber-600 hover:text-amber-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={order.status === 'COMPLETED' ? 'Cannot create job order - sales order is fully dispatched' : 'Create a Smart Job Order from this Sales Order'}
-                            disabled={smartJOLoading || order.status === 'COMPLETED'}
+                            title={order.status === 'DISPATCHED' || order.status === 'DELIVERED' ? 'Cannot create job order - sales order is fully dispatched' : 'Create a Smart Job Order from this Sales Order'}
+                            disabled={smartJOLoading || order.status === 'DISPATCHED' || order.status === 'DELIVERED'}
                           >
                             {smartJOLoading ? 'Loading…' : 'Create Job Order'}
                           </button>
@@ -2510,7 +2510,7 @@ export default function SalesPage() {
                               Create Dispatch
                             </button>
                           )}
-                          {order.status === 'COMPLETED' && (
+                          {(order.status === 'DISPATCHED' || order.status === 'DELIVERED') && (
                             <span className="text-xs text-gray-500 italic">
                               ✓ Fully dispatched
                             </span>

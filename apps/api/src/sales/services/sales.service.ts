@@ -1015,7 +1015,7 @@ export class SalesService {
     if (!salesOrder) throw new NotFoundException('Sales order not found');
     
     // Prevent dispatch creation if sales order is fully dispatched
-    if (salesOrder.status === 'COMPLETED') {
+    if (salesOrder.status === 'DISPATCHED' || salesOrder.status === 'DELIVERED') {
       throw new BadRequestException('Cannot create dispatch for a fully dispatched sales order');
     }
 

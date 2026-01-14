@@ -1,6 +1,6 @@
--- Update SO-000002 status to COMPLETED
+-- Update SO-000002 status to DISPATCHED (fully dispatched)
 UPDATE public.sales_orders
-SET status = 'COMPLETED', updated_at = NOW()
+SET status = 'DISPATCHED', updated_at = NOW()
 WHERE so_number = 'SO-000002';
 
 -- Verify the update
