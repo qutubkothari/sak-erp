@@ -176,7 +176,7 @@ export default function AccountsPayablePage() {
       label: 'GRNs',
       accessor: (v) => v.grn_count,
       cell: (v) => (
-        <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold">
+        <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-semibold">
           {v.grn_count}
         </span>
       ),
@@ -190,7 +190,7 @@ export default function AccountsPayablePage() {
         <button
           type="button"
           onClick={() => viewVendorDetails(vendor)}
-          className="text-green-600 hover:text-green-800 font-medium"
+          className="text-orange-600 hover:text-orange-800 font-medium transition-colors"
         >
           View Details →
         </button>
@@ -203,29 +203,29 @@ export default function AccountsPayablePage() {
   const totalPayables = vendorPayables.reduce((sum, v) => sum + v.total_payable, 0);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-8">
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">💰 Accounts Payable</h1>
-          <p className="text-gray-600">Track outstanding payments to vendors</p>
+          <h1 className="text-4xl font-bold text-amber-900 mb-2">💰 Accounts Payable</h1>
+          <p className="text-amber-700">Track outstanding payments to vendors</p>
         </div>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="text-sm text-gray-600 mb-1">Total Vendors</div>
-            <div className="text-3xl font-bold text-gray-900">{vendorPayables.length}</div>
+          <div className="bg-white rounded-lg shadow-md p-6 border-t-4 border-orange-500">
+            <div className="text-sm text-amber-700 font-semibold mb-1">Total Vendors</div>
+            <div className="text-3xl font-bold text-amber-900">{vendorPayables.length}</div>
           </div>
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="text-sm text-gray-600 mb-1">Total Payable</div>
-            <div className="text-3xl font-bold text-green-600">
+          <div className="bg-white rounded-lg shadow-md p-6 border-t-4 border-amber-500">
+            <div className="text-sm text-amber-700 font-semibold mb-1">Total Payable</div>
+            <div className="text-3xl font-bold text-amber-600">
               ₹{totalPayables.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="text-sm text-gray-600 mb-1">Pending GRNs</div>
-            <div className="text-3xl font-bold text-blue-600">
+          <div className="bg-white rounded-lg shadow-md p-6 border-t-4 border-orange-400">
+            <div className="text-sm text-amber-700 font-semibold mb-1">Pending GRNs</div>
+            <div className="text-3xl font-bold text-orange-600">
               {vendorPayables.reduce((sum, v) => sum + v.grn_count, 0)}
             </div>
           </div>
@@ -275,43 +275,43 @@ export default function AccountsPayablePage() {
             <div className="p-6">
               {/* Summary */}
               <div className="grid grid-cols-3 gap-4 mb-6">
-                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                  <div className="text-xs text-gray-600 mb-1">Gross Amount</div>
-                  <div className="text-xl font-bold text-gray-900">
+                <div className="bg-amber-50 rounded-lg p-4 border border-amber-200">
+                  <div className="text-xs text-amber-700 font-semibold mb-1">Gross Amount</div>
+                  <div className="text-xl font-bold text-amber-900">
                     ₹{selectedVendor.total_gross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
                 <div className="bg-red-50 rounded-lg p-4 border border-red-200">
-                  <div className="text-xs text-gray-600 mb-1">Debit Notes</div>
+                  <div className="text-xs text-red-700 font-semibold mb-1">Debit Notes</div>
                   <div className="text-xl font-bold text-red-600">
                     -₹{selectedVendor.total_debit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
-                <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-                  <div className="text-xs text-gray-600 mb-1">Net Payable</div>
-                  <div className="text-xl font-bold text-green-600">
+                <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                  <div className="text-xs text-orange-700 font-semibold mb-1">Net Payable</div>
+                  <div className="text-xl font-bold text-orange-600">
                     ₹{selectedVendor.total_payable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
               </div>
 
               {/* GRN Breakdown */}
-              <h3 className="text-lg font-bold text-gray-900 mb-4">GRN Breakdown</h3>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <h3 className="text-lg font-bold text-amber-900 mb-4">GRN Breakdown</h3>
+              <div className="border border-amber-200 rounded-lg overflow-hidden">
                 <table className="w-full">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-amber-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">GRN Number</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Date</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Gross</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Debit</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Net Payable</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Actions</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-amber-900 uppercase">GRN Number</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-amber-900 uppercase">Date</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-amber-900 uppercase">Gross</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-amber-900 uppercase">Debit</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-amber-900 uppercase">Net Payable</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-amber-900 uppercase">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-amber-100">
                     {vendorGRNs.map((grn) => (
-                      <tr key={grn.id} className="hover:bg-gray-50">
+                      <tr key={grn.id} className="hover:bg-amber-50">
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900">{grn.grn_number}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {grn.receipt_date ? new Date(grn.receipt_date).toLocaleDateString() : 'N/A'}
@@ -322,13 +322,13 @@ export default function AccountsPayablePage() {
                         <td className="px-4 py-3 text-sm text-right text-red-600">
                           -₹{(grn.debit_note_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
-                        <td className="px-4 py-3 text-sm text-right font-bold text-green-600">
+                        <td className="px-4 py-3 text-sm text-right font-bold text-orange-600">
                           ₹{(grn.net_payable_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <button
                             onClick={() => openPaymentModal(grn)}
-                            className="px-4 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                            className="px-4 py-1.5 bg-orange-600 text-white text-sm rounded hover:bg-orange-700 transition-colors"
                           >
                             💳 Record Payment
                           </button>
@@ -336,16 +336,16 @@ export default function AccountsPayablePage() {
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-gray-50">
+                  <tfoot className="bg-amber-50">
                     <tr>
-                      <td colSpan={2} className="px-4 py-3 text-sm font-bold text-gray-900">Total</td>
-                      <td className="px-4 py-3 text-sm text-right font-bold text-gray-900">
+                      <td colSpan={2} className="px-4 py-3 text-sm font-bold text-amber-900">Total</td>
+                      <td className="px-4 py-3 text-sm text-right font-bold text-amber-900">
                         ₹{vendorGRNs.reduce((sum, g) => sum + (g.gross_amount || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
                       <td className="px-4 py-3 text-sm text-right font-bold text-red-600">
                         -₹{vendorGRNs.reduce((sum, g) => sum + (g.debit_note_amount || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="px-4 py-3 text-sm text-right font-bold text-green-600 text-lg">
+                      <td className="px-4 py-3 text-sm text-right font-bold text-orange-600 text-lg">
                         ₹{vendorGRNs.reduce((sum, g) => sum + (g.net_payable_amount || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
@@ -381,7 +381,7 @@ export default function AccountsPayablePage() {
             <div className="p-6 space-y-4">
               {/* Payment Amount */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-amber-900 mb-2">
                   Payment Amount <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -389,20 +389,20 @@ export default function AccountsPayablePage() {
                   step="0.01"
                   value={paymentForm.amount}
                   onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                  className="w-full px-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                   placeholder="Enter payment amount"
                 />
               </div>
 
               {/* Payment Method */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-amber-900 mb-2">
                   Payment Method <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={paymentForm.payment_method}
                   onChange={(e) => setPaymentForm({ ...paymentForm, payment_method: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                  className="w-full px-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                 >
                   <option value="NEFT">NEFT</option>
                   <option value="RTGS">RTGS</option>
@@ -416,56 +416,56 @@ export default function AccountsPayablePage() {
 
               {/* Payment Reference */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-amber-900 mb-2">
                   Payment Reference (Transaction ID / Cheque Number)
                 </label>
                 <input
                   type="text"
                   value={paymentForm.payment_reference}
                   onChange={(e) => setPaymentForm({ ...paymentForm, payment_reference: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                  className="w-full px-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                   placeholder="Enter transaction ID or cheque number"
                 />
               </div>
 
               {/* Payment Date */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-amber-900 mb-2">
                   Payment Date <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
                   value={paymentForm.payment_date}
                   onChange={(e) => setPaymentForm({ ...paymentForm, payment_date: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                  className="w-full px-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                 />
               </div>
 
               {/* Payment Notes */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-amber-900 mb-2">
                   Payment Notes
                 </label>
                 <textarea
                   value={paymentForm.payment_notes}
                   onChange={(e) => setPaymentForm({ ...paymentForm, payment_notes: e.target.value })}
                   rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                  className="w-full px-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                   placeholder="Add any additional notes"
                 />
               </div>
             </div>
 
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+            <div className="p-6 border-t border-amber-200 flex justify-end gap-3">
               <button
                 onClick={() => setShowPaymentModal(false)}
-                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="px-6 py-2 border border-amber-300 rounded-lg hover:bg-amber-50"
               >
                 Cancel
               </button>
               <button
                 onClick={recordPayment}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
               >
                 💳 Record Payment
               </button>
