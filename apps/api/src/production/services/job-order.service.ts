@@ -256,14 +256,13 @@ export class JobOrderService {
     const quantity = Math.max(0, Number(countToGenerate) || 0);
     if (quantity <= 0) return [];
 
-    const entityType = this.resolveUidEntityTypeFromItemCategory(finishedItem?.category);
-    
-    // Only generate UIDs for Sub-Assemblies (SA) and Finished Goods (FG)
-    // Skip UIDs for Raw Materials (RM) and Components (CP)
-    if (entityType !== 'SA' && entityType !== 'FG') {
-      console.log(`[JobOrder] Skipping UID generation for ${finishedItem?.code} (${entityType}) - UIDs only for SA and FG`);
+    // Check if item has UID tracking enabled
+    if (finishedItem?.uid_tracking === false || finishedItem?.uid_strategy === 'NONE') {
+      console.log(`[JobOrder] Skipping UID generation for ${finishedItem?.code} - uid_tracking disabled or strategy is NONE`);
       return [];
     }
+
+    const entityType = this.resolveUidEntityTypeFromItemCategory(finishedItem?.category);
 
     const uidsCreated: string[] = [];
 

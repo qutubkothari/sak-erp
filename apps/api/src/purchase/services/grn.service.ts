@@ -619,13 +619,6 @@ export class GrnService {
       else if (item.category?.includes('FINISHED')) entityType = 'FG';
       else if (item.category?.includes('ASSEMBLY')) entityType = 'SA';
 
-      // Only generate UIDs for Sub-Assemblies (SA) and Finished Goods (FG)
-      // Skip UIDs for Raw Materials (RM) and Components (CP)
-      if (entityType !== 'SA' && entityType !== 'FG') {
-        console.log(`Skipping UID generation for ${item.code} (${entityType}) - UIDs only for SA and FG`);
-        return [];
-      }
-
       console.log(`Starting loop to generate ${uidsToGenerate} UIDs, entityType: ${entityType}`);
       
       // Generate UIDs based on strategy
