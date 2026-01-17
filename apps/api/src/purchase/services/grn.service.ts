@@ -461,8 +461,9 @@ export class GrnService {
   }
 
   async updateStatus(tenantId: string, id: string, status: string, userId: string) {
-    // Accept both frontend values (APPROVED/REJECTED) and database values (DRAFT/COMPLETED/CANCELLED)
-    const validStatuses = ['DRAFT', 'COMPLETED', 'CANCELLED', 'APPROVED', 'REJECTED'];
+    // Accept frontend values (APPROVED/REJECTED) and database values.
+    // Note: production `grn_status` enum includes REJECTED but may not include CANCELLED.
+    const validStatuses = ['DRAFT', 'COMPLETED', 'APPROVED', 'REJECTED'];
     if (!validStatuses.includes(status)) {
       throw new BadRequestException(`Invalid status: ${status}. Must be one of: ${validStatuses.join(', ')}`);
     }
@@ -470,12 +471,12 @@ export class GrnService {
     // Get current GRN
     const grn = await this.findOne(tenantId, id);
 
-    // Map frontend values to database enum values (grn_status only has: DRAFT, COMPLETED, CANCELLED)
+    // Map frontend values to database enum values
     let dbStatus = status;
     if (status === 'APPROVED') {
       dbStatus = 'COMPLETED';  // Approval means processing complete
     } else if (status === 'REJECTED') {
-      dbStatus = 'CANCELLED';  // Rejection means cancelled
+      dbStatus = 'REJECTED';  // Rejection remains REJECTED in GRN status enum
     }
 
     // If approved, check if QC is completed before generating UIDs
