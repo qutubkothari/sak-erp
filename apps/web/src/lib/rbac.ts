@@ -17,6 +17,17 @@ export type Permission = {
   approve?: boolean;
 };
 
+function mergePermission(a: Permission, b: Permission): Permission {
+  return {
+    module: a.module || b.module,
+    view: !!(a.view || b.view),
+    create: !!(a.create || b.create),
+    edit: !!(a.edit || b.edit),
+    delete: !!(a.delete || b.delete),
+    approve: !!(a.approve || b.approve),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -150,6 +161,31 @@ export function getEnabledModules(user: StoredUser | null): Set<string> {
   return enabled;
 }
 
+export function getMergedPermissionsByModule(user: StoredUser | null): Map<string, Permission> {
+  const map = new Map<string, Permission>();
+  const raw = getUserPermissionsRaw(user);
+  if (!Array.isArray(raw)) return map;
+
+  normalizePermissions(raw).forEach((p) => {
+    const key = typeof p.module === 'string' ? p.module : '';
+    if (!key) return;
+    const existing = map.get(key) ?? { module: key };
+    map.set(key, mergePermission(existing, { ...p, module: key }));
+  });
+
+  return map;
+}
+
+export function hasModulePermission(
+  user: StoredUser | null,
+  moduleName: string,
+  action: keyof Omit<Permission, 'module'>,
+): boolean {
+  const merged = getMergedPermissionsByModule(user);
+  const perm = merged.get(moduleName);
+  return !!perm?.[action];
+}
+
 const MODULE_TO_ROUTE_PREFIXES: Record<string, string[]> = {
   'Purchase Management': ['/dashboard/purchase', '/dashboard/accounts'],
   'Sales Management': ['/dashboard/sales'],
@@ -158,9 +194,11 @@ const MODULE_TO_ROUTE_PREFIXES: Record<string, string[]> = {
   'Quality Control': ['/dashboard/quality'],
   'HR Management': ['/dashboard/hr'],
   'Service Management': ['/dashboard/service'],
-  'BOM & Engineering': ['/dashboard/bom', '/dashboard/production'],
+  // Engineering should not implicitly grant access to Production Management.
+  'BOM & Engineering': ['/dashboard/bom'],
   Documents: ['/dashboard/documents'],
-  Reports: ['/dashboard'],
+  // Avoid mapping to '/dashboard' (it becomes a wildcard for all dashboard routes).
+  Reports: [],
   Settings: ['/dashboard/settings', '/dashboard/debug'],
 };
 
@@ -199,6 +237,12 @@ export function isPathAllowedForUser(user: StoredUser | null, pathname: string):
 
   // Block the global dashboard for non-admin users.
   if (pathname === '/dashboard') return false;
+
+  // Production Management screen is restricted to Production approvers.
+  // This allows production operators to access job orders without seeing the management page.
+  if (pathname === '/dashboard/production') {
+    return hasModulePermission(user, 'Production', 'approve');
+  }
 
   const prefixes = getAllowedRoutePrefixes(user);
   return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/'));

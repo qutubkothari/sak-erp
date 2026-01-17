@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ItemSearch from '@/components/ItemSearch';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface BOMComponent {
   id: string;
@@ -84,6 +85,14 @@ export default function ProductionPage() {
   const [selectedBOM, setSelectedBOM] = useState<BOM | null>(null);
   const [availableUIDs, setAvailableUIDs] = useState<Record<string, AvailableUID[]>>({});
   const [selectedUIDs, setSelectedUIDs] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const user = readStoredUser();
+    const canAccess = hasModulePermission(user, 'Production', 'approve');
+    if (!canAccess) {
+      router.replace('/dashboard/production/job-orders/smart-items');
+    }
+  }, [router]);
 
   const [formData, setFormData] = useState({
     itemId: '',
