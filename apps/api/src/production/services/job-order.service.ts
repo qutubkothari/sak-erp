@@ -1501,7 +1501,76 @@ export class JobOrderService {
 
     if (error) throw new BadRequestException(error.message);
 
-    return data || [];
+    const rows = Array.isArray(data) ? data : [];
+
+    // Derive a user-facing workflow status for completed job orders.
+    // Rules:
+    // - If any UID is ON_HOLD => On-Hold
+    // - Else if all UIDs are decided (no pending) => QC Completed
+    // - Else => Awaiting QC
+    const jobOrderIds = rows.map((r: any) => r?.id).filter(Boolean);
+    if (jobOrderIds.length === 0) return rows;
+
+    const { data: uidRows, error: uidError } = await this.supabase
+      .from('uid_registry')
+      .select('job_order_id, quality_status')
+      .eq('tenant_id', tenantId)
+      .in('job_order_id', jobOrderIds);
+
+    if (uidError) throw new BadRequestException(uidError.message);
+
+    const qcCountsByJobOrderId = new Map<
+      string,
+      { total: number; passed: number; onHold: number; pending: number }
+    >();
+    for (const row of Array.isArray(uidRows) ? uidRows : []) {
+      const id = String((row as any)?.job_order_id || '').trim();
+      if (!id) continue;
+      const s = String((row as any)?.quality_status || '').toUpperCase();
+
+      const counts = qcCountsByJobOrderId.get(id) || {
+        total: 0,
+        passed: 0,
+        onHold: 0,
+        pending: 0,
+      };
+
+      counts.total += 1;
+      if (s === 'PASSED') counts.passed += 1;
+      else if (s === 'ON_HOLD') counts.onHold += 1;
+      else counts.pending += 1;
+
+      qcCountsByJobOrderId.set(id, counts);
+    }
+
+    return rows.map((r: any) => {
+      const baseStatus = String(r?.status || '').trim();
+      const baseKey = baseStatus.toUpperCase();
+
+      // Default: keep raw status
+      let workflowStatus = baseStatus;
+      const counts = qcCountsByJobOrderId.get(String(r?.id || '')) || {
+        total: 0,
+        passed: 0,
+        onHold: 0,
+        pending: 0,
+      };
+
+      if (baseKey === 'COMPLETED') {
+        if (counts.onHold > 0) workflowStatus = 'On-Hold';
+        else if (counts.total > 0 && counts.pending === 0) workflowStatus = 'QC Completed';
+        else workflowStatus = 'Awaiting QC';
+      }
+
+      return {
+        ...r,
+        workflow_status: workflowStatus,
+        qc_total_uids: counts.total,
+        qc_passed_uids: counts.passed,
+        qc_rejected_uids: counts.onHold,
+        qc_pending_uids: counts.pending,
+      };
+    });
   }
 
   async findOne(tenantId: string, id: string) {
@@ -2040,6 +2109,10 @@ export class JobOrderService {
           .eq('id', itemIdToConsume)
           .single();
 
+        // If manual inventory adjustments were done (inventory_stock updated) but stock_entries
+        // wasn't, completion would incorrectly fail with "Item not found" or shortages.
+        await this.ensureStockEntriesAtLeastInventoryAvailable(tenantId, String(itemIdToConsume));
+
         // Get available stock entries for this material (use variant if selected)
         const { data: stockEntries } = await this.supabase
           .from('stock_entries')
@@ -2487,6 +2560,21 @@ export class JobOrderService {
         }
       }
     }
+    
+    // Also summarize UID quality statuses (PASS/FAIL/PENDING)
+    const { data: uidRows, error: uidError } = await this.supabase
+      .from('uid_registry')
+      .select('quality_status')
+      .eq('tenant_id', tenantId)
+      .eq('job_order_id', jobOrderId);
+
+    if (uidError) throw new BadRequestException(uidError.message);
+
+    const uidList = Array.isArray(uidRows) ? uidRows : [];
+    const totalUidsCount = uidList.length;
+    const passedUidsCount = uidList.filter((u: any) => String(u?.quality_status || '').toUpperCase() === 'PASSED').length;
+    const rejectedUidsCount = uidList.filter((u: any) => String(u?.quality_status || '').toUpperCase() === 'ON_HOLD').length;
+    const pendingUidsCount = Math.max(0, totalUidsCount - passedUidsCount - rejectedUidsCount);
 
     return {
       jobOrderId: jobOrder.id,
@@ -2497,6 +2585,10 @@ export class JobOrderService {
       approvedUidsCount: approvedUidSet.size,
       isQcApplied: entries.length > 0,
       qcAppliedAt,
+      totalUidsCount,
+      passedUidsCount,
+      rejectedUidsCount,
+      pendingUidsCount,
     };
   }
 
@@ -2515,7 +2607,7 @@ export class JobOrderService {
     // Get materials (no embeds; item joins can be ambiguous when multiple FKs exist)
     const { data: materialsRaw, error: materialsError } = await this.supabase
       .from('job_order_materials')
-      .select('id, item_id, selected_variant_id, required_quantity')
+      .select('id, item_id, selected_variant_id, required_quantity, issued_quantity, status')
       .eq('job_order_id', jobOrderId);
 
     if (materialsError) throw new BadRequestException(materialsError.message);
@@ -2562,42 +2654,69 @@ export class JobOrderService {
         .filter(Boolean),
     );
 
-    // Fetch stock entries for all relevant items in one shot
-    const { data: stockEntries, error: stockError } = itemIds.length
-      ? await this.supabase
-          .from('stock_entries')
-          .select('item_id, available_quantity, allocated_quantity')
-          .eq('tenant_id', tenantId)
-          .in('item_id', itemIds)
-      : { data: [], error: null };
+    // Fetch stock summaries from both sources:
+    // - stock_entries: used for FIFO consumption
+    // - inventory_stock: used by the Inventory module & reservations
+    // Some legacy flows update only inventory_stock (e.g. manual adjustments). To avoid false
+    // shortages blocking job completion, the preview will use the higher of the two totals.
+    const [{ data: stockEntries, error: stockError }, { data: invStock, error: invError }] = itemIds.length
+      ? await Promise.all([
+          this.supabase
+            .from('stock_entries')
+            .select('item_id, available_quantity, allocated_quantity')
+            .eq('tenant_id', tenantId)
+            .in('item_id', itemIds),
+          this.supabase
+            .from('inventory_stock')
+            .select('item_id, available_quantity, reserved_quantity')
+            .eq('tenant_id', tenantId)
+            .in('item_id', itemIds),
+        ])
+      : [{ data: [], error: null }, { data: [], error: null }];
 
     if (stockError) throw new BadRequestException(stockError.message);
+    if (invError) throw new BadRequestException(invError.message);
 
-    const stockByItemId = new Map<string, { available: number; allocated: number }>();
+    const stockByItemId = new Map<
+      string,
+      { available: number; allocated: number; invAvailable: number; invReserved: number }
+    >();
+
     for (const entry of stockEntries || []) {
       const itemId = String((entry as any)?.item_id || '').trim();
       if (!itemId) continue;
-      const prev = stockByItemId.get(itemId) || { available: 0, allocated: 0 };
+      const prev = stockByItemId.get(itemId) || { available: 0, allocated: 0, invAvailable: 0, invReserved: 0 };
       prev.available += parseFloat(String((entry as any)?.available_quantity ?? '0')) || 0;
       prev.allocated += parseFloat(String((entry as any)?.allocated_quantity ?? '0')) || 0;
       stockByItemId.set(itemId, prev);
     }
 
+    for (const row of invStock || []) {
+      const itemId = String((row as any)?.item_id || '').trim();
+      if (!itemId) continue;
+      const prev = stockByItemId.get(itemId) || { available: 0, allocated: 0, invAvailable: 0, invReserved: 0 };
+      prev.invAvailable += parseFloat(String((row as any)?.available_quantity ?? '0')) || 0;
+      prev.invReserved += parseFloat(String((row as any)?.reserved_quantity ?? '0')) || 0;
+      stockByItemId.set(itemId, prev);
+    }
+
     const finishedItemId = String(jobOrder.item_id || '').trim();
     const finishedItem = itemById.get(finishedItemId);
-    const finishedStock = stockByItemId.get(finishedItemId) || { available: 0, allocated: 0 };
+    const finishedStock = stockByItemId.get(finishedItemId) || { available: 0, allocated: 0, invAvailable: 0, invReserved: 0 };
 
     const quantityToAdd = Number(jobOrder.quantity) || 0;
-    const currentFinishedStock = finishedStock.available;
+    const currentFinishedStock = Math.max(Number(finishedStock.available) || 0, Number(finishedStock.invAvailable) || 0);
     const newFinishedStock = currentFinishedStock + quantityToAdd;
 
     const materialsToConsume = materialsList.map((material: any) => {
       const materialItemId = String((material?.selected_variant_id || material?.item_id) || '').trim();
       const materialItem = itemById.get(materialItemId);
-      const materialStock = stockByItemId.get(materialItemId) || { available: 0, allocated: 0 };
-      const toConsume = Number(material?.required_quantity) || 0;
-      const currentStock = materialStock.available;
-      const reservedStock = materialStock.allocated;
+      const materialStock = stockByItemId.get(materialItemId) || { available: 0, allocated: 0, invAvailable: 0, invReserved: 0 };
+      const requiredQty = Number(material?.required_quantity) || 0;
+      const alreadyIssued = Number(material?.issued_quantity) || 0;
+      const toConsume = Math.max(0, requiredQty - alreadyIssued);
+      const currentStock = Math.max(Number(materialStock.available) || 0, Number(materialStock.invAvailable) || 0);
+      const reservedStock = Math.max(Number(materialStock.allocated) || 0, Number(materialStock.invReserved) || 0);
       const autoBuildable = Boolean(materialItemId && bomItemIdSet.has(materialItemId));
 
       // If an item has a BOM, completion can auto-build the missing quantity before consuming.
@@ -2615,6 +2734,8 @@ export class JobOrderService {
         itemId: materialItemId,
         itemCode: materialItem?.code || 'Unknown',
         itemName: materialItem?.name || 'Unknown',
+        requiredQty,
+        alreadyIssued,
         toConsume,
         currentStock,
         reservedStock,
@@ -2623,6 +2744,13 @@ export class JobOrderService {
         autoBuildQuantity,
         status,
         sufficient: currentStock >= toConsume || autoBuildable,
+        // Diagnostic fields (safe to ignore on UI)
+        _sources: {
+          stock_entries_available: materialStock.available,
+          inventory_stock_available: materialStock.invAvailable,
+          stock_entries_reserved: materialStock.allocated,
+          inventory_stock_reserved: materialStock.invReserved,
+        },
       };
     });
 
@@ -2662,9 +2790,13 @@ export class JobOrderService {
   }
 
   private async getAvailableStock(tenantId: string, itemId: string): Promise<number> {
-    // IMPORTANT: Smart JO issuing consumes from stock_entries FIFO.
-    // If we use inventory_stock here, Smart preview can be wrong when inventory_stock
-    // drifts (e.g. when some flows only update stock_entries).
+    // IMPORTANT:
+    // - Job completion consumes from stock_entries FIFO.
+    // - Inventory adjustments/movements (legacy) may update only inventory_stock.
+    // If inventory_stock shows more available than stock_entries, we opportunistically
+    // top-up stock_entries so completion doesn't get blocked by a drift.
+    await this.ensureStockEntriesAtLeastInventoryAvailable(tenantId, itemId);
+
     const { data: entries, error } = await this.supabase
       .from('stock_entries')
       .select('available_quantity')
@@ -2676,6 +2808,77 @@ export class JobOrderService {
 
     const safe = Array.isArray(entries) ? entries : [];
     return safe.reduce((sum: number, e: any) => sum + (Number(e?.available_quantity) || 0), 0);
+  }
+
+  private async ensureStockEntriesAtLeastInventoryAvailable(tenantId: string, itemId: string): Promise<void> {
+    // If inventory_stock indicates stock exists but stock_entries does not, create a synthetic
+    // stock_entries row so FIFO consumption can proceed.
+    // This is intentionally one-way (we only ever increase stock_entries to match inventory_stock).
+    const [{ data: invRows, error: invErr }, { data: entryRows, error: entryErr }] = await Promise.all([
+      this.supabase
+        .from('inventory_stock')
+        .select('warehouse_id, available_quantity')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', itemId),
+      this.supabase
+        .from('stock_entries')
+        .select('available_quantity')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', itemId)
+        .gt('available_quantity', 0),
+    ]);
+
+    if (invErr) throw new BadRequestException(invErr.message);
+    if (entryErr) throw new BadRequestException(entryErr.message);
+
+    const invList = Array.isArray(invRows) ? invRows : [];
+    const invAvailable = invList.reduce((sum: number, r: any) => sum + (Number(r?.available_quantity) || 0), 0);
+
+    const entryList = Array.isArray(entryRows) ? entryRows : [];
+    const entriesAvailable = entryList.reduce((sum: number, r: any) => sum + (Number(r?.available_quantity) || 0), 0);
+
+    const delta = Math.max(0, invAvailable - entriesAvailable);
+    if (delta <= 0.0001) return;
+
+    const best = invList
+      .filter((r: any) => this.isUuid(String(r?.warehouse_id || '')))
+      .sort((a: any, b: any) => (Number(b?.available_quantity) || 0) - (Number(a?.available_quantity) || 0))[0];
+
+    const warehouseId = String(best?.warehouse_id || '').trim();
+    if (!warehouseId || !this.isUuid(warehouseId)) return;
+
+    console.warn('[StockReconcile] inventory_stock > stock_entries; inserting synthetic stock entry', {
+      tenantId,
+      itemId,
+      invAvailable,
+      entriesAvailable,
+      delta,
+      warehouseId,
+    });
+
+    const { error: insertErr } = await this.supabase
+      .from('stock_entries')
+      .insert({
+        tenant_id: tenantId,
+        item_id: itemId,
+        warehouse_id: warehouseId,
+        quantity: delta,
+        available_quantity: delta,
+        allocated_quantity: 0,
+        unit_price: 0,
+        metadata: {
+          reconciled_from_inventory_stock: true,
+          reason: 'inventory_stock showed more available than stock_entries',
+          inv_available: invAvailable,
+          entries_available: entriesAvailable,
+          reconciled_at: new Date().toISOString(),
+        },
+      });
+
+    if (insertErr) {
+      // Don't block the flow; caller will still rely on stock_entries and may throw a shortage.
+      console.error('[StockReconcile] Failed inserting synthetic stock entry', insertErr);
+    }
   }
 
   private async normalizeJobOrderMaterialRows(tenantId: string, materials: any[]): Promise<any[]> {

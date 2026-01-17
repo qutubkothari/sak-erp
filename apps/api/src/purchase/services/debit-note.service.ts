@@ -152,6 +152,12 @@ export class DebitNoteService {
     const { data: dnNumber } = await this.supabase
       .rpc('generate_debit_note_number', { p_tenant_id: tenantId });
 
+    // Calculate GST
+    const gstPercentage = data.gst_percentage || 18;
+    const grossAmount = data.gross_amount || data.total_amount || 0;
+    const taxAmount = Math.round(grossAmount * (gstPercentage / 100) * 100) / 100;
+    const totalAmount = grossAmount + taxAmount;
+
     // Create debit note
     const { data: debitNote, error: dnError } = await this.supabase
       .from('debit_notes')
@@ -160,7 +166,10 @@ export class DebitNoteService {
         debit_note_number: dnNumber || `DN-${Date.now()}`,
         grn_id: data.grn_id,
         vendor_id: data.vendor_id,
-        total_amount: data.total_amount,
+        gross_amount: grossAmount,
+        gst_percentage: gstPercentage,
+        tax_amount: taxAmount,
+        total_amount: totalAmount,
         reason: data.reason,
         notes: data.notes,
         status: 'DRAFT',
@@ -173,16 +182,22 @@ export class DebitNoteService {
 
     // Create items if provided
     if (data.items && data.items.length > 0) {
-      const items = data.items.map((item: any) => ({
-        debit_note_id: debitNote.id,
-        grn_item_id: item.grn_item_id,
-        item_id: item.item_id,
-        rejected_qty: item.rejected_qty,
-        unit_price: item.unit_price,
-        amount: item.amount,
-        rejection_reason: item.rejection_reason,
-        return_status: 'PENDING',
-      }));
+      const items = data.items.map((item: any) => {
+        const itemGrossAmount = item.amount || (item.rejected_qty * item.unit_price);
+        const itemTaxAmount = Math.round(itemGrossAmount * (gstPercentage / 100) * 100) / 100;
+        return {
+          debit_note_id: debitNote.id,
+          grn_item_id: item.grn_item_id,
+          item_id: item.item_id,
+          rejected_qty: item.rejected_qty,
+          unit_price: item.unit_price,
+          amount: itemGrossAmount,
+          gst_percentage: gstPercentage,
+          tax_amount: itemTaxAmount,
+          rejection_reason: item.rejection_reason,
+          return_status: 'PENDING',
+        };
+      });
 
       await this.supabase.from('debit_note_items').insert(items);
     }
@@ -284,17 +299,30 @@ export class DebitNoteService {
     const subject = `Debit Note ${debitNote.debit_note_number} - Material Rejection`;
     
     let itemsHtml = '';
+    let subtotal = 0;
     debitNote.debit_note_items?.forEach((item: any) => {
+      const itemAmount = parseFloat(item.amount || 0);
+      const itemTax = parseFloat(item.tax_amount || 0);
+      const itemTotal = itemAmount + itemTax;
+      subtotal += itemAmount;
+      
       itemsHtml += `
         <tr>
           <td style="border: 1px solid #ddd; padding: 8px;">${item.item.name} (${item.item.code})</td>
           <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.rejected_qty} ${item.item.unit}</td>
           <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${item.unit_price.toFixed(2)}</td>
-          <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">₹${item.amount.toFixed(2)}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${itemAmount.toFixed(2)}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.gst_percentage || debitNote.gst_percentage || 18}%</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${itemTax.toFixed(2)}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">₹${itemTotal.toFixed(2)}</td>
           <td style="border: 1px solid #ddd; padding: 8px;">${item.rejection_reason}</td>
         </tr>
       `;
     });
+
+    const grossAmount = parseFloat(debitNote.gross_amount || subtotal);
+    const taxAmount = parseFloat(debitNote.tax_amount || 0);
+    const totalAmount = parseFloat(debitNote.total_amount || (grossAmount + taxAmount));
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -338,6 +366,9 @@ export class DebitNoteService {
                 <th style="text-align: right;">Rejected Qty</th>
                 <th style="text-align: right;">Unit Price</th>
                 <th style="text-align: right;">Amount</th>
+                <th style="text-align: right;">GST %</th>
+                <th style="text-align: right;">Tax Amount</th>
+                <th style="text-align: right;">Total</th>
                 <th>Rejection Reason</th>
               </tr>
             </thead>
@@ -347,10 +378,26 @@ export class DebitNoteService {
             <tfoot>
               <tr>
                 <td colspan="3" style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">
+                  Subtotal (Before Tax):
+                </td>
+                <td colspan="5" style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">
+                  ₹${grossAmount.toFixed(2)}
+                </td>
+              </tr>
+              <tr>
+                <td colspan="3" style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">
+                  GST (${debitNote.gst_percentage || 18}%):
+                </td>
+                <td colspan="5" style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">
+                  ₹${taxAmount.toFixed(2)}
+                </td>
+              </tr>
+              <tr>
+                <td colspan="3" style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold; background: #f8f9fa;">
                   Total Debit Amount:
                 </td>
-                <td colspan="2" class="total" style="border: 1px solid #ddd; padding: 8px;">
-                  ₹${debitNote.total_amount.toFixed(2)}
+                <td colspan="5" class="total" style="border: 1px solid #ddd; padding: 8px; background: #f8f9fa;">
+                  ₹${totalAmount.toFixed(2)}
                 </td>
               </tr>
             </tfoot>
@@ -358,7 +405,7 @@ export class DebitNoteService {
           
           <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0066cc; margin: 20px 0;">
             <strong>Action Required:</strong><br>
-            This amount of <strong>₹${debitNote.total_amount.toFixed(2)}</strong> will be deducted from your next payment.
+            This amount of <strong>₹${totalAmount.toFixed(2)}</strong> (including GST) will be deducted from your next payment.
             Please arrange for the collection or replacement of rejected materials at your earliest convenience.
           </div>
           

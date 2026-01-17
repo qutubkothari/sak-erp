@@ -184,19 +184,8 @@ export class GrnService {
       throw new BadRequestException('Invoice Date is required');
     }
     
-    // Check if GRN already exists for this PO
-    const { data: existingGRN } = await this.supabase
-      .from('grns')
-      .select('id, grn_number')
-      .eq('tenant_id', tenantId)
-      .eq('po_id', data.poId)
-      .maybeSingle();
-
-    if (existingGRN) {
-      throw new BadRequestException(
-        `GRN already exists for this Purchase Order (${existingGRN.grn_number}). Cannot create multiple receipts for the same PO.`
-      );
-    }
+    // Allow multiple GRNs for the same PO (partial deliveries)
+    // No duplicate check needed - POs can have multiple GRNs
 
     // Generate GRN number
     const grnNumber = await this.generateGRNNumber(tenantId);
@@ -281,6 +270,29 @@ export class GrnService {
       const safeInsertedItems = Array.isArray(insertedItems) ? insertedItems : [];
       // Note: We intentionally do not auto-mark qc_completed on GRN create.
       // QC should be completed explicitly via qcAccept (or as part of an approval workflow).
+
+      // Update PO items received_qty
+      for (const item of data.items) {
+        if (item.poItemId && item.receivedQty) {
+          // Get current received qty
+          const { data: poItem } = await this.supabase
+            .from('purchase_order_items')
+            .select('received_qty')
+            .eq('id', item.poItemId)
+            .single();
+
+          const currentReceived = parseFloat(poItem?.received_qty || '0');
+          const newReceived = currentReceived + parseFloat(item.receivedQty || '0');
+
+          // Update PO item
+          await this.supabase
+            .from('purchase_order_items')
+            .update({ received_qty: newReceived })
+            .eq('id', item.poItemId);
+
+          console.log(`Updated PO item ${item.itemCode}: received_qty ${currentReceived} -> ${newReceived}`);
+        }
+      }
     }
 
     // Calculate totals
@@ -1082,16 +1094,33 @@ export class GrnService {
 
       console.log(`Found ${rejectedItems.length} rejected items, creating debit note...`);
 
-      // Calculate total debit amount
-      const totalAmount = rejectedItems.reduce((sum: number, item: any) => 
+      // Get GRN's GST percentage
+      const { data: grnData } = await this.supabase
+        .from('grns')
+        .select('gst_percentage')
+        .eq('id', grnId)
+        .single();
+
+      const gstPercentage = grnData?.gst_percentage || 18;
+
+      // Calculate total debit amount (gross amount before GST)
+      const grossAmount = rejectedItems.reduce((sum: number, item: any) => 
         sum + parseFloat(item.computed_amount), 0
       );
+
+      // Calculate GST amount
+      const taxAmount = Math.round(grossAmount * (gstPercentage / 100) * 100) / 100;
+      
+      // Calculate total amount including GST
+      const totalAmount = grossAmount + taxAmount;
+
+      console.log(`Debit Note Calculation: Gross=₹${grossAmount}, GST(${gstPercentage}%)=₹${taxAmount}, Total=₹${totalAmount}`);
 
       // Generate debit note number
       const { data: dnNumber } = await this.supabase
         .rpc('generate_debit_note_number', { p_tenant_id: tenantId });
 
-      // Create debit note
+      // Create debit note with GST
       const { data: debitNote, error: dnError } = await this.supabase
         .from('debit_notes')
         .insert({
@@ -1099,6 +1128,9 @@ export class GrnService {
           debit_note_number: dnNumber || `DN-${Date.now()}`,
           grn_id: grnId,
           vendor_id: grn.vendor_id,
+          gross_amount: grossAmount,
+          gst_percentage: gstPercentage,
+          tax_amount: taxAmount,
           total_amount: totalAmount,
           reason: 'QC Rejection - Materials failed quality inspection',
           status: 'DRAFT',
@@ -1114,17 +1146,23 @@ export class GrnService {
 
       console.log('Debit note created:', debitNote.debit_note_number);
 
-      // Create debit note items
-      const dnItems = rejectedItems.map((item: any) => ({
-        debit_note_id: debitNote.id,
-        grn_item_id: item.id,
-        item_id: item.item_id || item.po_item?.item_id,
-        rejected_qty: item.rejected_qty,
-        unit_price: item.computed_rate,
-        amount: item.computed_amount,
-        rejection_reason: item.rejection_reason || 'Quality inspection failed',
-        return_status: 'PENDING',
-      }));
+      // Create debit note items with GST calculation
+      const dnItems = rejectedItems.map((item: any) => {
+        const itemGrossAmount = item.computed_amount;
+        const itemTaxAmount = Math.round(itemGrossAmount * (gstPercentage / 100) * 100) / 100;
+        return {
+          debit_note_id: debitNote.id,
+          grn_item_id: item.id,
+          item_id: item.item_id || item.po_item?.item_id,
+          rejected_qty: item.rejected_qty,
+          unit_price: item.computed_rate,
+          amount: itemGrossAmount,
+          gst_percentage: gstPercentage,
+          tax_amount: itemTaxAmount,
+          rejection_reason: item.rejection_reason || 'Quality inspection failed',
+          return_status: 'PENDING',
+        };
+      });
 
       const { error: itemsError } = await this.supabase
         .from('debit_note_items')

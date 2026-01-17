@@ -639,24 +639,30 @@ function GRNContent() {
       }
       setPurchaseOrdersById(nextById);
       
-      // Fetch all GRNs to check which POs already have GRNs
-      const grnResponse = await fetch('/api/v1/purchase/grn', {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+      // Filter POs: Only show APPROVED POs that are not fully received
+      // A PO is available if:
+      // 1. Status is APPROVED
+      // 2. Has items where ordered_qty > received_qty (partial or no delivery)
+      const availablePOs = allPOsList.filter((po: any) => {
+        if (po.status !== 'APPROVED') {
+          return false;
+        }
+        
+        // Check if PO has any items that are not fully received
+        if (po.po_items && po.po_items.length > 0) {
+          const hasPartialItems = po.po_items.some((item: any) => {
+            const ordered = parseFloat(item.ordered_qty || 0);
+            const received = parseFloat(item.received_qty || 0);
+            return received < ordered; // Item is not fully received
+          });
+          return hasPartialItems;
+        }
+        
+        // If no items data, assume it's available (shouldn't happen in normal flow)
+        return true;
       });
       
-      let poIdsWithGRNs = new Set();
-      if (grnResponse.ok) {
-        const allGRNs = await grnResponse.json();
-        poIdsWithGRNs = new Set(allGRNs.map((grn: any) => grn.po_id));
-      }
-      
-      // Filter out POs that already have GRNs
-      const availablePOs = allPOsList.filter((po: any) => !poIdsWithGRNs.has(po.id));
-      
-      console.log('Available POs (without GRNs):', availablePOs);
+      console.log('Available POs (approved and not fully received):', availablePOs);
       setPurchaseOrders(availablePOs);
     } catch (error) {
       console.error('Error fetching purchase orders:', error);
@@ -701,29 +707,35 @@ function GRNContent() {
         ...formData,
         poId: po.id,
         vendorId: po.vendor_id,
-        items: po.purchase_order_items.map(item => ({
-          itemId: item.item_id ?? (item as any).itemId ?? (item as any).item?.id,
-          itemCode: item.item_code,
-          itemName: item.item_name,
-          poItemId: item.id,
-          uom:
-            String(item.uom || '').trim() ||
-            String(itemMasterById[String(item.item_id || '')]?.uom || '').trim() ||
-            String(itemMasterByCode[String(item.item_code || '')]?.uom || '').trim() ||
-            '',
-          orderedQuantity: item.ordered_qty,
-          receivedQuantity: item.ordered_qty,
-          // QC must be explicitly recorded via QC Accept.
-          acceptedQuantity: 0,
-          rejectedQuantity: 0,
-          unitPrice: item.rate,
-          batchNumber: '',
-          expiryDate: '',
-          notes: '',
-          rejectionReason: '',
-          masterHsnCode: item.item?.hsn_code || '',
-          supplierHsnCode: item.item?.hsn_code || '',
-        })),
+        items: po.purchase_order_items.map(item => {
+          const orderedQty = parseFloat(item.ordered_qty || '0');
+          const receivedQty = parseFloat(item.received_qty || '0');
+          const remainingQty = orderedQty - receivedQty;
+          
+          return {
+            itemId: item.item_id ?? (item as any).itemId ?? (item as any).item?.id,
+            itemCode: item.item_code,
+            itemName: item.item_name,
+            poItemId: item.id,
+            uom:
+              String(item.uom || '').trim() ||
+              String(itemMasterById[String(item.item_id || '')]?.uom || '').trim() ||
+              String(itemMasterByCode[String(item.item_code || '')]?.uom || '').trim() ||
+              '',
+            orderedQuantity: orderedQty,
+            receivedQuantity: remainingQty, // Default to remaining quantity
+            // QC must be explicitly recorded via QC Accept.
+            acceptedQuantity: 0,
+            rejectedQuantity: 0,
+            unitPrice: item.rate,
+            batchNumber: '',
+            expiryDate: '',
+            notes: '',
+            rejectionReason: '',
+            masterHsnCode: item.item?.hsn_code || '',
+            supplierHsnCode: item.item?.hsn_code || '',
+          };
+        }),
       });
     }
   };
@@ -1644,16 +1656,32 @@ function GRNContent() {
                               type="number"
                               value={item.orderedQuantity}
                               readOnly
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">Received *</label>
+                            <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">Prev. Received</label>
+                            <input
+                              type="number"
+                              value={(() => {
+                                const ordered = parseFloat(String(item.orderedQuantity || 0));
+                                const remaining = parseFloat(String(item.receivedQuantity || 0));
+                                const prevReceived = ordered - remaining;
+                                return prevReceived > 0 ? prevReceived : 0;
+                              })()}
+                              readOnly
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-blue-50 text-blue-700 font-medium"
+                              title="Previously received in other GRNs"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">Receiving Now *</label>
                             <input
                               type="number"
                               value={item.receivedQuantity}
                               onChange={(e) => handleUpdateItem(index, 'receivedQuantity', parseFloat(e.target.value))}
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                              className="w-full border border-amber-400 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 bg-amber-50 font-semibold"
+                              placeholder="Qty in this delivery"
                             />
                           </div>
                           <div>

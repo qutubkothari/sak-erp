@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../lib/api-client';
-import { getDefaultLandingPath, isAdminLike, readStoredUser } from '../../lib/rbac';
+import { getDefaultLandingPath, hasModulePermission, isAdminLike, readStoredUser } from '@/lib/rbac';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,18 +120,23 @@ export default function DashboardPage() {
           </h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[
+            {(() => {
+              const user = readStoredUser();
+              const canSeeProductionManagement = hasModulePermission(user, 'Production', 'approve');
+
+              return [
               { name: 'Purchase Management', icon: '📦', path: '/dashboard/purchase' },
               { name: 'BOM Management', icon: '📋', path: '/dashboard/bom' },
               { name: 'Inventory & Stores', icon: '🏪', path: '/dashboard/inventory' },
-              { name: 'Production Planning', icon: '⚙️', path: '/dashboard/production' },
+              ...(canSeeProductionManagement ? [{ name: 'Production Planning', icon: '⚙️', path: '/dashboard/production' }] : []),
               { name: 'Quality Control', icon: '✅', path: '/dashboard/quality' },
               { name: 'Sales & Dispatch', icon: '🚚', path: '/dashboard/sales' },
               { name: 'UID Tracking', icon: '🔍', path: '/dashboard/uid' },
               { name: 'After-Sales Service', icon: '🛠️', path: '/dashboard/service' },
               { name: 'Document Control', icon: '📄', path: '/dashboard/documents' },
               { name: 'Settings & Users', icon: '⚙️', path: '/dashboard/settings' },
-            ].map((module, index) => (
+              ];
+            })().map((module, index) => (
               <button
                 key={index}
                 className="flex items-center space-x-4 p-4 rounded-lg border-2 transition-all hover:shadow-md"

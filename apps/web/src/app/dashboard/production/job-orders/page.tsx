@@ -84,6 +84,7 @@ interface JobOrder {
   endDate?: string;
   priority: string;
   status: string;
+  workflowStatus?: string;
   notes?: string;
   operations?: Operation[];
   materials?: Material[];
@@ -111,6 +112,10 @@ type JobOrderQcSummary = {
   approvedUidsCount: number;
   isQcApplied: boolean;
   qcAppliedAt: string | null;
+  totalUidsCount?: number;
+  passedUidsCount?: number;
+  rejectedUidsCount?: number;
+  pendingUidsCount?: number;
 };
 
 export default function JobOrdersPage() {
@@ -208,6 +213,7 @@ function JobOrdersPageContent() {
       endDate: jo.end_date || jo.endDate,
       priority: jo.priority,
       status: jo.status,
+      workflowStatus: jo.workflow_status ?? jo.workflowStatus,
       notes: jo.notes,
       createdAt: jo.created_at || jo.createdAt,
       operations: operationsRaw.map((op: any) => ({
@@ -244,10 +250,25 @@ function JobOrdersPageContent() {
   const openJobOrderDetails = async (jo: JobOrder) => {
     setSelectedJobOrder(jo);
     setSelectedJobOrderLoading(true);
+    setQcSummary(null);
+    setQcAlreadyApplied(false);
     try {
-      const data = await apiClient.get(`/job-orders/${jo.id}`);
-      const mapped = mapJobOrderFromApi(data);
-      setSelectedJobOrder(mapped);
+      const [detailsResult, qcSummaryResult] = await Promise.allSettled([
+        apiClient.get(`/job-orders/${jo.id}`),
+        apiClient.get<JobOrderQcSummary>(`/job-orders/${jo.id}/qc-summary`),
+      ]);
+
+      if (detailsResult.status === 'fulfilled') {
+        const mapped = mapJobOrderFromApi(detailsResult.value);
+        setSelectedJobOrder(mapped);
+      } else {
+        console.error('Error fetching job order details:', detailsResult.reason);
+      }
+
+      if (qcSummaryResult.status === 'fulfilled') {
+        setQcSummary(qcSummaryResult.value ?? null);
+        setQcAlreadyApplied(Boolean(qcSummaryResult.value?.isQcApplied));
+      }
     } catch (error) {
       console.error('Error fetching job order details:', error);
       // Keep basic details visible even if details fetch fails.
@@ -972,6 +993,11 @@ function JobOrdersPageContent() {
   };
 
   const getStatusColor = (status: string) => {
+    const key = String(status || '')
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, '_')
+      .replace(/-+/g, '_');
     const colors: Record<string, string> = {
       DRAFT: 'bg-gray-100 text-gray-800',
       SCHEDULED: 'bg-blue-100 text-blue-800',
@@ -979,8 +1005,23 @@ function JobOrdersPageContent() {
       COMPLETED: 'bg-green-100 text-green-800',
       CANCELLED: 'bg-red-100 text-red-800',
       ON_HOLD: 'bg-orange-100 text-orange-800',
+      AWAITING_QC: 'bg-amber-100 text-amber-900',
+      QC_COMPLETED: 'bg-emerald-100 text-emerald-900',
     };
-    return colors[status] || 'bg-gray-100 text-gray-800';
+    return colors[key] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getJobOrderDisplayStatus = (jo: JobOrder | null, summary: JobOrderQcSummary | null) => {
+    if (!jo) return '-';
+    const base = String(jo.status || '').trim();
+    const baseKey = base.toUpperCase();
+
+    if (baseKey !== 'COMPLETED') return base || '-';
+
+    if (!summary?.isQcApplied) return 'Awaiting QC';
+    if ((summary?.rejectedUidsCount || 0) > 0) return 'On-Hold';
+    if ((summary?.pendingUidsCount || 0) === 0) return 'QC Completed';
+    return 'QC In Progress';
   };
 
   const jobOrdersTableColumns: Array<ListTableColumn<JobOrder>> = [
@@ -1038,9 +1079,9 @@ function JobOrdersPageContent() {
     {
       id: 'status',
       label: 'Status',
-      accessor: (jo) => jo.status,
+      accessor: (jo) => jo.workflowStatus || jo.status,
       cell: (jo) => (
-        <span className={`px-2 py-1 text-xs rounded ${getStatusColor(jo.status)}`}>{jo.status}</span>
+        <span className={`px-2 py-1 text-xs rounded ${getStatusColor(jo.workflowStatus || jo.status)}`}>{jo.workflowStatus || jo.status}</span>
       ),
     },
     {
@@ -1531,9 +1572,17 @@ function JobOrdersPageContent() {
                 <strong>Priority:</strong> {selectedJobOrder.priority}
               </div>
               <div>
-                <strong>Status:</strong> <span className={`px-2 py-1 text-xs rounded ${getStatusColor(selectedJobOrder.status)}`}>
-                  {selectedJobOrder.status}
-                </span>
+                <strong>Status:</strong>{' '}
+                {(() => {
+                  const displayStatus = getJobOrderDisplayStatus(selectedJobOrder, qcSummary);
+                  const rawStatus = String(selectedJobOrder.status || '').trim();
+                  return (
+                    <span className={`px-2 py-1 text-xs rounded ${getStatusColor(displayStatus)}`}>
+                      {displayStatus}
+                      {rawStatus && displayStatus !== rawStatus ? ` (${rawStatus})` : ''}
+                    </span>
+                  );
+                })()}
               </div>
 
               <div className="col-span-2 flex justify-end">
@@ -1564,6 +1613,59 @@ function JobOrdersPageContent() {
 
               <div className="col-span-2 text-xs text-gray-600">
                 Smart Job Orders issue materials at <strong>creation</strong> (stock reduces immediately). Completion consumes any remaining and adds finished goods.
+              </div>
+            </div>
+
+            {/* Workflow status (stage-wise) */}
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-3">Workflow Status</h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-[520px] w-full border">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="border px-3 py-2 text-left text-sm">Action</th>
+                      <th className="border px-3 py-2 text-left text-sm">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const baseKey = String(selectedJobOrder.status || '').toUpperCase();
+                      const hasCompleted = baseKey === 'COMPLETED';
+                      const qcApplied = Boolean(qcSummary?.isQcApplied);
+                      const rejected = Number(qcSummary?.rejectedUidsCount || 0);
+                      const pending = Number(qcSummary?.pendingUidsCount || 0);
+
+                      const confirmCompleteStatus = hasCompleted ? (qcApplied ? 'Completed' : 'Awaiting QC') : 'In-Progress';
+                      const qcFailStatus = !qcApplied ? 'Pending' : rejected > 0 ? 'On-Hold' : '—';
+                      const qcPassStatus = !qcApplied ? 'Pending' : rejected === 0 && pending === 0 ? 'QC Completed' : 'Pending';
+
+                      const rows: Array<{ action: string; status: string }> = [
+                        { action: 'Job Created Successfully', status: 'In-Progress' },
+                        { action: 'Preview- Confirm & Complete', status: confirmCompleteStatus },
+                        { action: 'Complete QC - Fail', status: qcFailStatus },
+                        { action: 'Complete QC - Pass', status: qcPassStatus },
+                      ];
+
+                      return rows.map((r) => (
+                        <tr key={r.action}>
+                          <td className="border px-3 py-2 text-sm">{r.action}</td>
+                          <td className="border px-3 py-2 text-sm">
+                            <span className={`px-2 py-1 text-xs rounded ${getStatusColor(r.status)}`}>{r.status}</span>
+                          </td>
+                        </tr>
+                      ));
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-2 text-xs text-gray-600">
+                {qcSummary?.totalUidsCount != null ? (
+                  <span>
+                    QC: total {qcSummary.totalUidsCount} | passed {qcSummary.passedUidsCount ?? 0} | on-hold {qcSummary.rejectedUidsCount ?? 0} | pending {qcSummary.pendingUidsCount ?? 0}
+                  </span>
+                ) : (
+                  <span>QC summary loads automatically when viewing a job order.</span>
+                )}
               </div>
             </div>
 

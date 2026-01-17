@@ -17,6 +17,18 @@ export type Permission = {
   approve?: boolean;
 };
 
+const PRODUCTION_MANAGEMENT_DENYLIST = new Set(['production@saifautomations.com']);
+
+function getNormalizedEmail(user: StoredUser | null): string {
+  const raw = user?.email;
+  return typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+}
+
+function isProductionManagementDenied(user: StoredUser | null): boolean {
+  const email = getNormalizedEmail(user);
+  return !!email && PRODUCTION_MANAGEMENT_DENYLIST.has(email);
+}
+
 function mergePermission(a: Permission, b: Permission): Permission {
   return {
     module: a.module || b.module,
@@ -181,6 +193,12 @@ export function hasModulePermission(
   moduleName: string,
   action: keyof Omit<Permission, 'module'>,
 ): boolean {
+  // Special-case: this account should not have access to Production Management
+  // even if the role permissions are misconfigured.
+  if (moduleName === 'Production' && action === 'approve' && isProductionManagementDenied(user)) {
+    return false;
+  }
+
   const merged = getMergedPermissionsByModule(user);
   const perm = merged.get(moduleName);
   return !!perm?.[action];
@@ -241,6 +259,7 @@ export function isPathAllowedForUser(user: StoredUser | null, pathname: string):
   // Production Management screen is restricted to Production approvers.
   // This allows production operators to access job orders without seeing the management page.
   if (pathname === '/dashboard/production') {
+    if (isProductionManagementDenied(user)) return false;
     return hasModulePermission(user, 'Production', 'approve');
   }
 
