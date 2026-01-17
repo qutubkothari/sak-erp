@@ -113,6 +113,7 @@ interface PurchaseOrder {
     item_name: string;
     uom?: string;
     ordered_qty: number;
+    received_qty?: number;
     rate: number;
     item?: {
       hsn_code?: string;
