@@ -708,8 +708,8 @@ function GRNContent() {
         poId: po.id,
         vendorId: po.vendor_id,
         items: po.purchase_order_items.map(item => {
-          const orderedQty = parseFloat(item.ordered_qty || '0');
-          const receivedQty = parseFloat(item.received_qty || '0');
+          const orderedQty = parseFloat(String(item.ordered_qty || '0'));
+          const receivedQty = parseFloat(String(item.received_qty || '0'));
           const remainingQty = orderedQty - receivedQty;
           
           return {
