@@ -160,11 +160,17 @@ export class UserService {
     roleIds?: string[];
     tenantId: string;
   }) {
+    const normalizedEmail = String(dto.email || '').trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      throw new ConflictException('Email is required');
+    }
+
     // Check if user already exists
     const { data: existing } = await this.supabase
       .from('users')
       .select('id')
-      .eq('email', dto.email)
+      .ilike('email', normalizedEmail)
       .eq('tenant_id', dto.tenantId)
       .maybeSingle();
 
@@ -185,7 +191,7 @@ export class UserService {
     const { data, error } = await this.supabase
       .from('users')
       .insert({
-        email: dto.email,
+        email: normalizedEmail,
         password: hashedPassword,
         first_name: dto.firstName,
         last_name: dto.lastName,

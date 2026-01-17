@@ -20,7 +20,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await apiClient.login({ email, password });
+      const response = await apiClient.login({
+        email: email.trim().toLowerCase(),
+        password,
+      });
 
       if (response.success) {
         // Redirect to dashboard on successful login

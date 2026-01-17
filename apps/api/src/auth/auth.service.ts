@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -24,6 +24,10 @@ interface LoginDto {
 @Injectable()
 export class AuthService {
   private supabase: SupabaseClient;
+
+  private normalizeEmail(email: unknown): string {
+    return String(email ?? '').trim().toLowerCase();
+  }
 
   private async getRolesForUser(
     userId: string,
@@ -90,6 +94,12 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
+    const normalizedEmail = this.normalizeEmail(dto?.email);
+
+    if (!normalizedEmail) {
+      throw new BadRequestException('Email is required');
+    }
+
     // MULTI-TENANT SAAS: Create a NEW tenant for each company registration
     let tenantId = dto.tenantId;
     
@@ -162,7 +172,7 @@ export class AuthService {
     const { data: existingUser, error: checkError } = await this.supabase
       .from('users')
       .select('id')
-      .eq('email', dto.email)
+      .ilike('email', normalizedEmail)
       .eq('tenant_id', resolvedTenantId)
       .maybeSingle();
 
@@ -202,7 +212,7 @@ export class AuthService {
     const { data: newUser, error: createError } = await this.supabase
       .from('users')
       .insert({
-        email: dto.email,
+        email: normalizedEmail,
         password: hashedPassword,
         first_name: firstName || '',
         last_name: lastName || '',
@@ -278,6 +288,12 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
+    const normalizedEmail = this.normalizeEmail(dto?.email);
+
+    if (!normalizedEmail) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     // Get or use default tenant if not provided
     let tenantId = dto.tenantId;
     
@@ -286,7 +302,7 @@ export class AuthService {
       const { data: userTenant } = await this.supabase
         .from('users')
         .select('tenant_id')
-        .eq('email', dto.email)
+        .ilike('email', normalizedEmail)
         .limit(1)
         .maybeSingle();
 
@@ -327,7 +343,7 @@ export class AuthService {
           permissions
         )
       `)
-      .eq('email', dto.email)
+      .ilike('email', normalizedEmail)
       .eq('tenant_id', resolvedTenantId)
       .maybeSingle();
 
@@ -504,10 +520,12 @@ export class AuthService {
   }
 
   async resetPasswordRequest(email: string, tenantId: string) {
+    const normalizedEmail = this.normalizeEmail(email);
+
     const { data: user, error: userError } = await this.supabase
       .from('users')
       .select('id, email')
-      .eq('email', email)
+      .ilike('email', normalizedEmail)
       .eq('tenant_id', tenantId)
       .maybeSingle();
 
