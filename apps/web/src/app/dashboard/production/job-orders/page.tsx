@@ -1149,7 +1149,7 @@ function JobOrdersPageContent() {
             title={
               legacy
                 ? 'Legacy Create Job Order (backup)'
-                : 'Smart Job Order: select FG + preview BOM explosion + create'
+                : 'Smart Job Order: select FG + preview BOM expansion + create'
             }
           >
             + Create Job Order

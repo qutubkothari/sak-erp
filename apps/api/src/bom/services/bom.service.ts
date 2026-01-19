@@ -620,29 +620,29 @@ export class BomService {
       throw new BadRequestException('BOM has no items');
     }
 
-    // First, explode BOM to get all actual items (handles nested BOMs)
-    console.log(`[BOM PR] Starting BOM explosion for BOM ${bomId} with quantity ${quantity}`);
-    const explodedItems = await this.explodeBOMForPR(bomId, quantity, 0);
-    console.log(`[BOM PR] Explosion complete. Got ${explodedItems.length} unique items:`, 
-      explodedItems.map(i => `${i.itemId}:${i.quantity}`).join(', '));
+    // First, expand BOM to get all actual items (handles nested BOMs)
+    console.log(`[BOM PR] Starting BOM expansion for BOM ${bomId} with quantity ${quantity}`);
+    const expandedItems = await this.expandBOMForPR(bomId, quantity, 0);
+    console.log(`[BOM PR] Expansion complete. Got ${expandedItems.length} unique items:`, 
+      expandedItems.map(i => `${i.itemId}:${i.quantity}`).join(', '));
 
-    // Check stock availability for each exploded item
+    // Check stock availability for each expanded item
     const itemsToOrder = [];
     const stockStatus = []; // Track all items with stock info
 
-    for (const explodedItem of explodedItems) {
+    for (const expandedItem of expandedItems) {
       // Check current stock from stock_entries table (same as Items page uses)
       const [stockRes, itemRes] = await Promise.all([
         this.supabase
           .from('stock_entries')
           .select('quantity, available_quantity, allocated_quantity')
           .eq('tenant_id', tenantId)
-          .eq('item_id', explodedItem.itemId)
+          .eq('item_id', expandedItem.itemId)
           .maybeSingle(),
         this.supabase
           .from('items')
           .select('code, name, reorder_level')
-          .eq('id', explodedItem.itemId)
+          .eq('id', expandedItem.itemId)
           .single(),
       ]);
 
@@ -653,16 +653,16 @@ export class BomService {
       
       // Calculate usable stock (available minus reorder level safety stock)
       const usableStock = Math.max(0, availableQty - reorderLevel);
-      const shortfall = explodedItem.quantity - usableStock;
+      const shortfall = expandedItem.quantity - usableStock;
 
-      console.log(`[BOM PR] Item ${explodedItem.itemId}: Required=${explodedItem.quantity}, Total=${totalQty}, Available=${availableQty}, Reserved=${reservedQty}, ReorderLevel=${reorderLevel}, Usable=${usableStock}, Shortfall=${shortfall}`);
+      console.log(`[BOM PR] Item ${expandedItem.itemId}: Required=${expandedItem.quantity}, Total=${totalQty}, Available=${availableQty}, Reserved=${reservedQty}, ReorderLevel=${reorderLevel}, Usable=${usableStock}, Shortfall=${shortfall}`);
 
       // Add to stock status for display
       stockStatus.push({
-        itemId: explodedItem.itemId,
+        itemId: expandedItem.itemId,
         itemCode: itemRes.data?.code || 'Unknown',
         itemName: itemRes.data?.name || 'Unknown',
-        required: explodedItem.quantity,
+        required: expandedItem.quantity,
         totalStock: totalQty,
         availableStock: availableQty,
         reservedStock: reservedQty,
@@ -675,12 +675,12 @@ export class BomService {
       if (shortfall > 0) {
         if (itemRes.data) {
           itemsToOrder.push({
-            itemId: explodedItem.itemId,
+            itemId: expandedItem.itemId,
             itemCode: itemRes.data.code,
             itemName: itemRes.data.name,
             quantity: Math.ceil(shortfall),
-            specifications: explodedItem.notes,
-            drawingUrl: explodedItem.drawingUrl,
+            specifications: expandedItem.notes,
+            drawingUrl: expandedItem.drawingUrl,
           });
         }
       }
@@ -793,23 +793,23 @@ export class BomService {
   }
 
   /**
-   * Explode BOM recursively to get all actual items needed (for PR generation)
+   * Expand BOM recursively to get all actual items needed (for PR generation)
    */
-  private async explodeBOMForPR(bomId: string, quantity: number, level: number = 0): Promise<Array<{
+  private async expandBOMForPR(bomId: string, quantity: number, level: number = 0): Promise<Array<{
     itemId: string;
     quantity: number;
     notes: string;
     drawingUrl: string;
   }>> {
     const indent = '  '.repeat(level);
-    console.log(`${indent}[BOM EXPLODE] Level ${level}: BOM ID=${bomId}, Quantity=${quantity}`);
+    console.log(`${indent}[BOM EXPAND] Level ${level}: BOM ID=${bomId}, Quantity=${quantity}`);
     
     const { data: bomItems } = await this.supabase
       .from('bom_items')
       .select('item_id, child_bom_id, quantity, scrap_percentage, notes, drawing_url')
       .eq('bom_id', bomId);
 
-    console.log(`${indent}[BOM EXPLODE] Found ${bomItems?.length || 0} components`);
+    console.log(`${indent}[BOM EXPAND] Found ${bomItems?.length || 0} components`);
     
     if (!bomItems || bomItems.length === 0) return [];
 
@@ -820,11 +820,11 @@ export class BomService {
       const adjustedQty = bomItem.quantity * quantity * scrapFactor;
       const componentType = bomItem.child_bom_id ? 'BOM' : 'ITEM';
 
-      console.log(`${indent}[BOM EXPLODE] Component: type=${componentType}, qty=${bomItem.quantity}, scrap=${bomItem.scrap_percentage}%, adjustedQty=${adjustedQty}`);
+      console.log(`${indent}[BOM EXPAND] Component: type=${componentType}, qty=${bomItem.quantity}, scrap=${bomItem.scrap_percentage}%, adjustedQty=${adjustedQty}`);
 
       if (componentType === 'ITEM' && bomItem.item_id) {
         // Direct item
-        console.log(`${indent}[BOM EXPLODE] → Adding ITEM ${bomItem.item_id}: ${adjustedQty} units`);
+        console.log(`${indent}[BOM EXPAND] → Adding ITEM ${bomItem.item_id}: ${adjustedQty} units`);
         const existing = allItems.get(bomItem.item_id);
         allItems.set(bomItem.item_id, {
           quantity: (existing?.quantity || 0) + adjustedQty,
@@ -832,15 +832,15 @@ export class BomService {
           drawingUrl: bomItem.drawing_url || existing?.drawingUrl || '',
         });
       } else if (componentType === 'BOM' && bomItem.child_bom_id) {
-        // Recursively explode child BOM
-        console.log(`${indent}[BOM EXPLODE] → Recursing into child BOM ${bomItem.child_bom_id} with qty=${adjustedQty}`);
-        const childItems = await this.explodeBOMForPR(bomItem.child_bom_id, adjustedQty, level + 1);
-        console.log(`${indent}[BOM EXPLODE] ← Child BOM returned ${childItems.length} items`);
+        // Recursively expand child BOM
+        console.log(`${indent}[BOM EXPAND] → Recursing into child BOM ${bomItem.child_bom_id} with qty=${adjustedQty}`);
+        const childItems = await this.expandBOMForPR(bomItem.child_bom_id, adjustedQty, level + 1);
+        console.log(`${indent}[BOM EXPAND] ← Child BOM returned ${childItems.length} items`);
         
         childItems.forEach(childItem => {
           const existing = allItems.get(childItem.itemId);
           const newQty = (existing?.quantity || 0) + childItem.quantity;
-          console.log(`${indent}[BOM EXPLODE]   Aggregating item ${childItem.itemId}: +${childItem.quantity} = ${newQty}`);
+          console.log(`${indent}[BOM EXPAND]   Aggregating item ${childItem.itemId}: +${childItem.quantity} = ${newQty}`);
           allItems.set(childItem.itemId, {
             quantity: newQty,
             notes: childItem.notes || existing?.notes || '',
@@ -857,7 +857,7 @@ export class BomService {
       drawingUrl: details.drawingUrl,
     }));
     
-    console.log(`${indent}[BOM EXPLODE] Level ${level} returning ${result.length} unique items:`, 
+    console.log(`${indent}[BOM EXPAND] Level ${level} returning ${result.length} unique items:`, 
       result.map(r => `${r.itemId}:${r.quantity}`).join(', '));
     
     return result;

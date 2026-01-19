@@ -929,7 +929,7 @@ export class JobOrderService {
     if (!autoRepairRequested) return first;
 
     // Only attempt auto-repair if issuing is completely blocked by NO_STOCK.
-    // This is aimed at legacy Smart JOs created before the improved BOM explosion logic.
+    // This is aimed at legacy Smart JOs created before the improved BOM expansion logic.
     const hasIssuedAnything = (first.issuedLines || 0) > 0 || (first.partialLines || 0) > 0;
     const hasNoStock = (first.noStockLines || 0) > 0;
     const isFullyBlocked = !hasIssuedAnything && hasNoStock;
@@ -1034,7 +1034,7 @@ export class JobOrderService {
 
     const startDate = this.toStartDate(String((jobOrder as any).start_date || ''));
 
-    // Rebuild Smart JO preview using the *current* BOM explosion logic.
+    // Rebuild Smart JO preview using the *current* BOM expansion logic.
     // This is the key fix for legacy Smart JOs created before BOM-detection improvements.
     const preview = await this.getSmartJobOrderPreview(tenantId, {
       itemId: String((jobOrder as any).item_id || ''),
@@ -3211,8 +3211,8 @@ export class JobOrderService {
             });
           }
 
-          const shouldExplodeChild = Boolean(options?.includeAllComponents) || toMakeQuantity > 0;
-          if (shouldExplodeChild) {
+          const shouldExpandChild = Boolean(options?.includeAllComponents) || toMakeQuantity > 0;
+          if (shouldExpandChild) {
             const nextMultiplier = Boolean(options?.includeAllComponents) ? requiredQuantity : toMakeQuantity;
             const childResult = await this.buildSmartExplosion(
               tenantId,

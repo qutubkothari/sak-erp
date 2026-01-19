@@ -67,9 +67,9 @@ export class ProductionService {
       throw new BadRequestException(error.message);
     }
 
-    // If BOM provided, explode BOM and create component requirements
+    // If BOM provided, expand BOM and create component requirements
     if (data.bomId) {
-      await this.explodeBOM(order.id, data.bomId, data.quantity);
+      await this.expandBOM(order.id, data.bomId, data.quantity);
     }
 
     // Log stage
@@ -79,9 +79,9 @@ export class ProductionService {
   }
 
   /**
-   * Explode BOM to get component requirements (with recursive multi-level BOM support)
+   * Expand BOM to get component requirements (with recursive multi-level BOM support)
    */
-  async explodeBOM(productionOrderId: string, bomId: string, quantity: number) {
+  async expandBOM(productionOrderId: string, bomId: string, quantity: number) {
     // Get BOM items with component type
     const { data: bomItems } = await this.supabase
       .from('bom_items')
@@ -111,8 +111,8 @@ export class ProductionService {
           consumed_quantity: 0,
         });
       } else if (bomItem.component_type === 'BOM' && bomItem.child_bom_id) {
-        // Nested BOM - recursively explode
-        console.log(`[Production] Exploding child BOM: ${bomItem.child_bom_id} with qty: ${adjustedQty}`);
+        // Nested BOM - recursively expand
+        console.log(`[Production] Expanding child BOM: ${bomItem.child_bom_id} with qty: ${adjustedQty}`);
         
         // Get child BOM items
         const { data: childBomItems } = await this.supabase
@@ -122,7 +122,7 @@ export class ProductionService {
 
         if (childBomItems) {
           // Recursively process child BOM
-          await this.explodeChildBOM(
+          await this.expandChildBOM(
             productionOrderId,
             childBomItems,
             adjustedQty,
@@ -154,9 +154,9 @@ export class ProductionService {
   }
 
   /**
-   * Helper: Recursively explode child BOMs
+   * Helper: Recursively expand child BOMs
    */
-  private async explodeChildBOM(
+  private async expandChildBOM(
     productionOrderId: string,
     bomItems: any[],
     quantity: number,
@@ -181,7 +181,7 @@ export class ProductionService {
           .eq('bom_id', bomItem.child_bom_id);
 
         if (childBomItems) {
-          await this.explodeChildBOM(
+          await this.expandChildBOM(
             productionOrderId,
             childBomItems,
             adjustedQty,
