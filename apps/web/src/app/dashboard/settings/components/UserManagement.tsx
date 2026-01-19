@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, UserX, UserCheck, Search, Mail } from 'lucide-react';
+import { Plus, Edit, Trash2, UserX, UserCheck, Search, Mail, Eye, EyeOff } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 
 interface User {
@@ -38,6 +38,7 @@ export default function UserManagement() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -335,15 +336,25 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
             <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
               Password
             </label>
-            <input
-              type="password"
-              required
-              minLength={8}
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-              style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                minLength={8}
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className="w-full px-4 py-2 pr-11 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
+                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8B6F47] hover:text-[#6F4E37]"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
 
           <div>

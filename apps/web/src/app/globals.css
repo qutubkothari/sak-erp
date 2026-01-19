@@ -113,6 +113,59 @@
     background: #9ca3af;
   }
 
+  /* Sticky table headers (global) */
+  table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: inherit;
+    background-clip: padding-box;
+  }
+
+  /* Modal maximize/minimize controls */
+  .modal-panel {
+    position: relative;
+  }
+
+  .modal-toggle-btn {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 20;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9999px;
+    border: 1px solid #E8DCC4;
+    background: #ffffff;
+    color: #6F4E37;
+    font-size: 0.9rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+
+  .modal-toggle-btn:hover {
+    background: #F7F1E8;
+  }
+
+  .modal-overlay.modal-maximized {
+    padding: 0 !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+  }
+
+  .modal-panel.modal-maximized {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    overflow: auto !important;
+  }
+
   /* Sidebar scrollbar */
   nav.overflow-y-auto {
     scrollbar-width: thin;
