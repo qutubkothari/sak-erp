@@ -2004,8 +2004,21 @@ function JobOrdersPageContent() {
 
                         alert(`✅ Stock Updated!\n\n${approvedUids.length} units added to stock.\n${rejectedUids.length > 0 ? `${rejectedUids.length} items remain for rework - you can re-QC them anytime.` : ''}`);
                         
-                        // Refresh the QC modal to show remaining items
-                        await loadJobOrderQc(selectedJobOrder);
+                        // Reload UIDs to show only remaining items
+                        const reloadResponse = await apiClient.get<any>(
+                          `/uid?job_order_id=${selectedJobOrder.id}&limit=5000&sortBy=created_at&sortOrder=asc`,
+                        );
+                        const reloadData = Array.isArray(reloadResponse) ? reloadResponse : reloadResponse?.data || [];
+                        const reloadList = (reloadData || []) as JobOrderUID[];
+                        setQcUids(reloadList);
+                        
+                        // If all passed, close modal; otherwise keep it open
+                        const remainingPending = reloadList.filter(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED');
+                        if (remainingPending.length === 0) {
+                          alert('✅ All items passed! Job Order complete.');
+                          setShowQcModal(false);
+                        }
+                        
                         fetchJobOrders();
                       } catch (error: any) {
                         console.error('Error submitting QC results:', error);
