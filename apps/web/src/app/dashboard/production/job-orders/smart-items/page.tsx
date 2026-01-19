@@ -818,11 +818,11 @@ function SmartJobOrdersItemsPageContent() {
       const prId = result?.id || result?.pr_id;
       
       if (prId) {
-        // Navigate to PR page
-        router.push(`/dashboard/purchase/requisitions?prId=${prId}`);
+        // Navigate to PR page in new tab
+        window.open(`/dashboard/purchase/requisitions?prId=${prId}`, '_blank');
       } else {
         alert('✅ Purchase Requisition created successfully!');
-        router.push('/dashboard/purchase/requisitions');
+        window.open('/dashboard/purchase/requisitions', '_blank');
       }
     } catch (err: any) {
       alert(`❌ Failed to create Purchase Requisition: ${err?.message || 'Unknown error'}`);
