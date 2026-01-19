@@ -1187,7 +1187,7 @@ export class GrnService {
         .select('unit_price, received_qty')
         .eq('grn_id', grnId);
 
-      const grossAmount = grnAmounts?.reduce((sum: number, item: any) => 
+      const grnGrossAmount = grnAmounts?.reduce((sum: number, item: any) => 
         sum + (parseFloat(item.unit_price) * parseFloat(item.received_qty)), 0
       ) || 0;
 
@@ -1198,16 +1198,16 @@ export class GrnService {
         .eq('id', grnId)
         .single();
 
-      const gstPercentage = currentGRN?.gst_percentage || 18;
-      const taxAmount = Math.round(grossAmount * (gstPercentage / 100) * 100) / 100;
+      const grnGstPercentage = currentGRN?.gst_percentage || 18;
+      const grnTaxAmount = Math.round(grnGrossAmount * (grnGstPercentage / 100) * 100) / 100;
 
       await this.supabase
         .from('grns')
         .update({
-          gross_amount: grossAmount,
-          tax_amount: taxAmount,
+          gross_amount: grnGrossAmount,
+          tax_amount: grnTaxAmount,
           debit_note_amount: totalAmount,
-          net_payable_amount: grossAmount + taxAmount - totalAmount,
+          net_payable_amount: grnGrossAmount + grnTaxAmount - totalAmount,
         })
         .eq('id', grnId)
         .eq('tenant_id', tenantId);
