@@ -21,7 +21,8 @@ import {
   Shield,
   Settings,
   Bug,
-  LogOut
+  LogOut,
+  ClipboardList
 } from 'lucide-react';
 
 const navigation = [
@@ -29,6 +30,12 @@ const navigation = [
     name: 'Dashboard',
     href: '/dashboard',
     icon: Home,
+  },
+  {
+    name: 'Manager Approvals',
+    href: '/dashboard/manager',
+    icon: ClipboardList,
+    requiresManagerRole: true,
   },
   {
     name: 'Purchase',
@@ -338,9 +345,43 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     Array.isArray(permissions) &&
     normalizePermissions(permissions).some((p) => isPermissionEnabled(p));
 
+  // Check if user is a manager
+  const isManager = currentUser ? (() => {
+    const rawRoles = (currentUser as any).roles;
+    const roleNames: string[] = [];
+    
+    if (Array.isArray(rawRoles)) {
+      rawRoles.forEach((entry) => {
+        if (isRecord(entry) && isRecord(entry.role)) {
+          const name = entry.role.name;
+          if (typeof name === 'string') roleNames.push(name.toUpperCase());
+        }
+      });
+    } else if (isRecord(currentUser.role)) {
+      const name = currentUser.role.name;
+      if (typeof name === 'string') roleNames.push(name.toUpperCase());
+    }
+    
+    return roleNames.some(name => 
+      ['MANAGER', 'HR MANAGER', 'MANAGER_HR', 'DEPARTMENT MANAGER', 'TEAM LEAD', 'SUPERVISOR'].includes(name)
+    ) || (Array.isArray(permissions) && normalizePermissions(permissions).some(p => p.module === 'HR Management' && p.approve));
+  })() : false;
+
   const visibleNavigation = shouldEnforcePermissions
-    ? navigation.filter((item) => allowedNavigationNames.has(item.name))
-    : navigation;
+    ? navigation.filter((item) => {
+        // Filter out Manager Approvals if user is not a manager
+        if ((item as any).requiresManagerRole && !isManager) {
+          return false;
+        }
+        return allowedNavigationNames.has(item.name);
+      })
+    : navigation.filter((item) => {
+        // Always filter Manager Approvals based on role
+        if ((item as any).requiresManagerRole && !isManager) {
+          return false;
+        }
+        return true;
+      });
 
   const finalNavigation =
     shouldHideDashboardForUser(currentUser) || (currentUser !== null && !isAdminLike(currentUser))

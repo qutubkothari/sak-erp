@@ -40,6 +40,7 @@ import { NotificationModule } from './notification/notification.module';
 import { AuditModule } from './audit/audit.module';
 import { EmailModule } from './email/email.module';
 import { UploadModule } from './upload/upload.module';
+import { ManagerModule } from './manager/manager.module';
 
 @Module({
   imports: [
@@ -106,6 +107,7 @@ import { UploadModule } from './upload/upload.module';
     AuditModule,
     EmailModule,
     UploadModule,
+    ManagerModule,
   ],
   controllers: [MigrationController],
   providers: [
