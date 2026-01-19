@@ -1085,7 +1085,9 @@ function SmartJobOrdersItemsPageContent() {
         <div key={id} className={!isFirstInSection ? 'border-t border-gray-200' : ''}>
           <div
             onClick={() => toggleBom(id)}
-            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${getBgColor(lvl)}`}
+            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
+              hasShortage ? 'bg-red-50 hover:bg-red-100' : getBgColor(lvl)
+            }`}
             style={{ paddingLeft: `${16 + lvl * 24}px` }}
           >
             <span className="text-amber-700">
