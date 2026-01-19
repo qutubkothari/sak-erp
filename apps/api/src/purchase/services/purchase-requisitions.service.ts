@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { EmailService } from '../../email/email.service';
 import { VendorsService } from './vendors.service';
+import { RfqExcelService } from './rfq-excel.service';
 
 @Injectable()
 export class PurchaseRequisitionsService {
@@ -10,6 +11,7 @@ export class PurchaseRequisitionsService {
   constructor(
     private readonly emailService: EmailService,
     private readonly vendorsService: VendorsService,
+    private readonly rfqExcelService: RfqExcelService,
   ) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
@@ -531,7 +533,7 @@ export class PurchaseRequisitionsService {
     const remarks = body?.remarks;
 
     const sendResults = await Promise.allSettled(
-      recipients.map((recipient) => {
+      recipients.map(async (recipient) => {
         // Filter items for this vendor based on itemVendors mappings
         let vendorItems = pr.purchase_requisition_items || [];
         
@@ -555,6 +557,38 @@ export class PurchaseRequisitionsService {
           required_date: item.required_date || pr.required_date || '-',
         }));
 
+        // Generate Excel attachment for this vendor
+        const excelBuffer = await this.rfqExcelService.generateRFQExcel({
+          prNumber: pr.pr_number,
+          department: pr.department,
+          requiredDate: pr.required_date,
+          vendorName: recipient.name,
+          vendorEmail: recipient.email,
+          items: vendorItems.map((item: any) => ({
+            item_id: item.id,
+            item_code: item.item_code || item.itemCode || '-',
+            item_name: item.item_name || item.itemName || '-',
+            description: item.description || item.specifications || item.remarks || '',
+            requested_qty: item.requested_qty ?? item.quantity ?? 0,
+            uom: item.uom || '-',
+            required_date: item.required_date || pr.required_date,
+            specifications: item.specifications || '',
+          })),
+          responseDeadline: responseDate,
+          remarks: remarks,
+        });
+
+        const excelFilename = this.rfqExcelService.generateFilename(pr.pr_number, recipient.name);
+        
+        const attachments = [
+          ...(Array.isArray(body?.attachments) ? body.attachments : []),
+          {
+            filename: excelFilename,
+            content: excelBuffer,
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          },
+        ];
+
         return this.emailService.sendRFQ(recipient.email, {
           rfq_number: rfqNumber,
           vendor_name: recipient.name,
@@ -563,7 +597,7 @@ export class PurchaseRequisitionsService {
           remarks,
           subject: subjectOverride,
           custom_message: customMessage,
-          attachments: Array.isArray(body?.attachments) ? body.attachments : [],
+          attachments,
         });
       }),
     );
