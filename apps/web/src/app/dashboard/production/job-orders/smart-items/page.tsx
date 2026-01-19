@@ -1148,7 +1148,9 @@ function SmartJobOrdersItemsPageContent() {
                       const short = Math.max(0, requiredQty - Number(available || 0));
 
                       return (
-                        <tr key={`${node.bomId}:${node.itemId}:${idx}`} className="hover:bg-gray-50">
+                        <tr key={`${node.bomId}:${node.itemId}:${idx}`} className={`${
+                          short > 0 ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'
+                        }`}>
                           <td className="px-4 py-2" style={{ paddingLeft: `${40 + lvl * 24}px` }}>
                             <div className="flex items-center gap-2">
                               <Package size={14} className="text-gray-400 flex-shrink-0" />
@@ -1228,7 +1230,9 @@ function SmartJobOrdersItemsPageContent() {
                       const short = Math.max(0, requiredQty - Number(available || 0));
 
                       return (
-                        <tr key={`${node.bomId}:${node.itemId}:${idx}`} className="hover:bg-gray-50">
+                        <tr key={`${node.bomId}:${node.itemId}:${idx}`} className={`${
+                          short > 0 ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'
+                        }`}>
                           <td className="px-4 py-2" style={{ paddingLeft: `${40 + lvl * 24}px` }}>
                             <div className="flex items-center gap-2">
                               <Package size={14} className="text-gray-400 flex-shrink-0" />
