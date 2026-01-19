@@ -128,6 +128,12 @@ interface Warehouse {
   location: string;
 }
 
+interface User {
+  id: string;
+  employee_name: string;
+  employee_code?: string;
+}
+
 type ItemUidConfig = {
   id: string;
   uid_tracking?: boolean;
@@ -164,6 +170,7 @@ function GRNContent() {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [purchaseOrdersById, setPurchaseOrdersById] = useState<Record<string, PurchaseOrder>>({});
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [itemUidConfigById, setItemUidConfigById] = useState<Record<string, ItemUidConfig>>({});
   const [itemMasterById, setItemMasterById] = useState<Record<string, ItemMasterMini>>({});
   const [itemMasterByCode, setItemMasterByCode] = useState<Record<string, ItemMasterMini>>({});
@@ -185,7 +192,17 @@ function GRNContent() {
     qcFileName?: string;
     qcFileType?: string;
     qcFileSize?: number;
+    checked_by?: string;
   }>>([]);
+  const [qcMetadata, setQcMetadata] = useState<{
+    invoiceNumber: string;
+    qcDate: string;
+    qcBy: string;
+  }>({
+    invoiceNumber: '',
+    qcDate: new Date().toISOString().split('T')[0],
+    qcBy: '',
+  });
   const [editMode, setEditMode] = useState(false);
   const [editFormData, setEditFormData] = useState<{
     invoiceNumber: string;
@@ -430,6 +447,7 @@ function GRNContent() {
     fetchGRNs();
     fetchPurchaseOrders();
     fetchWarehouses();
+    fetchUsers();
   }, [filterStatus]);
 
   useEffect(() => {
@@ -697,6 +715,30 @@ function GRNContent() {
     } catch (error) {
       console.error('Error fetching warehouses:', error);
       setWarehouses([]);
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('/api/v1/hr/employees', {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to fetch users:', response.status);
+        setUsers([]);
+        return;
+      }
+      
+      const data = await response.json();
+      setUsers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      setUsers([]);
     }
   };
 
@@ -2131,9 +2173,16 @@ function GRNContent() {
                             qcFileName: item.qc_file_name || '',
                             qcFileType: item.qc_file_type || '',
                             qcFileSize: item.qc_file_size || 0,
+                            checked_by: '',
                           };
                         });
                         setQcFormData(qcData);
+                        // Initialize QC metadata
+                        setQcMetadata({
+                          invoiceNumber: selectedGRN.invoice_number || '',
+                          qcDate: new Date().toISOString().split('T')[0],
+                          qcBy: '',
+                        });
                         setShowQCModal(true);
                       }}
                       disabled={selectedGRN.status !== 'DRAFT' || selectedGRN.qc_completed}
@@ -2428,7 +2477,7 @@ function GRNContent() {
       {/* QC Accept Modal */}
       {showQCModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-blue-50">
               <h2 className="text-2xl font-bold text-gray-900">🔍 QC Inspection</h2>
               <button
@@ -2442,6 +2491,76 @@ function GRNContent() {
             </div>
 
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+              {/* QC Metadata Section */}
+              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">QC Information</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Invoice Number
+                    </label>
+                    <input
+                      type="text"
+                      value={qcMetadata.invoiceNumber}
+                      onChange={(e) => setQcMetadata({ ...qcMetadata, invoiceNumber: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Invoice #"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      QC Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={qcMetadata.qcDate}
+                      onChange={(e) => setQcMetadata({ ...qcMetadata, qcDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      QC By
+                    </label>
+                    <select
+                      value={qcMetadata.qcBy}
+                      onChange={(e) => setQcMetadata({ ...qcMetadata, qcBy: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select User</option>
+                      {users.map(user => (
+                        <option key={user.id} value={user.id}>
+                          {user.employee_name} {user.employee_code ? `(${user.employee_code})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Select All Control */}
+              <div className="mb-4 flex items-center justify-between p-3 bg-gray-100 rounded-lg">
+                <div className="flex items-center gap-4">
+                  <label className="font-medium text-gray-700">Select All Checked By:</label>
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        const newData = qcFormData.map(item => ({ ...item, checked_by: e.target.value }));
+                        setQcFormData(newData);
+                      }
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select User for All Items</option>
+                    {users.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.employee_name} {user.employee_code ? `(${user.employee_code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div className="space-y-4">
                 {qcFormData.map((item, index) => (
                   <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
@@ -2531,6 +2650,28 @@ function GRNContent() {
 
                     <div className="mt-3">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Checked By
+                      </label>
+                      <select
+                        value={item.checked_by || ''}
+                        onChange={(e) => {
+                          const newData = [...qcFormData];
+                          newData[index] = { ...item, checked_by: e.target.value };
+                          setQcFormData(newData);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select User</option>
+                        {users.map(user => (
+                          <option key={user.id} value={user.id}>
+                            {user.employee_name} {user.employee_code ? `(${user.employee_code})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="mt-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Upload QC Photo / Report (PNG, JPG, PDF)
                       </label>
                       <input
@@ -2585,6 +2726,14 @@ function GRNContent() {
                       return;
                     }
 
+                    if (!qcMetadata.qcDate) {
+                      setAlertMessage({ 
+                        type: 'error', 
+                        message: 'QC Date is required' 
+                      });
+                      return;
+                    }
+
                     if (!selectedGRN) return;
 
                     const token = localStorage.getItem('accessToken');
@@ -2596,7 +2745,10 @@ function GRNContent() {
                           'Content-Type': 'application/json',
                           Authorization: `Bearer ${token}`,
                         },
-                        body: JSON.stringify({ items: qcFormData }),
+                        body: JSON.stringify({ 
+                          items: qcFormData,
+                          metadata: qcMetadata,
+                        }),
                       }
                     );
 

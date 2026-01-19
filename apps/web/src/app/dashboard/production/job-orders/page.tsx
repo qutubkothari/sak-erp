@@ -96,6 +96,7 @@ interface JobOrderUID {
   quality_status?: string;
   client_part_number?: string;
   created_at?: string;
+  checked_by?: string;
   items?: {
     id: string;
     code: string;
@@ -171,6 +172,16 @@ function JobOrdersPageContent() {
   const [qcAlreadyApplied, setQcAlreadyApplied] = useState(false);
   const [qcSummary, setQcSummary] = useState<JobOrderQcSummary | null>(null);
   const [qcRemarks, setQcRemarks] = useState<Record<string, string>>({});
+  const [qcMetadata, setQcMetadata] = useState<{
+    invoiceNumber: string;
+    qcDate: string;
+    qcBy: string;
+  }>({
+    invoiceNumber: '',
+    qcDate: new Date().toISOString().split('T')[0],
+    qcBy: '',
+  });
+  const [qcCheckedBy, setQcCheckedBy] = useState<Record<string, string>>({});
 
   // Form state
   const [formData, setFormData] = useState({
@@ -1804,7 +1815,7 @@ function JobOrdersPageContent() {
       {/* QC Modal */}
       {showQcModal && selectedJobOrder && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
-          <div className="bg-white rounded-lg p-6 max-w-3xl w-full mx-4 my-8 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 max-w-5xl w-full mx-4 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold">Complete QC</h2>
               <button
@@ -1814,6 +1825,12 @@ function JobOrdersPageContent() {
                   setQcAlreadyApplied(false);
                   setQcSummary(null);
                   setQcRemarks({});
+                  setQcMetadata({
+                    invoiceNumber: '',
+                    qcDate: new Date().toISOString().split('T')[0],
+                    qcBy: '',
+                  });
+                  setQcCheckedBy({});
                 }}
                 className="text-gray-500 hover:text-gray-700"
               >
@@ -1827,6 +1844,54 @@ function JobOrdersPageContent() {
               <div className="text-sm text-gray-600 mt-2">Item</div>
               <div className="font-semibold">{selectedJobOrder.itemCode} - {selectedJobOrder.itemName}</div>
             </div>
+
+            {!qcLoading && qcUids.length > 0 && (
+              <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">QC Information</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Invoice Number
+                    </label>
+                    <input
+                      type="text"
+                      value={qcMetadata.invoiceNumber}
+                      onChange={(e) => setQcMetadata({ ...qcMetadata, invoiceNumber: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Invoice #"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      QC Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={qcMetadata.qcDate}
+                      onChange={(e) => setQcMetadata({ ...qcMetadata, qcDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      QC By
+                    </label>
+                    <select
+                      value={qcMetadata.qcBy}
+                      onChange={(e) => setQcMetadata({ ...qcMetadata, qcBy: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select User</option>
+                      {users.map(user => (
+                        <option key={user.id} value={user.id}>
+                          {user.employee_name} {user.employee_code ? `(${user.employee_code})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {qcLoading ? (
               <div className="p-6 text-center text-gray-600">Loading UIDs...</div>
@@ -1845,6 +1910,32 @@ function JobOrdersPageContent() {
               </div>
             ) : (
               <>
+                {/* Select All Control */}
+                <div className="mb-4 flex items-center justify-between p-3 bg-gray-100 rounded-lg">
+                  <div className="flex items-center gap-4">
+                    <label className="font-medium text-gray-700">Select All Checked By:</label>
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const newCheckedBy: Record<string, string> = {};
+                          qcUids.forEach(uid => {
+                            newCheckedBy[uid.uid] = e.target.value;
+                          });
+                          setQcCheckedBy(newCheckedBy);
+                        }
+                      }}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select User for All UIDs</option>
+                      {users.map(user => (
+                        <option key={user.id} value={user.id}>
+                          {user.employee_name} {user.employee_code ? `(${user.employee_code})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 <div className="mb-4 flex justify-between items-center">
                   <div className="text-sm text-gray-600">
                     Total UIDs: <span className="font-semibold">{qcUids.length}</span> | 
@@ -1904,6 +1995,7 @@ function JobOrdersPageContent() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">UID</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Part Number</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">QC Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Checked By</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Remarks</th>
                         <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
@@ -1926,6 +2018,20 @@ function JobOrdersPageContent() {
                               }`}>
                                 {isFailed ? 'QC FAILED' : currentStatus}
                               </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <select
+                                value={qcCheckedBy[uid.uid] || ''}
+                                onChange={(e) => setQcCheckedBy({ ...qcCheckedBy, [uid.uid]: e.target.value })}
+                                className="w-full px-2 py-1 text-xs border rounded"
+                              >
+                                <option value="">Select User</option>
+                                {users.map(user => (
+                                  <option key={user.id} value={user.id}>
+                                    {user.employee_name}
+                                  </option>
+                                ))}
+                              </select>
                             </td>
                             <td className="px-4 py-3 text-sm">
                               {isFailed && (
@@ -1991,6 +2097,11 @@ function JobOrdersPageContent() {
                         return;
                       }
 
+                      if (!qcMetadata.qcDate) {
+                        alert('QC Date is required');
+                        return;
+                      }
+
                       if (!confirm(`Submit ${approvedUids.length} PASSED items to stock?\n\n${rejectedUids.length} failed/pending items will remain in the Job Order for re-inspection.`)) {
                         return;
                       }
@@ -2000,6 +2111,8 @@ function JobOrdersPageContent() {
                         const response = await apiClient.post(`/job-orders/${selectedJobOrder.id}/qc-approve`, {
                           approvedUids,
                           rejectedUids,
+                          metadata: qcMetadata,
+                          checkedBy: qcCheckedBy,
                         });
 
                         alert(`✅ Stock Updated!\n\n${approvedUids.length} units added to stock.\n${rejectedUids.length > 0 ? `${rejectedUids.length} items remain for rework - you can re-QC them anytime.` : ''}`);
