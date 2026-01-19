@@ -114,12 +114,20 @@
   }
 
   /* Sticky table headers (global) */
+  table thead {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background-color: inherit;
+  }
+
   table thead th {
     position: sticky;
     top: 0;
-    z-index: 10;
+    z-index: 30;
     background-color: inherit;
     background-clip: padding-box;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
   }
 
   /* Modal maximize/minimize controls */
