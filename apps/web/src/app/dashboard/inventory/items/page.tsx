@@ -63,7 +63,7 @@ type ItemsTableColumnKey =
 const ITEMS_TABLE_COLUMNS: Array<{ key: ItemsTableColumnKey; label: string }> = [
   { key: 'code', label: 'Code' },
   { key: 'name', label: 'Name' },
-  { key: 'category', label: 'Category' },
+  { key: 'category', label: 'Product Category' },
   { key: 'uom', label: 'UOM' },
   { key: 'hsn_code', label: 'HSN' },
   { key: 'uid_tracking', label: 'UID' },
@@ -1183,12 +1183,12 @@ export default function ItemsPage() {
                 </th>
               )}
               {visibleColumns.category && (
-                <th 
+                <th
                   onClick={() => handleSort('category')}
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                 >
                   <div className="flex items-center gap-1">
-                    Category
+                    Product Category
                     {sortColumn === 'category' && (
                       <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
                     )}
@@ -2286,7 +2286,7 @@ export default function ItemsPage() {
                   ➕ Add Variant
                 </button>
                 <p className="text-xs text-gray-500 mt-2">
-                  💡 Inherits category ({selectedParentItem.category}), UOM ({selectedParentItem.uom}), and HSN ({selectedParentItem.hsn_code}) from parent
+                  💡 Inherits product category ({selectedParentItem.category}), UOM ({selectedParentItem.uom}), and HSN ({selectedParentItem.hsn_code}) from parent
                 </p>
               </div>
 
