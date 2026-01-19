@@ -745,8 +745,8 @@ function SmartJobOrdersItemsPageContent() {
     const itemNodes = preview.nodes.filter((n) => n.componentType === 'ITEM' && n.itemId);
     const bomNodes = preview.nodes.filter((n) => n.componentType === 'BOM');
     
-    // Expand all BOMs by default
-    setExpandedBoms(new Set([preview.topBom.id, ...bomNodes.map((b) => b.bomId)]));
+    // Start with all BOMs collapsed
+    setExpandedBoms(new Set());
 
     let cancelled = false;
 
