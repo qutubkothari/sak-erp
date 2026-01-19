@@ -1828,23 +1828,6 @@ function JobOrdersPageContent() {
               <div className="font-semibold">{selectedJobOrder.itemCode} - {selectedJobOrder.itemName}</div>
             </div>
 
-            {qcAlreadyApplied && (
-              <div className="mb-4 p-4 rounded border border-green-300 bg-green-50 text-green-900">
-                <div className="font-semibold">QC already submitted</div>
-                <div className="text-sm mt-1">
-                  {qcSummary?.qcAppliedAt
-                    ? `Submitted on ${new Date(qcSummary.qcAppliedAt).toLocaleString()}`
-                    : 'Submitted previously (timestamp unavailable)'}
-                </div>
-                {qcSummary && (
-                  <div className="text-sm mt-2">
-                    Stock added: <span className="font-semibold">{qcSummary.stockAdded}</span> | Approved UIDs: <span className="font-semibold">{qcSummary.approvedUidsCount}</span>
-                  </div>
-                )}
-                <div className="text-sm mt-2">The submit button is disabled to prevent duplicate stock.</div>
-              </div>
-            )}
-
             {qcLoading ? (
               <div className="p-6 text-center text-gray-600">Loading UIDs...</div>
             ) : qcUids.length === 0 ? (
@@ -1995,24 +1978,20 @@ function JobOrdersPageContent() {
 
                 <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded">
                   <p className="text-sm text-gray-700 mb-4">
-                    <strong>Important:</strong> After completing QC inspection for all UIDs, click &quot;Submit QC Results&quot; below. 
-                    Only <strong>PASSED</strong> UIDs will be added to stock. Failed UIDs will be marked for rework/scrap.
+                    <strong>Important:</strong> Click &quot;Submit PASSED Items to Stock&quot; to add only the <strong>PASSED</strong> UIDs to inventory. 
+                    Failed UIDs remain in the Job Order for rework. You can re-inspect and submit them later.
                   </p>
                   <button
                     onClick={async () => {
-                      if (qcAlreadyApplied) {
-                        alert('QC is already submitted for this job order. Stock has already been updated.');
-                        return;
-                      }
                       const approvedUids = qcUids.filter(u => String(u?.quality_status || '').toUpperCase() === 'PASSED').map(u => u.uid);
                       const rejectedUids = qcUids.filter(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED').map(u => u.uid);
 
-                      if (approvedUids.length === 0 && rejectedUids.length === 0) {
-                        alert('Please mark UIDs as PASS or FAIL before submitting QC results');
+                      if (approvedUids.length === 0) {
+                        alert('No PASSED UIDs to submit. Please mark at least one UID as PASSED.');
                         return;
                       }
 
-                      if (!confirm(`Submit QC Results?\n\nApproved (will add to stock): ${approvedUids.length}\nRejected (rework/scrap): ${rejectedUids.length}`)) {
+                      if (!confirm(`Submit ${approvedUids.length} PASSED items to stock?\n\n${rejectedUids.length} failed/pending items will remain in the Job Order for re-inspection.`)) {
                         return;
                       }
 
@@ -2023,10 +2002,10 @@ function JobOrdersPageContent() {
                           rejectedUids,
                         });
 
-                        alert(`✅ QC Complete!\n\n${response.message || `${approvedUids.length} units added to stock, ${rejectedUids.length} rejected`}`);
-                        setQcAlreadyApplied(true);
-                        setShowQcModal(false);
-                        setQcUids([]);
+                        alert(`✅ Stock Updated!\n\n${approvedUids.length} units added to stock.\n${rejectedUids.length > 0 ? `${rejectedUids.length} items remain for rework - you can re-QC them anytime.` : ''}`);
+                        
+                        // Refresh the QC modal to show remaining items
+                        await loadJobOrderQc(selectedJobOrder);
                         fetchJobOrders();
                       } catch (error: any) {
                         console.error('Error submitting QC results:', error);
@@ -2036,10 +2015,10 @@ function JobOrdersPageContent() {
                         setQcSubmitting(false);
                       }
                     }}
-                    disabled={qcLoading || qcSubmitting || qcAlreadyApplied}
+                    disabled={qcLoading || qcSubmitting}
                     className="w-full px-6 py-3 bg-blue-600 text-white font-semibold rounded hover:bg-blue-700 disabled:opacity-50"
                   >
-                    {qcAlreadyApplied ? 'QC Already Submitted' : qcSubmitting ? 'Submitting QC…' : 'Submit QC Results & Add Stock'}
+                    {qcSubmitting ? 'Adding to Stock…' : 'Submit PASSED Items to Stock'}
                   </button>
                 </div>
               </>
