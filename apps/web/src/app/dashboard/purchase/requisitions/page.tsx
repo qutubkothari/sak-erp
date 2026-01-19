@@ -769,8 +769,8 @@ function PRContent() {
       const vendorList = Array.isArray(allVendors) ? allVendors : [];
       
       // If we have a selected PR with items, get vendors from item_vendors relationships
-      if (selectedPRForRFQ?.purchase_requisition_items?.length > 0) {
-        const prItems = selectedPRForRFQ.purchase_requisition_items;
+      if (selectedPR?.purchase_requisition_items?.length > 0) {
+        const prItems = selectedPR.purchase_requisition_items;
         const vendorIds = new Set<string>();
         
         // Collect all preferred vendors for the PR items
