@@ -151,8 +151,39 @@ function SmartJobOrdersItemsPageContent() {
   const salesOrderId = searchParams.get('salesOrderId');
   const salesOrderItemId = searchParams.get('salesOrderItemId');
 
-  const [itemId, setItemId] = useState<string>(prefillItemId);
-  const [quantity, setQuantity] = useState<number>(prefillQuantity);
+  // LocalStorage key for caching
+  const CACHE_KEY = 'smart_job_order_cache';
+
+  // Initialize state from localStorage if available
+  const [itemId, setItemId] = useState<string>(() => {
+    if (prefillItemId) return prefillItemId;
+    if (typeof window === 'undefined') return '';
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return parsed.itemId || '';
+      }
+    } catch (e) {
+      console.error('Failed to load cached itemId:', e);
+    }
+    return '';
+  });
+
+  const [quantity, setQuantity] = useState<number>(() => {
+    if (prefillQuantity !== 1) return prefillQuantity;
+    if (typeof window === 'undefined') return 1;
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return parsed.quantity || 1;
+      }
+    } catch (e) {
+      console.error('Failed to load cached quantity:', e);
+    }
+    return 1;
+  });
 
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState<string>('');
@@ -162,14 +193,62 @@ function SmartJobOrdersItemsPageContent() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState('');
-  const [preview, setPreview] = useState<SmartPreview | null>(null);
+  const [preview, setPreview] = useState<SmartPreview | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return parsed.preview || null;
+      }
+    } catch (e) {
+      console.error('Failed to load cached preview:', e);
+    }
+    return null;
+  });
   const [previewError, setPreviewError] = useState<string>('');
 
-  const [selectedItemByNodeKey, setSelectedItemByNodeKey] = useState<Record<string, string>>({});
+  const [selectedItemByNodeKey, setSelectedItemByNodeKey] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return parsed.selectedItemByNodeKey || {};
+      }
+    } catch (e) {
+      console.error('Failed to load cached selectedItemByNodeKey:', e);
+    }
+    return {};
+  });
   const [stockByItemId, setStockByItemId] = useState<
     Record<string, { available: number; loading: boolean; error?: string }>
-  >({});
-  const [expandedBoms, setExpandedBoms] = useState<Set<string>>(new Set());
+  >(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return parsed.stockByItemId || {};
+      }
+    } catch (e) {
+      console.error('Failed to load cached stockByItemId:', e);
+    }
+    return {};
+  });
+  const [expandedBoms, setExpandedBoms] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return new Set(parsed.expandedBoms || []);
+      }
+    } catch (e) {
+      console.error('Failed to load cached expandedBoms:', e);
+    }
+    return new Set();
+  });
   const [showShortageDetails, setShowShortageDetails] = useState(false);
 
   const [creating, setCreating] = useState(false);
@@ -223,6 +302,13 @@ function SmartJobOrdersItemsPageContent() {
 
           setCreateSummary(result);
           setShowCreateSummary(true);
+          
+          // Clear localStorage cache after successful creation
+          try {
+            localStorage.removeItem(CACHE_KEY);
+          } catch (e) {
+            console.error('Failed to clear cache:', e);
+          }
           
           // Show success notification and redirect to Job Orders list after a brief delay
           setTimeout(() => {
@@ -600,10 +686,30 @@ function SmartJobOrdersItemsPageContent() {
     }
   };
 
+  // Save state to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const cacheData = {
+        itemId,
+        quantity,
+        preview,
+        selectedItemByNodeKey,
+        stockByItemId,
+        expandedBoms: Array.from(expandedBoms),
+        timestamp: Date.now(),
+      };
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+    } catch (e) {
+      console.error('Failed to cache Job Order state:', e);
+    }
+  }, [itemId, quantity, preview, selectedItemByNodeKey, stockByItemId, expandedBoms]);
+
   useEffect(() => {
     fetchItems();
 
-    if (prefillItemId) {
+    // Only fetch preview if coming from prefill params (not from cache)
+    if (prefillItemId && !preview) {
       fetchPreview();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1083,6 +1189,29 @@ function SmartJobOrdersItemsPageContent() {
           </div>
 
           <div className="flex gap-3">
+            {preview && (
+              <button
+                onClick={() => {
+                  if (confirm('Clear all cached data? You will need to reload the BOM.')) {
+                    try {
+                      localStorage.removeItem(CACHE_KEY);
+                      setPreview(null);
+                      setSelectedItemByNodeKey({});
+                      setStockByItemId({});
+                      setExpandedBoms(new Set());
+                      setItemId('');
+                      setQuantity(1);
+                    } catch (e) {
+                      console.error('Failed to clear cache:', e);
+                    }
+                  }
+                }}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100"
+                title="Clear cached data"
+              >
+                Clear Cache
+              </button>
+            )}
             <button
               onClick={fetchPreview}
               disabled={!canPreview || loadingPreview}
