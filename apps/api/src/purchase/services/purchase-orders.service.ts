@@ -1,12 +1,16 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { EmailService } from '../../email/email.service';
+import { PoPdfService } from './po-pdf.service';
 
 @Injectable()
 export class PurchaseOrdersService {
   private supabase: SupabaseClient;
 
-  constructor(private emailService: EmailService) {
+  constructor(
+    private emailService: EmailService,
+    private poPdfService: PoPdfService,
+  ) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_KEY!,
@@ -719,6 +723,45 @@ export class PurchaseOrdersService {
         `Cannot send PO email. ACTIVE drawing missing for compulsory item(s): ${missingCompulsory.join(', ')}`,
       );
     }
+
+    // Generate PO PDF attachment
+    const poPdfBuffer = await this.poPdfService.generatePOPdf({
+      poNumber: po.po_number,
+      poDate: po.po_date,
+      vendorName: po.vendor.name,
+      vendorAddress: po.vendor.address || po.vendor.street,
+      vendorEmail: po.vendor.email,
+      vendorPhone: po.vendor.phone,
+      items: poItems.map((item: any) => ({
+        item_code: item.item_code || '-',
+        item_name: item.item_name || '-',
+        description: item.description || item.specifications || '',
+        quantity: item.ordered_qty || 0,
+        uom: item.uom || '-',
+        unit_price: item.rate || 0,
+        total_price: item.amount || 0,
+        tax_amount: ((item.rate || 0) * (item.ordered_qty || 0) * (item.tax_percent || 0)) / 100,
+        specifications: item.specifications || '',
+      })),
+      subtotal: (po.total_amount || 0) - (po.customs_duty || 0) - (po.other_charges || 0),
+      taxTotal: poItems.reduce((sum: number, item: any) => 
+        sum + (((item.rate || 0) * (item.ordered_qty || 0) * (item.tax_percent || 0)) / 100), 0),
+      grandTotal: po.total_amount || 0,
+      paymentTerms: po.payment_terms,
+      deliveryDate: po.delivery_date,
+      remarks: po.remarks,
+      companyName: 'SAK Engineering Works', // You can make this configurable
+      companyAddress: 'Your Company Address', // You can make this configurable
+    });
+
+    const pdfFilename = this.poPdfService.generateFilename(po.po_number);
+    
+    // Add PDF to attachments
+    attachments.push({
+      filename: pdfFilename,
+      content: poPdfBuffer,
+      contentType: 'application/pdf',
+    });
 
     const emailData = {
       po_number: po.po_number,
