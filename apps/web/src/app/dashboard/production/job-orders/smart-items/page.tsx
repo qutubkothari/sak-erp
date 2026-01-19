@@ -565,7 +565,7 @@ function SmartJobOrdersItemsPageContent() {
             setLoadingMessage('🔍 Loading BOM...');
             return prev + 2;
           } else if (prev < 60) {
-            setLoadingMessage('💥 Exploding BOM structure...');
+            setLoadingMessage('💥 Expanding BOM structure...');
             return prev + 2;
           } else if (prev < 90) {
             setLoadingMessage('📦 Extracting items...');
@@ -648,16 +648,18 @@ function SmartJobOrdersItemsPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preview?.topBom?.id, preview?.quantity, preview?.finishedItem?.id]);
 
-  useEffect(() => {
-    if (!canPreview) return;
-
-    const handle = setTimeout(() => {
-      fetchPreview();
-    }, 350);
-
-    return () => clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemId, quantity, salesOrderId, salesOrderItemId]);
+  // Removed automatic BOM expansion on dropdown selection
+  // User must now click "Load BOM" button to trigger expansion
+  // useEffect(() => {
+  //   if (!canPreview) return;
+  //
+  //   const handle = setTimeout(() => {
+  //     fetchPreview();
+  //   }, 350);
+  //
+  //   return () => clearTimeout(handle);
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [itemId, quantity, salesOrderId, salesOrderItemId]);
 
   const handlePurchaseShortageItems = async () => {
     if (!preview) return;
