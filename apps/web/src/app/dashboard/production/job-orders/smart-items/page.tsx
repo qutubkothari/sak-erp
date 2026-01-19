@@ -35,6 +35,7 @@ type SmartExplosionNode = {
   availableQuantity: number;
   toMakeQuantity: number;
   shortageQuantity: number;
+  uidStrategy?: 'SERIALIZED' | 'BATCHED' | 'NONE';
 };
 
 type SmartSubAssemblyPlan = {
@@ -991,10 +992,19 @@ function SmartJobOrdersItemsPageContent() {
       childBomIdsByParent.set(parentId, sorted);
     }
 
+    // Sort items: SERIALIZED items first, then by item code
     for (const [bid, list] of itemNodesByBomId.entries()) {
       itemNodesByBomId.set(
         bid,
-        [...list].sort((a, b) => String(a.itemCode || '').localeCompare(String(b.itemCode || ''))),
+        [...list].sort((a, b) => {
+          // Serialized items come first
+          const aIsSerial = a.uidStrategy === 'SERIALIZED';
+          const bIsSerial = b.uidStrategy === 'SERIALIZED';
+          if (aIsSerial && !bIsSerial) return -1;
+          if (!aIsSerial && bIsSerial) return 1;
+          // Then sort by item code
+          return String(a.itemCode || '').localeCompare(String(b.itemCode || ''));
+        }),
       );
     }
 
@@ -1087,7 +1097,8 @@ function SmartJobOrdersItemsPageContent() {
 
           {isExpanded && (
             <div className="bg-white">
-              {directItems.length > 0 ? (
+              {/* Show serialized items first */}
+              {directItems.filter(node => node.uidStrategy === 'SERIALIZED').length > 0 ? (
                 <table className="min-w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
@@ -1095,7 +1106,7 @@ function SmartJobOrdersItemsPageContent() {
                         className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase"
                         style={{ paddingLeft: `${40 + lvl * 24}px` }}
                       >
-                        Item
+                        Item (Serial Number)
                       </th>
                       <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
                         Required
@@ -1109,7 +1120,7 @@ function SmartJobOrdersItemsPageContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {directItems.map((node, idx) => {
+                    {directItems.filter(node => node.uidStrategy === 'SERIALIZED').map((node, idx) => {
                       const key = nodeKey(node);
                       const selectedItemId = selectedItemByNodeKey[key] || node.itemId;
                       const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
@@ -1159,10 +1170,84 @@ function SmartJobOrdersItemsPageContent() {
                 </table>
               ) : null}
 
+              {/* Show sub-assemblies (child BOMs) */}
               {childBoms.length > 0 ? (
-                <div className={directItems.length > 0 ? 'border-t border-gray-100' : ''}>
+                <div className={directItems.filter(node => node.uidStrategy === 'SERIALIZED').length > 0 ? 'border-t border-gray-100' : ''}>
                   {childBoms.map((childId, idx) => renderBom(childId, idx === 0))}
                 </div>
+              ) : null}
+
+              {/* Show non-serialized items last */}
+              {directItems.filter(node => node.uidStrategy !== 'SERIALIZED').length > 0 ? (
+                <table className="min-w-full border-t border-gray-100">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th
+                        className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase"
+                        style={{ paddingLeft: `${40 + lvl * 24}px` }}
+                      >
+                        Item
+                      </th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                        Required
+                      </th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                        In Stock
+                      </th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                        Short
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {directItems.filter(node => node.uidStrategy !== 'SERIALIZED').map((node, idx) => {
+                      const key = nodeKey(node);
+                      const selectedItemId = selectedItemByNodeKey[key] || node.itemId;
+                      const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+                      const available = stockState?.available ?? node.availableQuantity;
+                      const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
+                      const requiredQty = Number(node.requiredQuantity || 0);
+                      const short = Math.max(0, requiredQty - Number(available || 0));
+
+                      return (
+                        <tr key={`${node.bomId}:${node.itemId}:${idx}`} className="hover:bg-gray-50">
+                          <td className="px-4 py-2" style={{ paddingLeft: `${40 + lvl * 24}px` }}>
+                            <div className="flex items-center gap-2">
+                              <Package size={14} className="text-gray-400 flex-shrink-0" />
+                              <div className="min-w-[280px]">
+                                <SearchableSelect
+                                  options={allItemOptions}
+                                  value={selectedItemId}
+                                  onChange={async (value) => {
+                                    const next = String(value || '');
+                                    setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
+                                    await fetchItemStockAvailable(next);
+                                  }}
+                                  placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
+                                  disabled={itemsLoading || allItemOptions.length === 0}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2 text-sm text-right text-gray-900">{formatQuantity(node.requiredQuantity)}</td>
+                          <td
+                            className="px-4 py-2 text-sm text-right text-gray-900"
+                            title={stockState?.error || ''}
+                          >
+                            {inStockLabel}
+                          </td>
+                          <td
+                            className={`px-4 py-2 text-sm text-right font-semibold ${
+                              short > 0 ? 'text-red-600' : 'text-green-600'
+                            }`}
+                          >
+                            {short > 0 ? formatQuantity(short) : '✓'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               ) : null}
             </div>
           )}
