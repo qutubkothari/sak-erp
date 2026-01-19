@@ -88,7 +88,6 @@ interface Vendor {
   name: string;
   email: string;
   is_active: boolean;
-  is_preferred?: boolean;
 }
 
 const resolveUomFromItem = (item: any): string => {
@@ -764,10 +763,49 @@ function PRContent() {
   const fetchRFQVendors = async () => {
     try {
       setRfqLoadingVendors(true);
-      const data = await apiClient.get<Vendor[]>('/purchase/vendors');
-      const list = Array.isArray(data) ? data : [];
-      // Filter for active and preferred vendors
-      setRfqVendors(list.filter((v) => v?.is_active !== false && v?.is_preferred === true));
+      
+      // Get all vendors first, then filter to those associated with PR items
+      const allVendors = await apiClient.get<Vendor[]>('/purchase/vendors');
+      const vendorList = Array.isArray(allVendors) ? allVendors : [];
+      
+      // If we have a selected PR with items, get vendors from item_vendors relationships
+      if (selectedPRForRFQ?.purchase_requisition_items?.length > 0) {
+        const prItems = selectedPRForRFQ.purchase_requisition_items;
+        const vendorIds = new Set<string>();
+        
+        // Collect all preferred vendors for the PR items
+        for (const prItem of prItems) {
+          const itemId = prItem.item_id;
+          if (!itemId) continue;
+          
+          try {
+            // Fetch item-vendor relationships for this item
+            const itemVendors = await apiClient.get(`/items/${itemId}/vendors`);
+            if (Array.isArray(itemVendors)) {
+              // Add all active vendors, prioritizing those with priority=1 (preferred)
+              itemVendors
+                .filter((iv: any) => iv.is_active !== false)
+                .forEach((iv: any) => {
+                  if (iv.vendor_id) {
+                    vendorIds.add(iv.vendor_id);
+                  }
+                });
+            }
+          } catch (err) {
+            console.error(`Error fetching vendors for item ${itemId}:`, err);
+          }
+        }
+        
+        // Filter vendor list to only those associated with PR items
+        const associatedVendors = vendorList.filter(
+          (v) => v?.is_active !== false && vendorIds.has(v.id)
+        );
+        
+        setRfqVendors(associatedVendors.length > 0 ? associatedVendors : vendorList.filter((v) => v?.is_active !== false));
+      } else {
+        // No PR selected, show all active vendors
+        setRfqVendors(vendorList.filter((v) => v?.is_active !== false));
+      }
     } catch (error) {
       console.error('Error fetching vendors for RFQ:', error);
       alert('Failed to load vendors');

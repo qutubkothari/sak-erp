@@ -43,7 +43,6 @@ export class VendorsService {
         shipping_country: data.sameAsbilling ? (data.country || 'India') : data.shippingCountry,
         shipping_pincode: data.sameAsbilling ? data.pincode : data.shippingPincode,
         is_active: data.isActive !== undefined ? data.isActive : true,
-        is_preferred: data.isPreferred !== undefined ? data.isPreferred : false,
         metadata: data.metadata || {},
       })
       .select()
@@ -116,7 +115,6 @@ export class VendorsService {
         shipping_country: data.sameAsbilling ? data.country : data.shippingCountry,
         shipping_pincode: data.sameAsbilling ? data.pincode : data.shippingPincode,
         is_active: data.isActive,
-        is_preferred: data.isPreferred !== undefined ? data.isPreferred : false,
         metadata: data.metadata,
         updated_at: new Date().toISOString(),
       })
