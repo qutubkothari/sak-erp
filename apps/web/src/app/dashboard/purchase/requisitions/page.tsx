@@ -88,6 +88,7 @@ interface Vendor {
   name: string;
   email: string;
   is_active: boolean;
+  is_preferred?: boolean;
 }
 
 const resolveUomFromItem = (item: any): string => {
@@ -765,7 +766,8 @@ function PRContent() {
       setRfqLoadingVendors(true);
       const data = await apiClient.get<Vendor[]>('/purchase/vendors');
       const list = Array.isArray(data) ? data : [];
-      setRfqVendors(list.filter((v) => v?.is_active !== false));
+      // Filter for active and preferred vendors
+      setRfqVendors(list.filter((v) => v?.is_active !== false && v?.is_preferred === true));
     } catch (error) {
       console.error('Error fetching vendors for RFQ:', error);
       alert('Failed to load vendors');

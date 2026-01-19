@@ -31,6 +31,7 @@ interface Vendor {
   credit_limit: number;
   rating: number;
   is_active: boolean;
+  is_preferred?: boolean;
 }
 
 export default function VendorsPage() {
@@ -76,6 +77,7 @@ export default function VendorsPage() {
     creditLimit: 0,
     rating: 0,
     isActive: true,
+    isPreferred: false,
     sameAsbilling: true,
   });
 
@@ -158,6 +160,7 @@ export default function VendorsPage() {
       creditLimit: vendor.credit_limit || 0,
       rating: vendor.rating || 0,
       isActive: vendor.is_active,
+      isPreferred: vendor.is_preferred || false,
       sameAsbilling: !vendor.shipping_street && !vendor.shipping_city,
     });
     setShowModal(true);
@@ -213,6 +216,7 @@ export default function VendorsPage() {
       creditLimit: 0,
       rating: 0,
       isActive: true,
+      isPreferred: false,
       sameAsbilling: true,
     });
   };
@@ -417,6 +421,11 @@ export default function VendorsPage() {
                       <div className="flex items-center gap-2">
                         {vendor.rating > 0 && (
                           <span className="text-yellow-500">★ {vendor.rating.toFixed(1)}</span>
+                        )}
+                        {vendor.is_preferred && (
+                          <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 font-semibold">
+                            ⭐ Preferred
+                          </span>
                         )}
                         <span
                           className={`px-2 py-1 text-xs rounded-full ${
@@ -868,6 +877,19 @@ export default function VendorsPage() {
                 />
                 <label htmlFor="isActive" className="text-sm font-medium text-gray-700">
                   Active Vendor
+                </label>
+              </div>
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="isPreferred"
+                  checked={formData.isPreferred}
+                  onChange={(e) => setFormData({ ...formData, isPreferred: e.target.checked })}
+                  className="mr-2"
+                />
+                <label htmlFor="isPreferred" className="text-sm font-medium text-gray-700">
+                  ⭐ Preferred Vendor (appears in RFQ vendor selection)
                 </label>
               </div>
             </div>
