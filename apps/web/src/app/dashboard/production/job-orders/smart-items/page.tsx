@@ -374,10 +374,28 @@ function SmartJobOrdersItemsPageContent() {
       allItems.map((i) => ({
         value: i.id,
         label: i.code,
-        subtitle: i.name,
+        subtitle: i.category ? `${i.category} → ${i.name} → ${i.code}` : `${i.name} + ${i.code}`,
       })),
     [allItems],
   );
+
+  // Helper function to get filtered item options by category
+  const getFilteredItemOptions = (originalItemId: string) => {
+    const originalItem = allItemsById.get(originalItemId);
+    if (!originalItem?.category) {
+      // If original item has no category, show all items
+      return allItemOptions;
+    }
+    
+    // Filter items by matching category
+    return allItems
+      .filter((item) => item.category === originalItem.category)
+      .map((i) => ({
+        value: i.id,
+        label: i.code,
+        subtitle: i.category ? `${i.category} → ${i.name} → ${i.code}` : `${i.name} + ${i.code}`,
+      }));
+  };
 
   const allItemsById = useMemo(() => {
     const map = new Map<string, FinishedItem>();
@@ -1136,7 +1154,7 @@ function SmartJobOrdersItemsPageContent() {
                               <Package size={14} className="text-gray-400 flex-shrink-0" />
                               <div className="min-w-[280px]">
                                 <SearchableSelect
-                                  options={allItemOptions}
+                                  options={getFilteredItemOptions(node.itemId)}
                                   value={selectedItemId}
                                   onChange={async (value) => {
                                     const next = String(value || '');
@@ -1144,7 +1162,7 @@ function SmartJobOrdersItemsPageContent() {
                                     await fetchItemStockAvailable(next);
                                   }}
                                   placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
-                                  disabled={itemsLoading || allItemOptions.length === 0}
+                                  disabled={itemsLoading || getFilteredItemOptions(node.itemId).length === 0}
                                 />
                               </div>
                             </div>
@@ -1216,7 +1234,7 @@ function SmartJobOrdersItemsPageContent() {
                               <Package size={14} className="text-gray-400 flex-shrink-0" />
                               <div className="min-w-[280px]">
                                 <SearchableSelect
-                                  options={allItemOptions}
+                                  options={getFilteredItemOptions(node.itemId)}
                                   value={selectedItemId}
                                   onChange={async (value) => {
                                     const next = String(value || '');
@@ -1224,7 +1242,7 @@ function SmartJobOrdersItemsPageContent() {
                                     await fetchItemStockAvailable(next);
                                   }}
                                   placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
-                                  disabled={itemsLoading || allItemOptions.length === 0}
+                                  disabled={itemsLoading || getFilteredItemOptions(node.itemId).length === 0}
                                 />
                               </div>
                             </div>
