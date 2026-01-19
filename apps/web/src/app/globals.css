@@ -94,6 +94,10 @@
     scrollbar-width: thin;
     scrollbar-color: #d1d5db transparent;
   }
+
+  .overflow-x-auto {
+    overflow-y: visible;
+  }
   
   .overflow-x-auto::-webkit-scrollbar {
     height: 8px;
