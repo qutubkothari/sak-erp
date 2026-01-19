@@ -170,6 +170,7 @@ function JobOrdersPageContent() {
   const [qcIndex, setQcIndex] = useState(0);
   const [qcAlreadyApplied, setQcAlreadyApplied] = useState(false);
   const [qcSummary, setQcSummary] = useState<JobOrderQcSummary | null>(null);
+  const [qcRemarks, setQcRemarks] = useState<Record<string, string>>({});
 
   // Form state
   const [formData, setFormData] = useState({
@@ -356,14 +357,21 @@ function JobOrdersPageContent() {
     }
   };
 
-  const setCurrentUidQc = async (qualityStatus: 'PASSED' | 'ON_HOLD', targetUid?: string) => {
+  const setCurrentUidQc = async (qualityStatus: 'PASSED' | 'ON_HOLD' | 'FAILED', targetUid?: string, remarks?: string) => {
     const uidToUpdate = targetUid || qcUids[qcIndex]?.uid;
     if (!uidToUpdate) return;
 
     try {
-      await apiClient.put(`/uid/${encodeURIComponent(uidToUpdate)}/quality-status`, {
+      const payload: any = {
         quality_status: qualityStatus,
-      });
+      };
+      
+      // Include remarks/notes if provided
+      if (remarks) {
+        payload.notes = remarks;
+      }
+
+      await apiClient.put(`/uid/${encodeURIComponent(uidToUpdate)}/quality-status`, payload);
 
       const updated = qcUids.map((u) => 
         u.uid === uidToUpdate ? { ...u, quality_status: qualityStatus } : u
@@ -1805,6 +1813,7 @@ function JobOrdersPageContent() {
                   setQcSubmitting(false);
                   setQcAlreadyApplied(false);
                   setQcSummary(null);
+                  setQcRemarks({});
                 }}
                 className="text-gray-500 hover:text-gray-700"
               >
@@ -1912,34 +1921,55 @@ function JobOrdersPageContent() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">UID</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Part Number</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">QC Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Remarks</th>
                         <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {qcUids.map((uid) => {
                         const currentStatus = String(uid?.quality_status || '').toUpperCase() || 'PENDING';
+                        const isFailed = currentStatus === 'FAILED' || currentStatus === 'ON_HOLD';
                         return (
-                          <tr key={uid.uid} className={currentStatus === 'PASSED' ? 'bg-green-50' : ''}>
+                          <tr key={uid.uid} className={currentStatus === 'PASSED' ? 'bg-green-50' : isFailed ? 'bg-red-50' : ''}>
                             <td className="px-4 py-3 text-sm font-mono break-all">{uid.uid}</td>
                             <td className="px-4 py-3 text-sm">{uid.client_part_number || '—'}</td>
                             <td className="px-4 py-3 text-sm">
                               <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
                                 currentStatus === 'PASSED' 
                                   ? 'bg-green-100 text-green-800' 
-                                  : currentStatus === 'ON_HOLD' 
-                                  ? 'bg-orange-100 text-orange-800'
+                                  : isFailed
+                                  ? 'bg-red-100 text-red-800'
                                   : 'bg-gray-100 text-gray-800'
                               }`}>
-                                {currentStatus}
+                                {isFailed ? 'QC FAILED' : currentStatus}
                               </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              {isFailed && (
+                                <textarea
+                                  className="w-full px-2 py-1 text-xs border rounded resize-none"
+                                  rows={2}
+                                  placeholder="Enter failure remarks..."
+                                  value={qcRemarks[uid.uid] || ''}
+                                  onChange={(e) => setQcRemarks({ ...qcRemarks, [uid.uid]: e.target.value })}
+                                />
+                              )}
                             </td>
                             <td className="px-4 py-3 text-sm text-center">
                               {currentStatus !== 'PASSED' && (
                                 <div className="flex justify-center gap-2">
                                   <button
-                                    onClick={() => setCurrentUidQc('ON_HOLD', uid.uid)}
-                                    className="px-3 py-1 bg-orange-600 text-white text-xs rounded hover:bg-orange-700"
-                                    title="Mark as Failed / On Hold"
+                                    onClick={() => {
+                                      const remarks = prompt('Enter QC failure remarks (required):');
+                                      if (remarks && remarks.trim()) {
+                                        setQcRemarks({ ...qcRemarks, [uid.uid]: remarks });
+                                        setCurrentUidQc('FAILED', uid.uid, remarks);
+                                      } else if (remarks !== null) {
+                                        alert('Remarks are required for QC failure');
+                                      }
+                                    }}
+                                    className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
+                                    title="Mark as Failed (Requires Remarks)"
                                   >
                                     FAIL
                                   </button>
