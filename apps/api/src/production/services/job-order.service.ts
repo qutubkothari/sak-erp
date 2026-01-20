@@ -1507,7 +1507,7 @@ export class JobOrderService {
 
     // Derive a user-facing workflow status for completed job orders.
     // Rules:
-    // - If any UID is ON_HOLD => On-Hold
+    // - If any UID is ON_HOLD => QC Failed
     // - Else if all UIDs are decided (no pending) => QC Completed
     // - Else => Awaiting QC
     const jobOrderIds = rows.map((r: any) => r?.id).filter(Boolean);
@@ -1559,7 +1559,7 @@ export class JobOrderService {
       };
 
       if (baseKey === 'COMPLETED') {
-        if (counts.onHold > 0) workflowStatus = 'On-Hold';
+        if (counts.onHold > 0) workflowStatus = 'QC Failed';
         else if (counts.total > 0 && counts.pending === 0) workflowStatus = 'QC Completed';
         else workflowStatus = 'Awaiting QC';
       }
