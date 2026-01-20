@@ -2004,6 +2004,14 @@ function JobOrdersPageContent() {
                       {qcUids.map((uid) => {
                         const currentStatus = String(uid?.quality_status || '').toUpperCase() || 'PENDING';
                         const isFailed = currentStatus === 'FAILED' || currentStatus === 'ON_HOLD';
+                        const statusLabel =
+                          currentStatus === 'ON_HOLD'
+                            ? 'ON HOLD'
+                            : currentStatus === 'FAILED'
+                              ? 'FAILED'
+                              : currentStatus === 'PENDING'
+                                ? 'PENDING'
+                                : currentStatus;
                         return (
                           <tr key={uid.uid} className={currentStatus === 'PASSED' ? 'bg-green-50' : isFailed ? 'bg-red-50' : ''}>
                             <td className="px-4 py-3 text-sm font-mono break-all">{uid.uid}</td>
@@ -2016,13 +2024,15 @@ function JobOrdersPageContent() {
                                   ? 'bg-red-100 text-red-800'
                                   : 'bg-gray-100 text-gray-800'
                               }`}>
-                                {isFailed ? 'QC FAILED' : currentStatus}
+                                {statusLabel}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-sm">
                               <select
                                 value={qcCheckedBy[uid.uid] || ''}
-                                onChange={(e) => setQcCheckedBy({ ...qcCheckedBy, [uid.uid]: e.target.value })}
+                                onChange={(e) =>
+                                  setQcCheckedBy((prev) => ({ ...prev, [uid.uid]: e.target.value }))
+                                }
                                 className="w-full px-2 py-1 text-xs border rounded"
                               >
                                 <option value="">Select User</option>
@@ -2040,7 +2050,9 @@ function JobOrdersPageContent() {
                                   rows={2}
                                   placeholder="Enter failure remarks..."
                                   value={qcRemarks[uid.uid] || ''}
-                                  onChange={(e) => setQcRemarks({ ...qcRemarks, [uid.uid]: e.target.value })}
+                                  onChange={(e) =>
+                                    setQcRemarks((prev) => ({ ...prev, [uid.uid]: e.target.value }))
+                                  }
                                 />
                               )}
                             </td>
@@ -2054,7 +2066,9 @@ function JobOrdersPageContent() {
                                         alert('Please enter QC failure remarks in the Remarks box.');
                                         return;
                                       }
-                                      setCurrentUidQc('FAILED', uid.uid, remarks);
+                                      // "FAIL" is treated as "ON_HOLD" in the backend.
+                                      // We use ON_HOLD here so users can see a distinct state.
+                                      setCurrentUidQc('ON_HOLD', uid.uid, remarks);
                                     }}
                                     className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
                                     title="Mark as Failed (Requires Remarks)"
