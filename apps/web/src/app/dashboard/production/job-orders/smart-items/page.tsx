@@ -226,6 +226,20 @@ function SmartJobOrdersItemsPageContent() {
   });
   const [previewError, setPreviewError] = useState<string>('');
 
+  const [selectedCategoryByNodeKey, setSelectedCategoryByNodeKey] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return parsed.selectedCategoryByNodeKey || {};
+      }
+    } catch (e) {
+      console.error('Failed to load cached selectedCategoryByNodeKey:', e);
+    }
+    return {};
+  });
+
   const [selectedItemByNodeKey, setSelectedItemByNodeKey] = useState<Record<string, string>>(() => {
     if (typeof window === 'undefined') return {};
     try {
@@ -405,17 +419,23 @@ function SmartJobOrdersItemsPageContent() {
     [allItems],
   );
 
+  const allItemCategories = useMemo(() => {
+    const set = new Set<string>();
+    allItems.forEach((i) => {
+      const cat = String(i.category ?? '').trim();
+      if (cat) set.add(cat);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allItems]);
+
   // Helper function to get filtered item options by category
-  const getFilteredItemOptions = (originalItemId: string) => {
+  const getFilteredItemOptions = (originalItemId: string, selectedCategory?: string) => {
     const originalItem = allItemsById.get(originalItemId);
-    if (!originalItem?.category) {
-      // If original item has no category, show all items
-      return allItemOptions;
-    }
-    
-    // Filter items by matching category
+    const categoryToUse = String(selectedCategory || originalItem?.category || '').trim();
+    if (!categoryToUse) return allItemOptions;
+
     return allItems
-      .filter((item) => item.category === originalItem.category)
+      .filter((item) => item.category === categoryToUse)
       .map((i) => ({
         value: i.id,
         label: formatItemLabel(i),
@@ -758,6 +778,7 @@ function SmartJobOrdersItemsPageContent() {
         quantity,
         preview,
         selectedItemByNodeKey,
+        selectedCategoryByNodeKey,
         stockByItemId,
         expandedBoms: Array.from(expandedBoms),
         timestamp: Date.now(),
@@ -766,7 +787,7 @@ function SmartJobOrdersItemsPageContent() {
     } catch (e) {
       console.error('Failed to cache Job Order state:', e);
     }
-  }, [itemId, quantity, preview, selectedItemByNodeKey, stockByItemId, expandedBoms]);
+  }, [itemId, quantity, preview, selectedItemByNodeKey, selectedCategoryByNodeKey, stockByItemId, expandedBoms]);
 
   useEffect(() => {
     fetchItems();
@@ -1201,6 +1222,12 @@ function SmartJobOrdersItemsPageContent() {
                     {directItems.filter(node => node.uidStrategy === 'SERIALIZED').map((node, idx) => {
                       const key = nodeKey(node);
                       const selectedItemId = selectedItemByNodeKey[key] || node.itemId;
+                      const categoryValue =
+                        selectedCategoryByNodeKey[key] || allItemsById.get(String(node.itemId))?.category || '';
+                      const itemOptions = getFilteredItemOptions(node.itemId, categoryValue);
+                      const categoryValue =
+                        selectedCategoryByNodeKey[key] || allItemsById.get(String(node.itemId))?.category || '';
+                      const itemOptions = getFilteredItemOptions(node.itemId, categoryValue);
                       const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                       const available = stockState?.available ?? node.availableQuantity;
                       const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
@@ -1214,21 +1241,46 @@ function SmartJobOrdersItemsPageContent() {
                         }`}>
                           <td className="px-4 py-2 text-sm text-gray-600">{serial}</td>
                           <td className="px-4 py-2" style={{ paddingLeft: `${40 + lvl * 24}px` }}>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-3">
                               <Package size={14} className="text-gray-400 flex-shrink-0" />
-                              <div className="min-w-[280px]">
+                              <div className="min-w-[420px] w-full">
                                 <SearchableSelect
-                                  options={getFilteredItemOptions(node.itemId)}
+                                  options={itemOptions}
                                   value={selectedItemId}
                                   onChange={async (value) => {
                                     const next = String(value || '');
                                     setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
+                                    const nextCategory = allItemsById.get(next)?.category || '';
+                                    if (nextCategory) {
+                                      setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
+                                    }
                                     await fetchItemStockAvailable(next);
                                   }}
                                   placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
-                                  disabled={itemsLoading || getFilteredItemOptions(node.itemId).length === 0}
+                                  disabled={itemsLoading || itemOptions.length === 0}
                                 />
                               </div>
+                              <select
+                                value={categoryValue}
+                                onChange={(e) => {
+                                  const nextCategory = e.target.value;
+                                  setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
+                                  if (nextCategory) {
+                                    const currentItemCategory = allItemsById.get(String(selectedItemId))?.category || '';
+                                    if (currentItemCategory !== nextCategory) {
+                                      setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: node.itemId }));
+                                    }
+                                  }
+                                }}
+                                className="w-48 border rounded px-2 py-1 text-sm"
+                              >
+                                <option value="">All Categories</option>
+                                {allItemCategories.map((cat) => (
+                                  <option key={cat} value={cat}>
+                                    {cat.replace(/_/g, ' ')}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                           </td>
                           <td className="px-4 py-2 text-sm text-right text-gray-900">{formatQuantity(node.requiredQuantity)}</td>
@@ -1301,21 +1353,46 @@ function SmartJobOrdersItemsPageContent() {
                         }`}>
                           <td className="px-4 py-2 text-sm text-gray-600">{serial}</td>
                           <td className="px-4 py-2" style={{ paddingLeft: `${40 + lvl * 24}px` }}>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-3">
                               <Package size={14} className="text-gray-400 flex-shrink-0" />
-                              <div className="min-w-[280px]">
+                              <div className="min-w-[420px] w-full">
                                 <SearchableSelect
-                                  options={getFilteredItemOptions(node.itemId)}
+                                  options={itemOptions}
                                   value={selectedItemId}
                                   onChange={async (value) => {
                                     const next = String(value || '');
                                     setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
+                                    const nextCategory = allItemsById.get(next)?.category || '';
+                                    if (nextCategory) {
+                                      setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
+                                    }
                                     await fetchItemStockAvailable(next);
                                   }}
                                   placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
-                                  disabled={itemsLoading || getFilteredItemOptions(node.itemId).length === 0}
+                                  disabled={itemsLoading || itemOptions.length === 0}
                                 />
                               </div>
+                              <select
+                                value={categoryValue}
+                                onChange={(e) => {
+                                  const nextCategory = e.target.value;
+                                  setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
+                                  if (nextCategory) {
+                                    const currentItemCategory = allItemsById.get(String(selectedItemId))?.category || '';
+                                    if (currentItemCategory !== nextCategory) {
+                                      setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: node.itemId }));
+                                    }
+                                  }
+                                }}
+                                className="w-48 border rounded px-2 py-1 text-sm"
+                              >
+                                <option value="">All Categories</option>
+                                {allItemCategories.map((cat) => (
+                                  <option key={cat} value={cat}>
+                                    {cat.replace(/_/g, ' ')}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                           </td>
                           <td className="px-4 py-2 text-sm text-right text-gray-900">{formatQuantity(node.requiredQuantity)}</td>
@@ -1381,6 +1458,12 @@ function SmartJobOrdersItemsPageContent() {
               {rootSerializedItems.map((node, idx) => {
                 const key = nodeKey(node);
                 const selectedItemId = selectedItemByNodeKey[key] || node.itemId;
+                const categoryValue =
+                  selectedCategoryByNodeKey[key] || allItemsById.get(String(node.itemId))?.category || '';
+                const itemOptions = getFilteredItemOptions(node.itemId, categoryValue);
+                const categoryValue =
+                  selectedCategoryByNodeKey[key] || allItemsById.get(String(node.itemId))?.category || '';
+                const itemOptions = getFilteredItemOptions(node.itemId, categoryValue);
                 const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                 const available = stockState?.available ?? node.availableQuantity;
                 const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
@@ -1395,21 +1478,46 @@ function SmartJobOrdersItemsPageContent() {
                   >
                     <td className="px-4 py-2 text-sm text-gray-600">{serial}</td>
                     <td className="px-4 py-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
                         <Package size={14} className="text-gray-400 flex-shrink-0" />
-                        <div className="min-w-[280px]">
+                        <div className="min-w-[420px] w-full">
                           <SearchableSelect
-                            options={getFilteredItemOptions(node.itemId)}
+                            options={itemOptions}
                             value={selectedItemId}
                             onChange={async (value) => {
                               const next = String(value || '');
                               setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
+                              const nextCategory = allItemsById.get(next)?.category || '';
+                              if (nextCategory) {
+                                setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
+                              }
                               await fetchItemStockAvailable(next);
                             }}
                             placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
-                            disabled={itemsLoading || getFilteredItemOptions(node.itemId).length === 0}
+                            disabled={itemsLoading || itemOptions.length === 0}
                           />
                         </div>
+                        <select
+                          value={categoryValue}
+                          onChange={(e) => {
+                            const nextCategory = e.target.value;
+                            setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
+                            if (nextCategory) {
+                              const currentItemCategory = allItemsById.get(String(selectedItemId))?.category || '';
+                              if (currentItemCategory !== nextCategory) {
+                                setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: node.itemId }));
+                              }
+                            }
+                          }}
+                          className="w-48 border rounded px-2 py-1 text-sm"
+                        >
+                          <option value="">All Categories</option>
+                          {allItemCategories.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat.replace(/_/g, ' ')}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </td>
                     <td className="px-4 py-2 text-sm text-right text-gray-900">
@@ -1471,21 +1579,46 @@ function SmartJobOrdersItemsPageContent() {
                   >
                     <td className="px-4 py-2 text-sm text-gray-600">{serial}</td>
                     <td className="px-4 py-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
                         <Package size={14} className="text-gray-400 flex-shrink-0" />
-                        <div className="min-w-[280px]">
+                        <div className="min-w-[420px] w-full">
                           <SearchableSelect
-                            options={getFilteredItemOptions(node.itemId)}
+                            options={itemOptions}
                             value={selectedItemId}
                             onChange={async (value) => {
                               const next = String(value || '');
                               setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
+                              const nextCategory = allItemsById.get(next)?.category || '';
+                              if (nextCategory) {
+                                setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
+                              }
                               await fetchItemStockAvailable(next);
                             }}
                             placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
-                            disabled={itemsLoading || getFilteredItemOptions(node.itemId).length === 0}
+                            disabled={itemsLoading || itemOptions.length === 0}
                           />
                         </div>
+                        <select
+                          value={categoryValue}
+                          onChange={(e) => {
+                            const nextCategory = e.target.value;
+                            setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
+                            if (nextCategory) {
+                              const currentItemCategory = allItemsById.get(String(selectedItemId))?.category || '';
+                              if (currentItemCategory !== nextCategory) {
+                                setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: node.itemId }));
+                              }
+                            }
+                          }}
+                          className="w-48 border rounded px-2 py-1 text-sm"
+                        >
+                          <option value="">All Categories</option>
+                          {allItemCategories.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat.replace(/_/g, ' ')}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </td>
                     <td className="px-4 py-2 text-sm text-right text-gray-900">
