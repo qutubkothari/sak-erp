@@ -2051,10 +2051,10 @@ function JobOrdersPageContent() {
                 </button>
                 <button
                   onClick={openQcModal}
-                  disabled={selectedJobOrder.status !== 'COMPLETED'}
+                  disabled={selectedJobOrder.status !== 'COMPLETED' || qcAlreadyApplied}
                   className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50"
                 >
-                  Complete QC
+                  {qcAlreadyApplied ? 'Job Order Processed' : 'Complete QC'}
                 </button>
               </div>
 
