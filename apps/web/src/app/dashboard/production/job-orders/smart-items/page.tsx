@@ -1821,6 +1821,7 @@ function SmartJobOrdersItemsPageContent() {
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-20">S.No</th>
                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Required</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">In Stock</th>
@@ -1828,8 +1829,9 @@ function SmartJobOrdersItemsPageContent() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {preview.subAssembliesToMake.map((sa) => (
+                        {preview.subAssembliesToMake.map((sa, idx) => (
                           <tr key={`${sa.bomId}:${sa.itemId}`}>
+                            <td className="px-4 py-2 text-sm text-gray-600">{idx + 1}</td>
                             <td className="px-4 py-2 text-sm text-gray-900">
                               {sa.itemCode} - {sa.itemName}
                             </td>
