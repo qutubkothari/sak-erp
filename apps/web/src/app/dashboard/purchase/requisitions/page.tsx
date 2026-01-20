@@ -917,7 +917,18 @@ function PRContent() {
         customMessage: rfqCustomMessage || undefined,
       });
 
-      alert(`RFQ sent: ${result?.sent_count ?? 0}, failed: ${result?.failed_count ?? 0}`);
+      const sentCount = result?.sent_count ?? 0;
+      const failedCount = result?.failed_count ?? 0;
+      const failedList: Array<{ email?: string; error?: string }> = Array.isArray(result?.failed)
+        ? result.failed
+        : [];
+      const failedDetails =
+        failedCount > 0 && failedList.length > 0
+          ? `\n\nFailed details:\n${failedList
+              .map((f) => `${f?.email || 'unknown'} - ${f?.error || 'Unknown error'}`)
+              .join('\n')}`
+          : '';
+      alert(`RFQ sent: ${sentCount}, failed: ${failedCount}${failedDetails}`);
       setShowRfqPreview(false);
       setRfqPanelOpen(false);
       setRfqItemVendors({});
