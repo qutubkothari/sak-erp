@@ -731,6 +731,7 @@ function PurchaseOrdersContent() {
           
           return {
             prItemId: (item as any).prItemId,
+            itemId: finalItemId,
             itemCode: item.itemCode || '',
             itemName: item.itemName || '',
             orderedQty: item.quantity,
@@ -925,6 +926,7 @@ function PurchaseOrdersContent() {
         totalAmount: grandTotal,
         items: formData.items.map((item) => ({
           prItemId: (item as any).prItemId,
+          itemId: item.itemId || items.find((i) => i.code === item.itemCode)?.id,
           itemCode: item.itemCode || '',
           itemName: item.itemName || '',
           orderedQty: item.quantity,

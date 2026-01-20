@@ -17,6 +17,78 @@ export class PurchaseOrdersService {
     );
   }
 
+  private isMissingItemVendorsTenantIdColumn(error: any): boolean {
+    const message = String(error?.message || '').toLowerCase();
+    return (
+      message.includes('item_vendors') &&
+      message.includes('tenant_id') &&
+      (message.includes('does not exist') || message.includes('column'))
+    );
+  }
+
+  private async resolveItemIdByCode(tenantId: string, itemCode?: string | null): Promise<string | null> {
+    const code = String(itemCode || '').trim();
+    if (!code) return null;
+    const { data, error } = await this.supabase
+      .from('items')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('code', code)
+      .maybeSingle();
+    if (error) {
+      return null;
+    }
+    return data?.id || null;
+  }
+
+  private async upsertPreferredItemVendors(
+    tenantId: string,
+    userId: string,
+    vendorId: string,
+    items: Array<{ itemId?: string; itemCode?: string; rate?: number }>,
+  ) {
+    const rows: Array<Record<string, any>> = [];
+
+    for (const item of items) {
+      let itemId = String(item.itemId || '').trim();
+      if (!itemId) {
+        itemId = (await this.resolveItemIdByCode(tenantId, item.itemCode)) || '';
+      }
+      if (!itemId) continue;
+
+      rows.push({
+        tenant_id: tenantId,
+        item_id: itemId,
+        vendor_id: vendorId,
+        priority: 1,
+        unit_price: Number.isFinite(Number(item.rate)) ? Number(item.rate) : null,
+        is_active: true,
+        created_by: userId,
+        updated_by: userId,
+      });
+    }
+
+    if (rows.length === 0) return;
+
+    const { error } = await this.supabase
+      .from('item_vendors')
+      .upsert(rows, { onConflict: 'item_id,vendor_id' });
+
+    if (error) {
+      if (this.isMissingItemVendorsTenantIdColumn(error)) {
+        const fallbackRows = rows.map(({ tenant_id, ...rest }) => rest);
+        const { error: fallbackError } = await this.supabase
+          .from('item_vendors')
+          .upsert(fallbackRows, { onConflict: 'item_id,vendor_id' });
+        if (fallbackError) {
+          console.error('[PurchaseOrdersService] Failed to upsert preferred item vendors (fallback):', fallbackError);
+        }
+        return;
+      }
+      console.error('[PurchaseOrdersService] Failed to upsert preferred item vendors:', error);
+    }
+  }
+
   async create(tenantId: string, userId: string, data: any) {
     console.log('=== PO CREATE - Payment data received:', {
       paymentStatus: data.paymentStatus,
@@ -159,6 +231,7 @@ export class PurchaseOrdersService {
         return {
           po_id: po.id,
           pr_item_id: item.prItemId,
+          item_id: item.itemId || item.item_id || null,
           item_code: item.itemCode,
           item_name: item.itemName,
           description: item.description,
@@ -180,6 +253,17 @@ export class PurchaseOrdersService {
         .insert(items);
 
       if (itemsError) throw new BadRequestException(itemsError.message);
+
+      await this.upsertPreferredItemVendors(
+        tenantId,
+        userId,
+        data.vendorId,
+        data.items.map((item: any) => ({
+          itemId: item.itemId || item.item_id || null,
+          itemCode: item.itemCode || null,
+          rate: item.rate || null,
+        })),
+      );
     }
 
     return this.findOne(tenantId, po.id);
@@ -321,6 +405,7 @@ export class PurchaseOrdersService {
         const items = data.items.map((item: any) => ({
           po_id: id,
           pr_item_id: item.prItemId,
+          item_id: item.itemId || item.item_id || null,
           item_code: item.itemCode,
           item_name: item.itemName,
           description: item.description,
