@@ -734,6 +734,37 @@ export class PurchaseRequisitionsService {
           required_date: item.required_date || pr.required_date || '-',
         }));
 
+        const excelBuffer = await this.rfqExcelService.generateRFQExcel({
+          prNumber: pr.pr_number,
+          department: pr.department,
+          requiredDate: pr.required_date,
+          vendorName: recipient.name,
+          vendorEmail: recipient.email,
+          items: vendorItems.map((item: any) => ({
+            item_id: item.id,
+            item_code: item.item_code || item.itemCode || '-',
+            item_name: item.item_name || item.itemName || '-',
+            description: item.description || item.specifications || item.remarks || '',
+            requested_qty: item.requested_qty ?? item.quantity ?? 0,
+            uom: item.uom || '-',
+            required_date: item.required_date || pr.required_date,
+            specifications: item.specifications || '',
+          })),
+          responseDeadline: responseDate,
+          remarks: remarks,
+        });
+
+        const excelFilename = this.rfqExcelService.generateFilename(pr.pr_number, recipient.name);
+
+        const attachments = [
+          ...(Array.isArray(body?.attachments) ? body.attachments : []),
+          {
+            filename: excelFilename,
+            content: excelBuffer,
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          },
+        ];
+
         const preview = await this.emailService.buildRFQPreview(recipient.email, {
           rfq_number: rfqNumber,
           vendor_name: recipient.name,
@@ -742,7 +773,7 @@ export class PurchaseRequisitionsService {
           remarks,
           subject: subjectOverride,
           custom_message: customMessage,
-          attachments: Array.isArray(body?.attachments) ? body.attachments : [],
+          attachments,
         });
 
         return {

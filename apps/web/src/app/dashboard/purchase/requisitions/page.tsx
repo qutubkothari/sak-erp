@@ -1885,7 +1885,7 @@ function PRContent() {
         {/* RFQ Email Preview Modal */}
         {showRfqPreview && rfqPreviewData && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-[95vw] max-h-[95vh] overflow-auto">
               <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-amber-900">RFQ Email Preview</h2>
                 <button
@@ -1900,7 +1900,7 @@ function PRContent() {
                 </button>
               </div>
 
-              <div className="p-6 space-y-6">
+              <div className="p-6 space-y-6 overflow-x-auto">
                 {(() => {
                   const previews = Array.isArray(rfqPreviewData?.emailPreviews)
                     ? rfqPreviewData.emailPreviews
@@ -1916,7 +1916,7 @@ function PRContent() {
 
                   return (
                     <>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-[900px]">
                         {/* Recipient list */}
                         <div className="md:col-span-1">
                           <h3 className="text-lg font-bold mb-2">Recipients</h3>
@@ -2041,7 +2041,7 @@ function PRContent() {
                               <div className="border rounded-lg overflow-hidden bg-white">
                                 <iframe
                                   title="RFQ Email Preview"
-                                  className="w-full h-[55vh]"
+                                  className="w-full h-[65vh]"
                                   srcDoc={String(current?.html || '')}
                                 />
                               </div>
@@ -2051,7 +2051,7 @@ function PRContent() {
                       </div>
 
                       {/* Vendor-Item Assignment Summary (selection aid) */}
-                      <div>
+                      <div className="overflow-x-auto">
                         <h3 className="text-lg font-bold mb-2">Vendor Assignment Summary</h3>
                         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                           {rfqPreviewData.vendors.map((vendor: Vendor) => {
