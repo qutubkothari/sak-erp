@@ -1562,6 +1562,9 @@ function SmartJobOrdersItemsPageContent() {
               {rootNonSerializedItems.map((node, idx) => {
                 const key = nodeKey(node);
                 const selectedItemId = selectedItemByNodeKey[key] || node.itemId;
+                const categoryValue =
+                  selectedCategoryByNodeKey[key] || allItemsById.get(String(node.itemId))?.category || '';
+                const itemOptions = getFilteredItemOptions(node.itemId, categoryValue);
                 const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                 const available = stockState?.available ?? node.availableQuantity;
                 const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
