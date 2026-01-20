@@ -2034,7 +2034,7 @@ function JobOrdersPageContent() {
                               </select>
                             </td>
                             <td className="px-4 py-3 text-sm">
-                              {isFailed && (
+                              {currentStatus !== 'PASSED' && (
                                 <textarea
                                   className="w-full px-2 py-1 text-xs border rounded resize-none"
                                   rows={2}
@@ -2049,13 +2049,12 @@ function JobOrdersPageContent() {
                                 <div className="flex justify-center gap-2">
                                   <button
                                     onClick={() => {
-                                      const remarks = prompt('Enter QC failure remarks (required):');
-                                      if (remarks && remarks.trim()) {
-                                        setQcRemarks({ ...qcRemarks, [uid.uid]: remarks });
-                                        setCurrentUidQc('FAILED', uid.uid, remarks);
-                                      } else if (remarks !== null) {
-                                        alert('Remarks are required for QC failure');
+                                      const remarks = String(qcRemarks[uid.uid] || '').trim();
+                                      if (!remarks) {
+                                        alert('Please enter QC failure remarks in the Remarks box.');
+                                        return;
                                       }
+                                      setCurrentUidQc('FAILED', uid.uid, remarks);
                                     }}
                                     className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
                                     title="Mark as Failed (Requires Remarks)"
