@@ -2571,7 +2571,13 @@ function JobOrdersPageContent() {
                             checkedBy: qcCheckedBy,
                           });
 
-                          alert(`✅ Stock Updated!\n\n${approvedUids.length} units added to stock.\n${rejectedUids.length > 0 ? `${rejectedUids.length} items remain for rework - you can re-QC them anytime.` : ''}`);
+                          console.log('[QC] Approval response', response);
+                          const stockAdded = Number((response as any)?.stockAdded ?? 0);
+                          const message = String((response as any)?.message || '').trim();
+                          alert(
+                            `✅ QC Submitted!\n\n${message || `${stockAdded} units added to stock.`}\n` +
+                            `${rejectedUids.length > 0 ? `${rejectedUids.length} items remain for rework - you can re-QC them anytime.` : ''}`
+                          );
                           
                           // Reload UIDs to show only remaining items
                           const reloadResponse = await apiClient.get<any>(
