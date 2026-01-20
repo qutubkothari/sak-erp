@@ -25,6 +25,13 @@ interface RFQExcelData {
 
 @Injectable()
 export class RfqExcelService {
+  private formatDate(value?: string): string {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString();
+  }
+
   async generateRFQExcel(data: RFQExcelData): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('RFQ Details');
@@ -74,7 +81,7 @@ export class RfqExcelService {
     worksheet.getCell(`A${currentRow}`).value = 'Required Date:';
     worksheet.getCell(`A${currentRow}`).font = { bold: true };
     worksheet.mergeCells(`C${currentRow}:E${currentRow}`);
-    worksheet.getCell(`C${currentRow}`).value = new Date(data.requiredDate).toLocaleDateString();
+    worksheet.getCell(`C${currentRow}`).value = this.formatDate(data.requiredDate);
 
     currentRow++;
     worksheet.mergeCells(`A${currentRow}:B${currentRow}`);
@@ -89,7 +96,7 @@ export class RfqExcelService {
       worksheet.getCell(`A${currentRow}`).value = 'Response Deadline:';
       worksheet.getCell(`A${currentRow}`).font = { bold: true };
       worksheet.mergeCells(`C${currentRow}:E${currentRow}`);
-      worksheet.getCell(`C${currentRow}`).value = new Date(data.responseDeadline).toLocaleDateString();
+      worksheet.getCell(`C${currentRow}`).value = this.formatDate(data.responseDeadline);
     }
 
     // Items Table Header
