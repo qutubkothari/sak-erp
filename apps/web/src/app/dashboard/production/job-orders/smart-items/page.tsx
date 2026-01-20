@@ -206,6 +206,7 @@ function SmartJobOrdersItemsPageContent() {
   const [itemsError, setItemsError] = useState<string>('');
   const [finishedGoodsItems, setFinishedGoodsItems] = useState<FinishedItem[]>([]);
   const [allItems, setAllItems] = useState<FinishedItem[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -377,12 +378,23 @@ function SmartJobOrdersItemsPageContent() {
 
   const finishedGoodsOptions = useMemo(
     () =>
-      finishedGoodsItems.map((i) => ({
-        value: i.id,
-        label: formatItemLabel(i),
-      })),
-    [finishedGoodsItems],
+      finishedGoodsItems
+        .filter((i) => (selectedCategory ? i.category === selectedCategory : true))
+        .map((i) => ({
+          value: i.id,
+          label: formatItemLabel(i),
+        })),
+    [finishedGoodsItems, selectedCategory],
   );
+
+  const finishedGoodsCategories = useMemo(() => {
+    const set = new Set<string>();
+    finishedGoodsItems.forEach((i) => {
+      const cat = String(i.category ?? '').trim();
+      if (cat) set.add(cat);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [finishedGoodsItems]);
 
   const allItemOptions = useMemo(
     () =>
@@ -417,6 +429,14 @@ function SmartJobOrdersItemsPageContent() {
     }
     return map;
   }, [allItems]);
+
+  useEffect(() => {
+    if (!itemId) return;
+    const cat = allItemsById.get(String(itemId))?.category || '';
+    if (cat && cat !== selectedCategory) {
+      setSelectedCategory(cat);
+    }
+  }, [itemId, allItemsById, selectedCategory]);
 
   const fetchItems = async () => {
     setItemsError('');
@@ -1543,7 +1563,30 @@ function SmartJobOrdersItemsPageContent() {
 
         <div className="bg-white rounded-lg shadow p-6 border border-[#E8DCC4]">
           <div className="grid grid-cols-12 gap-4 items-end">
-            <div className="col-span-8">
+            <div className="col-span-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Product Category</label>
+              <select
+                value={selectedCategory}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setSelectedCategory(next);
+                  const currentCategory = allItemsById.get(String(itemId || ''))?.category || '';
+                  if (next && itemId && currentCategory !== next) {
+                    setItemId('');
+                    setPreview(null);
+                  }
+                }}
+                className="w-full border rounded px-3 py-2 text-sm"
+              >
+                <option value="">All Categories</option>
+                {finishedGoodsCategories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat.replace(/_/g, ' ')}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">Finished Goods Item *</label>
               <SearchableSelect
                 options={finishedGoodsOptions}
@@ -1551,6 +1594,8 @@ function SmartJobOrdersItemsPageContent() {
                 onChange={(value) => {
                   setItemId(value);
                   setPreview(null);
+                  const cat = allItemsById.get(String(value || ''))?.category || '';
+                  if (cat) setSelectedCategory(cat);
                 }}
                 placeholder={itemsLoading ? 'Loading items…' : 'Select finished good item…'}
                 truncateInput={false}
@@ -1560,7 +1605,7 @@ function SmartJobOrdersItemsPageContent() {
               />
               {itemsError ? <div className="mt-2 text-xs text-red-700">{itemsError}</div> : null}
             </div>
-            <div className="col-span-4">
+            <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">Quantity *</label>
               <input
                 type="number"

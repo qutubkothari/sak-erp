@@ -150,6 +150,7 @@ function SmartJobOrdersPageContent() {
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState<string>('');
   const [items, setItems] = useState<FinishedItem[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -181,12 +182,33 @@ function SmartJobOrdersPageContent() {
 
   const itemOptions = useMemo(
     () =>
-      items.map((i) => ({
+      items
+        .filter((i) => (selectedCategory ? i.category === selectedCategory : true))
+        .map((i) => ({
         value: i.id,
         label: formatItemLabel(i),
-      })),
-    [items],
+        })),
+    [items, selectedCategory],
   );
+
+  const itemsById = useMemo(() => new Map(items.map((i) => [String(i.id), i])), [items]);
+
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((i) => {
+      const cat = String(i.category ?? '').trim();
+      if (cat) set.add(cat);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
+  useEffect(() => {
+    if (!itemId) return;
+    const cat = itemsById.get(String(itemId))?.category || '';
+    if (cat && cat !== selectedCategory) {
+      setSelectedCategory(cat);
+    }
+  }, [itemId, itemsById, selectedCategory]);
 
   const fetchItems = async () => {
     setItemsError('');
@@ -566,7 +588,30 @@ function SmartJobOrdersPageContent() {
 
         <div className="bg-white rounded-lg shadow p-6">
           <div className="grid grid-cols-12 gap-4 items-end">
-            <div className="col-span-8">
+            <div className="col-span-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Product Category</label>
+              <select
+                value={selectedCategory}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setSelectedCategory(next);
+                  const currentCategory = itemsById.get(String(itemId || ''))?.category || '';
+                  if (next && itemId && currentCategory !== next) {
+                    setItemId('');
+                    setPreview(null);
+                  }
+                }}
+                className="w-full border rounded px-3 py-2 text-sm"
+              >
+                <option value="">All Categories</option>
+                {categoryOptions.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat.replace(/_/g, ' ')}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">Finished Goods Item *</label>
               <SearchableSelect
                 options={itemOptions}
@@ -574,6 +619,8 @@ function SmartJobOrdersPageContent() {
                 onChange={(value) => {
                   setItemId(value);
                   setPreview(null);
+                  const cat = itemsById.get(String(value || ''))?.category || '';
+                  if (cat) setSelectedCategory(cat);
                 }}
                 placeholder={itemsLoading ? 'Loading items…' : 'Select finished good item…'}
                 truncateInput={false}
@@ -585,7 +632,7 @@ function SmartJobOrdersPageContent() {
                 <div className="mt-2 text-xs text-red-700">{itemsError}</div>
               ) : null}
             </div>
-            <div className="col-span-4">
+            <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">Quantity *</label>
               <input
                 type="number"
