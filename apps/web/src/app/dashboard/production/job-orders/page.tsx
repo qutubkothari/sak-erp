@@ -373,8 +373,9 @@ function JobOrdersPageContent() {
     if (!uidToUpdate) return;
 
     try {
+      const payloadStatus = qualityStatus === 'FAILED' ? 'ON_HOLD' : qualityStatus;
       const payload: any = {
-        quality_status: qualityStatus,
+        quality_status: payloadStatus,
       };
       
       // Include remarks/notes if provided
