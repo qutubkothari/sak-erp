@@ -885,7 +885,8 @@ function PRContent() {
       setShowRfqPreview(true);
     } catch (error) {
       console.error('Error previewing RFQ:', error);
-      alert('Failed to generate RFQ preview');
+      const message = error instanceof Error ? error.message : 'Failed to generate RFQ preview';
+      alert(message === 'Failed to generate RFQ preview' ? message : `Failed to generate RFQ preview: ${message}`);
     } finally {
       setRfqPreviewLoading(false);
     }
