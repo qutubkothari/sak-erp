@@ -1186,14 +1186,13 @@ function SmartJobOrdersItemsPageContent() {
                       const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
                       const requiredQty = Number(node.requiredQuantity || 0);
                       const short = Math.max(0, requiredQty - Number(available || 0));
+                      const serial = node.sequence ?? idx + 1;
 
                       return (
                         <tr key={`${node.bomId}:${node.itemId}:${idx}`} className={`${
                           short > 0 ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'
                         }`}>
-                          <td className="px-4 py-2 text-sm text-gray-600">
-                            {node.sequence || '-'}
-                          </td>
+                          <td className="px-4 py-2 text-sm text-gray-600">{serial}</td>
                           <td className="px-4 py-2" style={{ paddingLeft: `${40 + lvl * 24}px` }}>
                             <div className="flex items-center gap-2">
                               <Package size={14} className="text-gray-400 flex-shrink-0" />
@@ -1274,14 +1273,13 @@ function SmartJobOrdersItemsPageContent() {
                       const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
                       const requiredQty = Number(node.requiredQuantity || 0);
                       const short = Math.max(0, requiredQty - Number(available || 0));
+                      const serial = node.sequence ?? idx + 1;
 
                       return (
                         <tr key={`${node.bomId}:${node.itemId}:${idx}`} className={`${
                           short > 0 ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'
                         }`}>
-                          <td className="px-4 py-2 text-sm text-gray-600">
-                            {node.sequence || '-'}
-                          </td>
+                          <td className="px-4 py-2 text-sm text-gray-600">{serial}</td>
                           <td className="px-4 py-2" style={{ paddingLeft: `${40 + lvl * 24}px` }}>
                             <div className="flex items-center gap-2">
                               <Package size={14} className="text-gray-400 flex-shrink-0" />
@@ -1368,13 +1366,14 @@ function SmartJobOrdersItemsPageContent() {
                 const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
                 const requiredQty = Number(node.requiredQuantity || 0);
                 const short = Math.max(0, requiredQty - Number(available || 0));
+                const serial = node.sequence ?? idx + 1;
 
                 return (
                   <tr
                     key={`${node.bomId}:${node.itemId}:${idx}`}
                     className={`${short > 0 ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}
                   >
-                    <td className="px-4 py-2 text-sm text-gray-600">{node.sequence || '-'}</td>
+                    <td className="px-4 py-2 text-sm text-gray-600">{serial}</td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <Package size={14} className="text-gray-400 flex-shrink-0" />
@@ -1443,13 +1442,14 @@ function SmartJobOrdersItemsPageContent() {
                 const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
                 const requiredQty = Number(node.requiredQuantity || 0);
                 const short = Math.max(0, requiredQty - Number(available || 0));
+                const serial = node.sequence ?? idx + 1;
 
                 return (
                   <tr
                     key={`${node.bomId}:${node.itemId}:${idx}`}
                     className={`${short > 0 ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}
                   >
-                    <td className="px-4 py-2 text-sm text-gray-600">{node.sequence || '-'}</td>
+                    <td className="px-4 py-2 text-sm text-gray-600">{serial}</td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <Package size={14} className="text-gray-400 flex-shrink-0" />

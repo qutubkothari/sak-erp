@@ -742,9 +742,11 @@ function SmartJobOrdersPageContent() {
                             ]
                           : [];
 
+                        const serial = node.sequence ?? idx + 1;
+
                         return (
                           <tr key={`${node.bomId}:${node.itemId}:${idx}`}>
-                            <td className="px-4 py-2 text-sm text-gray-600">{node.sequence || '-'}</td>
+                            <td className="px-4 py-2 text-sm text-gray-600">{serial}</td>
                             <td className={`px-4 py-2 text-sm ${highlight}`}>
                               <div style={{ paddingLeft: `${node.level * 16}px` }}>
                                 {node.itemCode} - {node.itemName}
