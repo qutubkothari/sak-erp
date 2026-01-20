@@ -284,6 +284,7 @@ export class ItemsService {
         name: itemData.name,
         description: itemData.description,
         category: itemData.category,
+        product_category: itemData.product_category ?? itemData.productCategory ?? null,
         uom: itemData.uom,
         reorder_level: reorderLevel,
         min_stock: itemData.minStock,
@@ -457,6 +458,9 @@ export class ItemsService {
     if (itemData.name !== undefined) updateData.name = itemData.name;
     if (itemData.description !== undefined) updateData.description = itemData.description;
     if (itemData.category !== undefined) updateData.category = itemData.category;
+    if (itemData.product_category !== undefined || itemData.productCategory !== undefined) {
+      updateData.product_category = itemData.product_category ?? itemData.productCategory ?? null;
+    }
     if (itemData.uom !== undefined) updateData.uom = itemData.uom;
     const standardCostProvided = itemData.standard_cost !== undefined || itemData.standardCost !== undefined;
     const sellingPriceProvided = itemData.selling_price !== undefined || itemData.sellingPrice !== undefined;

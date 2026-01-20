@@ -12,6 +12,7 @@ interface Item {
   name: string;
   description?: string;
   category: string;
+  product_category?: string;
   uom: string;
   hsn_code?: string;
   standard_cost?: number;
@@ -51,6 +52,7 @@ type ItemsTableColumnKey =
   | 'code'
   | 'name'
   | 'category'
+  | 'product_category'
   | 'uom'
   | 'hsn_code'
   | 'uid_tracking'
@@ -63,7 +65,8 @@ type ItemsTableColumnKey =
 const ITEMS_TABLE_COLUMNS: Array<{ key: ItemsTableColumnKey; label: string }> = [
   { key: 'code', label: 'Code' },
   { key: 'name', label: 'Name' },
-  { key: 'category', label: 'Product Category' },
+  { key: 'category', label: 'Category' },
+  { key: 'product_category', label: 'Product Category' },
   { key: 'uom', label: 'UOM' },
   { key: 'hsn_code', label: 'HSN' },
   { key: 'uid_tracking', label: 'UID' },
@@ -85,6 +88,7 @@ export default function ItemsPage() {
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
   const [showDrawingManager, setShowDrawingManager] = useState(false);
   const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<Item | null>(null);
@@ -147,6 +151,7 @@ export default function ItemsPage() {
     name: '',
     description: '',
     category: 'RAW_MATERIAL',
+    product_category: '',
     uom: 'PCS',
     hsn_code: '',
     standard_cost: '',
@@ -249,6 +254,8 @@ export default function ItemsPage() {
     'PCS', 'KG', 'GRAM', 'LITER', 'METER', 'CM', 'MM',
     'BOX', 'SET', 'PACK', 'ROLL', 'SHEET', 'FEET', 'INCH'
   ];
+
+  const productCategoryOptions = ['Batteries', 'Capacitor', 'Resistor'];
 
   useEffect(() => {
     fetchItems();
@@ -512,6 +519,7 @@ export default function ItemsPage() {
       name: item.name,
       description: item.description || '',
       category: item.category,
+      product_category: item.product_category || '',
       uom: item.uom,
       // Some older records/imports can have whitespace; trim so HTML pattern validation doesn't block saving
       hsn_code: (item.hsn_code ? String(item.hsn_code) : '').replace(/[^0-9]/g, ''),
@@ -584,6 +592,7 @@ export default function ItemsPage() {
         is_variant: true,
         is_default_variant: newVariant.is_default,
         category: selectedParentItem.category,
+        product_category: selectedParentItem.product_category || null,
         uom: selectedParentItem.uom,
         hsn_code: selectedParentItem.hsn_code || '',
         is_active: true,
@@ -870,6 +879,7 @@ export default function ItemsPage() {
       name: '',
       description: '',
       category: 'RAW_MATERIAL',
+      product_category: '',
       uom: 'PCS',
       hsn_code: '',
       standard_cost: '',
@@ -900,9 +910,10 @@ export default function ItemsPage() {
       item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = !categoryFilter || item.category === categoryFilter;
+    const matchesProductCategory = !productCategoryFilter || item.product_category === productCategoryFilter;
     // When showDeleted is true, show only inactive items. When false, show only active items.
     const matchesActiveStatus = showDeleted ? !item.is_active : item.is_active;
-    return matchesSearch && matchesCategory && matchesActiveStatus;
+    return matchesSearch && matchesCategory && matchesProductCategory && matchesActiveStatus;
   });
 
   // Sorting
@@ -983,7 +994,7 @@ export default function ItemsPage() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, categoryFilter, showDeleted]);
+  }, [searchTerm, categoryFilter, productCategoryFilter, showDeleted]);
 
   const normalizedItemUom = String(formData.uom || '')
     .trim()
@@ -1149,6 +1160,16 @@ export default function ItemsPage() {
             <option key={cat.id} value={cat.name}>{cat.name.replace(/_/g, ' ')}</option>
           ))}
         </select>
+        <select
+          value={productCategoryFilter}
+          onChange={(e) => setProductCategoryFilter(e.target.value)}
+          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+        >
+          <option value="">All Product Categories</option>
+          {productCategoryOptions.map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
       </div>
 
       {/* Items Table */}
@@ -1188,8 +1209,21 @@ export default function ItemsPage() {
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                 >
                   <div className="flex items-center gap-1">
-                    Product Category
+                    Category
                     {sortColumn === 'category' && (
+                      <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+              )}
+              {visibleColumns.product_category && (
+                <th
+                  onClick={() => handleSort('product_category')}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                >
+                  <div className="flex items-center gap-1">
+                    Product Category
+                    {sortColumn === 'product_category' && (
                       <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
                     )}
                   </div>
@@ -1272,6 +1306,11 @@ export default function ItemsPage() {
                   {visibleColumns.category && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {item.category ? item.category.replace(/_/g, ' ') : 'N/A'}
+                    </td>
+                  )}
+                  {visibleColumns.product_category && (
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {item.product_category || '-'}
                     </td>
                   )}
                   {visibleColumns.uom && (
@@ -1521,10 +1560,10 @@ export default function ItemsPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Product Category *
+                      Category *
                     </label>
                     <select
                       required
@@ -1534,6 +1573,23 @@ export default function ItemsPage() {
                     >
                       {categories.map(cat => (
                         <option key={cat.id} value={cat.name}>{cat.name.replace(/_/g, ' ')}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Product Category *
+                    </label>
+                    <select
+                      required
+                      value={formData.product_category}
+                      onChange={(e) => setFormData({ ...formData, product_category: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    >
+                      <option value="">Select product category</option>
+                      {productCategoryOptions.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
                       ))}
                     </select>
                   </div>
@@ -2286,7 +2342,7 @@ export default function ItemsPage() {
                   ➕ Add Variant
                 </button>
                 <p className="text-xs text-gray-500 mt-2">
-                  💡 Inherits product category ({selectedParentItem.category}), UOM ({selectedParentItem.uom}), and HSN ({selectedParentItem.hsn_code}) from parent
+                  💡 Inherits category ({selectedParentItem.category}), product category ({selectedParentItem.product_category || 'N/A'}), UOM ({selectedParentItem.uom}), and HSN ({selectedParentItem.hsn_code}) from parent
                 </p>
               </div>
 

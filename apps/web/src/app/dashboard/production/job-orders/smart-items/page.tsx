@@ -11,15 +11,17 @@ type FinishedItem = {
   code: string;
   name: string;
   category?: string | null;
+  product_category?: string | null;
 };
 
 const formatItemLabel = (item: {
   category?: string | null;
+  product_category?: string | null;
   name?: string | null;
   code?: string | null;
 }) => {
   const parts: string[] = [];
-  const category = String(item.category ?? '').trim();
+  const category = String(item.product_category ?? item.category ?? '').trim();
   const name = String(item.name ?? '').trim();
   const code = String(item.code ?? '').trim();
   if (category) parts.push(category);
@@ -36,6 +38,7 @@ type RawItem = {
   name?: string;
   item_name?: string;
   category?: string | null;
+  product_category?: string | null;
 };
 
 type SmartExplosionNode = {
@@ -393,7 +396,7 @@ function SmartJobOrdersItemsPageContent() {
   const finishedGoodsOptions = useMemo(
     () =>
       finishedGoodsItems
-        .filter((i) => (selectedCategory ? i.category === selectedCategory : true))
+        .filter((i) => (selectedCategory ? i.product_category === selectedCategory : true))
         .map((i) => ({
           value: i.id,
           label: formatItemLabel(i),
@@ -402,13 +405,8 @@ function SmartJobOrdersItemsPageContent() {
   );
 
   const finishedGoodsCategories = useMemo(() => {
-    const set = new Set<string>();
-    finishedGoodsItems.forEach((i) => {
-      const cat = String(i.category ?? '').trim();
-      if (cat) set.add(cat);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [finishedGoodsItems]);
+    return ['Batteries', 'Capacitor', 'Resistor'];
+  }, []);
 
   const allItemOptions = useMemo(
     () =>
@@ -452,7 +450,7 @@ function SmartJobOrdersItemsPageContent() {
 
   useEffect(() => {
     if (!itemId) return;
-    const cat = allItemsById.get(String(itemId))?.category || '';
+    const cat = allItemsById.get(String(itemId))?.product_category || '';
     if (cat && cat !== selectedCategory) {
       setSelectedCategory(cat);
     }
@@ -480,6 +478,7 @@ function SmartJobOrdersItemsPageContent() {
             code: bom.item?.code || bom.item?.item_code || '',
             name: bom.item?.name || bom.item?.item_name || '',
             category: bom.item?.category ?? null,
+            product_category: (bom.item as any)?.product_category ?? null,
           });
         }
       });
@@ -494,6 +493,7 @@ function SmartJobOrdersItemsPageContent() {
             code: data.code,
             name: data.name,
             category: data.category,
+            product_category: data.product_category,
           } as FinishedItem;
         })
         .filter((i) => i !== null) as FinishedItem[];
@@ -513,6 +513,7 @@ function SmartJobOrdersItemsPageContent() {
             code: String(code),
             name: String(name),
             category: raw.category,
+            product_category: raw.product_category ?? null,
           } as FinishedItem;
         })
         .filter((i) => i !== null) as FinishedItem[];
@@ -522,13 +523,16 @@ function SmartJobOrdersItemsPageContent() {
 
       // Enrich finished goods with category (BOM payload may omit category)
       const categoryByItemId = new Map<string, string | null>();
+      const productCategoryByItemId = new Map<string, string | null>();
       for (const it of allItemsNormalized) {
         categoryByItemId.set(String(it.id), it.category ?? null);
+        productCategoryByItemId.set(String(it.id), it.product_category ?? null);
       }
 
       const finishedGoodsEnriched = finishedGoods.map((it) => ({
         ...it,
         category: it.category ?? categoryByItemId.get(String(it.id)) ?? null,
+        product_category: it.product_category ?? productCategoryByItemId.get(String(it.id)) ?? null,
       }));
 
       console.log('[Job Orders] Loaded finished goods with BOMs:', finishedGoodsEnriched.length, finishedGoodsEnriched);
@@ -1703,7 +1707,7 @@ function SmartJobOrdersItemsPageContent() {
                 onChange={(e) => {
                   const next = e.target.value;
                   setSelectedCategory(next);
-                  const currentCategory = allItemsById.get(String(itemId || ''))?.category || '';
+                  const currentCategory = allItemsById.get(String(itemId || ''))?.product_category || '';
                   if (next && itemId && currentCategory !== next) {
                     setItemId('');
                     setPreview(null);
@@ -1711,7 +1715,7 @@ function SmartJobOrdersItemsPageContent() {
                 }}
                 className="w-full border rounded px-3 py-2 text-sm"
               >
-                <option value="">All Categories</option>
+                <option value="">All Product Categories</option>
                 {finishedGoodsCategories.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat.replace(/_/g, ' ')}
@@ -1727,7 +1731,7 @@ function SmartJobOrdersItemsPageContent() {
                 onChange={(value) => {
                   setItemId(value);
                   setPreview(null);
-                  const cat = allItemsById.get(String(value || ''))?.category || '';
+                  const cat = allItemsById.get(String(value || ''))?.product_category || '';
                   if (cat) setSelectedCategory(cat);
                 }}
                 placeholder={itemsLoading ? 'Loading items…' : 'Select finished good item…'}
