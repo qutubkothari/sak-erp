@@ -51,6 +51,7 @@ type SmartExplosionNode = {
   toMakeQuantity: number;
   shortageQuantity: number;
   uidStrategy?: 'SERIALIZED' | 'BATCHED' | 'NONE';
+  sequence?: number;
 };
 
 type SmartSubAssemblyPlan = {
@@ -1020,11 +1021,14 @@ function SmartJobOrdersItemsPageContent() {
       itemNodesByBomId.set(bid, Array.from(dedupMap.values()));
     }
 
-    // Stable ordering: by level then item code
+    // Stable ordering: by sequence then level then item code
     for (const [parentId, list] of childBomIdsByParent.entries()) {
       const sorted = [...list].sort((a, b) => {
         const aa = bomById.get(a);
         const bb = bomById.get(b);
+        const seqA = Number(aa?.sequence ?? 0);
+        const seqB = Number(bb?.sequence ?? 0);
+        if (seqA && seqB && seqA !== seqB) return seqA - seqB;
         const lvlA = Number(aa?.level ?? 0);
         const lvlB = Number(bb?.level ?? 0);
         if (lvlA !== lvlB) return lvlA - lvlB;
@@ -1033,12 +1037,15 @@ function SmartJobOrdersItemsPageContent() {
       childBomIdsByParent.set(parentId, sorted);
     }
 
-    // Sort items: SERIALIZED items first, then by item code
+    // Sort items: by sequence first, then serialized, then item code
     for (const [bid, list] of itemNodesByBomId.entries()) {
       itemNodesByBomId.set(
         bid,
         [...list].sort((a, b) => {
-          // Serialized items come first
+          const seqA = Number(a.sequence ?? 0);
+          const seqB = Number(b.sequence ?? 0);
+          if (seqA && seqB && seqA !== seqB) return seqA - seqB;
+          // Serialized items come next
           const aIsSerial = a.uidStrategy === 'SERIALIZED';
           const bIsSerial = b.uidStrategy === 'SERIALIZED';
           if (aIsSerial && !bIsSerial) return -1;
@@ -1118,6 +1125,11 @@ function SmartJobOrdersItemsPageContent() {
             </span>
             <Layers size={16} className="text-amber-600" />
             <span className="font-semibold text-amber-900 flex items-center gap-2">
+              {bom.sequence ? (
+                <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-xs font-semibold">
+                  #{bom.sequence}
+                </span>
+              ) : null}
               {bom.itemCode} - {bom.itemName}
               {lvl > 0 && (
                 <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
@@ -1145,6 +1157,9 @@ function SmartJobOrdersItemsPageContent() {
                 <table className="min-w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-20">
+                        S.No
+                      </th>
                       <th
                         className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase"
                         style={{ paddingLeft: `${40 + lvl * 24}px` }}
@@ -1176,6 +1191,9 @@ function SmartJobOrdersItemsPageContent() {
                         <tr key={`${node.bomId}:${node.itemId}:${idx}`} className={`${
                           short > 0 ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'
                         }`}>
+                          <td className="px-4 py-2 text-sm text-gray-600">
+                            {node.sequence || '-'}
+                          </td>
                           <td className="px-4 py-2" style={{ paddingLeft: `${40 + lvl * 24}px` }}>
                             <div className="flex items-center gap-2">
                               <Package size={14} className="text-gray-400 flex-shrink-0" />
@@ -1227,6 +1245,9 @@ function SmartJobOrdersItemsPageContent() {
                 <table className="min-w-full border-t border-gray-100">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-20">
+                        S.No
+                      </th>
                       <th
                         className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase"
                         style={{ paddingLeft: `${40 + lvl * 24}px` }}
@@ -1258,6 +1279,9 @@ function SmartJobOrdersItemsPageContent() {
                         <tr key={`${node.bomId}:${node.itemId}:${idx}`} className={`${
                           short > 0 ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'
                         }`}>
+                          <td className="px-4 py-2 text-sm text-gray-600">
+                            {node.sequence || '-'}
+                          </td>
                           <td className="px-4 py-2" style={{ paddingLeft: `${40 + lvl * 24}px` }}>
                             <div className="flex items-center gap-2">
                               <Package size={14} className="text-gray-400 flex-shrink-0" />
@@ -1318,6 +1342,9 @@ function SmartJobOrdersItemsPageContent() {
           <table className="min-w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-20">
+                  S.No
+                </th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                   Item (Serial Number)
                 </th>
@@ -1347,6 +1374,7 @@ function SmartJobOrdersItemsPageContent() {
                     key={`${node.bomId}:${node.itemId}:${idx}`}
                     className={`${short > 0 ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}
                   >
+                    <td className="px-4 py-2 text-sm text-gray-600">{node.sequence || '-'}</td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <Package size={14} className="text-gray-400 flex-shrink-0" />
@@ -1391,6 +1419,9 @@ function SmartJobOrdersItemsPageContent() {
           <table className="min-w-full border-t border-gray-100">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-20">
+                  S.No
+                </th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
                   Required
@@ -1418,6 +1449,7 @@ function SmartJobOrdersItemsPageContent() {
                     key={`${node.bomId}:${node.itemId}:${idx}`}
                     className={`${short > 0 ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}
                   >
+                    <td className="px-4 py-2 text-sm text-gray-600">{node.sequence || '-'}</td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <Package size={14} className="text-gray-400 flex-shrink-0" />

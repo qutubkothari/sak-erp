@@ -100,6 +100,7 @@ type SmartExplosionNode = {
   toMakeQuantity: number;
   shortageQuantity: number;
   uidStrategy?: 'SERIALIZED' | 'BATCHED' | 'NONE';
+  sequence?: number;
 };
 
 type SmartSubAssemblyPlan = {
@@ -3124,6 +3125,7 @@ export class JobOrderService {
           toMakeQuantity,
           shortageQuantity: 0,
           uidStrategy: subItem.uid_strategy || subItem.uidStrategy || 'NONE',
+          sequence: typeof (bi as any).sequence === 'number' ? (bi as any).sequence : Number((bi as any).sequence || 0) || undefined,
         });
 
         if (toMakeQuantity > 0) {
@@ -3200,6 +3202,7 @@ export class JobOrderService {
             toMakeQuantity,
             shortageQuantity: 0,
             uidStrategy: item.uid_strategy || item.uidStrategy || 'NONE',
+            sequence: typeof (bi as any).sequence === 'number' ? (bi as any).sequence : Number((bi as any).sequence || 0) || undefined,
           });
 
           if (toMakeQuantity > 0) {
@@ -3255,6 +3258,7 @@ export class JobOrderService {
           toMakeQuantity: 0,
           shortageQuantity,
           uidStrategy: item.uid_strategy || item.uidStrategy || 'NONE',
+          sequence: typeof (bi as any).sequence === 'number' ? (bi as any).sequence : Number((bi as any).sequence || 0) || undefined,
         });
       }
     }

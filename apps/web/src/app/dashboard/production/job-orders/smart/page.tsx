@@ -49,6 +49,7 @@ type SmartExplosionNode = {
   availableQuantity: number;
   toMakeQuantity: number;
   shortageQuantity: number;
+  sequence?: number;
 };
 
 type SmartSubAssemblyPlan = {
@@ -692,6 +693,7 @@ function SmartJobOrdersPageContent() {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-20">S.No</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Component</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Variant</th>
                         <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Type</th>
@@ -702,7 +704,18 @@ function SmartJobOrdersPageContent() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {preview.nodes.map((node, idx) => {
+                      {(() => {
+                        const orderedNodes = [...preview.nodes].sort((a, b) => {
+                          const lvlA = Number(a.level ?? 0);
+                          const lvlB = Number(b.level ?? 0);
+                          if (lvlA !== lvlB) return lvlA - lvlB;
+                          const seqA = Number(a.sequence ?? 0);
+                          const seqB = Number(b.sequence ?? 0);
+                          if (seqA && seqB && seqA !== seqB) return seqA - seqB;
+                          return String(a.itemCode || '').localeCompare(String(b.itemCode || ''));
+                        });
+
+                        return orderedNodes.map((node, idx) => {
                         const isBOM = node.componentType === 'BOM';
                         const highlight = isBOM ? 'text-gray-900 font-medium' : 'text-gray-800';
                         const key = nodeKey(node);
@@ -731,6 +744,7 @@ function SmartJobOrdersPageContent() {
 
                         return (
                           <tr key={`${node.bomId}:${node.itemId}:${idx}`}>
+                            <td className="px-4 py-2 text-sm text-gray-600">{node.sequence || '-'}</td>
                             <td className={`px-4 py-2 text-sm ${highlight}`}>
                               <div style={{ paddingLeft: `${node.level * 16}px` }}>
                                 {node.itemCode} - {node.itemName}
@@ -778,7 +792,8 @@ function SmartJobOrdersPageContent() {
                             </td>
                           </tr>
                         );
-                      })}
+                      });
+                      })()}
                     </tbody>
                   </table>
                 </div>
