@@ -2574,8 +2574,13 @@ function JobOrdersPageContent() {
                           console.log('[QC] Approval response', response);
                           const stockAdded = Number((response as any)?.stockAdded ?? 0);
                           const message = String((response as any)?.message || '').trim();
+                          const itemCode = String((response as any)?.itemCode || '').trim();
+                          const itemName = String((response as any)?.itemName || '').trim();
+                          const stockAvailable = Number((response as any)?.stockAvailable ?? 0);
                           alert(
                             `✅ QC Submitted!\n\n${message || `${stockAdded} units added to stock.`}\n` +
+                            `${itemCode ? `Item: ${itemCode}${itemName ? ` - ${itemName}` : ''}\n` : ''}` +
+                            `Available Stock Now: ${Number.isFinite(stockAvailable) ? stockAvailable : 0}\n` +
                             `${rejectedUids.length > 0 ? `${rejectedUids.length} items remain for rework - you can re-QC them anytime.` : ''}`
                           );
                           

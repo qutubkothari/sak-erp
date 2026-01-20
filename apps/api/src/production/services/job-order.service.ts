@@ -2492,16 +2492,31 @@ export class JobOrderService {
         }
       }
 
+      const { data: stockRows } = await this.supabase
+        .from('stock_entries')
+        .select('available_quantity')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', jobOrder.item_id);
+
+      const stockAvailable = (stockRows || []).reduce((sum: number, row: any) => {
+        const qty = Number(row?.available_quantity || 0);
+        return sum + (Number.isFinite(qty) ? qty : 0);
+      }, 0);
+
       console.log(`[QC Approval] Job Order ${jobOrder.job_order_number}: ${approvedUids.length} approved, ${rejectedUids.length} rejected`);
-      console.log(`[QC Approval] Added ${newlyApprovedUids.length} new units to stock (idempotent)`);
+      console.log(`[QC Approval] Added ${newlyApprovedUids.length} new units to stock (idempotent). Available now: ${stockAvailable}`);
 
       return {
         jobOrderId,
         jobOrderNumber: jobOrder.job_order_number,
+        itemId: jobOrder.item_id,
+        itemCode: jobOrder.item_code,
+        itemName: jobOrder.item_name,
         totalProduced: totalUids,
         qcApproved: approvedUids.length,
         qcRejected: rejectedUids.length,
         stockAdded: newlyApprovedUids.length,
+        stockAvailable,
         message:
           newlyApprovedUids.length === 0
             ? `QC already applied: no new approved UIDs to add to stock.`
