@@ -83,6 +83,23 @@ export class GmailOAuth2Service {
   }
 
   /**
+   * Expose non-sensitive configuration status for diagnostics
+   */
+  getStatus() {
+    return {
+      configured: this.isConfigured(),
+      hasClientId: !!this.configService.get('GMAIL_CLIENT_ID'),
+      hasClientSecret: !!this.configService.get('GMAIL_CLIENT_SECRET'),
+      hasRefreshToken: !!this.configService.get('GMAIL_REFRESH_TOKEN'),
+      hasUser: !!this.configService.get('GMAIL_USER'),
+      redirectUri: this.configService.get(
+        'GMAIL_REDIRECT_URI',
+        'http://localhost:4000/api/v1/auth/google/callback',
+      ),
+    };
+  }
+
+  /**
    * Get OAuth2 authorization URL for initial setup
    */
   getAuthUrl(): string {

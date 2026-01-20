@@ -103,4 +103,16 @@ export class GmailAdminController {
       );
     }
   }
+
+  /**
+   * Check Gmail OAuth configuration status (non-sensitive)
+   */
+  @Public()
+  @Get('status')
+  getStatus() {
+    return {
+      success: true,
+      data: this.gmailOAuth2Service.getStatus(),
+    };
+  }
 }
