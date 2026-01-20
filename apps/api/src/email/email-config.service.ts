@@ -52,6 +52,15 @@ export class EmailConfigService {
       return this.emailCache.get(type)!;
     }
 
+    const dbUrl = this.configService.get<string>('DATABASE_URL');
+    if (!dbUrl || dbUrl.includes('dummy')) {
+      // Skip DB lookup when prisma DB is not configured
+      const email = this.configService.get<string>(envVar, defaultEmail);
+      this.emailCache.set(type, email);
+      this.cacheTimestamp = now;
+      return email;
+    }
+
     try {
       // Try to get from database
       const result = await this.databaseService.executeQuery(
