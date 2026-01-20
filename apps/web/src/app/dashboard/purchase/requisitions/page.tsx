@@ -782,9 +782,11 @@ function PRContent() {
             // Fetch item-vendor relationships for this item
             const itemVendors = await apiClient.get(`/items/${itemId}/vendors`);
             if (Array.isArray(itemVendors)) {
-              // Add all active vendors, prioritizing those with priority=1 (preferred)
+              // Add only preferred vendors for the PR items
               itemVendors
-                .filter((iv: any) => iv.is_active !== false)
+                .filter((iv: any) =>
+                  iv.is_active !== false && (iv.is_preferred === true || iv.priority === 1),
+                )
                 .forEach((iv: any) => {
                   if (iv.vendor_id) {
                     vendorIds.add(iv.vendor_id);
@@ -796,12 +798,12 @@ function PRContent() {
           }
         }
         
-        // Filter vendor list to only those associated with PR items
+        // Filter vendor list to only preferred vendors associated with PR items
         const associatedVendors = vendorList.filter(
-          (v) => v?.is_active !== false && vendorIds.has(v.id)
+          (v) => v?.is_active !== false && vendorIds.has(v.id),
         );
-        
-        setRfqVendors(associatedVendors.length > 0 ? associatedVendors : vendorList.filter((v) => v?.is_active !== false));
+
+        setRfqVendors(associatedVendors);
       } else {
         // No PR selected, show all active vendors
         setRfqVendors(vendorList.filter((v) => v?.is_active !== false));
