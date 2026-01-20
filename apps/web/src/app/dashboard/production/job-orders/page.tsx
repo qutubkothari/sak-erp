@@ -373,6 +373,7 @@ function JobOrdersPageContent() {
     if (!uidToUpdate) return;
 
     const previous = qcUids;
+    console.log('[QC] Updating UID status', { uid: uidToUpdate, qualityStatus, remarks });
     const optimistic = qcUids.map((u) => 
       u.uid === uidToUpdate ? { ...u, quality_status: qualityStatus } : u
     );
@@ -390,6 +391,11 @@ function JobOrdersPageContent() {
       }
 
       await apiClient.put(`/uid/${encodeURIComponent(uidToUpdate)}/quality-status`, payload);
+      console.log('[QC] UID status updated', { uid: uidToUpdate, qualityStatus, payloadStatus });
+
+      if (targetUid) {
+        alert(`QC Updated: ${uidToUpdate} → ${qualityStatus === 'FAILED' ? 'QC FAILED' : qualityStatus}`);
+      }
 
       // If no targetUid specified (old sequential behavior), advance to next pending
       if (!targetUid) {
@@ -416,6 +422,7 @@ function JobOrdersPageContent() {
       console.error('Error updating QC status:', error);
       const msg = error?.response?.data?.message || error?.message || 'Failed to update QC status';
       alert(msg);
+      console.error('[QC] Update failed', { uid: uidToUpdate, qualityStatus, error: msg });
       setQcUids(previous);
     }
   };
