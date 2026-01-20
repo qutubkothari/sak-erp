@@ -1507,7 +1507,7 @@ export class JobOrderService {
 
     // Derive a user-facing workflow status for completed job orders.
     // Rules:
-    // - If any UID is ON_HOLD => QC Failed
+    // - If any UID is ON_HOLD/FAILED => QC Failed
     // - Else if all UIDs are decided (no pending) => QC Completed
     // - Else => Awaiting QC
     const jobOrderIds = rows.map((r: any) => r?.id).filter(Boolean);
@@ -1539,7 +1539,7 @@ export class JobOrderService {
 
       counts.total += 1;
       if (s === 'PASSED') counts.passed += 1;
-      else if (s === 'ON_HOLD') counts.onHold += 1;
+      else if (s === 'ON_HOLD' || s === 'FAILED') counts.onHold += 1;
       else counts.pending += 1;
 
       qcCountsByJobOrderId.set(id, counts);
@@ -2401,7 +2401,7 @@ export class JobOrderService {
             .from('uid_registry')
             .update({
               status: 'QC_REJECTED',
-              quality_status: 'ON_HOLD',
+              quality_status: 'FAILED',
               location: 'Rework/Scrap',
               lifecycle: JSON.stringify([
                 ...currentLifecycle,
@@ -2575,7 +2575,10 @@ export class JobOrderService {
     const uidList = Array.isArray(uidRows) ? uidRows : [];
     const totalUidsCount = uidList.length;
     const passedUidsCount = uidList.filter((u: any) => String(u?.quality_status || '').toUpperCase() === 'PASSED').length;
-    const rejectedUidsCount = uidList.filter((u: any) => String(u?.quality_status || '').toUpperCase() === 'ON_HOLD').length;
+    const rejectedUidsCount = uidList.filter((u: any) => {
+      const status = String(u?.quality_status || '').toUpperCase();
+      return status === 'ON_HOLD' || status === 'FAILED';
+    }).length;
     const pendingUidsCount = Math.max(0, totalUidsCount - passedUidsCount - rejectedUidsCount);
 
     return {

@@ -2073,7 +2073,7 @@ function JobOrdersPageContent() {
                       const pending = Number(qcSummary?.pendingUidsCount || 0);
 
                       const confirmCompleteStatus = hasCompleted ? (qcApplied ? 'Completed' : 'Awaiting QC') : 'In-Progress';
-                      const qcFailStatus = !qcApplied ? 'Pending' : rejected > 0 ? 'On-Hold' : '—';
+                      const qcFailStatus = !qcApplied ? 'Pending' : rejected > 0 ? 'QC Failed' : '—';
                       const qcPassStatus = !qcApplied ? 'Pending' : rejected === 0 && pending === 0 ? 'QC Completed' : 'Pending';
 
                       const rows: Array<{ action: string; status: string }> = [
@@ -2423,13 +2423,11 @@ function JobOrdersPageContent() {
                         const currentStatus = String(uid?.quality_status || '').toUpperCase() || 'PENDING';
                         const isFailed = currentStatus === 'FAILED' || currentStatus === 'ON_HOLD';
                         const statusLabel =
-                          currentStatus === 'ON_HOLD'
-                            ? 'ON HOLD'
-                            : currentStatus === 'FAILED'
-                              ? 'FAILED'
-                              : currentStatus === 'PENDING'
-                                ? 'PENDING'
-                                : currentStatus;
+                          currentStatus === 'ON_HOLD' || currentStatus === 'FAILED'
+                            ? 'QC FAILED'
+                            : currentStatus === 'PENDING'
+                              ? 'PENDING'
+                              : currentStatus;
                         return (
                           <tr key={uid.uid} className={currentStatus === 'PASSED' ? 'bg-green-50' : isFailed ? 'bg-red-50' : ''}>
                             <td className="px-4 py-3 text-sm font-mono break-all">{uid.uid}</td>
@@ -2484,9 +2482,7 @@ function JobOrdersPageContent() {
                                         alert('Please enter QC failure remarks in the Remarks box.');
                                         return;
                                       }
-                                      // "FAIL" is treated as "ON_HOLD" in the backend.
-                                      // We use ON_HOLD here so users can see a distinct state.
-                                      setCurrentUidQc('ON_HOLD', uid.uid, remarks);
+                                      setCurrentUidQc('FAILED', uid.uid, remarks);
                                     }}
                                     className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
                                     title="Mark as Failed (Requires Remarks)"
