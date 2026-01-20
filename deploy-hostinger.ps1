@@ -7,7 +7,16 @@ $ErrorActionPreference = "Stop"
 # ====== CONFIG (Hostinger VPS) ======
 $HOSTINGER_IP = if ($env:HOSTINGER_IP) { $env:HOSTINGER_IP } else { "72.62.192.228" }
 $HOSTINGER_USER = if ($env:HOSTINGER_USER) { $env:HOSTINGER_USER } else { "qutubk" }
-$KEY_PATH = if ($env:HOSTINGER_KEY_PATH) { $env:HOSTINGER_KEY_PATH } else { "$env:USERPROFILE\.ssh\hostinger_ed25519" }
+$KEY_PATH = if ($env:HOSTINGER_KEY_PATH) {
+  $env:HOSTINGER_KEY_PATH
+} else {
+  $preferred = "$env:USERPROFILE\.ssh\hostinger_ed25519"
+  if (Test-Path $preferred) {
+    $preferred
+  } else {
+    "$env:USERPROFILE\.ssh\id_ed25519"
+  }
+}
 
 # Remote deployment path
 $REMOTE_PATH = if ($env:HOSTINGER_REMOTE_PATH) { $env:HOSTINGER_REMOTE_PATH } else { "/var/www/sak-erp" }
@@ -67,6 +76,10 @@ Run "Preflight" {
 # ====== Build locally ======
 Run "Install deps (local)" {
   pnpm install --frozen-lockfile
+}
+
+Run "Build hr-module (local)" {
+  pnpm -C packages/hr-module build
 }
 
 Run "Build web (local)" {
@@ -154,8 +167,8 @@ Run "Deploy on Hostinger (extract, install prod deps, restart PM2)" {
      'pm2 delete ' + $PM2_WEB_NAME + ' 2>/dev/null || true; ' +
      'cd apps/web; test -f .next/BUILD_ID; pm2 start node_modules/next/dist/bin/next --name ' + $PM2_WEB_NAME + ' -- start -p 3000; cd "$DEPLOY_DIR"; ' +
     'pm2 save; ' +
-    'WEB_OK=0; for i in 1 2 3 4 5; do if curl -fsS http://127.0.0.1:3000/ >/dev/null; then WEB_OK=1; break; fi; sleep 2; done; if [ "$WEB_OK" -eq 1 ]; then echo WEB_OK; else echo WEB_FAIL; fi; ' +
-    'API_CODE=000; for i in 1 2 3 4 5; do API_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/api/v1 || true); if [ "$API_CODE" != "000" ]; then break; fi; sleep 2; done; if [ "$API_CODE" != "000" ]; then echo API_OK_$API_CODE; else echo API_FAIL; fi; ' +
+    'WEB_OK=0; for i in 1 2 3 4 5 6 7 8 9 10; do if curl -fs http://127.0.0.1:3000/ >/dev/null 2>&1; then WEB_OK=1; break; fi; sleep 1; done; if [ "$WEB_OK" -eq 1 ]; then echo WEB_OK; else echo WEB_FAIL; fi; ' +
+    'API_CODE=000; for i in 1 2 3 4 5 6 7 8 9 10; do API_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/api/v1 2>/dev/null || true); if [ "$API_CODE" != "000" ]; then break; fi; sleep 1; done; if [ "$API_CODE" != "000" ]; then echo API_OK_$API_CODE; else echo API_FAIL; fi; ' +
      'pm2 list')
 
   # Execute via bash -lc using single quotes (no CRLF issues)
