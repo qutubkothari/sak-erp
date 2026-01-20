@@ -466,7 +466,10 @@ function SmartJobOrdersItemsPageContent() {
       
       // Extract unique item IDs from BOMs
       const itemsWithBoms = new Set<string>();
-      const itemDataMap = new Map<string, { code: string; name: string; category?: string | null }>();
+      const itemDataMap = new Map<
+        string,
+        { code: string; name: string; category?: string | null; product_category?: string | null }
+      >();
       
       bomsList.forEach((bom: any) => {
         // Try multiple field patterns for item ID
