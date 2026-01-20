@@ -13,6 +13,21 @@ type FinishedItem = {
   category?: string | null;
 };
 
+const formatItemLabel = (item: {
+  category?: string | null;
+  name?: string | null;
+  code?: string | null;
+}) => {
+  const parts: string[] = [];
+  const category = String(item.category ?? '').trim();
+  const name = String(item.name ?? '').trim();
+  const code = String(item.code ?? '').trim();
+  if (category) parts.push(category);
+  if (name) parts.push(name);
+  if (code) parts.push(code);
+  return parts.filter(Boolean).join(' - ');
+};
+
 type RawItem = {
   id?: string | number;
   item_id?: string | number;
@@ -363,8 +378,7 @@ function SmartJobOrdersItemsPageContent() {
     () =>
       finishedGoodsItems.map((i) => ({
         value: i.id,
-        label: i.code,
-        subtitle: i.name,
+        label: formatItemLabel(i),
       })),
     [finishedGoodsItems],
   );
@@ -373,8 +387,7 @@ function SmartJobOrdersItemsPageContent() {
     () =>
       allItems.map((i) => ({
         value: i.id,
-        label: i.code,
-        subtitle: i.category ? `${i.category} → ${i.name} → ${i.code}` : `${i.name} + ${i.code}`,
+        label: formatItemLabel(i),
       })),
     [allItems],
   );
@@ -392,8 +405,7 @@ function SmartJobOrdersItemsPageContent() {
       .filter((item) => item.category === originalItem.category)
       .map((i) => ({
         value: i.id,
-        label: i.code,
-        subtitle: i.category ? `${i.category} → ${i.name} → ${i.code}` : `${i.name} + ${i.code}`,
+        label: formatItemLabel(i),
       }));
   };
 
@@ -445,9 +457,6 @@ function SmartJobOrdersItemsPageContent() {
         })
         .filter((i) => i !== null) as FinishedItem[];
 
-      console.log('[Job Orders] Loaded finished goods with BOMs:', finishedGoods.length, finishedGoods);
-      setFinishedGoodsItems(finishedGoods);
-
       // Fetch ALL items for component selection dropdowns
       const allItemsResponse = await apiClient.get('/inventory/items');
       const allItemsList = Array.isArray(allItemsResponse) ? allItemsResponse : [];
@@ -469,6 +478,20 @@ function SmartJobOrdersItemsPageContent() {
 
       console.log('[Job Orders] Loaded all items for component dropdowns:', allItemsNormalized.length);
       setAllItems(allItemsNormalized);
+
+      // Enrich finished goods with category (BOM payload may omit category)
+      const categoryByItemId = new Map<string, string | null>();
+      for (const it of allItemsNormalized) {
+        categoryByItemId.set(String(it.id), it.category ?? null);
+      }
+
+      const finishedGoodsEnriched = finishedGoods.map((it) => ({
+        ...it,
+        category: it.category ?? categoryByItemId.get(String(it.id)) ?? null,
+      }));
+
+      console.log('[Job Orders] Loaded finished goods with BOMs:', finishedGoodsEnriched.length, finishedGoodsEnriched);
+      setFinishedGoodsItems(finishedGoodsEnriched);
     } catch (err: any) {
       console.error('[Job Orders] Error loading items:', err);
       setFinishedGoodsItems([]);
@@ -1350,6 +1373,8 @@ function SmartJobOrdersItemsPageContent() {
                   setPreview(null);
                 }}
                 placeholder={itemsLoading ? 'Loading items…' : 'Select finished good item…'}
+                truncateInput={false}
+                dropdownClassName="min-w-[32rem] max-w-[90vw]"
                 required
                 disabled={itemsLoading}
               />

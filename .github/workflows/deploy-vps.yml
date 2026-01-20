@@ -44,7 +44,7 @@ jobs:
           printf '%s' "$HOSTINGER_SSH_KEY" > hostinger-key.pem
           chmod 600 hostinger-key.pem
 
-      - name: 🚀 Deploy to Hostinger (deploy-hostinger.ps1)
+      - name: 🚀 Deploy to Hostinger (deploy-github-and-hostinger.ps1)
         shell: pwsh
         env:
           HOSTINGER_IP: ${{ secrets.VPS_HOST }}
@@ -53,4 +53,4 @@ jobs:
           HOSTINGER_REMOTE_PATH: ${{ secrets.VPS_PATH }}
         run: |
           Write-Host "Starting Hostinger deployment..." -ForegroundColor Cyan
-          ./deploy-hostinger.ps1
+          ./deploy-github-and-hostinger.ps1 -SkipGitPush -NonInteractive

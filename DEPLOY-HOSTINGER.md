@@ -1,5 +1,10 @@
 # Deploy to Hostinger (pms.saksolution.com)
 
+## Recommended (standard)
+Use the repo root script `deploy-github-and-hostinger.ps1` for deployments.
+- Local: runs git commit/push (optional) + deploys to Hostinger.
+- CI: same script runs in non-interactive mode and skips git push.
+
 ## Prerequisites
 - Code already pushed to GitHub ✅ (done)
 - SSH access to Hostinger server

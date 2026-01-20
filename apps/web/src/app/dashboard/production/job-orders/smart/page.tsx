@@ -12,6 +12,21 @@ type FinishedItem = {
   category?: string | null;
 };
 
+const formatItemLabel = (item: {
+  category?: string | null;
+  name?: string | null;
+  code?: string | null;
+}) => {
+  const parts: string[] = [];
+  const category = String(item.category ?? '').trim();
+  const name = String(item.name ?? '').trim();
+  const code = String(item.code ?? '').trim();
+  if (category) parts.push(category);
+  if (name) parts.push(name);
+  if (code) parts.push(code);
+  return parts.filter(Boolean).join(' - ');
+};
+
 type RawItem = {
   id?: string | number;
   item_id?: string | number;
@@ -167,8 +182,7 @@ function SmartJobOrdersPageContent() {
     () =>
       items.map((i) => ({
         value: i.id,
-        label: i.code,
-        subtitle: i.name,
+        label: formatItemLabel(i),
       })),
     [items],
   );
@@ -561,6 +575,8 @@ function SmartJobOrdersPageContent() {
                   setPreview(null);
                 }}
                 placeholder={itemsLoading ? 'Loading items…' : 'Select finished good item…'}
+                truncateInput={false}
+                dropdownClassName="min-w-[32rem] max-w-[90vw]"
                 required
                 disabled={itemsLoading}
               />

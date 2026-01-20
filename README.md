@@ -108,8 +108,8 @@ Every push to `main` automatically deploys to Hostinger using the same PowerShel
 
 **How it works:**
 1. GitHub Actions triggers on push to `main`
-2. Runs `deploy-hostinger.ps1` (builds locally, uploads artifact, restarts PM2)
-3. Same process as running `.\deploy-github-and-hostinger.ps1` locally
+2. Runs `deploy-github-and-hostinger.ps1` in CI mode (skips git push; deploys to Hostinger)
+3. Same deployment logic as running `.\deploy-github-and-hostinger.ps1` locally
 
 **Required GitHub Secrets:**
 - `VPS_HOST` = `72.62.192.228` (your Hostinger IP)

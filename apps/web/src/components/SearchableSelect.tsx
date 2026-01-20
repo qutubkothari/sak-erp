@@ -14,6 +14,8 @@ interface SearchableSelectProps {
   onChange: (value: string, option?: Option) => void;
   placeholder?: string;
   className?: string;
+  dropdownClassName?: string;
+  truncateInput?: boolean;
   required?: boolean;
   disabled?: boolean;
 }
@@ -24,6 +26,8 @@ export default function SearchableSelect({
   onChange,
   placeholder = 'Search...',
   className = '',
+  dropdownClassName = '',
+  truncateInput = true,
   required = false,
   disabled = false,
 }: SearchableSelectProps) {
@@ -33,10 +37,12 @@ export default function SearchableSelect({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const selectedOption = options.find(opt => opt.value === value);
-  const displayValue = selectedOption ? `${selectedOption.label}${selectedOption.subtitle ? ` - ${selectedOption.subtitle}` : ''}` : '';
+  const selectedOption = options.find((opt) => opt.value === value);
+  const displayValue = selectedOption
+    ? `${selectedOption.label}${selectedOption.subtitle ? ` - ${selectedOption.subtitle}` : ''}`
+    : '';
 
-  const filteredOptions = options.filter(option => {
+  const filteredOptions = options.filter((option) => {
     if (!searchTerm) return true; // Show all options when no search term
     return (
       option.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -109,6 +115,7 @@ export default function SearchableSelect({
         ref={inputRef}
         type="text"
         value={isOpen ? searchTerm : displayValue}
+        title={displayValue}
         onChange={(e) => {
           if (disabled) return;
           setSearchTerm(e.target.value);
@@ -122,12 +129,16 @@ export default function SearchableSelect({
         placeholder={placeholder}
         required={required}
         disabled={disabled}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white text-sm disabled:opacity-60 truncate"
+        className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white text-sm disabled:opacity-60 ${
+          truncateInput ? 'truncate' : ''
+        }`}
         autoComplete="off"
       />
       
       {isOpen && !disabled && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+        <div
+          className={`absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto ${dropdownClassName}`}
+        >
           {filteredOptions.length === 0 ? (
             <div className="px-3 py-2 text-sm text-gray-500">No items found</div>
           ) : (

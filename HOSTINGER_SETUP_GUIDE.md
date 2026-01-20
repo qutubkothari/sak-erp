@@ -2,7 +2,11 @@
 
 ## Hostinger VPS Information
 - **IP Address**: 72.62.192.228
-- **Deployment Script**: `deploy-hostinger.ps1`
+- **Deployment Script (standard entrypoint)**: `deploy-github-and-hostinger.ps1`
+
+Notes:
+- `deploy-github-and-hostinger.ps1` is the script to run for deployments; it delegates the VPS upload/restart work to `deploy-hostinger.ps1`.
+- In CI (GitHub Actions) it automatically skips commit/push and runs non-interactively.
 
 ## Prerequisites on Hostinger VPS
 
