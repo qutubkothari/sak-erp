@@ -1303,12 +1303,160 @@ function SmartJobOrdersItemsPageContent() {
     };
 
     const topChildren = childBomIdsByParent.get(rootBomId) || [];
+    const rootDirectItems = itemNodesByBomId.get(rootBomId) || [];
+    const rootSerializedItems = rootDirectItems.filter((node) => node.uidStrategy === 'SERIALIZED');
+    const rootNonSerializedItems = rootDirectItems.filter((node) => node.uidStrategy !== 'SERIALIZED');
+
     if (!topChildren.length && itemNodes.length) {
       // Fallback: show root with items if there are no BOM nodes.
       return renderBom(rootBomId, true);
     }
 
-    return topChildren.map((id, idx) => renderBom(id, idx === 0));
+    return (
+      <div>
+        {rootSerializedItems.length > 0 ? (
+          <table className="min-w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                  Item (Serial Number)
+                </th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                  Required
+                </th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                  In Stock
+                </th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                  Short
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {rootSerializedItems.map((node, idx) => {
+                const key = nodeKey(node);
+                const selectedItemId = selectedItemByNodeKey[key] || node.itemId;
+                const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+                const available = stockState?.available ?? node.availableQuantity;
+                const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
+                const requiredQty = Number(node.requiredQuantity || 0);
+                const short = Math.max(0, requiredQty - Number(available || 0));
+
+                return (
+                  <tr
+                    key={`${node.bomId}:${node.itemId}:${idx}`}
+                    className={`${short > 0 ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}
+                  >
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <Package size={14} className="text-gray-400 flex-shrink-0" />
+                        <div className="min-w-[280px]">
+                          <SearchableSelect
+                            options={getFilteredItemOptions(node.itemId)}
+                            value={selectedItemId}
+                            onChange={async (value) => {
+                              const next = String(value || '');
+                              setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
+                              await fetchItemStockAvailable(next);
+                            }}
+                            placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
+                            disabled={itemsLoading || getFilteredItemOptions(node.itemId).length === 0}
+                          />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-sm text-right text-gray-900">
+                      {formatQuantity(node.requiredQuantity)}
+                    </td>
+                    <td className="px-4 py-2 text-sm text-right text-gray-900" title={stockState?.error || ''}>
+                      {inStockLabel}
+                    </td>
+                    <td
+                      className={`px-4 py-2 text-sm text-right font-semibold ${
+                        short > 0 ? 'text-red-600' : 'text-green-600'
+                      }`}
+                    >
+                      {short > 0 ? formatQuantity(short) : '✓'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : null}
+
+        {topChildren.map((id, idx) => renderBom(id, idx === 0))}
+
+        {rootNonSerializedItems.length > 0 ? (
+          <table className="min-w-full border-t border-gray-100">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                  Required
+                </th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                  In Stock
+                </th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                  Short
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {rootNonSerializedItems.map((node, idx) => {
+                const key = nodeKey(node);
+                const selectedItemId = selectedItemByNodeKey[key] || node.itemId;
+                const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+                const available = stockState?.available ?? node.availableQuantity;
+                const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
+                const requiredQty = Number(node.requiredQuantity || 0);
+                const short = Math.max(0, requiredQty - Number(available || 0));
+
+                return (
+                  <tr
+                    key={`${node.bomId}:${node.itemId}:${idx}`}
+                    className={`${short > 0 ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}
+                  >
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <Package size={14} className="text-gray-400 flex-shrink-0" />
+                        <div className="min-w-[280px]">
+                          <SearchableSelect
+                            options={getFilteredItemOptions(node.itemId)}
+                            value={selectedItemId}
+                            onChange={async (value) => {
+                              const next = String(value || '');
+                              setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
+                              await fetchItemStockAvailable(next);
+                            }}
+                            placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
+                            disabled={itemsLoading || getFilteredItemOptions(node.itemId).length === 0}
+                          />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-sm text-right text-gray-900">
+                      {formatQuantity(node.requiredQuantity)}
+                    </td>
+                    <td className="px-4 py-2 text-sm text-right text-gray-900" title={stockState?.error || ''}>
+                      {inStockLabel}
+                    </td>
+                    <td
+                      className={`px-4 py-2 text-sm text-right font-semibold ${
+                        short > 0 ? 'text-red-600' : 'text-green-600'
+                      }`}
+                    >
+                      {short > 0 ? formatQuantity(short) : '✓'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : null}
+      </div>
+    );
   };
 
   return (
