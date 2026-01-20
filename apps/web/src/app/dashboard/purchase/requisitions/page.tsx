@@ -771,25 +771,25 @@ function PRContent() {
       // If we have a selected PR with items, get vendors from item_vendors relationships
       if (selectedPR?.purchase_requisition_items && selectedPR.purchase_requisition_items.length > 0) {
         const prItems = selectedPR.purchase_requisition_items;
-        const vendorIds = new Set<string>();
-        
-        // Collect all preferred vendors for the PR items
+        const preferredVendorIds = new Set<string>();
+        const allVendorIds = new Set<string>();
+
+        // Collect preferred vendors; keep a fallback of all vendors for PR items
         for (const prItem of prItems) {
           const itemId = prItem.item_id;
           if (!itemId) continue;
-          
+
           try {
             // Fetch item-vendor relationships for this item
             const itemVendors = await apiClient.get(`/items/${itemId}/vendors`);
             if (Array.isArray(itemVendors)) {
-              // Add only preferred vendors for the PR items
               itemVendors
-                .filter((iv: any) =>
-                  iv.is_active !== false && (iv.is_preferred === true || iv.priority === 1),
-                )
+                .filter((iv: any) => iv.is_active !== false && iv.vendor_id)
                 .forEach((iv: any) => {
-                  if (iv.vendor_id) {
-                    vendorIds.add(iv.vendor_id);
+                  const id = String(iv.vendor_id);
+                  allVendorIds.add(id);
+                  if (iv.is_preferred === true || iv.priority === 1) {
+                    preferredVendorIds.add(id);
                   }
                 });
             }
@@ -797,13 +797,17 @@ function PRContent() {
             console.error(`Error fetching vendors for item ${itemId}:`, err);
           }
         }
-        
-        // Filter vendor list to only preferred vendors associated with PR items
+
+        const idsToUse = preferredVendorIds.size > 0 ? preferredVendorIds : allVendorIds;
         const associatedVendors = vendorList.filter(
-          (v) => v?.is_active !== false && vendorIds.has(v.id),
+          (v) => v?.is_active !== false && idsToUse.has(String(v.id)),
         );
 
-        setRfqVendors(associatedVendors);
+        setRfqVendors(
+          associatedVendors.length > 0
+            ? associatedVendors
+            : vendorList.filter((v) => v?.is_active !== false),
+        );
       } else {
         // No PR selected, show all active vendors
         setRfqVendors(vendorList.filter((v) => v?.is_active !== false));
