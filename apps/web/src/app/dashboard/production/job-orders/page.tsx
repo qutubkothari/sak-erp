@@ -372,6 +372,12 @@ function JobOrdersPageContent() {
     const uidToUpdate = targetUid || qcUids[qcIndex]?.uid;
     if (!uidToUpdate) return;
 
+    const previous = qcUids;
+    const optimistic = qcUids.map((u) => 
+      u.uid === uidToUpdate ? { ...u, quality_status: qualityStatus } : u
+    );
+    setQcUids(optimistic);
+
     try {
       const payloadStatus = qualityStatus === 'FAILED' ? 'ON_HOLD' : qualityStatus;
       const payload: any = {
@@ -385,14 +391,9 @@ function JobOrdersPageContent() {
 
       await apiClient.put(`/uid/${encodeURIComponent(uidToUpdate)}/quality-status`, payload);
 
-      const updated = qcUids.map((u) => 
-        u.uid === uidToUpdate ? { ...u, quality_status: qualityStatus } : u
-      );
-      setQcUids(updated);
-
       // If no targetUid specified (old sequential behavior), advance to next pending
       if (!targetUid) {
-        const nextPendingIdx = updated.findIndex(
+        const nextPendingIdx = optimistic.findIndex(
           (u, idx) => idx > qcIndex && String(u?.quality_status || '').toUpperCase() !== 'PASSED',
         );
 
@@ -402,7 +403,7 @@ function JobOrdersPageContent() {
         }
 
         // If none after current, try from start
-        const firstPendingIdx = updated.findIndex(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED');
+        const firstPendingIdx = optimistic.findIndex(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED');
         if (firstPendingIdx >= 0) {
           setQcIndex(firstPendingIdx);
           return;
@@ -415,6 +416,7 @@ function JobOrdersPageContent() {
       console.error('Error updating QC status:', error);
       const msg = error?.response?.data?.message || error?.message || 'Failed to update QC status';
       alert(msg);
+      setQcUids(previous);
     }
   };
 
