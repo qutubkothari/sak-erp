@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  TERMINATED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  PROBATION
+}
+
+enum EvaluationStatus {
+  DRAFT
+  SELF_REVIEW
+  MANAGER_REVIEW
+  HR_REVIEW
+  CALIBRATION
+  FINALIZED
+}
+
+enum EvaluationItemType {
+  COMPETENCY
+  KPI
+}
+
+enum ApprovalStage {
+  EMPLOYEE
+  MANAGER
+  HR
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Department {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  createdAt DateTime   @default(now())
+  employees Employee[]
+}
+
+model Role {
+  id        String     @id @default(uuid())
+  title     String
+  createdAt DateTime   @default(now())
+  employees Employee[]
+}
+
+model Employee {
+  id               String           @id @default(uuid())
+  code             String           @unique
+  firstName        String
+  lastName         String
+  email            String           @unique
+  departmentId     String?
+  roleId           String?
+  managerId        String?
+  location         String?
+  nationality      String?
+  emiratesId       String?
+  employmentType   EmploymentType  @default(FULL_TIME)
+  status           EmploymentStatus @default(ACTIVE)
+  hireDate         DateTime
+  probationEndDate DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  department Department? @relation(fields: [departmentId], references: [id])
+  role       Role?       @relation(fields: [roleId], references: [id])
+  manager    Employee?   @relation("ManagerRelation", fields: [managerId], references: [id])
+  reports    Employee[]  @relation("ManagerRelation")
+
+  evaluations       Evaluation[]
+  approvals         EvaluationApproval[] @relation("ApproverRelation")
+}
+
+model ReviewCycle {
+  id          String           @id @default(uuid())
+  name        String
+  startDate   DateTime
+  endDate     DateTime
+  status      String
+  createdAt   DateTime         @default(now())
+  evaluations Evaluation[]
+}
+
+model Competency {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  weight      Float            @default(1)
+  createdAt   DateTime         @default(now())
+  items       EvaluationItem[]
+}
+
+model KPI {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  unit        String?
+  weight      Float            @default(1)
+  createdAt   DateTime         @default(now())
+  items       EvaluationItem[]
+}
+
+model Evaluation {
+  id            String           @id @default(uuid())
+  employeeId    String
+  cycleId       String
+  status        EvaluationStatus @default(DRAFT)
+  overallScore  Float?
+  selfScore     Float?
+  managerScore  Float?
+  finalRating   Float?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  employee Employee      @relation(fields: [employeeId], references: [id])
+  cycle    ReviewCycle   @relation(fields: [cycleId], references: [id])
+  items    EvaluationItem[]
+  approvals EvaluationApproval[]
+}
+
+model EvaluationItem {
+  id           String              @id @default(uuid())
+  evaluationId String
+  type         EvaluationItemType
+  competencyId String?
+  kpiId        String?
+  weight       Float               @default(1)
+  selfScore    Float?
+  managerScore Float?
+  finalScore   Float?
+  comments     String?
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  competency Competency? @relation(fields: [competencyId], references: [id])
+  kpi        KPI?       @relation(fields: [kpiId], references: [id])
+}
+
+model EvaluationApproval {
+  id            String          @id @default(uuid())
+  evaluationId  String
+  stage         ApprovalStage
+  status        ApprovalStatus @default(PENDING)
+  approverId    String?
+  notes         String?
+  approvedAt    DateTime?
+  createdAt     DateTime       @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  approver    Employee? @relation("ApproverRelation", fields: [approverId], references: [id])
+}
