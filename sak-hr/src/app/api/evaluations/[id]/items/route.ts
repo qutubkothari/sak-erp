@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 type EvaluationItemInput = {
@@ -9,7 +9,8 @@ type EvaluationItemInput = {
   comments?: string;
 };
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
   const body = (await request.json()) as EvaluationItemInput;
 
   if (!body.type) {
@@ -18,7 +19,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   const item = await prisma.evaluationItem.create({
     data: {
-      evaluationId: params.id,
+      evaluationId: id,
       type: body.type,
       competencyId: body.competencyId || null,
       kpiId: body.kpiId || null,

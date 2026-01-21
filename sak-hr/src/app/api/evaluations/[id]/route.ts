@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
   const evaluation = await prisma.evaluation.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { employee: true, cycle: true, items: true, approvals: true },
   });
 
@@ -14,7 +15,8 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   return NextResponse.json(evaluation);
 }
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
   const body = (await request.json()) as {
     status?: string;
     overallScore?: number;
@@ -24,7 +26,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   };
 
   const evaluation = await prisma.evaluation.update({
-    where: { id: params.id },
+    where: { id },
     data: {
       status: body.status as any,
       overallScore: body.overallScore ?? undefined,
