@@ -10,7 +10,7 @@ export default function PerformanceHomePage() {
           </p>
           <h1 className="mt-3 text-3xl font-bold text-[#36454F]">Evaluation Workspace</h1>
           <p className="mt-2 text-sm text-[#6F4E37]">
-            Set review cycles, configure competencies & KPIs, and run evaluations with HR approvals.
+            UAE-aligned performance evaluation workflow with HR approvals and audit-ready artifacts.
           </p>
         </header>
 

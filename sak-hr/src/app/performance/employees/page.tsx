@@ -9,12 +9,32 @@ type Employee = {
   lastName: string;
   email: string;
   hireDate: string;
+  status?: string;
+  employmentType?: string;
+  location?: string | null;
+  nationality?: string | null;
+  emiratesId?: string | null;
+  department?: { name: string } | null;
+  role?: { title: string } | null;
+  manager?: { firstName: string; lastName: string } | null;
 };
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [form, setForm] = useState({ code: '', firstName: '', lastName: '', email: '', hireDate: '' });
+  const [form, setForm] = useState({
+    code: '',
+    firstName: '',
+    lastName: '',
+    email: '',
+    hireDate: '',
+    location: '',
+    nationality: '',
+    emiratesId: '',
+  });
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [employmentFilter, setEmploymentFilter] = useState('ALL');
 
   const fetchEmployees = async () => {
     const response = await fetch('/api/employees');
@@ -34,19 +54,62 @@ export default function EmployeesPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),
     });
-    setForm({ code: '', firstName: '', lastName: '', email: '', hireDate: '' });
+    setForm({
+      code: '',
+      firstName: '',
+      lastName: '',
+      email: '',
+      hireDate: '',
+      location: '',
+      nationality: '',
+      emiratesId: '',
+    });
     await fetchEmployees();
     setLoading(false);
   };
+
+  const filteredEmployees = employees.filter((employee) => {
+    const query = search.trim().toLowerCase();
+    const matchesQuery =
+      !query ||
+      `${employee.firstName} ${employee.lastName}`.toLowerCase().includes(query) ||
+      employee.code.toLowerCase().includes(query) ||
+      employee.email.toLowerCase().includes(query) ||
+      employee.department?.name?.toLowerCase().includes(query) ||
+      employee.role?.title?.toLowerCase().includes(query);
+
+    const matchesStatus = statusFilter === 'ALL' || employee.status === statusFilter;
+    const matchesEmployment = employmentFilter === 'ALL' || employee.employmentType === employmentFilter;
+
+    return matchesQuery && matchesStatus && matchesEmployment;
+  });
+
+  const activeCount = employees.filter((employee) => employee.status === 'ACTIVE').length;
+  const formattedDate = (value: string) => new Date(value).toLocaleDateString('en-GB');
 
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
       <div className="mx-auto max-w-5xl px-6 py-12">
         <h1 className="text-2xl font-bold text-[#36454F]">Employees</h1>
-        <p className="mt-2 text-sm text-[#6F4E37]">Add employees and assign them to performance reviews.</p>
+        <p className="mt-2 text-sm text-[#6F4E37]">
+          UAE-standard employee registry with Emirates ID capture and MOHRE-ready records.
+        </p>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {[
+            { label: 'Total Employees', value: employees.length },
+            { label: 'Active Employees', value: activeCount },
+            { label: 'Filtered Results', value: filteredEmployees.length },
+          ].map((card) => (
+            <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white p-5 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.2em] text-[#9C8162]">{card.label}</p>
+              <p className="mt-2 text-2xl font-semibold text-[#36454F]">{card.value}</p>
+            </div>
+          ))}
+        </div>
 
         <div className="mt-6 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
-          <div className="grid gap-3 md:grid-cols-5">
+          <div className="grid gap-3 md:grid-cols-4">
             <input
               className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
               placeholder="EMP Code"
@@ -77,6 +140,24 @@ export default function EmployeesPage() {
               value={form.hireDate}
               onChange={(e) => setForm({ ...form, hireDate: e.target.value })}
             />
+            <input
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              placeholder="Location (e.g., Dubai)"
+              value={form.location}
+              onChange={(e) => setForm({ ...form, location: e.target.value })}
+            />
+            <input
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              placeholder="Nationality"
+              value={form.nationality}
+              onChange={(e) => setForm({ ...form, nationality: e.target.value })}
+            />
+            <input
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              placeholder="Emirates ID"
+              value={form.emiratesId}
+              onChange={(e) => setForm({ ...form, emiratesId: e.target.value })}
+            />
           </div>
           <button
             className="w-fit rounded-lg bg-[#6F4E37] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5A3E2C]"
@@ -87,15 +168,95 @@ export default function EmployeesPage() {
           </button>
         </div>
 
-        <div className="mt-6 space-y-3">
-          {employees.map((employee) => (
-            <div key={employee.id} className="rounded-xl border border-[#E8DCC4] bg-white p-4">
-              <p className="text-sm font-semibold text-[#36454F]">
-                {employee.firstName} {employee.lastName} ({employee.code})
-              </p>
-              <p className="text-xs text-[#6F4E37]">{employee.email}</p>
-            </div>
-          ))}
+        <div className="mt-6 grid gap-3 rounded-2xl border border-[#E8DCC4] bg-white p-4 shadow-sm md:grid-cols-4">
+          <input
+            className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            placeholder="Search by name, code, email"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select
+            className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            {['ALL', 'ACTIVE', 'INACTIVE', 'SUSPENDED', 'TERMINATED'].map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
+          <select
+            className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            value={employmentFilter}
+            onChange={(e) => setEmploymentFilter(e.target.value)}
+          >
+            {['ALL', 'FULL_TIME', 'PART_TIME', 'CONTRACT', 'PROBATION'].map((type) => (
+              <option key={type} value={type}>
+                {type.replace('_', ' ')}
+              </option>
+            ))}
+          </select>
+          <div className="rounded border border-dashed border-[#E8DCC4] px-3 py-2 text-xs text-[#9C8162]">
+            Dates shown in dd/mm/yyyy.
+          </div>
+        </div>
+
+        <div className="mt-6 overflow-hidden rounded-2xl border border-[#E8DCC4] bg-white shadow-sm">
+          <div className="grid grid-cols-6 gap-2 border-b border-[#E8DCC4] bg-[#F4ECE2] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[#8B6F47]">
+            <span>Employee</span>
+            <span>Contact</span>
+            <span>Role</span>
+            <span>Location</span>
+            <span>Status</span>
+            <span>Hire Date</span>
+          </div>
+          <div className="divide-y divide-[#E8DCC4]">
+            {filteredEmployees.length === 0 ? (
+              <div className="px-4 py-10 text-center text-sm text-[#9C8162]">No employees match the filters.</div>
+            ) : (
+              filteredEmployees.map((employee) => (
+                <div key={employee.id} className="grid grid-cols-6 gap-2 px-4 py-4 text-sm">
+                  <div>
+                    <p className="font-semibold text-[#36454F]">
+                      {employee.firstName} {employee.lastName}
+                    </p>
+                    <p className="text-xs text-[#6F4E37]">{employee.code}</p>
+                    {employee.emiratesId ? (
+                      <p className="text-[11px] text-[#9C8162]">Emirates ID: {employee.emiratesId}</p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <p className="text-xs text-[#6F4E37]">{employee.email}</p>
+                    {employee.nationality ? (
+                      <p className="text-[11px] text-[#9C8162]">Nationality: {employee.nationality}</p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <p className="text-xs text-[#6F4E37]">{employee.role?.title ?? 'Unassigned'}</p>
+                    <p className="text-[11px] text-[#9C8162]">Dept: {employee.department?.name ?? 'N/A'}</p>
+                    {employee.manager ? (
+                      <p className="text-[11px] text-[#9C8162]">
+                        Manager: {employee.manager.firstName} {employee.manager.lastName}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <p className="text-xs text-[#6F4E37]">{employee.location ?? 'UAE'}</p>
+                    <p className="text-[11px] text-[#9C8162]">{employee.employmentType ?? 'N/A'}</p>
+                  </div>
+                  <div>
+                    <span className="rounded-full bg-[#F4ECE2] px-3 py-1 text-[11px] font-semibold uppercase text-[#6F4E37]">
+                      {employee.status ?? 'ACTIVE'}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-[#6F4E37]">{formattedDate(employee.hireDate)}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>

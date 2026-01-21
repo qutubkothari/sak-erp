@@ -22,6 +22,8 @@ export default function CriteriaPage() {
   const [kpis, setKpis] = useState<KPI[]>([]);
   const [competencyForm, setCompetencyForm] = useState({ name: '', description: '', weight: 1 });
   const [kpiForm, setKpiForm] = useState({ name: '', description: '', unit: '', weight: 1 });
+  const [competencySearch, setCompetencySearch] = useState('');
+  const [kpiSearch, setKpiSearch] = useState('');
 
   const fetchData = async () => {
     const [compRes, kpiRes] = await Promise.all([
@@ -60,15 +62,31 @@ export default function CriteriaPage() {
     await fetchData();
   };
 
+  const filteredCompetencies = competencies.filter((comp) => {
+    const query = competencySearch.trim().toLowerCase();
+    return !query || comp.name.toLowerCase().includes(query) || comp.description?.toLowerCase().includes(query);
+  });
+
+  const filteredKpis = kpis.filter((kpi) => {
+    const query = kpiSearch.trim().toLowerCase();
+    return !query || kpi.name.toLowerCase().includes(query) || kpi.description?.toLowerCase().includes(query);
+  });
+
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
       <div className="mx-auto max-w-6xl px-6 py-12">
         <h1 className="text-2xl font-bold text-[#36454F]">Competencies & KPIs</h1>
-        <p className="mt-2 text-sm text-[#6F4E37]">Define weighted criteria for evaluations.</p>
+        <p className="mt-2 text-sm text-[#6F4E37]">Define UAE-standard competencies and KPI scorecards.</p>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-[#36454F]">Competencies</h2>
+            <input
+              className="mt-4 rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              placeholder="Search competencies"
+              value={competencySearch}
+              onChange={(e) => setCompetencySearch(e.target.value)}
+            />
             <div className="mt-4 grid gap-2">
               <input
                 className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
@@ -98,17 +116,30 @@ export default function CriteriaPage() {
               </button>
             </div>
             <div className="mt-4 space-y-2">
-              {competencies.map((comp) => (
-                <div key={comp.id} className="rounded-lg border border-[#E8DCC4] p-3">
-                  <p className="text-sm font-semibold">{comp.name}</p>
-                  <p className="text-xs text-[#6F4E37]">Weight: {comp.weight}</p>
+              {filteredCompetencies.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-[#E8DCC4] p-4 text-xs text-[#9C8162]">
+                  No competencies match this search.
                 </div>
-              ))}
+              ) : (
+                filteredCompetencies.map((comp) => (
+                  <div key={comp.id} className="rounded-lg border border-[#E8DCC4] p-3">
+                    <p className="text-sm font-semibold">{comp.name}</p>
+                    {comp.description ? <p className="text-xs text-[#6F4E37]">{comp.description}</p> : null}
+                    <p className="text-[11px] text-[#9C8162]">Weight: {comp.weight}</p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
           <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-[#36454F]">KPIs</h2>
+            <input
+              className="mt-4 rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              placeholder="Search KPIs"
+              value={kpiSearch}
+              onChange={(e) => setKpiSearch(e.target.value)}
+            />
             <div className="mt-4 grid gap-2">
               <input
                 className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
@@ -144,12 +175,20 @@ export default function CriteriaPage() {
               </button>
             </div>
             <div className="mt-4 space-y-2">
-              {kpis.map((kpi) => (
-                <div key={kpi.id} className="rounded-lg border border-[#E8DCC4] p-3">
-                  <p className="text-sm font-semibold">{kpi.name}</p>
-                  <p className="text-xs text-[#6F4E37]">Weight: {kpi.weight}</p>
+              {filteredKpis.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-[#E8DCC4] p-4 text-xs text-[#9C8162]">
+                  No KPIs match this search.
                 </div>
-              ))}
+              ) : (
+                filteredKpis.map((kpi) => (
+                  <div key={kpi.id} className="rounded-lg border border-[#E8DCC4] p-3">
+                    <p className="text-sm font-semibold">{kpi.name}</p>
+                    {kpi.description ? <p className="text-xs text-[#6F4E37]">{kpi.description}</p> : null}
+                    <p className="text-[11px] text-[#9C8162]">Weight: {kpi.weight}</p>
+                    {kpi.unit ? <p className="text-[11px] text-[#9C8162]">Unit: {kpi.unit}</p> : null}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

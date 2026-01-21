@@ -27,6 +27,8 @@ export default function CalibrationPage() {
   const [sessions, setSessions] = useState<CalibrationSession[]>([]);
   const [sessionForm, setSessionForm] = useState({ name: '', cycleId: '' });
   const [entryForm, setEntryForm] = useState({ sessionId: '', evaluationId: '', calibratedRating: 0, notes: '' });
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
 
   const loadData = async () => {
     const [cycleRes, evalRes, sessionRes] = await Promise.all([
@@ -75,11 +77,31 @@ export default function CalibrationPage() {
     await loadData();
   };
 
+  const filteredSessions = sessions.filter((session) => {
+    const query = search.trim().toLowerCase();
+    const matchesQuery = !query || session.name.toLowerCase().includes(query) || session.cycle.name.toLowerCase().includes(query);
+    const matchesStatus = statusFilter === 'ALL' || session.status === statusFilter;
+    return matchesQuery && matchesStatus;
+  });
+
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
       <div className="mx-auto max-w-6xl px-6 py-12">
         <h1 className="text-2xl font-bold text-[#36454F]">Calibration Sessions</h1>
-        <p className="mt-2 text-sm text-[#6F4E37]">Align ratings across managers before finalization.</p>
+        <p className="mt-2 text-sm text-[#6F4E37]">Align ratings across managers using UAE calibration norms.</p>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {[
+            { label: 'Total Sessions', value: sessions.length },
+            { label: 'Active Sessions', value: sessions.filter((session) => session.status === 'ACTIVE').length },
+            { label: 'Filtered Results', value: filteredSessions.length },
+          ].map((card) => (
+            <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white p-5 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.2em] text-[#9C8162]">{card.label}</p>
+              <p className="mt-2 text-2xl font-semibold text-[#36454F]">{card.value}</p>
+            </div>
+          ))}
+        </div>
 
         <div className="mt-6 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
           <div className="grid gap-3 md:grid-cols-3">
@@ -156,6 +178,51 @@ export default function CalibrationPage() {
           >
             Add to Calibration
           </button>
+        </div>
+
+        <div className="mt-6 grid gap-3 rounded-2xl border border-[#E8DCC4] bg-white p-4 shadow-sm md:grid-cols-3">
+          <input
+            className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            placeholder="Search sessions"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select
+            className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            {['ALL', 'ACTIVE', 'CLOSED'].map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
+          <div className="rounded border border-dashed border-[#E8DCC4] px-3 py-2 text-xs text-[#9C8162]">
+            Suggested rating auto-fills from manager score.
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          {filteredSessions.length === 0 ? (
+            <div className="rounded-2xl border border-[#E8DCC4] bg-white p-8 text-center text-sm text-[#9C8162]">
+              No calibration sessions match the filters.
+            </div>
+          ) : (
+            filteredSessions.map((session) => (
+              <div key={session.id} className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#36454F]">{session.name}</h3>
+                    <p className="text-xs text-[#6F4E37]">{session.cycle.name}</p>
+                  </div>
+                  <span className="rounded-full bg-[#F4ECE2] px-3 py-1 text-[10px] font-semibold uppercase text-[#6F4E37]">
+                    {session.status}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

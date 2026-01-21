@@ -14,6 +14,8 @@ export default function ReviewCyclesPage() {
   const [cycles, setCycles] = useState<ReviewCycle[]>([]);
   const [form, setForm] = useState({ name: '', startDate: '', endDate: '', status: 'DRAFT' });
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
 
   const fetchCycles = async () => {
     const response = await fetch('/api/review-cycles');
@@ -38,11 +40,32 @@ export default function ReviewCyclesPage() {
     setLoading(false);
   };
 
+  const formattedDate = (value: string) => new Date(value).toLocaleDateString('en-GB');
+  const filteredCycles = cycles.filter((cycle) => {
+    const query = search.trim().toLowerCase();
+    const matchesQuery = !query || cycle.name.toLowerCase().includes(query);
+    const matchesStatus = statusFilter === 'ALL' || cycle.status === statusFilter;
+    return matchesQuery && matchesStatus;
+  });
+
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
       <div className="mx-auto max-w-5xl px-6 py-12">
         <h1 className="text-2xl font-bold text-[#36454F]">Review Cycles</h1>
-        <p className="mt-2 text-sm text-[#6F4E37]">Define quarterly or annual review cycles.</p>
+        <p className="mt-2 text-sm text-[#6F4E37]">Define UAE-aligned review cycles with clear calibration windows.</p>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {[
+            { label: 'Total Cycles', value: cycles.length },
+            { label: 'Active Cycles', value: cycles.filter((cycle) => cycle.status === 'ACTIVE').length },
+            { label: 'Filtered Results', value: filteredCycles.length },
+          ].map((card) => (
+            <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white p-5 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.2em] text-[#9C8162]">{card.label}</p>
+              <p className="mt-2 text-2xl font-semibold text-[#36454F]">{card.value}</p>
+            </div>
+          ))}
+        </div>
 
         <div className="mt-6 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
           <div className="grid gap-3 md:grid-cols-4">
@@ -83,22 +106,51 @@ export default function ReviewCyclesPage() {
           </button>
         </div>
 
+        <div className="mt-6 grid gap-3 rounded-2xl border border-[#E8DCC4] bg-white p-4 shadow-sm md:grid-cols-3">
+          <input
+            className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            placeholder="Search cycles"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select
+            className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            {['ALL', 'DRAFT', 'ACTIVE', 'CLOSED'].map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
+          <div className="rounded border border-dashed border-[#E8DCC4] px-3 py-2 text-xs text-[#9C8162]">
+            Dates shown in dd/mm/yyyy.
+          </div>
+        </div>
+
         <div className="mt-6 space-y-3">
-          {cycles.map((cycle) => (
-            <div key={cycle.id} className="rounded-xl border border-[#E8DCC4] bg-white p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-[#36454F]">{cycle.name}</p>
-                  <p className="text-xs text-[#6F4E37]">
-                    {new Date(cycle.startDate).toLocaleDateString()} - {new Date(cycle.endDate).toLocaleDateString()}
-                  </p>
-                </div>
-                <span className="rounded-full bg-[#F4ECE2] px-3 py-1 text-xs font-semibold text-[#6F4E37]">
-                  {cycle.status}
-                </span>
-              </div>
+          {filteredCycles.length === 0 ? (
+            <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 text-center text-sm text-[#9C8162]">
+              No review cycles match the current filters.
             </div>
-          ))}
+          ) : (
+            filteredCycles.map((cycle) => (
+              <div key={cycle.id} className="rounded-xl border border-[#E8DCC4] bg-white p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-[#36454F]">{cycle.name}</p>
+                    <p className="text-xs text-[#6F4E37]">
+                      {formattedDate(cycle.startDate)} - {formattedDate(cycle.endDate)}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-[#F4ECE2] px-3 py-1 text-xs font-semibold text-[#6F4E37]">
+                    {cycle.status}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

@@ -26,6 +26,7 @@ export default function RatingScalesPage() {
     maxScore: 5,
     description: '',
   });
+  const [search, setSearch] = useState('');
 
   const fetchScales = async () => {
     const response = await fetch('/api/rating-scales');
@@ -59,11 +60,29 @@ export default function RatingScalesPage() {
     await fetchScales();
   };
 
+  const filteredScales = scales.filter((scale) => {
+    const query = search.trim().toLowerCase();
+    return !query || scale.name.toLowerCase().includes(query);
+  });
+
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
       <div className="mx-auto max-w-6xl px-6 py-12">
         <h1 className="text-2xl font-bold text-[#36454F]">Rating Scales</h1>
-        <p className="mt-2 text-sm text-[#6F4E37]">Define score bands (e.g., 1-5, 0-10) for evaluations.</p>
+        <p className="mt-2 text-sm text-[#6F4E37]">Define UAE-aligned score bands and rating labels.</p>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {[
+            { label: 'Total Scales', value: scales.length },
+            { label: 'Total Levels', value: scales.reduce((sum, scale) => sum + scale.levels.length, 0) },
+            { label: 'Filtered Results', value: filteredScales.length },
+          ].map((card) => (
+            <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white p-5 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.2em] text-[#9C8162]">{card.label}</p>
+              <p className="mt-2 text-2xl font-semibold text-[#36454F]">{card.value}</p>
+            </div>
+          ))}
+        </div>
 
         <div className="mt-6 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row">
@@ -127,25 +146,46 @@ export default function RatingScalesPage() {
           </button>
         </div>
 
+        <div className="mt-6 grid gap-3 rounded-2xl border border-[#E8DCC4] bg-white p-4 shadow-sm md:grid-cols-3">
+          <input
+            className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            placeholder="Search rating scales"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div className="rounded border border-dashed border-[#E8DCC4] px-3 py-2 text-xs text-[#9C8162]">
+            Use consistent bands across departments.
+          </div>
+          <div className="rounded border border-dashed border-[#E8DCC4] px-3 py-2 text-xs text-[#9C8162]">
+            Weights should total 100% in evaluations.
+          </div>
+        </div>
+
         <div className="mt-6 space-y-4">
-          {scales.map((scale) => (
-            <div key={scale.id} className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-[#36454F]">{scale.name}</h2>
-              <div className="mt-4 grid gap-2 md:grid-cols-2">
-                {scale.levels.map((level) => (
-                  <div key={level.id} className="rounded-lg border border-[#E8DCC4] p-3">
-                    <p className="text-sm font-semibold text-[#36454F]">{level.label}</p>
-                    <p className="text-xs text-[#6F4E37]">
-                      {level.minScore} - {level.maxScore}
-                    </p>
-                    {level.description ? (
-                      <p className="text-xs text-[#4B5563]">{level.description}</p>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
+          {filteredScales.length === 0 ? (
+            <div className="rounded-2xl border border-[#E8DCC4] bg-white p-8 text-center text-sm text-[#9C8162]">
+              No rating scales match the current search.
             </div>
-          ))}
+          ) : (
+            filteredScales.map((scale) => (
+              <div key={scale.id} className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-[#36454F]">{scale.name}</h2>
+                <div className="mt-4 grid gap-2 md:grid-cols-2">
+                  {scale.levels.map((level) => (
+                    <div key={level.id} className="rounded-lg border border-[#E8DCC4] p-3">
+                      <p className="text-sm font-semibold text-[#36454F]">{level.label}</p>
+                      <p className="text-xs text-[#6F4E37]">
+                        {level.minScore} - {level.maxScore}
+                      </p>
+                      {level.description ? (
+                        <p className="text-xs text-[#4B5563]">{level.description}</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

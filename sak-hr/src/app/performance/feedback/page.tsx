@@ -34,6 +34,8 @@ export default function FeedbackPage() {
   const [responses, setResponses] = useState<FeedbackResponse[]>([]);
   const [requestForm, setRequestForm] = useState({ evaluationId: '', reviewerId: '', dueDate: '' });
   const [responseForm, setResponseForm] = useState({ requestId: '', evaluationId: '', reviewerId: '', rating: 0, strengths: '', improvements: '' });
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
 
   const loadData = async () => {
     const [empRes, evalRes, reqRes, respRes] = await Promise.all([
@@ -80,11 +82,34 @@ export default function FeedbackPage() {
     await loadData();
   };
 
+  const filteredRequests = requests.filter((req) => {
+    const query = search.trim().toLowerCase();
+    const matchesQuery =
+      !query ||
+      `${req.evaluation.employee.firstName} ${req.evaluation.employee.lastName}`.toLowerCase().includes(query) ||
+      `${req.reviewer.firstName} ${req.reviewer.lastName}`.toLowerCase().includes(query);
+    const matchesStatus = statusFilter === 'ALL' || req.status === statusFilter;
+    return matchesQuery && matchesStatus;
+  });
+
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
       <div className="mx-auto max-w-6xl px-6 py-12">
         <h1 className="text-2xl font-bold text-[#36454F]">360 Feedback</h1>
-        <p className="mt-2 text-sm text-[#6F4E37]">Collect peer and stakeholder feedback for evaluations.</p>
+        <p className="mt-2 text-sm text-[#6F4E37]">Collect UAE-standard peer and stakeholder feedback.</p>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {[
+            { label: 'Feedback Requests', value: requests.length },
+            { label: 'Responses Received', value: responses.length },
+            { label: 'Filtered Requests', value: filteredRequests.length },
+          ].map((card) => (
+            <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white p-5 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.2em] text-[#9C8162]">{card.label}</p>
+              <p className="mt-2 text-2xl font-semibold text-[#36454F]">{card.value}</p>
+            </div>
+          ))}
+        </div>
 
         <div className="mt-6 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-[#36454F]">Create Feedback Request</h2>
@@ -126,6 +151,29 @@ export default function FeedbackPage() {
           >
             Send Request
           </button>
+        </div>
+
+        <div className="mt-6 grid gap-3 rounded-2xl border border-[#E8DCC4] bg-white p-4 shadow-sm md:grid-cols-3">
+          <input
+            className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            placeholder="Search by employee or reviewer"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select
+            className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            {['ALL', 'PENDING', 'SUBMITTED'].map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
+          <div className="rounded border border-dashed border-[#E8DCC4] px-3 py-2 text-xs text-[#9C8162]">
+            Feedback aligns with evaluation cycle.
+          </div>
         </div>
 
         <div className="mt-6 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
@@ -182,15 +230,21 @@ export default function FeedbackPage() {
           <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
             <h3 className="text-sm font-semibold text-[#36454F]">Requests</h3>
             <div className="mt-3 space-y-2">
-              {requests.map((req) => (
-                <div key={req.id} className="rounded-lg border border-[#E8DCC4] p-3">
-                  <p className="text-xs font-semibold">
-                    {req.evaluation.employee.firstName} {req.evaluation.employee.lastName}
-                  </p>
-                  <p className="text-xs text-[#6F4E37]">Reviewer: {req.reviewer.firstName} {req.reviewer.lastName}</p>
-                  <p className="text-[10px] uppercase text-[#9C8162]">{req.status}</p>
+              {filteredRequests.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-[#E8DCC4] p-4 text-xs text-[#9C8162]">
+                  No feedback requests match the filters.
                 </div>
-              ))}
+              ) : (
+                filteredRequests.map((req) => (
+                  <div key={req.id} className="rounded-lg border border-[#E8DCC4] p-3">
+                    <p className="text-xs font-semibold">
+                      {req.evaluation.employee.firstName} {req.evaluation.employee.lastName}
+                    </p>
+                    <p className="text-xs text-[#6F4E37]">Reviewer: {req.reviewer.firstName} {req.reviewer.lastName}</p>
+                    <p className="text-[10px] uppercase text-[#9C8162]">{req.status}</p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
