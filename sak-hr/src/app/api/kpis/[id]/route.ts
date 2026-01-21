@@ -16,7 +16,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const body = (await request.json()) as KpiUpdate;
 
-  const kpi = await prisma.kpi.update({
+  const kpi = await prisma.kPI.update({
     where: { id },
     data: {
       name: body.name,
@@ -31,6 +31,6 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 export async function DELETE(_request: Request, context: RouteContext) {
   const { id } = await context.params;
-  await prisma.kpi.delete({ where: { id } });
+  await prisma.kPI.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
