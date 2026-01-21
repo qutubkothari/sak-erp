@@ -111,8 +111,8 @@ Write-Host "Docker database running" -ForegroundColor Green
 Write-Host "`n[7/8] Prisma Migrations" -ForegroundColor Yellow
 $prismaCmd = @'
 cd "{0}"
-pnpm -C "{0}" prisma generate
-pnpm -C "{0}" prisma migrate deploy || pnpm -C "{0}" prisma db push
+pnpm prisma generate
+pnpm prisma migrate deploy || pnpm prisma db push
 '@ -f $APP_PATH
 Invoke-RemoteCommand $prismaCmd
 Write-Host "Prisma updated" -ForegroundColor Green
