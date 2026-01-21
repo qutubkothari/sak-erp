@@ -127,6 +127,30 @@ export default function PerformanceAnalyticsPage() {
             </div>
           </div>
         </div>
+
+        <div className="mt-6 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-[#36454F]">Reporting Exports</h2>
+          <p className="mt-2 text-xs text-[#6F4E37]">Download UAE-ready CSV exports for audits and leadership reporting.</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {
+              [
+                { label: 'Employees', type: 'employees' },
+                { label: 'Evaluations', type: 'evaluations' },
+                { label: 'Appraisal Letters', type: 'appraisals' },
+                { label: 'Improvement Plans', type: 'improvement-plans' },
+                { label: 'Feedback Requests', type: 'feedback' },
+              ].map((exportItem) => (
+                <a
+                  key={exportItem.type}
+                  className="rounded-lg border border-[#D9CBB6] px-4 py-2 text-center text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                  href={`/api/reporting/exports?type=${exportItem.type}`}
+                >
+                  Download {exportItem.label}
+                </a>
+              ))
+            }
+          </div>
+        </div>
       </div>
     </div>
   );
