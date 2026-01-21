@@ -54,6 +54,18 @@ model Department {
   employees Employee[]
 }
 
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  role          String    @default("employee")
+  employeeId    String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  employee      Employee? @relation(fields: [employeeId], references: [id])
+}
+
 model Role {
   id        String     @id @default(uuid())
   title     String
@@ -92,6 +104,7 @@ model Employee {
   improvementPlansManaged ImprovementPlan[] @relation("ImprovementPlanManager")
   appraisalLettersApproved AppraisalLetter[] @relation("AppraisalLetterApprover")
   improvementPlansApproved ImprovementPlan[] @relation("ImprovementPlanApprover")
+  user User?
 }
 
 model ReviewCycle {
