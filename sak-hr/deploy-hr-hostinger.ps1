@@ -13,6 +13,7 @@ $HOSTINGER_IP = "72.62.192.228"
 $HOSTINGER_USER = "qutubk"
 $KEY_PATH = "$env:USERPROFILE\.ssh\hostinger_ed25519"
 $REMOTE_PATH = "/var/www/sak-hr"
+$APP_PATH = "/var/www/sak-hr/sak-hr"
 $PM2_PROCESS = "sak-hr"
 $REPO_URL = "https://github.com/qutubkothari/sak-erp.git"
 $BRANCH = "main"
@@ -101,8 +102,8 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:4000/api/v1
 DATABASE_URL=postgresql://sak_hr:sak_hr_password@localhost:5433/sak_hr?schema=public
 EOF
 fi
-docker compose up -d
-'@ -f $REMOTE_PATH
+sudo docker compose up -d
+'@ -f $APP_PATH
 Invoke-RemoteCommand $dockerCmd
 Write-Host "Docker database running" -ForegroundColor Green
 
@@ -111,7 +112,7 @@ $prismaCmd = @'
 cd "{0}"
 pnpm prisma generate
 pnpm prisma migrate deploy || pnpm prisma db push
-'@ -f $REMOTE_PATH
+'@ -f $APP_PATH
 Invoke-RemoteCommand $prismaCmd
 Write-Host "Prisma updated" -ForegroundColor Green
 
@@ -122,7 +123,7 @@ pnpm build
 PORT={1} NODE_ENV=production pm2 start pnpm --name {2} -- start || pm2 restart {2} --update-env
 pm2 save
 pm2 list
-'@ -f $REMOTE_PATH, $APP_PORT, $PM2_PROCESS
+'@ -f $APP_PATH, $APP_PORT, $PM2_PROCESS
 Invoke-RemoteCommand $restartCmd
 Write-Host "Application restarted" -ForegroundColor Green
 
