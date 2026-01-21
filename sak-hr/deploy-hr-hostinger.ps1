@@ -60,7 +60,7 @@ Write-Host "Connection OK" -ForegroundColor Green
 Write-Host "`n[4/8] Preparing Remote Repo" -ForegroundColor Yellow
 $prepCmd = @'
 if [ ! -d "{0}/.git" ]; then
-  if [ -d "{0}" ] && [ "$(ls -A "{0}")" ]; then
+  if [ -d "{0}" ] && [ "$(ls -A {0})" ]; then
     echo "ERROR: {0} exists and is not empty."; exit 1;
   fi
   mkdir -p "{0}";
