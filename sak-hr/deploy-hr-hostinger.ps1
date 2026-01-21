@@ -59,18 +59,14 @@ Write-Host "Connection OK" -ForegroundColor Green
 
 Write-Host "`n[4/8] Preparing Remote Repo" -ForegroundColor Yellow
 $prepCmd = @'
-if [ ! -d "{0}" ]; then
+if [ ! -d "{0}/.git" ]; then
+  if [ -d "{0}" ] && [ "$(ls -A "{0}")" ]; then
+    echo "ERROR: {0} exists and is not empty."; exit 1;
+  fi
   mkdir -p "{0}";
   git clone {1} "{0}";
 fi
 cd "{0}"
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo 'ERROR: Remote path exists but is not a git repo.'; exit 1;
-fi
-origin_url=$(git remote get-url origin || echo '')
-if [ "$origin_url" != "{1}" ]; then
-  echo "ERROR: Remote repo mismatch at {0}"; exit 1;
-fi
 git fetch origin {2}
 git checkout {2}
 git pull origin {2}
