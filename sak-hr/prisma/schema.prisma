@@ -136,6 +136,7 @@ model Evaluation {
   cycle    ReviewCycle   @relation(fields: [cycleId], references: [id])
   items    EvaluationItem[]
   approvals EvaluationApproval[]
+  calibrations CalibrationEntry[]
 }
 
 model EvaluationItem {
@@ -186,4 +187,28 @@ model RatingLevel {
   description   String?
 
   ratingScale RatingScale @relation(fields: [ratingScaleId], references: [id])
+}
+
+model CalibrationSession {
+  id        String             @id @default(uuid())
+  name      String
+  cycleId   String
+  status    String             @default("ACTIVE")
+  createdAt DateTime           @default(now())
+
+  cycle    ReviewCycle       @relation(fields: [cycleId], references: [id])
+  entries  CalibrationEntry[]
+}
+
+model CalibrationEntry {
+  id                 String             @id @default(uuid())
+  calibrationSessionId String
+  evaluationId       String
+  recommendedRating  Float?
+  calibratedRating   Float?
+  notes              String?
+  createdAt          DateTime           @default(now())
+
+  session    CalibrationSession @relation(fields: [calibrationSessionId], references: [id])
+  evaluation Evaluation         @relation(fields: [evaluationId], references: [id])
 }

@@ -37,6 +37,11 @@ export default function PerformanceHomePage() {
               href: '/performance/scales',
             },
             {
+              title: 'Calibration',
+              description: 'Align ratings across managers before finalization.',
+              href: '/performance/calibration',
+            },
+            {
               title: 'Evaluations',
               description: 'Launch evaluations, track approvals, and finalize ratings.',
               href: '/performance/evaluations',
