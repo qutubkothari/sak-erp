@@ -42,6 +42,11 @@ export default function PerformanceHomePage() {
               href: '/performance/calibration',
             },
             {
+              title: '360 Feedback',
+              description: 'Collect peer and stakeholder feedback.',
+              href: '/performance/feedback',
+            },
+            {
               title: 'Evaluations',
               description: 'Launch evaluations, track approvals, and finalize ratings.',
               href: '/performance/evaluations',

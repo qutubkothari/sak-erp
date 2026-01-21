@@ -138,6 +138,8 @@ model Evaluation {
   items    EvaluationItem[]
   approvals EvaluationApproval[]
   calibrations CalibrationEntry[]
+  feedbackRequests FeedbackRequest[]
+  feedbackResponses FeedbackResponse[]
 }
 
 model EvaluationItem {
@@ -212,4 +214,33 @@ model CalibrationEntry {
 
   session    CalibrationSession @relation(fields: [calibrationSessionId], references: [id])
   evaluation Evaluation         @relation(fields: [evaluationId], references: [id])
+}
+
+model FeedbackRequest {
+  id           String     @id @default(uuid())
+  evaluationId String
+  reviewerId   String
+  status       String     @default("PENDING")
+  dueDate      DateTime?
+  createdAt    DateTime   @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  reviewer   Employee   @relation(fields: [reviewerId], references: [id])
+  responses  FeedbackResponse[]
+}
+
+model FeedbackResponse {
+  id             String     @id @default(uuid())
+  evaluationId   String
+  requestId      String
+  reviewerId     String
+  rating         Float?
+  strengths      String?
+  improvements   String?
+  submittedAt    DateTime?
+  createdAt      DateTime   @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  request    FeedbackRequest @relation(fields: [requestId], references: [id])
+  reviewer   Employee   @relation(fields: [reviewerId], references: [id])
 }
