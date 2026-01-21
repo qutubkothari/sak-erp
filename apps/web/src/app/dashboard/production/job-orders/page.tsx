@@ -18,60 +18,6 @@ interface Item {
   stock_in_hand?: number;
   stock_available?: number;
 }
-
-
-          {qcQrModalOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-              <div className="bg-white rounded-lg max-w-md w-full p-6">
-                <h2 className="text-xl font-bold mb-4">QC QR Code</h2>
-                <div className="text-center">
-                  <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                    <img
-                      src={generateQRCode(qcQrData)}
-                      alt="QC QR Code"
-                      className="mx-auto"
-                    />
-                  </div>
-                  <p className="font-mono text-sm text-gray-700 mb-2">
-                    {qcQrDetails?.uid ?? qcQrData}
-                  </p>
-                  {qcQrDetails && (
-                    <div className="text-left text-sm text-gray-600 space-y-1 mb-4">
-                      {qcQrDetails.invoiceNumber && (
-                        <div>
-                          <span className="font-semibold">Invoice:</span> {qcQrDetails.invoiceNumber}
-                        </div>
-                      )}
-                      {qcQrDetails.qcDate && (
-                        <div>
-                          <span className="font-semibold">QC Date:</span> {qcQrDetails.qcDate}
-                        </div>
-                      )}
-                      {qcQrDetails.qcByName && (
-                        <div>
-                          <span className="font-semibold">QC By:</span> {qcQrDetails.qcByName}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <div className="flex justify-center gap-2">
-                    <button
-                      onClick={() => window.print()}
-                      className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700"
-                    >
-                      Print Label
-                    </button>
-                    <button
-                      onClick={() => setQcQrModalOpen(false)}
-                      className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 type ItemStockSummary = {
   total_quantity: number;
   available_quantity: number;
@@ -2718,6 +2664,59 @@ function JobOrdersPageContent() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {qcQrModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h2 className="text-xl font-bold mb-4">QC QR Code</h2>
+            <div className="text-center">
+              <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                <img
+                  src={generateQRCode(qcQrData)}
+                  alt="QC QR Code"
+                  className="mx-auto"
+                />
+              </div>
+              <p className="font-mono text-sm text-gray-700 mb-2">
+                {qcQrDetails?.uid ?? qcQrData}
+              </p>
+              {qcQrDetails && (
+                <div className="text-left text-sm text-gray-600 space-y-1 mb-4">
+                  {qcQrDetails.invoiceNumber && (
+                    <div>
+                      <span className="font-semibold">Invoice:</span> {qcQrDetails.invoiceNumber}
+                    </div>
+                  )}
+                  {qcQrDetails.qcDate && (
+                    <div>
+                      <span className="font-semibold">QC Date:</span> {qcQrDetails.qcDate}
+                    </div>
+                  )}
+                  {qcQrDetails.qcByName && (
+                    <div>
+                      <span className="font-semibold">QC By:</span> {qcQrDetails.qcByName}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="flex justify-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700"
+                >
+                  Print Label
+                </button>
+                <button
+                  onClick={() => setQcQrModalOpen(false)}
+                  className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
