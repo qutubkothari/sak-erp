@@ -213,17 +213,23 @@ function JobOrdersPageContent() {
       ? `${qcByUser.employee_name}${qcByUser.employee_code ? ` (${qcByUser.employee_code})` : ''}`
       : '';
 
-    const payload: Record<string, string> = { uid };
-    if (invoiceNumber) payload.invoiceNumber = invoiceNumber;
-    if (qcDate) payload.qcDate = qcDate;
-    if (qcById) payload.qcById = qcById;
-    if (qcByName) payload.qcByName = qcByName;
+    const details: Record<string, string> = { uid };
+    if (invoiceNumber) details.invoiceNumber = invoiceNumber;
+    if (qcDate) details.qcDate = qcDate;
+    if (qcByName) details.qcByName = qcByName;
 
-    if (Object.keys(payload).length === 1) {
+    if (Object.keys(details).length === 1) {
       return { data: uid, details: null };
     }
 
-    return { data: JSON.stringify(payload), details: payload };
+    const lines = [
+      `UID: ${uid}`,
+      invoiceNumber ? `Invoice: ${invoiceNumber}` : '',
+      qcDate ? `QC Date: ${qcDate}` : '',
+      qcByName ? `QC By: ${qcByName}` : '',
+    ].filter(Boolean);
+
+    return { data: lines.join('\n'), details };
   };
 
   useEffect(() => {
