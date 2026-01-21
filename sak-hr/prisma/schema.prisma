@@ -89,6 +89,7 @@ model Employee {
   approvals         EvaluationApproval[] @relation("ApproverRelation")
   feedbackRequests  FeedbackRequest[]
   feedbackResponses FeedbackResponse[]
+  improvementPlansManaged ImprovementPlan[] @relation("ImprovementPlanManager")
 }
 
 model ReviewCycle {
@@ -143,6 +144,7 @@ model Evaluation {
   feedbackRequests FeedbackRequest[]
   feedbackResponses FeedbackResponse[]
   appraisalLetter AppraisalLetter?
+  improvementPlan ImprovementPlan?
 }
 
 model EvaluationItem {
@@ -259,4 +261,21 @@ model AppraisalLetter {
   createdAt     DateTime @default(now())
 
   evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+}
+
+model ImprovementPlan {
+  id            String   @id @default(uuid())
+  evaluationId  String   @unique
+  managerId     String?
+  status        String   @default("ACTIVE")
+  startDate     DateTime
+  endDate       DateTime?
+  objectives    String
+  supportPlan   String?
+  checkpoints   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  manager    Employee?  @relation("ImprovementPlanManager", fields: [managerId], references: [id])
 }

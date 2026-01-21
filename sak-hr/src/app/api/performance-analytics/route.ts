@@ -19,6 +19,7 @@ export async function GET() {
     feedbackResponseCount,
     calibrationSessionCount,
     appraisalLetterCount,
+    improvementPlanCount,
     cycleCount,
     departments,
     ratings,
@@ -37,6 +38,7 @@ export async function GET() {
     prisma.feedbackResponse.count(),
     prisma.calibrationSession.count(),
     prisma.appraisalLetter.count(),
+    prisma.improvementPlan.count(),
     prisma.reviewCycle.count(),
     prisma.department.findMany({
       orderBy: { name: 'asc' },
@@ -66,6 +68,7 @@ export async function GET() {
       feedbackRequests: feedbackRequestCount,
       feedbackResponses: feedbackResponseCount,
       appraisalLetters: appraisalLetterCount,
+      improvementPlans: improvementPlanCount,
     },
     evaluationsByStatus: evaluationsByStatus.map((row) => ({
       status: row.status,

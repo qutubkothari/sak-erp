@@ -57,6 +57,11 @@ export default function PerformanceHomePage() {
               href: '/performance/analytics',
             },
             {
+              title: 'Improvement Plans',
+              description: 'Create targeted improvement plans after evaluations.',
+              href: '/performance/improvement-plans',
+            },
+            {
               title: 'Evaluations',
               description: 'Launch evaluations, track approvals, and finalize ratings.',
               href: '/performance/evaluations',

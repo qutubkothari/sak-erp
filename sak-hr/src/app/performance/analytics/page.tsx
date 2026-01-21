@@ -12,6 +12,7 @@ type AnalyticsResponse = {
     feedbackRequests: number;
     feedbackResponses: number;
     appraisalLetters: number;
+    improvementPlans: number;
   };
   evaluationsByStatus: { status: string; count: number }[];
   averages: {
@@ -77,6 +78,7 @@ export default function PerformanceAnalyticsPage() {
               <p>Calibration Sessions: {data?.totals.calibrationSessions ?? 0}</p>
               <p>Feedback Requests: {data?.totals.feedbackRequests ?? 0}</p>
               <p>Feedback Responses: {data?.totals.feedbackResponses ?? 0}</p>
+              <p>Improvement Plans: {data?.totals.improvementPlans ?? 0}</p>
             </div>
           </div>
 
