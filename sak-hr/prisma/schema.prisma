@@ -142,6 +142,7 @@ model Evaluation {
   calibrations CalibrationEntry[]
   feedbackRequests FeedbackRequest[]
   feedbackResponses FeedbackResponse[]
+  appraisalLetter AppraisalLetter?
 }
 
 model EvaluationItem {
@@ -245,4 +246,17 @@ model FeedbackResponse {
   evaluation Evaluation @relation(fields: [evaluationId], references: [id])
   request    FeedbackRequest @relation(fields: [requestId], references: [id])
   reviewer   Employee   @relation(fields: [reviewerId], references: [id])
+}
+
+model AppraisalLetter {
+  id            String   @id @default(uuid())
+  evaluationId  String   @unique
+  issuedOn      DateTime @default(now())
+  subject       String
+  summary       String
+  rating        Float?
+  adjustment    String?
+  createdAt     DateTime @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
 }

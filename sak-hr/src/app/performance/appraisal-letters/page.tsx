@@ -1,0 +1,159 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
+type Employee = {
+  id: string;
+  firstName: string;
+  lastName: string;
+};
+
+type ReviewCycle = {
+  id: string;
+  name: string;
+};
+
+type Evaluation = {
+  id: string;
+  employee: Employee;
+  cycle: ReviewCycle;
+};
+
+type AppraisalLetter = {
+  id: string;
+  subject: string;
+  summary: string;
+  rating?: number | null;
+  adjustment?: string | null;
+  issuedOn: string;
+  evaluation: Evaluation;
+};
+
+export default function AppraisalLettersPage() {
+  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
+  const [letters, setLetters] = useState<AppraisalLetter[]>([]);
+  const [form, setForm] = useState({ evaluationId: '', subject: '', summary: '', rating: '', adjustment: '' });
+
+  const loadData = async () => {
+    const [evalRes, letterRes] = await Promise.all([
+      fetch('/api/evaluations'),
+      fetch('/api/appraisal-letters'),
+    ]);
+
+    const evalData = await evalRes.json();
+    const letterData = await letterRes.json();
+
+    setEvaluations(Array.isArray(evalData) ? evalData : []);
+    setLetters(Array.isArray(letterData) ? letterData : []);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const createLetter = async () => {
+    if (!form.evaluationId || !form.subject || !form.summary) return;
+
+    await fetch('/api/appraisal-letters', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        evaluationId: form.evaluationId,
+        subject: form.subject,
+        summary: form.summary,
+        rating: form.rating ? Number(form.rating) : undefined,
+        adjustment: form.adjustment || undefined,
+      }),
+    });
+
+    setForm({ evaluationId: '', subject: '', summary: '', rating: '', adjustment: '' });
+    await loadData();
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
+      <div className="mx-auto max-w-6xl px-6 py-12">
+        <h1 className="text-2xl font-bold text-[#36454F]">Appraisal Letters</h1>
+        <p className="mt-2 text-sm text-[#6F4E37]">Generate finalized appraisal letters and export as PDF.</p>
+
+        <div className="mt-6 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-[#36454F]">Create Letter</h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            <select
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              value={form.evaluationId}
+              onChange={(e) => setForm({ ...form, evaluationId: e.target.value })}
+            >
+              <option value="">Select evaluation</option>
+              {evaluations.map((evaluation) => (
+                <option key={evaluation.id} value={evaluation.id}>
+                  {evaluation.employee.firstName} {evaluation.employee.lastName} • {evaluation.cycle.name}
+                </option>
+              ))}
+            </select>
+            <input
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              placeholder="Subject"
+              value={form.subject}
+              onChange={(e) => setForm({ ...form, subject: e.target.value })}
+            />
+            <input
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              placeholder="Final Rating (optional)"
+              type="number"
+              value={form.rating}
+              onChange={(e) => setForm({ ...form, rating: e.target.value })}
+            />
+            <input
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              placeholder="Adjustment notes (optional)"
+              value={form.adjustment}
+              onChange={(e) => setForm({ ...form, adjustment: e.target.value })}
+            />
+          </div>
+          <textarea
+            className="min-h-[120px] rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            placeholder="Appraisal summary"
+            value={form.summary}
+            onChange={(e) => setForm({ ...form, summary: e.target.value })}
+          />
+          <button
+            className="w-fit rounded-lg bg-[#6F4E37] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5A3E2C]"
+            onClick={createLetter}
+          >
+            Create Letter
+          </button>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          {letters.map((letter) => (
+            <div key={letter.id} className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-[#36454F]">{letter.subject}</h3>
+                  <p className="text-xs text-[#6F4E37]">
+                    {letter.evaluation.employee.firstName} {letter.evaluation.employee.lastName} • {letter.evaluation.cycle.name}
+                  </p>
+                </div>
+                <a
+                  className="rounded-lg border border-[#D9CBB6] px-3 py-1.5 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                  href={`/api/appraisal-letters/${letter.id}/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  PDF
+                </a>
+              </div>
+              <p className="mt-3 text-xs text-[#4B5563] line-clamp-4">{letter.summary}</p>
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-[#9C8162]">
+                <span>Issued: {new Date(letter.issuedOn).toLocaleDateString()}</span>
+                {letter.rating !== null && letter.rating !== undefined ? <span>Rating: {letter.rating}</span> : null}
+                {letter.adjustment ? <span>Adjustment: {letter.adjustment}</span> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

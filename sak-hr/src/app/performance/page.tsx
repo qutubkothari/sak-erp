@@ -47,6 +47,16 @@ export default function PerformanceHomePage() {
               href: '/performance/feedback',
             },
             {
+              title: 'Appraisal Letters',
+              description: 'Generate official appraisal letters with PDF export.',
+              href: '/performance/appraisal-letters',
+            },
+            {
+              title: 'Analytics',
+              description: 'Track evaluation health, coverage, and rating trends.',
+              href: '/performance/analytics',
+            },
+            {
               title: 'Evaluations',
               description: 'Launch evaluations, track approvals, and finalize ratings.',
               href: '/performance/evaluations',
