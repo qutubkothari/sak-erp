@@ -19,6 +19,59 @@ interface Item {
   stock_available?: number;
 }
 
+
+          {qcQrModalOpen && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+              <div className="bg-white rounded-lg max-w-md w-full p-6">
+                <h2 className="text-xl font-bold mb-4">QC QR Code</h2>
+                <div className="text-center">
+                  <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                    <img
+                      src={generateQRCode(qcQrData)}
+                      alt="QC QR Code"
+                      className="mx-auto"
+                    />
+                  </div>
+                  <p className="font-mono text-sm text-gray-700 mb-2">
+                    {qcQrDetails?.uid ?? qcQrData}
+                  </p>
+                  {qcQrDetails && (
+                    <div className="text-left text-sm text-gray-600 space-y-1 mb-4">
+                      {qcQrDetails.invoiceNumber && (
+                        <div>
+                          <span className="font-semibold">Invoice:</span> {qcQrDetails.invoiceNumber}
+                        </div>
+                      )}
+                      {qcQrDetails.qcDate && (
+                        <div>
+                          <span className="font-semibold">QC Date:</span> {qcQrDetails.qcDate}
+                        </div>
+                      )}
+                      {qcQrDetails.qcByName && (
+                        <div>
+                          <span className="font-semibold">QC By:</span> {qcQrDetails.qcByName}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex justify-center gap-2">
+                    <button
+                      onClick={() => window.print()}
+                      className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700"
+                    >
+                      Print Label
+                    </button>
+                    <button
+                      onClick={() => setQcQrModalOpen(false)}
+                      className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 type ItemStockSummary = {
   total_quantity: number;
   available_quantity: number;
@@ -178,10 +231,13 @@ function JobOrdersPageContent() {
     qcBy: string;
   }>({
     invoiceNumber: '',
-    qcDate: new Date().toISOString().split('T')[0],
+    qcDate: '',
     qcBy: '',
   });
   const [qcCheckedBy, setQcCheckedBy] = useState<Record<string, string>>({});
+  const [qcQrModalOpen, setQcQrModalOpen] = useState(false);
+  const [qcQrData, setQcQrData] = useState('');
+  const [qcQrDetails, setQcQrDetails] = useState<Record<string, string> | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -197,6 +253,32 @@ function JobOrdersPageContent() {
   const [operations, setOperations] = useState<Operation[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [baseMaterialQuantities, setBaseMaterialQuantities] = useState<{ [key: string]: number }>({});
+
+  const generateQRCode = (value: string) => {
+    return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(value)}`;
+  };
+
+  const buildQcQrPayload = (uid: string) => {
+    const invoiceNumber = String(qcMetadata.invoiceNumber || '').trim();
+    const qcDate = String(qcMetadata.qcDate || '').trim();
+    const qcById = String(qcMetadata.qcBy || '').trim();
+    const qcByUser = qcById ? users.find((u) => u.id === qcById) : undefined;
+    const qcByName = qcByUser
+      ? `${qcByUser.employee_name}${qcByUser.employee_code ? ` (${qcByUser.employee_code})` : ''}`
+      : '';
+
+    const payload: Record<string, string> = { uid };
+    if (invoiceNumber) payload.invoiceNumber = invoiceNumber;
+    if (qcDate) payload.qcDate = qcDate;
+    if (qcById) payload.qcById = qcById;
+    if (qcByName) payload.qcByName = qcByName;
+
+    if (Object.keys(payload).length === 1) {
+      return { data: uid, details: null };
+    }
+
+    return { data: JSON.stringify(payload), details: payload };
+  };
 
   useEffect(() => {
     fetchJobOrders();
@@ -2255,10 +2337,13 @@ function JobOrdersPageContent() {
                   setQcRemarks({});
                   setQcMetadata({
                     invoiceNumber: '',
-                    qcDate: new Date().toISOString().split('T')[0],
+                    qcDate: '',
                     qcBy: '',
                   });
                   setQcCheckedBy({});
+                  setQcQrModalOpen(false);
+                  setQcQrData('');
+                  setQcQrDetails(null);
                 }}
                 className="text-gray-500 hover:text-gray-700"
               >
@@ -2509,7 +2594,20 @@ function JobOrdersPageContent() {
                                 </div>
                               )}
                               {currentStatus === 'PASSED' && (
-                                <span className="text-green-600 font-semibold">✓ Passed</span>
+                                <div className="flex flex-col items-center gap-2">
+                                  <span className="text-green-600 font-semibold">✓ Passed</span>
+                                  <button
+                                    onClick={() => {
+                                      const { data, details } = buildQcQrPayload(uid.uid);
+                                      setQcQrData(data);
+                                      setQcQrDetails(details);
+                                      setQcQrModalOpen(true);
+                                    }}
+                                    className="px-3 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700"
+                                  >
+                                    Generate QR
+                                  </button>
+                                </div>
                               )}
                             </td>
                           </tr>
@@ -2534,10 +2632,13 @@ function JobOrdersPageContent() {
                         setQcRemarks({});
                         setQcMetadata({
                           invoiceNumber: '',
-                          qcDate: new Date().toISOString().split('T')[0],
+                          qcDate: '',
                           qcBy: '',
                         });
                         setQcCheckedBy({});
+                        setQcQrModalOpen(false);
+                        setQcQrData('');
+                        setQcQrDetails(null);
                       }}
                       className="w-full sm:w-auto px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded hover:bg-gray-50"
                     >
