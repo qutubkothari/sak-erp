@@ -6,8 +6,7 @@ CREATE TABLE IF NOT EXISTS "User" (
   "role" VARCHAR(50) NOT NULL DEFAULT 'employee',
   "employeeId" VARCHAR(255) UNIQUE,
   "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
-  "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
-  CONSTRAINT "User_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "Employee"("id") ON DELETE SET NULL ON UPDATE CASCADE
+  "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 -- Create index for faster email lookups
