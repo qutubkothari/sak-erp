@@ -258,9 +258,13 @@ model AppraisalLetter {
   summary       String
   rating        Float?
   adjustment    String?
+  approvalStatus ApprovalStatus @default(PENDING)
+  approvedById   String?
+  approvedAt     DateTime?
   createdAt     DateTime @default(now())
 
   evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  approvedBy Employee? @relation(fields: [approvedById], references: [id])
 }
 
 model ImprovementPlan {
@@ -273,9 +277,13 @@ model ImprovementPlan {
   objectives    String
   supportPlan   String?
   checkpoints   String?
+  approvalStatus ApprovalStatus @default(PENDING)
+  approvedById   String?
+  approvedAt     DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   evaluation Evaluation @relation(fields: [evaluationId], references: [id])
   manager    Employee?  @relation("ImprovementPlanManager", fields: [managerId], references: [id])
+  approvedBy Employee?  @relation(fields: [approvedById], references: [id])
 }

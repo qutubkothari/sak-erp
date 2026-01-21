@@ -11,6 +11,8 @@ type ImprovementPlanUpdate = {
   objectives?: string;
   supportPlan?: string;
   checkpoints?: string;
+  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  approvedById?: string;
 };
 
 export async function GET(_request: Request, context: RouteContext) {
@@ -21,6 +23,7 @@ export async function GET(_request: Request, context: RouteContext) {
     include: {
       evaluation: { include: { employee: true, cycle: true } },
       manager: true,
+      approvedBy: true,
     },
   });
 
@@ -43,6 +46,9 @@ export async function PATCH(request: Request, context: RouteContext) {
       objectives: body.objectives,
       supportPlan: body.supportPlan,
       checkpoints: body.checkpoints,
+      approvalStatus: body.approvalStatus,
+      approvedById: body.approvedById ?? undefined,
+      approvedAt: body.approvalStatus === 'APPROVED' ? new Date() : undefined,
     },
   });
 

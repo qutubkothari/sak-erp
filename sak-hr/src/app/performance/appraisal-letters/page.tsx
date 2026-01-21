@@ -26,24 +26,31 @@ type AppraisalLetter = {
   rating?: number | null;
   adjustment?: string | null;
   issuedOn: string;
+  approvalStatus?: string;
+  approvedBy?: Employee | null;
   evaluation: Evaluation;
 };
 
 export default function AppraisalLettersPage() {
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [letters, setLetters] = useState<AppraisalLetter[]>([]);
   const [form, setForm] = useState({ evaluationId: '', subject: '', summary: '', rating: '', adjustment: '' });
   const [search, setSearch] = useState('');
+  const [approverMap, setApproverMap] = useState<Record<string, string>>({});
 
   const loadData = async () => {
-    const [evalRes, letterRes] = await Promise.all([
+    const [empRes, evalRes, letterRes] = await Promise.all([
+      fetch('/api/employees'),
       fetch('/api/evaluations'),
       fetch('/api/appraisal-letters'),
     ]);
 
+    const empData = await empRes.json();
     const evalData = await evalRes.json();
     const letterData = await letterRes.json();
 
+    setEmployees(Array.isArray(empData) ? empData : []);
     setEvaluations(Array.isArray(evalData) ? evalData : []);
     setLetters(Array.isArray(letterData) ? letterData : []);
   };
@@ -82,6 +89,18 @@ export default function AppraisalLettersPage() {
   });
 
   const formattedDate = (value: string) => new Date(value).toLocaleDateString('en-GB');
+
+  const updateApproval = async (id: string, status: 'PENDING' | 'APPROVED' | 'REJECTED') => {
+    await fetch(`/api/appraisal-letters/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        approvalStatus: status,
+        approvedById: approverMap[id] || undefined,
+      }),
+    });
+    await loadData();
+  };
 
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
@@ -195,6 +214,38 @@ export default function AppraisalLettersPage() {
                   <span>Issued: {formattedDate(letter.issuedOn)}</span>
                   {letter.rating !== null && letter.rating !== undefined ? <span>Rating: {letter.rating}</span> : null}
                   {letter.adjustment ? <span>Adjustment: {letter.adjustment}</span> : null}
+                  {letter.approvalStatus ? <span>Approval: {letter.approvalStatus}</span> : null}
+                  {letter.approvedBy ? (
+                    <span>
+                      Approved By: {letter.approvedBy.firstName} {letter.approvedBy.lastName}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <select
+                    className="rounded border border-[#E8DCC4] px-3 py-2 text-xs"
+                    value={approverMap[letter.id] ?? ''}
+                    onChange={(e) => setApproverMap({ ...approverMap, [letter.id]: e.target.value })}
+                  >
+                    <option value="">Select approver</option>
+                    {employees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.firstName} {employee.lastName}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="rounded-lg border border-[#D9CBB6] px-3 py-2 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                    onClick={() => updateApproval(letter.id, 'APPROVED')}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    className="rounded-lg border border-[#E7C7C0] px-3 py-2 text-xs font-semibold text-[#7A2E2E] hover:bg-[#F8EDEC]"
+                    onClick={() => updateApproval(letter.id, 'REJECTED')}
+                  >
+                    Reject
+                  </button>
                 </div>
               </div>
             ))

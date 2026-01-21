@@ -19,6 +19,7 @@ export async function GET() {
           cycle: true,
         },
       },
+      approvedBy: true,
     },
   });
 

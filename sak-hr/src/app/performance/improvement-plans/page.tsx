@@ -27,6 +27,8 @@ type ImprovementPlan = {
   checkpoints?: string | null;
   startDate: string;
   endDate?: string | null;
+  approvalStatus?: string;
+  approvedBy?: Employee | null;
   evaluation: Evaluation;
   manager?: Employee | null;
 };
@@ -47,6 +49,7 @@ export default function ImprovementPlansPage() {
   });
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [approverMap, setApproverMap] = useState<Record<string, string>>({});
 
   const loadData = async () => {
     const [evalRes, empRes, planRes] = await Promise.all([
@@ -111,6 +114,18 @@ export default function ImprovementPlansPage() {
   });
 
   const formattedDate = (value: string) => new Date(value).toLocaleDateString('en-GB');
+
+  const updateApproval = async (id: string, status: 'PENDING' | 'APPROVED' | 'REJECTED') => {
+    await fetch(`/api/improvement-plans/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        approvalStatus: status,
+        approvedById: approverMap[id] || undefined,
+      }),
+    });
+    await loadData();
+  };
 
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
@@ -259,6 +274,38 @@ export default function ImprovementPlansPage() {
                   {plan.manager ? (
                     <span>Manager: {plan.manager.firstName} {plan.manager.lastName}</span>
                   ) : null}
+                  {plan.approvalStatus ? <span>Approval: {plan.approvalStatus}</span> : null}
+                  {plan.approvedBy ? (
+                    <span>
+                      Approved By: {plan.approvedBy.firstName} {plan.approvedBy.lastName}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <select
+                    className="rounded border border-[#E8DCC4] px-3 py-2 text-xs"
+                    value={approverMap[plan.id] ?? ''}
+                    onChange={(e) => setApproverMap({ ...approverMap, [plan.id]: e.target.value })}
+                  >
+                    <option value="">Select approver</option>
+                    {employees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.firstName} {employee.lastName}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="rounded-lg border border-[#D9CBB6] px-3 py-2 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                    onClick={() => updateApproval(plan.id, 'APPROVED')}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    className="rounded-lg border border-[#E7C7C0] px-3 py-2 text-xs font-semibold text-[#7A2E2E] hover:bg-[#F8EDEC]"
+                    onClick={() => updateApproval(plan.id, 'REJECTED')}
+                  >
+                    Reject
+                  </button>
                 </div>
               </div>
             ))

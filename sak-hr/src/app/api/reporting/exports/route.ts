@@ -97,11 +97,11 @@ export async function GET(request: Request) {
   if (type === 'appraisals') {
     const letters = await prisma.appraisalLetter.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { evaluation: { include: { employee: true, cycle: true } } },
+      include: { evaluation: { include: { employee: true, cycle: true } }, approvedBy: true },
     });
 
     const rows = [
-      ['Employee', 'Cycle', 'Subject', 'Issued On', 'Rating', 'Adjustment'],
+      ['Employee', 'Cycle', 'Subject', 'Issued On', 'Rating', 'Adjustment', 'Approval Status', 'Approved By'],
       ...letters.map((letter) => [
         `${letter.evaluation.employee.firstName} ${letter.evaluation.employee.lastName}`,
         letter.evaluation.cycle.name,
@@ -109,6 +109,8 @@ export async function GET(request: Request) {
         letter.issuedOn.toISOString(),
         letter.rating ?? '',
         letter.adjustment ?? '',
+        letter.approvalStatus,
+        letter.approvedBy ? `${letter.approvedBy.firstName} ${letter.approvedBy.lastName}` : '',
       ]),
     ];
 
@@ -124,11 +126,11 @@ export async function GET(request: Request) {
   if (type === 'improvement-plans') {
     const plans = await prisma.improvementPlan.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { evaluation: { include: { employee: true, cycle: true } }, manager: true },
+      include: { evaluation: { include: { employee: true, cycle: true } }, manager: true, approvedBy: true },
     });
 
     const rows = [
-      ['Employee', 'Cycle', 'Status', 'Start Date', 'End Date', 'Objectives', 'Support Plan', 'Manager'],
+      ['Employee', 'Cycle', 'Status', 'Start Date', 'End Date', 'Objectives', 'Support Plan', 'Manager', 'Approval Status', 'Approved By'],
       ...plans.map((plan) => [
         `${plan.evaluation.employee.firstName} ${plan.evaluation.employee.lastName}`,
         plan.evaluation.cycle.name,
@@ -138,6 +140,8 @@ export async function GET(request: Request) {
         plan.objectives,
         plan.supportPlan ?? '',
         plan.manager ? `${plan.manager.firstName} ${plan.manager.lastName}` : '',
+        plan.approvalStatus,
+        plan.approvedBy ? `${plan.approvedBy.firstName} ${plan.approvedBy.lastName}` : '',
       ]),
     ];
 

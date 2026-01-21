@@ -18,6 +18,7 @@ export async function GET() {
     include: {
       evaluation: { include: { employee: true, cycle: true } },
       manager: true,
+      approvedBy: true,
     },
   });
 
