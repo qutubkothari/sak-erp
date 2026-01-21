@@ -89,7 +89,9 @@ export async function GET(_request: Request, context: RouteContext) {
     return new Response(result.error, { status: 404 });
   }
 
-  return new Response(result.buffer, {
+  const pdfBytes = new Uint8Array(result.buffer);
+
+  return new Response(pdfBytes, {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="appraisal-letter-${id}.pdf"`,
