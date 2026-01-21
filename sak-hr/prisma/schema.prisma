@@ -95,8 +95,10 @@ model ReviewCycle {
   startDate   DateTime
   endDate     DateTime
   status      String
+  ratingScaleId String?
   createdAt   DateTime         @default(now())
   evaluations Evaluation[]
+  ratingScale RatingScale? @relation(fields: [ratingScaleId], references: [id])
 }
 
 model Competency {
@@ -165,4 +167,23 @@ model EvaluationApproval {
 
   evaluation Evaluation @relation(fields: [evaluationId], references: [id])
   approver    Employee? @relation("ApproverRelation", fields: [approverId], references: [id])
+}
+
+model RatingScale {
+  id        String         @id @default(uuid())
+  name      String
+  createdAt DateTime       @default(now())
+  levels    RatingLevel[]
+  cycles    ReviewCycle[]
+}
+
+model RatingLevel {
+  id            String       @id @default(uuid())
+  ratingScaleId String
+  label         String
+  minScore      Float
+  maxScore      Float
+  description   String?
+
+  ratingScale RatingScale @relation(fields: [ratingScaleId], references: [id])
 }

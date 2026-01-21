@@ -32,6 +32,11 @@ export default function PerformanceHomePage() {
               href: '/performance/criteria',
             },
             {
+              title: 'Rating Scales',
+              description: 'Create score bands and rating labels for evaluations.',
+              href: '/performance/scales',
+            },
+            {
               title: 'Evaluations',
               description: 'Launch evaluations, track approvals, and finalize ratings.',
               href: '/performance/evaluations',
