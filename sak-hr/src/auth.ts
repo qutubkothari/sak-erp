@@ -1,5 +1,4 @@
 import NextAuth from 'next-auth';
-import { PrismaAdapter } from '@auth/prisma-adapter';
 import Credentials from 'next-auth/providers/credentials';
 import { prisma } from './lib/prisma';
 import bcrypt from 'bcryptjs';
@@ -11,7 +10,6 @@ const loginSchema = z.object({
 });
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: PrismaAdapter(prisma),
   session: {
     strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60, // 30 days
@@ -53,7 +51,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return {
             id: user.id,
             email: user.email,
-            name: user.employee?.name || user.email,
+            name: user.employee ? `${user.employee.firstName} ${user.employee.lastName}` : user.email,
             role: user.role,
             employeeId: user.employee?.id,
           };
