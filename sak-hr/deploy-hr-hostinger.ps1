@@ -101,7 +101,12 @@ if [ ! -f .env ]; then
   cat <<EOF > .env
 NEXT_PUBLIC_API_BASE_URL=http://localhost:4000/api/v1
 DATABASE_URL=postgresql://sak_hr:sak_hr_password@localhost:5433/sak_hr?schema=public
+GEMINI_API_KEY=AIzaSyDHDirxcn8ERbWPZrRIaF3f6pNU76KTRFQ
 EOF
+else
+  if ! grep -q "GEMINI_API_KEY" .env; then
+    echo "GEMINI_API_KEY=AIzaSyDHDirxcn8ERbWPZrRIaF3f6pNU76KTRFQ" >> .env
+  fi
 fi
 sudo docker compose up -d
 '@ -f $APP_PATH
