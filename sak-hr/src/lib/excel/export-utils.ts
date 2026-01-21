@@ -256,7 +256,8 @@ export async function generatePerformanceReport(data: PerformanceData): Promise<
     });
   });
 
-  return await workbook.xlsx.writeBuffer() as Buffer;
+  const buffer = await workbook.xlsx.writeBuffer();
+  return buffer as any;
 }
 
 export async function generateEmployeeListExcel(
@@ -309,5 +310,6 @@ export async function generateEmployeeListExcel(
     });
   });
 
-  return await workbook.xlsx.writeBuffer() as Buffer;
+  const buffer = await workbook.xlsx.writeBuffer();
+  return buffer as any;
 }
