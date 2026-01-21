@@ -19,6 +19,62 @@ type Employee = {
   manager?: { firstName: string; lastName: string } | null;
 };
 
+const uaeLocations = [
+  'Abu Dhabi',
+  'Dubai',
+  'Sharjah',
+  'Ajman',
+  'Umm Al Quwain',
+  'Ras Al Khaimah',
+  'Fujairah',
+];
+
+const commonNationalities = [
+  'United Arab Emirates',
+  'India',
+  'Pakistan',
+  'Bangladesh',
+  'Philippines',
+  'Egypt',
+  'Nepal',
+  'Sri Lanka',
+  'Jordan',
+  'Lebanon',
+  'Syria',
+  'United Kingdom',
+  'United States',
+  'Canada',
+  'Australia',
+  'South Africa',
+  'Nigeria',
+  'Ethiopia',
+  'Kenya',
+  'Morocco',
+  'Tunisia',
+  'China',
+  'Japan',
+  'South Korea',
+  'Germany',
+  'France',
+  'Italy',
+  'Spain',
+  'Netherlands',
+  'Turkey',
+  'Iran',
+  'Iraq',
+  'Qatar',
+  'Saudi Arabia',
+  'Oman',
+  'Bahrain',
+  'Kuwait',
+  'Yemen',
+  'Afghanistan',
+  'Indonesia',
+  'Malaysia',
+  'Singapore',
+  'Other',
+];
+
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [form, setForm] = useState({
@@ -140,21 +196,33 @@ export default function EmployeesPage() {
               value={form.hireDate}
               onChange={(e) => setForm({ ...form, hireDate: e.target.value })}
             />
-            <input
+            <select
               className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
-              placeholder="Location (e.g., Dubai)"
               value={form.location}
               onChange={(e) => setForm({ ...form, location: e.target.value })}
-            />
-            <input
+            >
+              <option value="">Select location</option>
+              {uaeLocations.map((location) => (
+                <option key={location} value={location}>
+                  {location}
+                </option>
+              ))}
+            </select>
+            <select
               className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
-              placeholder="Nationality"
               value={form.nationality}
               onChange={(e) => setForm({ ...form, nationality: e.target.value })}
-            />
+            >
+              <option value="">Select nationality</option>
+              {commonNationalities.map((nationality) => (
+                <option key={nationality} value={nationality}>
+                  {nationality}
+                </option>
+              ))}
+            </select>
             <input
               className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
-              placeholder="Emirates ID"
+              placeholder="Emirates ID (784-XXXX-XXXXXXX-X)"
               value={form.emiratesId}
               onChange={(e) => setForm({ ...form, emiratesId: e.target.value })}
             />
