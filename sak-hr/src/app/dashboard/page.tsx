@@ -30,6 +30,10 @@ export default function HrDashboardPage() {
               title: 'Approvals',
               description: 'Review pending HR requests from your team.',
             },
+            {
+              title: 'Performance Reviews',
+              description: 'Launch evaluation cycles, KPIs, and competency reviews.',
+            },
           ].map((card) => (
             <div
               key={card.title}
