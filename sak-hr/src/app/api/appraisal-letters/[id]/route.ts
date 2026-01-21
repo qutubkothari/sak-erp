@@ -22,7 +22,6 @@ export async function GET(_request: Request, context: RouteContext) {
           cycle: true,
         },
       },
-      approvedBy: true,
     },
   });
 

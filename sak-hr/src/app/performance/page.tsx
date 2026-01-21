@@ -1,14 +1,20 @@
 import Link from 'next/link';
+import NotificationBell from '@/components/NotificationBell';
 
 export default function PerformanceHomePage() {
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
       <div className="mx-auto max-w-6xl px-6 py-12">
         <header className="mb-8">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#8B6F47]">
-            Performance Evaluation
-          </p>
-          <h1 className="mt-3 text-3xl font-bold text-[#36454F]">Evaluation Workspace</h1>
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#8B6F47]">
+                Performance Evaluation
+              </p>
+              <h1 className="mt-3 text-3xl font-bold text-[#36454F]">Evaluation Workspace</h1>
+            </div>
+            <NotificationBell />
+          </div>
           <p className="mt-2 text-sm text-[#6F4E37]">
             UAE-aligned performance evaluation workflow with HR approvals and audit-ready artifacts.
           </p>
@@ -16,6 +22,21 @@ export default function PerformanceHomePage() {
 
         <div className="grid gap-6 md:grid-cols-2">
           {[
+            {
+              title: 'Goals & Objectives',
+              description: 'Set SMART goals aligned with performance competencies.',
+              href: '/performance/goals',
+            },
+            {
+              title: 'Self Assessment',
+              description: 'Employee self-evaluation with competency ratings and KPI achievements.',
+              href: '/performance/self-assessment',
+            },
+            {
+              title: 'Manager Review',
+              description: 'Conduct manager evaluations with compensation recommendations.',
+              href: '/performance/manager-review',
+            },
             {
               title: 'Review Cycles',
               description: 'Create UAE-aligned review cycles with calibration windows.',

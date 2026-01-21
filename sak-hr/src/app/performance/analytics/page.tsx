@@ -1,6 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 
 type AnalyticsResponse = {
   totals: {
@@ -24,7 +39,10 @@ type AnalyticsResponse = {
   ratingDistribution: { label: string; count: number }[];
 };
 
-const formatScore = (value: number | null) => (value === null ? '-' : value.toFixed(2));
+const formatScore = (value: number | null | undefined) => (value === null || value === undefined ? '-' : value.toFixed(2));
+
+// UAE-themed colors
+const COLORS = ['#6F4E37', '#8B6F47', '#A0826D', '#B8956A', '#C9A77C', '#D4B996'];
 
 export default function PerformanceAnalyticsPage() {
   const [data, setData] = useState<AnalyticsResponse | null>(null);
@@ -41,8 +59,6 @@ export default function PerformanceAnalyticsPage() {
   useEffect(() => {
     loadData();
   }, []);
-
-  const getMax = (values: number[]) => Math.max(1, ...values);
 
   const fetchAiInsights = async () => {
     if (!data) return;
@@ -63,12 +79,13 @@ export default function PerformanceAnalyticsPage() {
 
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
-      <div className="mx-auto max-w-6xl px-6 py-12">
+      <div className="mx-auto max-w-7xl px-6 py-12">
         <h1 className="text-2xl font-bold text-[#36454F]">Performance Analytics</h1>
         <p className="mt-2 text-sm text-[#6F4E37]">
           Snapshot of evaluation coverage, feedback activity, and rating trends.
         </p>
 
+        {/* Stats Cards */}
         <div className="mt-6 grid gap-4 md:grid-cols-4">
           {[
             { label: 'Employees', value: data?.totals.employees ?? 0 },
@@ -83,127 +100,176 @@ export default function PerformanceAnalyticsPage() {
           ))}
         </div>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
+        {/* Charts Row 1 */}
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          {/* Evaluations by Status - Bar Chart */}
           <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
-            <h2 className="text-sm font-semibold text-[#36454F]">Scores (Average)</h2>
-            <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
-              <p>Overall: {formatScore(data?.averages.overallScore ?? null)}</p>
-              <p>Manager: {formatScore(data?.averages.managerScore ?? null)}</p>
-              <p>Final Rating: {formatScore(data?.averages.finalRating ?? null)}</p>
-            </div>
+            <h2 className="text-sm font-semibold text-[#36454F] mb-4">Evaluations by Status</h2>
+            {data?.evaluationsByStatus && data.evaluationsByStatus.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={data.evaluationsByStatus}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E8DCC4" />
+                  <XAxis
+                    dataKey="status"
+                    tick={{ fontSize: 12, fill: '#6F4E37' }}
+                    tickFormatter={(value) => value.replace('_', ' ')}
+                  />
+                  <YAxis tick={{ fontSize: 12, fill: '#6F4E37' }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#FFFFFF',
+                      border: '2px solid #E8DCC4',
+                      borderRadius: '8px',
+                    }}
+                  />
+                  <Bar dataKey="count" fill="#6F4E37" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-xs text-[#9C8162] text-center py-20">No evaluation data yet.</p>
+            )}
           </div>
 
+          {/* Rating Distribution - Pie Chart */}
           <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
-            <h2 className="text-sm font-semibold text-[#36454F]">Workflow Coverage</h2>
-            <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
-              <p>Review Cycles: {data?.totals.cycles ?? 0}</p>
-              <p>Calibration Sessions: {data?.totals.calibrationSessions ?? 0}</p>
-              <p>Feedback Requests: {data?.totals.feedbackRequests ?? 0}</p>
-              <p>Feedback Responses: {data?.totals.feedbackResponses ?? 0}</p>
-              <p>Improvement Plans: {data?.totals.improvementPlans ?? 0}</p>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
-            <h2 className="text-sm font-semibold text-[#36454F]">Rating Distribution</h2>
-            <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
-              {(data?.ratingDistribution ?? []).map((bucket) => (
-                <div key={bucket.label} className="flex items-center justify-between">
-                  <span>{bucket.label}</span>
-                  <span className="font-semibold text-[#36454F]">{bucket.count}</span>
-                </div>
-              ))}
-              {data?.ratingDistribution?.length ? null : <p className="text-xs text-[#9C8162]">No ratings yet.</p>}
-            </div>
-            {data?.ratingDistribution?.length ? (
-              <div className="mt-4 space-y-2">
-                {data.ratingDistribution.map((bucket) => {
-                  const max = getMax(data.ratingDistribution.map((item) => item.count));
-                  const width = Math.round((bucket.count / max) * 100);
-                  return (
-                    <div key={bucket.label}>
-                      <div className="flex items-center justify-between text-[11px] text-[#9C8162]">
-                        <span>{bucket.label}</span>
-                        <span>{bucket.count}</span>
-                      </div>
-                      <div className="mt-1 h-2 w-full rounded-full bg-[#F4ECE2]">
-                        <div className="h-2 rounded-full bg-[#6F4E37]" style={{ width: `${width}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
+            <h2 className="text-sm font-semibold text-[#36454F] mb-4">Rating Distribution</h2>
+            {data?.ratingDistribution && data.ratingDistribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={data.ratingDistribution}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={(entry: any) =>
+                      `${entry.rating}: ${(entry.percent * 100).toFixed(0)}%`
+                    }
+                    outerRadius={80}
+                    fill="#6F4E37"
+                    dataKey="count"
+                  >
+                    {data.ratingDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#FFFFFF',
+                      border: '2px solid #E8DCC4',
+                      borderRadius: '8px',
+                    }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: '12px' }}
+                    iconType="circle"
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-xs text-[#9C8162] text-center py-20">No rating data yet.</p>
+            )}
           </div>
         </div>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
+        {/* Charts Row 2 */}
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          {/* Departments - Bar Chart */}
           <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
-            <h2 className="text-sm font-semibold text-[#36454F]">Evaluations by Status</h2>
-            <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
-              {(data?.evaluationsByStatus ?? []).map((row) => (
-                <div key={row.status} className="flex items-center justify-between">
-                  <span>{row.status.replace('_', ' ')}</span>
-                  <span className="font-semibold text-[#36454F]">{row.count}</span>
-                </div>
-              ))}
-              {data?.evaluationsByStatus?.length ? null : (
-                <p className="text-xs text-[#9C8162]">No evaluations yet.</p>
-              )}
-            </div>
-            {data?.evaluationsByStatus?.length ? (
-              <div className="mt-4 space-y-2">
-                {data.evaluationsByStatus.map((row) => {
-                  const max = getMax(data.evaluationsByStatus.map((item) => item.count));
-                  const width = Math.round((row.count / max) * 100);
-                  return (
-                    <div key={row.status}>
-                      <div className="flex items-center justify-between text-[11px] text-[#9C8162]">
-                        <span>{row.status.replace('_', ' ')}</span>
-                        <span>{row.count}</span>
-                      </div>
-                      <div className="mt-1 h-2 w-full rounded-full bg-[#F4ECE2]">
-                        <div className="h-2 rounded-full bg-[#6F4E37]" style={{ width: `${width}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
+            <h2 className="text-sm font-semibold text-[#36454F] mb-4">Employees by Department</h2>
+            {data?.departments && data.departments.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={data.departments} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E8DCC4" />
+                  <XAxis type="number" tick={{ fontSize: 12, fill: '#6F4E37' }} />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    tick={{ fontSize: 12, fill: '#6F4E37' }}
+                    width={120}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#FFFFFF',
+                      border: '2px solid #E8DCC4',
+                      borderRadius: '8px',
+                    }}
+                  />
+                  <Bar dataKey="employeeCount" fill="#8B6F47" radius={[0, 8, 8, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-xs text-[#9C8162] text-center py-20">No department data yet.</p>
+            )}
           </div>
 
+          {/* Scores Summary */}
           <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
-            <h2 className="text-sm font-semibold text-[#36454F]">Employees by Department</h2>
-            <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
-              {(data?.departments ?? []).map((dept) => (
-                <div key={dept.id} className="flex items-center justify-between">
-                  <span>{dept.name}</span>
-                  <span className="font-semibold text-[#36454F]">{dept.employeeCount}</span>
+            <h2 className="text-sm font-semibold text-[#36454F] mb-4">Average Scores</h2>
+            <div className="space-y-6 py-8">
+              {[
+                {
+                  label: 'Overall Score',
+                  value: data?.averages.overallScore,
+                  color: '#6F4E37',
+                },
+                {
+                  label: 'Manager Score',
+                  value: data?.averages.managerScore,
+                  color: '#8B6F47',
+                },
+                {
+                  label: 'Final Rating',
+                  value: data?.averages.finalRating,
+                  color: '#A0826D',
+                },
+              ].map((item) => (
+                <div key={item.label}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-[#6F4E37]">{item.label}</span>
+                    <span className="text-2xl font-bold text-[#36454F]">
+                      {formatScore(item.value)}
+                    </span>
+                  </div>
+                  <div className="h-3 w-full rounded-full bg-[#F4ECE2]">
+                    <div
+                      className="h-3 rounded-full transition-all duration-500"
+                      style={{
+                        width: `${item.value ? (item.value / 5) * 100 : 0}%`,
+                        backgroundColor: item.color,
+                      }}
+                    />
+                  </div>
                 </div>
               ))}
-              {data?.departments?.length ? null : (
-                <p className="text-xs text-[#9C8162]">No departments yet.</p>
-              )}
             </div>
-            {data?.departments?.length ? (
-              <div className="mt-4 space-y-2">
-                {data.departments.map((dept) => {
-                  const max = getMax(data.departments.map((item) => item.employeeCount));
-                  const width = Math.round((dept.employeeCount / max) * 100);
-                  return (
-                    <div key={dept.id}>
-                      <div className="flex items-center justify-between text-[11px] text-[#9C8162]">
-                        <span>{dept.name}</span>
-                        <span>{dept.employeeCount}</span>
-                      </div>
-                      <div className="mt-1 h-2 w-full rounded-full bg-[#F4ECE2]">
-                        <div className="h-2 rounded-full bg-[#6F4E37]" style={{ width: `${width}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
+
+            <div className="mt-6 pt-6 border-t border-[#E8DCC4]">
+              <h3 className="text-xs font-semibold text-[#6F4E37] mb-3">Workflow Coverage</h3>
+              <div className="space-y-2 text-sm text-[#4B5563]">
+                <div className="flex justify-between">
+                  <span>Review Cycles</span>
+                  <span className="font-semibold text-[#36454F]">{data?.totals.cycles ?? 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Calibration Sessions</span>
+                  <span className="font-semibold text-[#36454F]">
+                    {data?.totals.calibrationSessions ?? 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Feedback Responses</span>
+                  <span className="font-semibold text-[#36454F]">
+                    {data?.totals.feedbackResponses ?? 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Improvement Plans</span>
+                  <span className="font-semibold text-[#36454F]">
+                    {data?.totals.improvementPlans ?? 0}
+                  </span>
+                </div>
               </div>
-            ) : null}
+            </div>
           </div>
         </div>
 
