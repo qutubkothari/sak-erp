@@ -121,7 +121,8 @@ Write-Host "`n[8/8] Build and Restart" -ForegroundColor Yellow
 $restartCmd = @'
 cd "{0}"
 pnpm build
-PORT={1} NODE_ENV=production pm2 start pnpm --name {2} -- start || pm2 restart {2} --update-env
+pm2 delete {2} || true
+PORT={1} NODE_ENV=production pm2 start pnpm --name {2} -- start
 pm2 save
 pm2 list
 '@ -f $APP_PATH, $APP_PORT, $PM2_PROCESS
