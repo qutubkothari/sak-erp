@@ -2060,31 +2060,40 @@ function JobOrdersPageContent() {
                 })()}
               </div>
 
-              <div className="col-span-2 flex justify-end">
-                <button
-                  onClick={handleRetryIssueMaterials}
-                  disabled={loading || ['COMPLETED', 'CANCELLED'].includes(String(selectedJobOrder.status || '').toUpperCase())}
-                  className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-800 disabled:opacity-50 mr-2"
-                  title="Re-run material issuing for this job order"
-                >
-                  Retry Issue Materials
-                </button>
-                <button
-                  onClick={handleRepairSmartAndIssue}
-                  disabled={loading || ['COMPLETED', 'CANCELLED'].includes(String(selectedJobOrder.status || '').toUpperCase())}
-                  className="px-4 py-2 bg-indigo-700 text-white rounded hover:bg-indigo-800 disabled:opacity-50 mr-2"
-                  title="Auto-create missing sub-assemblies (with QC auto-approval) then re-issue materials"
-                >
-                  Repair Smart + Issue
-                </button>
-                <button
-                  onClick={openQcModal}
-                  disabled={selectedJobOrder.status !== 'COMPLETED' || qcAlreadyApplied}
-                  className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50"
-                >
-                  {qcAlreadyApplied ? 'Job Order Processed' : 'Complete QC'}
-                </button>
-              </div>
+              {(() => {
+                const qcLocked = Boolean(qcSummary?.isQcApplied) &&
+                  (qcSummary?.pendingUidsCount ?? 0) === 0 &&
+                  (qcSummary?.rejectedUidsCount ?? 0) === 0 &&
+                  (qcSummary?.totalUidsCount ?? 0) > 0;
+
+                return (
+                  <div className="col-span-2 flex justify-end">
+                    <button
+                      onClick={handleRetryIssueMaterials}
+                      disabled={loading || ['COMPLETED', 'CANCELLED'].includes(String(selectedJobOrder.status || '').toUpperCase())}
+                      className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-800 disabled:opacity-50 mr-2"
+                      title="Re-run material issuing for this job order"
+                    >
+                      Retry Issue Materials
+                    </button>
+                    <button
+                      onClick={handleRepairSmartAndIssue}
+                      disabled={loading || ['COMPLETED', 'CANCELLED'].includes(String(selectedJobOrder.status || '').toUpperCase())}
+                      className="px-4 py-2 bg-indigo-700 text-white rounded hover:bg-indigo-800 disabled:opacity-50 mr-2"
+                      title="Auto-create missing sub-assemblies (with QC auto-approval) then re-issue materials"
+                    >
+                      Repair Smart + Issue
+                    </button>
+                    <button
+                      onClick={openQcModal}
+                      disabled={selectedJobOrder.status !== 'COMPLETED' || qcLocked}
+                      className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      {qcLocked ? 'Job Order Processed' : 'Complete QC'}
+                    </button>
+                  </div>
+                );
+              })()}
 
               <div className="col-span-2 text-xs text-gray-600">
                 Smart Job Orders issue materials at <strong>creation</strong> (stock reduces immediately). Completion consumes any remaining and adds finished goods.
