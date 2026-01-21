@@ -87,6 +87,8 @@ model Employee {
 
   evaluations       Evaluation[]
   approvals         EvaluationApproval[] @relation("ApproverRelation")
+  feedbackRequests  FeedbackRequest[]
+  feedbackResponses FeedbackResponse[]
 }
 
 model ReviewCycle {
