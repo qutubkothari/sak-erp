@@ -99,6 +99,7 @@ model ReviewCycle {
   createdAt   DateTime         @default(now())
   evaluations Evaluation[]
   ratingScale RatingScale? @relation(fields: [ratingScaleId], references: [id])
+  calibrationSessions CalibrationSession[]
 }
 
 model Competency {
