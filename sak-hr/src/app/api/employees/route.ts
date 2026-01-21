@@ -13,6 +13,8 @@ type EmployeeInput = {
   location?: string;
   nationality?: string;
   emiratesId?: string;
+  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'TERMINATED';
+  employmentType?: 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'PROBATION';
 };
 
 export async function GET() {
@@ -44,6 +46,8 @@ export async function POST(request: Request) {
       location: body.location || null,
       nationality: body.nationality || null,
       emiratesId: body.emiratesId || null,
+      status: body.status ?? 'ACTIVE',
+      employmentType: body.employmentType ?? 'FULL_TIME',
     },
   });
 

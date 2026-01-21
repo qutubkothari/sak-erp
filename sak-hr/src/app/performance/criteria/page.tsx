@@ -24,6 +24,10 @@ export default function CriteriaPage() {
   const [kpiForm, setKpiForm] = useState({ name: '', description: '', unit: '', weight: 1 });
   const [competencySearch, setCompetencySearch] = useState('');
   const [kpiSearch, setKpiSearch] = useState('');
+  const [editingCompetencyId, setEditingCompetencyId] = useState<string | null>(null);
+  const [editingCompetencyForm, setEditingCompetencyForm] = useState({ name: '', description: '', weight: 1 });
+  const [editingKpiId, setEditingKpiId] = useState<string | null>(null);
+  const [editingKpiForm, setEditingKpiForm] = useState({ name: '', description: '', unit: '', weight: 1 });
 
   const fetchData = async () => {
     const [compRes, kpiRes] = await Promise.all([
@@ -59,6 +63,57 @@ export default function CriteriaPage() {
       body: JSON.stringify(kpiForm),
     });
     setKpiForm({ name: '', description: '', unit: '', weight: 1 });
+    await fetchData();
+  };
+
+  const startEditCompetency = (competency: Competency) => {
+    setEditingCompetencyId(competency.id);
+    setEditingCompetencyForm({
+      name: competency.name,
+      description: competency.description ?? '',
+      weight: competency.weight,
+    });
+  };
+
+  const saveCompetency = async () => {
+    if (!editingCompetencyId) return;
+    await fetch(`/api/competencies/${editingCompetencyId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editingCompetencyForm),
+    });
+    setEditingCompetencyId(null);
+    await fetchData();
+  };
+
+  const deleteCompetency = async (id: string) => {
+    await fetch(`/api/competencies/${id}`, { method: 'DELETE' });
+    await fetchData();
+  };
+
+  const startEditKpi = (kpi: KPI) => {
+    setEditingKpiId(kpi.id);
+    setEditingKpiForm({
+      name: kpi.name,
+      description: kpi.description ?? '',
+      unit: kpi.unit ?? '',
+      weight: kpi.weight,
+    });
+  };
+
+  const saveKpi = async () => {
+    if (!editingKpiId) return;
+    await fetch(`/api/kpis/${editingKpiId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editingKpiForm),
+    });
+    setEditingKpiId(null);
+    await fetchData();
+  };
+
+  const deleteKpi = async (id: string) => {
+    await fetch(`/api/kpis/${id}`, { method: 'DELETE' });
     await fetchData();
   };
 
@@ -123,9 +178,64 @@ export default function CriteriaPage() {
               ) : (
                 filteredCompetencies.map((comp) => (
                   <div key={comp.id} className="rounded-lg border border-[#E8DCC4] p-3">
-                    <p className="text-sm font-semibold">{comp.name}</p>
-                    {comp.description ? <p className="text-xs text-[#6F4E37]">{comp.description}</p> : null}
-                    <p className="text-[11px] text-[#9C8162]">Weight: {comp.weight}</p>
+                    {editingCompetencyId === comp.id ? (
+                      <div className="grid gap-2">
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          value={editingCompetencyForm.name}
+                          onChange={(e) => setEditingCompetencyForm({ ...editingCompetencyForm, name: e.target.value })}
+                        />
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          value={editingCompetencyForm.description}
+                          onChange={(e) =>
+                            setEditingCompetencyForm({ ...editingCompetencyForm, description: e.target.value })
+                          }
+                        />
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          type="number"
+                          value={editingCompetencyForm.weight}
+                          onChange={(e) =>
+                            setEditingCompetencyForm({ ...editingCompetencyForm, weight: Number(e.target.value) })
+                          }
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            className="rounded border border-[#D9CBB6] px-2 py-1 text-[11px] font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                            onClick={saveCompetency}
+                          >
+                            Save
+                          </button>
+                          <button
+                            className="rounded border border-[#E8DCC4] px-2 py-1 text-[11px] text-[#9C8162]"
+                            onClick={() => setEditingCompetencyId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-semibold">{comp.name}</p>
+                        {comp.description ? <p className="text-xs text-[#6F4E37]">{comp.description}</p> : null}
+                        <p className="text-[11px] text-[#9C8162]">Weight: {comp.weight}</p>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            className="rounded border border-[#D9CBB6] px-2 py-1 text-[11px] font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                            onClick={() => startEditCompetency(comp)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="rounded border border-[#E7C7C0] px-2 py-1 text-[11px] font-semibold text-[#7A2E2E] hover:bg-[#F8EDEC]"
+                            onClick={() => deleteCompetency(comp.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))
               )}
@@ -182,10 +292,66 @@ export default function CriteriaPage() {
               ) : (
                 filteredKpis.map((kpi) => (
                   <div key={kpi.id} className="rounded-lg border border-[#E8DCC4] p-3">
-                    <p className="text-sm font-semibold">{kpi.name}</p>
-                    {kpi.description ? <p className="text-xs text-[#6F4E37]">{kpi.description}</p> : null}
-                    <p className="text-[11px] text-[#9C8162]">Weight: {kpi.weight}</p>
-                    {kpi.unit ? <p className="text-[11px] text-[#9C8162]">Unit: {kpi.unit}</p> : null}
+                    {editingKpiId === kpi.id ? (
+                      <div className="grid gap-2">
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          value={editingKpiForm.name}
+                          onChange={(e) => setEditingKpiForm({ ...editingKpiForm, name: e.target.value })}
+                        />
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          value={editingKpiForm.description}
+                          onChange={(e) => setEditingKpiForm({ ...editingKpiForm, description: e.target.value })}
+                        />
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          value={editingKpiForm.unit}
+                          onChange={(e) => setEditingKpiForm({ ...editingKpiForm, unit: e.target.value })}
+                        />
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          type="number"
+                          value={editingKpiForm.weight}
+                          onChange={(e) => setEditingKpiForm({ ...editingKpiForm, weight: Number(e.target.value) })}
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            className="rounded border border-[#D9CBB6] px-2 py-1 text-[11px] font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                            onClick={saveKpi}
+                          >
+                            Save
+                          </button>
+                          <button
+                            className="rounded border border-[#E8DCC4] px-2 py-1 text-[11px] text-[#9C8162]"
+                            onClick={() => setEditingKpiId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-semibold">{kpi.name}</p>
+                        {kpi.description ? <p className="text-xs text-[#6F4E37]">{kpi.description}</p> : null}
+                        <p className="text-[11px] text-[#9C8162]">Weight: {kpi.weight}</p>
+                        {kpi.unit ? <p className="text-[11px] text-[#9C8162]">Unit: {kpi.unit}</p> : null}
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            className="rounded border border-[#D9CBB6] px-2 py-1 text-[11px] font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                            onClick={() => startEditKpi(kpi)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="rounded border border-[#E7C7C0] px-2 py-1 text-[11px] font-semibold text-[#7A2E2E] hover:bg-[#F8EDEC]"
+                            onClick={() => deleteKpi(kpi.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))
               )}

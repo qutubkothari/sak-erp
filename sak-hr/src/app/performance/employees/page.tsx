@@ -29,6 +29,9 @@ const uaeLocations = [
   'Fujairah',
 ];
 
+const employmentTypes = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'PROBATION'] as const;
+const employmentStatuses = ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'TERMINATED'] as const;
+
 const commonNationalities = [
   'United Arab Emirates',
   'India',
@@ -86,11 +89,15 @@ export default function EmployeesPage() {
     location: '',
     nationality: '',
     emiratesId: '',
+    status: 'ACTIVE',
+    employmentType: 'FULL_TIME',
   });
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [employmentFilter, setEmploymentFilter] = useState('ALL');
+  const [statusMap, setStatusMap] = useState<Record<string, string>>({});
+  const [employmentMap, setEmploymentMap] = useState<Record<string, string>>({});
 
   const fetchEmployees = async () => {
     const response = await fetch('/api/employees');
@@ -119,9 +126,25 @@ export default function EmployeesPage() {
       location: '',
       nationality: '',
       emiratesId: '',
+      status: 'ACTIVE',
+      employmentType: 'FULL_TIME',
     });
     await fetchEmployees();
     setLoading(false);
+  };
+
+  const updateEmployee = async (employeeId: string) => {
+    await fetch(`/api/employees/${employeeId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: statusMap[employeeId],
+          employmentType: employmentMap[employeeId],
+        }),
+      }
+    );
+    await fetchEmployees();
   };
 
   const filteredEmployees = employees.filter((employee) => {
@@ -196,6 +219,28 @@ export default function EmployeesPage() {
               value={form.hireDate}
               onChange={(e) => setForm({ ...form, hireDate: e.target.value })}
             />
+            <select
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value })}
+            >
+              {employmentStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {status.replace('_', ' ')}
+                </option>
+              ))}
+            </select>
+            <select
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              value={form.employmentType}
+              onChange={(e) => setForm({ ...form, employmentType: e.target.value })}
+            >
+              {employmentTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type.replace('_', ' ')}
+                </option>
+              ))}
+            </select>
             <select
               className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
               value={form.location}
@@ -284,7 +329,7 @@ export default function EmployeesPage() {
               <div className="px-4 py-10 text-center text-sm text-[#9C8162]">No employees match the filters.</div>
             ) : (
               filteredEmployees.map((employee) => (
-                <div key={employee.id} className="grid grid-cols-6 gap-2 px-4 py-4 text-sm">
+                <div key={employee.id} className="grid grid-cols-7 gap-2 px-4 py-4 text-sm">
                   <div>
                     <p className="font-semibold text-[#36454F]">
                       {employee.firstName} {employee.lastName}
@@ -320,6 +365,36 @@ export default function EmployeesPage() {
                   </div>
                   <div>
                     <p className="text-xs text-[#6F4E37]">{formattedDate(employee.hireDate)}</p>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <select
+                      className="w-full rounded border border-[#E8DCC4] px-2 py-1 text-[11px]"
+                      value={statusMap[employee.id] ?? employee.status ?? 'ACTIVE'}
+                      onChange={(e) => setStatusMap({ ...statusMap, [employee.id]: e.target.value })}
+                    >
+                      {employmentStatuses.map((status) => (
+                        <option key={status} value={status}>
+                          {status.replace('_', ' ')}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="w-full rounded border border-[#E8DCC4] px-2 py-1 text-[11px]"
+                      value={employmentMap[employee.id] ?? employee.employmentType ?? 'FULL_TIME'}
+                      onChange={(e) => setEmploymentMap({ ...employmentMap, [employee.id]: e.target.value })}
+                    >
+                      {employmentTypes.map((type) => (
+                        <option key={type} value={type}>
+                          {type.replace('_', ' ')}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="w-full rounded border border-[#D9CBB6] px-2 py-1 text-[11px] font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                      onClick={() => updateEmployee(employee.id)}
+                    >
+                      Update
+                    </button>
                   </div>
                 </div>
               ))

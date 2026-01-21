@@ -57,6 +57,11 @@ export default function PerformanceHomePage() {
               href: '/performance/analytics',
             },
             {
+              title: 'Reports',
+              description: 'Generate enterprise reporting packs and exports.',
+              href: '/performance/reports',
+            },
+            {
               title: 'Improvement Plans',
               description: 'Create targeted improvement plans after evaluations.',
               href: '/performance/improvement-plans',

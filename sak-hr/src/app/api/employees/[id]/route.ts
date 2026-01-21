@@ -1,0 +1,38 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
+
+type EmployeeUpdate = {
+  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'TERMINATED';
+  employmentType?: 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'PROBATION';
+  departmentId?: string | null;
+  roleId?: string | null;
+  managerId?: string | null;
+  location?: string | null;
+  nationality?: string | null;
+  emiratesId?: string | null;
+};
+
+export async function PATCH(request: Request, context: RouteContext) {
+  const { id } = await context.params;
+  const body = (await request.json()) as EmployeeUpdate;
+
+  const employee = await prisma.employee.update({
+    where: { id },
+    data: {
+      status: body.status,
+      employmentType: body.employmentType,
+      departmentId: body.departmentId ?? undefined,
+      roleId: body.roleId ?? undefined,
+      managerId: body.managerId ?? undefined,
+      location: body.location ?? undefined,
+      nationality: body.nationality ?? undefined,
+      emiratesId: body.emiratesId ?? undefined,
+    },
+  });
+
+  return NextResponse.json(employee);
+}

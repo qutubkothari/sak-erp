@@ -28,6 +28,9 @@ const formatScore = (value: number | null) => (value === null ? '-' : value.toFi
 
 export default function PerformanceAnalyticsPage() {
   const [data, setData] = useState<AnalyticsResponse | null>(null);
+  const [aiPrompt, setAiPrompt] = useState('Summarize risks, trends, and recommended actions.');
+  const [aiResponse, setAiResponse] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
 
   const loadData = async () => {
     const response = await fetch('/api/performance-analytics');
@@ -38,6 +41,25 @@ export default function PerformanceAnalyticsPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const getMax = (values: number[]) => Math.max(1, ...values);
+
+  const fetchAiInsights = async () => {
+    if (!data) return;
+    setAiLoading(true);
+    setAiResponse('');
+    const response = await fetch('/api/ai/insights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: aiPrompt,
+        metrics: data,
+      }),
+    });
+    const payload = await response.json();
+    setAiResponse(payload.message ?? payload.summary ?? 'No response');
+    setAiLoading(false);
+  };
 
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
@@ -93,6 +115,25 @@ export default function PerformanceAnalyticsPage() {
               ))}
               {data?.ratingDistribution?.length ? null : <p className="text-xs text-[#9C8162]">No ratings yet.</p>}
             </div>
+            {data?.ratingDistribution?.length ? (
+              <div className="mt-4 space-y-2">
+                {data.ratingDistribution.map((bucket) => {
+                  const max = getMax(data.ratingDistribution.map((item) => item.count));
+                  const width = Math.round((bucket.count / max) * 100);
+                  return (
+                    <div key={bucket.label}>
+                      <div className="flex items-center justify-between text-[11px] text-[#9C8162]">
+                        <span>{bucket.label}</span>
+                        <span>{bucket.count}</span>
+                      </div>
+                      <div className="mt-1 h-2 w-full rounded-full bg-[#F4ECE2]">
+                        <div className="h-2 rounded-full bg-[#6F4E37]" style={{ width: `${width}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -110,6 +151,25 @@ export default function PerformanceAnalyticsPage() {
                 <p className="text-xs text-[#9C8162]">No evaluations yet.</p>
               )}
             </div>
+            {data?.evaluationsByStatus?.length ? (
+              <div className="mt-4 space-y-2">
+                {data.evaluationsByStatus.map((row) => {
+                  const max = getMax(data.evaluationsByStatus.map((item) => item.count));
+                  const width = Math.round((row.count / max) * 100);
+                  return (
+                    <div key={row.status}>
+                      <div className="flex items-center justify-between text-[11px] text-[#9C8162]">
+                        <span>{row.status.replace('_', ' ')}</span>
+                        <span>{row.count}</span>
+                      </div>
+                      <div className="mt-1 h-2 w-full rounded-full bg-[#F4ECE2]">
+                        <div className="h-2 rounded-full bg-[#6F4E37]" style={{ width: `${width}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
@@ -125,6 +185,25 @@ export default function PerformanceAnalyticsPage() {
                 <p className="text-xs text-[#9C8162]">No departments yet.</p>
               )}
             </div>
+            {data?.departments?.length ? (
+              <div className="mt-4 space-y-2">
+                {data.departments.map((dept) => {
+                  const max = getMax(data.departments.map((item) => item.employeeCount));
+                  const width = Math.round((dept.employeeCount / max) * 100);
+                  return (
+                    <div key={dept.id}>
+                      <div className="flex items-center justify-between text-[11px] text-[#9C8162]">
+                        <span>{dept.name}</span>
+                        <span>{dept.employeeCount}</span>
+                      </div>
+                      <div className="mt-1 h-2 w-full rounded-full bg-[#F4ECE2]">
+                        <div className="h-2 rounded-full bg-[#6F4E37]" style={{ width: `${width}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -150,6 +229,35 @@ export default function PerformanceAnalyticsPage() {
               ))
             }
           </div>
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-[#36454F]">AI Insights</h2>
+          <p className="mt-2 text-xs text-[#6F4E37]">Generate leadership-ready insights from live HR analytics.</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <textarea
+              className="md:col-span-2 min-h-[96px] rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+            />
+            <div className="flex flex-col gap-3">
+              <button
+                className="rounded-lg bg-[#6F4E37] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5A3E2C]"
+                onClick={fetchAiInsights}
+                disabled={aiLoading}
+              >
+                {aiLoading ? 'Generating...' : 'Generate Insights'}
+              </button>
+              <div className="rounded border border-dashed border-[#E8DCC4] px-3 py-2 text-[11px] text-[#9C8162]">
+                Requires Gemini or OpenAI API key on server.
+              </div>
+            </div>
+          </div>
+          {aiResponse ? (
+            <div className="mt-4 rounded-lg border border-[#E8DCC4] bg-[#FDF9F3] p-4 text-sm text-[#36454F]">
+              {aiResponse}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

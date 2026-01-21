@@ -16,6 +16,7 @@ export default function ReviewCyclesPage() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusMap, setStatusMap] = useState<Record<string, string>>({});
 
   const fetchCycles = async () => {
     const response = await fetch('/api/review-cycles');
@@ -47,6 +48,17 @@ export default function ReviewCyclesPage() {
     const matchesStatus = statusFilter === 'ALL' || cycle.status === statusFilter;
     return matchesQuery && matchesStatus;
   });
+
+  const updateCycleStatus = async (cycleId: string) => {
+    await fetch(`/api/review-cycles/${cycleId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: statusMap[cycleId] }),
+      }
+    );
+    await fetchCycles();
+  };
 
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
@@ -144,9 +156,25 @@ export default function ReviewCyclesPage() {
                       {formattedDate(cycle.startDate)} - {formattedDate(cycle.endDate)}
                     </p>
                   </div>
-                  <span className="rounded-full bg-[#F4ECE2] px-3 py-1 text-xs font-semibold text-[#6F4E37]">
-                    {cycle.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <select
+                      className="rounded border border-[#E8DCC4] px-2 py-1 text-[11px]"
+                      value={statusMap[cycle.id] ?? cycle.status}
+                      onChange={(e) => setStatusMap({ ...statusMap, [cycle.id]: e.target.value })}
+                    >
+                      {['DRAFT', 'ACTIVE', 'CLOSED'].map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="rounded-lg border border-[#D9CBB6] px-3 py-1 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                      onClick={() => updateCycleStatus(cycle.id)}
+                    >
+                      Update
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
