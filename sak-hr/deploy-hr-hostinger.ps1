@@ -28,7 +28,8 @@ function Test-SshKey {
 
 function Invoke-RemoteCommand {
     param([string]$Command)
-  $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Command))
+  $normalized = $Command -replace "`r`n", "`n" -replace "`r", "`n"
+  $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($normalized))
   ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $KEY_PATH "$HOSTINGER_USER@$HOSTINGER_IP" "echo $encoded | base64 -d | bash"
     if ($LASTEXITCODE -ne 0) {
         throw "Remote command failed"
