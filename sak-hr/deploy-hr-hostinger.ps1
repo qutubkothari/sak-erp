@@ -130,6 +130,9 @@ if [ -f seed-initial-data.sql ]; then
 else
   echo "No seed file found, skipping..."
 fi
+if [ -f add-competencies.sql ]; then
+  docker exec -i sak-hr-postgres psql -U sak_hr -d sak_hr < add-competencies.sql 2>/dev/null && echo "Competencies added" || echo "Competencies already exist"
+fi
 '@ -f $APP_PATH
 Invoke-RemoteCommand $seedCmd
 Write-Host "Database seeded" -ForegroundColor Green
