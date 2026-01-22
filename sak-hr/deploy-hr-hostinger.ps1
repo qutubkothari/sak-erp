@@ -37,11 +37,11 @@ function Invoke-RemoteCommand {
     }
 }
 
-Write-Host "[1/8] Pre-deployment Checks" -ForegroundColor Yellow
+Write-Host "[1/9] Pre-deployment Checks" -ForegroundColor Yellow
 Test-SshKey
 git status --short
 
-Write-Host "`n[2/8] Git Commit and Push" -ForegroundColor Yellow
+Write-Host "`n[2/9] Git Commit and Push" -ForegroundColor Yellow
 git add .
 git commit -m "$Message"
 if ($LASTEXITCODE -ne 0) {
@@ -55,11 +55,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "Code pushed to GitHub" -ForegroundColor Green
 
-Write-Host "`n[3/8] Testing Connection" -ForegroundColor Yellow
+Write-Host "`n[3/9] Testing Connection" -ForegroundColor Yellow
 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $KEY_PATH "$HOSTINGER_USER@$HOSTINGER_IP" "echo 'Connected'; node -v; pm2 -v"
 Write-Host "Connection OK" -ForegroundColor Green
 
-Write-Host "`n[4/8] Preparing Remote Repo" -ForegroundColor Yellow
+Write-Host "`n[4/9] Preparing Remote Repo" -ForegroundColor Yellow
 $prepCmd = @'
 if [ ! -d "{0}/.git" ]; then
   if [ -d "{0}" ] && [ "$(ls -A {0})" ]; then
@@ -76,7 +76,7 @@ git pull origin {2}
 Invoke-RemoteCommand $prepCmd
 Write-Host "Code updated on server" -ForegroundColor Green
 
-Write-Host "`n[5/8] Installing Dependencies" -ForegroundColor Yellow
+Write-Host "`n[5/9] Installing Dependencies" -ForegroundColor Yellow
 $depsCmd = @'
 cd "{0}"
 if ! command -v pnpm >/dev/null 2>&1; then
@@ -88,7 +88,7 @@ pnpm -C "{1}" install
 Invoke-RemoteCommand $depsCmd
 Write-Host "Dependencies updated" -ForegroundColor Green
 
-Write-Host "`n[6/8] Start Local DB (Docker)" -ForegroundColor Yellow
+Write-Host "`n[6/9] Start Local DB (Docker)" -ForegroundColor Yellow
 $dockerCmd = @'
 cd "{0}"
 if ! command -v docker >/dev/null 2>&1; then
@@ -113,7 +113,7 @@ sudo docker compose up -d
 Invoke-RemoteCommand $dockerCmd
 Write-Host "Docker database running" -ForegroundColor Green
 
-Write-Host "`n[7/8] Prisma Migrations" -ForegroundColor Yellow
+Write-Host "`n[7/9] Prisma Migrations" -ForegroundColor Yellow
 $prismaCmd = @'
 cd "{0}"
 pnpm prisma generate
@@ -122,7 +122,19 @@ pnpm prisma migrate deploy || pnpm prisma db push
 Invoke-RemoteCommand $prismaCmd
 Write-Host "Prisma updated" -ForegroundColor Green
 
-Write-Host "`n[8/8] Build and Restart" -ForegroundColor Yellow
+Write-Host "`n[8/9] Seed Initial Data" -ForegroundColor Yellow
+$seedCmd = @'
+cd "{0}"
+if [ -f seed-initial-data.sql ]; then
+  docker exec -i sak-hr-postgres psql -U sak_hr -d sak_hr < seed-initial-data.sql 2>/dev/null && echo "Database seeded successfully" || echo "Seed skipped (data may already exist)"
+else
+  echo "No seed file found, skipping..."
+fi
+'@ -f $APP_PATH
+Invoke-RemoteCommand $seedCmd
+Write-Host "Database seeded" -ForegroundColor Green
+
+Write-Host "`n[9/9] Build and Restart" -ForegroundColor Yellow
 $restartCmd = @'
 cd "{0}"
 pnpm build
