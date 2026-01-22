@@ -208,11 +208,16 @@ export default function SelfAssessmentPage() {
   };
 
   const daysRemaining = useMemo(() => {
-    if (!cycle?.selfAssessmentDeadline) return null;
-    return Math.ceil(
-      (new Date(cycle.selfAssessmentDeadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-    );
-  }, [cycle]);
+    const deadline = activeEvaluation?.cycle?.selfAssessmentDeadline || cycle?.selfAssessmentDeadline;
+    if (!deadline) return null;
+    return Math.ceil((new Date(deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+  }, [activeEvaluation, cycle]);
+
+  const isPastDeadline = useMemo(() => {
+    const deadline = activeEvaluation?.cycle?.selfAssessmentDeadline || cycle?.selfAssessmentDeadline;
+    if (!deadline) return false;
+    return Date.now() > new Date(deadline).getTime();
+  }, [activeEvaluation, cycle]);
 
   const applyEvaluationData = async (evaluation: EvaluationSummary) => {
     setActiveEvaluation(evaluation);
@@ -354,6 +359,12 @@ export default function SelfAssessmentPage() {
             <li>• Be specific and provide concrete examples</li>
           </ul>
         </div>
+
+        {isPastDeadline && (
+          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            The self-assessment deadline has passed. Submissions are locked.
+          </div>
+        )}
 
         {loading ? (
           <div className="rounded-2xl border border-[#E8DCC4] bg-white p-8 text-center text-sm text-[#9C8162]">
@@ -650,7 +661,11 @@ export default function SelfAssessmentPage() {
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || (activeEvaluation ? !['SELF_REVIEW', 'DRAFT'].includes(activeEvaluation.status) : false)}
+              disabled={
+                isSubmitting ||
+                isPastDeadline ||
+                (activeEvaluation ? !['SELF_REVIEW', 'DRAFT'].includes(activeEvaluation.status) : false)
+              }
               className="rounded-lg bg-[#6F4E37] px-6 py-2 text-sm font-semibold text-white hover:bg-[#5A3E2C] disabled:opacity-50 transition-colors"
             >
               {isSubmitting ? 'Submitting...' : 'Submit Self-Assessment'}

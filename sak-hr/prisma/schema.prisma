@@ -114,6 +114,7 @@ model ReviewCycle {
   name        String
   startDate   DateTime
   endDate     DateTime
+  selfAssessmentDeadline DateTime?
   status      String
   ratingScaleId String?
   createdAt   DateTime         @default(now())

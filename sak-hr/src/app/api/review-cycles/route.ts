@@ -5,6 +5,7 @@ type ReviewCycleInput = {
   name: string;
   startDate: string;
   endDate: string;
+  selfAssessmentDeadline?: string;
   status: string;
 };
 
@@ -28,6 +29,7 @@ export async function POST(request: Request) {
       name: body.name,
       startDate: new Date(body.startDate),
       endDate: new Date(body.endDate),
+      selfAssessmentDeadline: body.selfAssessmentDeadline ? new Date(body.selfAssessmentDeadline) : null,
       status: body.status || 'DRAFT',
     },
   });

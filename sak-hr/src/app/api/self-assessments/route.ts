@@ -29,6 +29,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: 'evaluationId is required' }, { status: 400 });
   }
 
+  const evaluation = await prisma.evaluation.findUnique({
+    where: { id: body.evaluationId },
+    include: { cycle: true },
+  });
+
+  if (!evaluation) {
+    return NextResponse.json({ message: 'Evaluation not found' }, { status: 404 });
+  }
+
+  if (evaluation.cycle?.selfAssessmentDeadline) {
+    const deadline = new Date(evaluation.cycle.selfAssessmentDeadline);
+    if (Date.now() > deadline.getTime()) {
+      return NextResponse.json({ message: 'Self-assessment deadline has passed' }, { status: 403 });
+    }
+  }
+
   const assessment = await prisma.selfAssessment.upsert({
     where: { evaluationId: body.evaluationId },
     create: {

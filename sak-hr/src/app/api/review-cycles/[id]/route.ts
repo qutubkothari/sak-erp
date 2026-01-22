@@ -9,6 +9,7 @@ type ReviewCycleUpdate = {
   name?: string;
   startDate?: string;
   endDate?: string;
+  selfAssessmentDeadline?: string;
   status?: string;
 };
 
@@ -22,6 +23,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       name: body.name,
       startDate: body.startDate ? new Date(body.startDate) : undefined,
       endDate: body.endDate ? new Date(body.endDate) : undefined,
+      selfAssessmentDeadline: body.selfAssessmentDeadline ? new Date(body.selfAssessmentDeadline) : undefined,
       status: body.status,
     },
   });

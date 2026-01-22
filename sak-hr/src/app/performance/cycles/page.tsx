@@ -7,12 +7,13 @@ type ReviewCycle = {
   name: string;
   startDate: string;
   endDate: string;
+  selfAssessmentDeadline?: string | null;
   status: string;
 };
 
 export default function ReviewCyclesPage() {
   const [cycles, setCycles] = useState<ReviewCycle[]>([]);
-  const [form, setForm] = useState({ name: '', startDate: '', endDate: '', status: 'DRAFT' });
+  const [form, setForm] = useState({ name: '', startDate: '', endDate: '', selfAssessmentDeadline: '', status: 'DRAFT' });
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -36,7 +37,7 @@ export default function ReviewCyclesPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),
     });
-    setForm({ name: '', startDate: '', endDate: '', status: 'DRAFT' });
+    setForm({ name: '', startDate: '', endDate: '', selfAssessmentDeadline: '', status: 'DRAFT' });
     await fetchCycles();
     setLoading(false);
   };
@@ -80,7 +81,7 @@ export default function ReviewCyclesPage() {
         </div>
 
         <div className="mt-6 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-5">
             <input
               className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
               placeholder="Cycle name"
@@ -98,6 +99,13 @@ export default function ReviewCyclesPage() {
               type="date"
               value={form.endDate}
               onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+            />
+            <input
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              type="date"
+              value={form.selfAssessmentDeadline}
+              onChange={(e) => setForm({ ...form, selfAssessmentDeadline: e.target.value })}
+              placeholder="Self-assessment deadline"
             />
             <select
               className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
@@ -154,6 +162,9 @@ export default function ReviewCyclesPage() {
                     <p className="text-sm font-semibold text-[#36454F]">{cycle.name}</p>
                     <p className="text-xs text-[#6F4E37]">
                       {formattedDate(cycle.startDate)} - {formattedDate(cycle.endDate)}
+                      {cycle.selfAssessmentDeadline
+                        ? ` • Self-assessment due ${formattedDate(cycle.selfAssessmentDeadline)}`
+                        : ''}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">

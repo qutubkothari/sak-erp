@@ -13,6 +13,11 @@ type ReviewCycle = {
   name: string;
 };
 
+type Department = {
+  id: string;
+  name: string;
+};
+
 type Evaluation = {
   id: string;
   status: string;
@@ -23,8 +28,10 @@ type Evaluation = {
 export default function EvaluationsPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [cycles, setCycles] = useState<ReviewCycle[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [form, setForm] = useState({ employeeId: '', cycleId: '' });
+  const [assignment, setAssignment] = useState({ departmentId: '', cycleId: '' });
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [cycleFilter, setCycleFilter] = useState('ALL');
@@ -35,13 +42,16 @@ export default function EvaluationsPage() {
       fetch('/api/review-cycles'),
       fetch('/api/evaluations'),
     ]);
+    const deptRes = await fetch('/api/departments');
     const empData = await empRes.json();
     const cycleData = await cycleRes.json();
     const evalData = await evalRes.json();
+    const deptData = await deptRes.json();
 
     setEmployees(Array.isArray(empData) ? empData : []);
     setCycles(Array.isArray(cycleData) ? cycleData : []);
     setEvaluations(Array.isArray(evalData) ? evalData : []);
+    setDepartments(Array.isArray(deptData) ? deptData : []);
   };
 
   useEffect(() => {
@@ -56,6 +66,19 @@ export default function EvaluationsPage() {
       body: JSON.stringify(form),
     });
     setForm({ employeeId: '', cycleId: '' });
+    await fetchData();
+  };
+
+  const assignDepartment = async () => {
+    if (!assignment.departmentId || !assignment.cycleId) return;
+    const response = await fetch('/api/evaluations/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(assignment),
+    });
+
+    if (!response.ok) return;
+    setAssignment({ departmentId: '', cycleId: '' });
     await fetchData();
   };
 
@@ -119,6 +142,39 @@ export default function EvaluationsPage() {
             onClick={createEvaluation}
           >
             Create Evaluation
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm md:grid-cols-3">
+          <select
+            className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            value={assignment.departmentId}
+            onChange={(e) => setAssignment({ ...assignment, departmentId: e.target.value })}
+          >
+            <option value="">Select department</option>
+            {departments.map((department) => (
+              <option key={department.id} value={department.id}>
+                {department.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            value={assignment.cycleId}
+            onChange={(e) => setAssignment({ ...assignment, cycleId: e.target.value })}
+          >
+            <option value="">Select cycle</option>
+            {cycles.map((cycle) => (
+              <option key={cycle.id} value={cycle.id}>
+                {cycle.name}
+              </option>
+            ))}
+          </select>
+          <button
+            className="rounded-lg border border-[#D9CBB6] px-4 py-2 text-sm font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+            onClick={assignDepartment}
+          >
+            Assign Department
           </button>
         </div>
 

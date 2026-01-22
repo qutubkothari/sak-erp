@@ -40,6 +40,7 @@ export default function GoalsPage() {
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [progressDrafts, setProgressDrafts] = useState<Record<string, number>>({});
 
   console.log('GoalsPage render - session:', session);
   console.log('GoalsPage render - competencies:', competencies);
@@ -200,6 +201,33 @@ export default function GoalsPage() {
     } catch (error) {
       console.error(error);
       toast.error('Failed to delete goal');
+    }
+  };
+
+  const updateProgress = async (goal: Goal) => {
+    const draftValue = progressDrafts[goal.id];
+    const nextProgress = Number.isFinite(draftValue) ? draftValue : goal.progress;
+    const nextStatus = nextProgress >= 100 ? 'completed' : goal.status === 'completed' ? 'active' : goal.status;
+
+    try {
+      const response = await fetch(`/api/goals/${goal.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ progress: nextProgress, status: nextStatus }),
+      });
+
+      const updated = await response.json();
+      if (!response.ok) {
+        toast.error(updated?.message || 'Failed to update progress');
+        return;
+      }
+
+      setGoals(goals.map((item) => (item.id === goal.id ? updated : item)));
+      setProgressDrafts((prev) => ({ ...prev, [goal.id]: updated.progress }));
+      toast.success('Progress updated');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to update progress');
     }
   };
 
@@ -508,6 +536,32 @@ export default function GoalsPage() {
                           className="h-2 rounded-full bg-[#6F4E37] transition-all duration-300"
                           style={{ width: `${goal.progress}%` }}
                         />
+                      </div>
+                      <div className="mt-3 flex items-center gap-3">
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={5}
+                          value={progressDrafts[goal.id] ?? goal.progress}
+                          onChange={(e) =>
+                            setProgressDrafts((prev) => ({
+                              ...prev,
+                              [goal.id]: Number(e.target.value),
+                            }))
+                          }
+                          className="w-full accent-[#6F4E37]"
+                        />
+                        <span className="text-xs font-semibold text-[#6F4E37]">
+                          {progressDrafts[goal.id] ?? goal.progress}%
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateProgress(goal)}
+                          className="rounded-lg border border-[#D9CBB6] px-3 py-1 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                        >
+                          Update
+                        </button>
                       </div>
                     </div>
                   </div>
