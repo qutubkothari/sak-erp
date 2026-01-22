@@ -42,6 +42,7 @@ export default function LoginPage() {
         email: data.email,
         password: data.password,
         redirect: false,
+        callbackUrl: '/dashboard',
       });
 
       if (result?.error) {
@@ -51,7 +52,7 @@ export default function LoginPage() {
 
       if (result?.ok) {
         toast.success('Welcome back!');
-        router.push('/performance');
+        router.push('/dashboard');
         router.refresh();
       }
     } catch (error) {
