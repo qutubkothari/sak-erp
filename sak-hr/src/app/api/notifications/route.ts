@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
-// In-memory storage for demo (replace with database in production)
-const notifications: any[] = [];
+const prismaClient = prisma as any;
 
 /**
  * GET /api/notifications
@@ -21,10 +21,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Filter notifications for this user
-    const userNotifications = notifications
-      .filter(n => n.userId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const userNotifications = await prismaClient.notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
 
     return NextResponse.json(userNotifications);
   } catch (error) {
@@ -52,19 +52,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const notification = {
-      id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      userId,
-      type,
-      title,
-      message,
-      actionUrl,
-      metadata,
-      read: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    notifications.push(notification);
+    const notification = await prismaClient.notification.create({
+      data: {
+        userId,
+        type,
+        title,
+        message,
+        actionUrl: actionUrl ?? null,
+        metadata: metadata ?? null,
+        read: false,
+      },
+    });
 
     return NextResponse.json(notification, { status: 201 });
   } catch (error) {
@@ -92,18 +90,12 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const updated = notifications.map(notification => {
-      if (notificationIds.includes(notification.id)) {
-        return { ...notification, read: markAsRead !== false };
-      }
-      return notification;
+    const updateResult = await prismaClient.notification.updateMany({
+      where: { id: { in: notificationIds } },
+      data: { read: markAsRead !== false },
     });
 
-    // Update in storage
-    notifications.length = 0;
-    notifications.push(...updated);
-
-    return NextResponse.json({ success: true, updated: notificationIds.length });
+    return NextResponse.json({ success: true, updated: updateResult.count });
   } catch (error) {
     console.error('Error updating notifications:', error);
     return NextResponse.json(

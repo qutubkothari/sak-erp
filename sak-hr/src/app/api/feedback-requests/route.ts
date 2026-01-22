@@ -10,7 +10,7 @@ type FeedbackRequestInput = {
 export async function GET() {
   const requests = await prisma.feedbackRequest.findMany({
     orderBy: { createdAt: 'desc' },
-    include: { evaluation: true, reviewer: true },
+    include: { evaluation: { include: { employee: true } }, reviewer: true },
   });
 
   return NextResponse.json(requests);

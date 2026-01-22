@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pdf } from '@react-pdf/renderer';
 import { AppraisalLetterPDF } from '@/lib/pdf/appraisal-letter';
+import { prisma } from '@/lib/prisma';
 import React from 'react';
+
+const prismaClient = prisma as any;
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -12,37 +15,67 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // TODO: Fetch actual data from database
+    const letter = await prismaClient.appraisalLetter.findFirst({
+      where: { evaluation: { employeeId } },
+      orderBy: { issuedOn: 'desc' },
+      include: {
+        evaluation: {
+          include: {
+            employee: { include: { department: true, role: true, manager: true } },
+            cycle: true,
+            items: { include: { competency: true } },
+            managerReview: { include: { manager: true } },
+          },
+        },
+      },
+    });
+
+    if (!letter) {
+      return NextResponse.json({ error: 'No appraisal letter found for employee' }, { status: 404 });
+    }
+
+    const { evaluation } = letter;
+    const employee = evaluation.employee;
+    const managerReview = evaluation.managerReview;
+    const managerName = managerReview?.manager
+      ? `${managerReview.manager.firstName} ${managerReview.manager.lastName}`
+      : employee.manager
+        ? `${employee.manager.firstName} ${employee.manager.lastName}`
+        : 'Manager';
+
+    const competencyRatings = evaluation.items
+      .filter((item: any) => item.type === 'COMPETENCY' && item.competency)
+      .map((item: any) => ({
+        name: item.competency?.name ?? 'Competency',
+        rating: Number(item.finalScore ?? item.managerScore ?? item.selfScore ?? 0),
+      }));
+
     const appraisalData = {
-      employeeName: 'Ahmed Al-Mansoori',
-      employeeId: employeeId,
-      position: 'Senior Software Engineer',
-      department: 'Engineering',
-      reviewPeriod: 'Q4 2024',
-      reviewDate: new Date().toLocaleDateString('en-US', {
+      employeeName: `${employee.firstName} ${employee.lastName}`,
+      employeeId: employee.code ?? employee.id,
+      position: employee.role?.title ?? 'N/A',
+      department: employee.department?.name ?? 'N/A',
+      reviewPeriod: evaluation.cycle.name,
+      reviewDate: letter.issuedOn.toLocaleDateString('en-GB', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
       }),
-      overallRating: 4,
-      competencyRatings: [
-        { name: 'Communication', rating: 4 },
-        { name: 'Problem Solving', rating: 5 },
-        { name: 'Technical Excellence', rating: 4 },
-        { name: 'Teamwork', rating: 5 },
-        { name: 'Leadership', rating: 3 },
-      ],
-      strengths:
-        'Demonstrates exceptional problem-solving abilities and technical expertise. Successfully led cloud migration project resulting in significant cost savings. Excellent collaborator and mentor to junior team members.',
-      areasForImprovement:
-        'Could benefit from developing stronger leadership presence in cross-functional meetings. Recommended to work on strategic planning and long-term project roadmapping skills.',
-      developmentPlan:
-        'Enroll in advanced cloud architecture certification program (AWS Solutions Architect Professional). Participate in leadership development workshop scheduled for Q1 2025. Take lead role in upcoming enterprise integration project.',
-      managerComments:
-        'Ahmed has consistently exceeded expectations this quarter. His technical contributions have been instrumental in our team success. With continued development in leadership areas, he is well-positioned for promotion to Lead Engineer role.',
-      managerName: 'Sarah Johnson',
-      salaryRecommendation: 'increase',
-      salaryIncreasePercent: 8,
+      overallRating:
+        letter.rating ??
+        evaluation.finalRating ??
+        evaluation.managerScore ??
+        evaluation.overallScore ??
+        0,
+      competencyRatings,
+      strengths: managerReview?.strengths ?? 'Not provided.',
+      areasForImprovement: managerReview?.areasForImprovement ?? 'Not provided.',
+      developmentPlan: managerReview?.developmentPlan ?? 'Not provided.',
+      managerComments: managerReview?.managerComments ?? letter.summary,
+      managerName,
+      salaryRecommendation: managerReview?.salaryRecommendation ?? 'no-change',
+      salaryIncreasePercent: managerReview?.salaryIncreasePercent ?? undefined,
+      recommendedPromotion: managerReview?.recommendedPromotion ?? undefined,
     };
 
     const element = React.createElement(AppraisalLetterPDF, { data: appraisalData });

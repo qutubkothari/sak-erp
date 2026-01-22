@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
-// In-memory storage (same as route.ts)
-const notifications: any[] = [];
+const prismaClient = prisma as any;
 
 /**
  * PATCH /api/notifications/[id]
@@ -16,21 +16,12 @@ export async function PATCH(
     const body = await request.json();
     const { read } = body;
 
-    const notificationIndex = notifications.findIndex(n => n.id === id);
+    const updated = await prismaClient.notification.update({
+      where: { id },
+      data: { read: read !== false },
+    });
 
-    if (notificationIndex === -1) {
-      return NextResponse.json(
-        { error: 'Notification not found' },
-        { status: 404 }
-      );
-    }
-
-    notifications[notificationIndex] = {
-      ...notifications[notificationIndex],
-      read: read !== false,
-    };
-
-    return NextResponse.json(notifications[notificationIndex]);
+    return NextResponse.json(updated);
   } catch (error) {
     console.error('Error updating notification:', error);
     return NextResponse.json(
@@ -50,16 +41,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const notificationIndex = notifications.findIndex(n => n.id === id);
-
-    if (notificationIndex === -1) {
-      return NextResponse.json(
-        { error: 'Notification not found' },
-        { status: 404 }
-      );
-    }
-
-    notifications.splice(notificationIndex, 1);
+    await prismaClient.notification.delete({ where: { id } });
 
     return NextResponse.json({ success: true });
   } catch (error) {

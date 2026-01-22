@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 import { generatePerformanceReport, generateEmployeeListExcel } from '@/lib/excel/export-utils';
+
+const formatDate = (value: Date) => value.toISOString().split('T')[0];
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -10,93 +13,67 @@ export async function GET(request: NextRequest) {
     let filename: string;
 
     if (type === 'employees') {
-      // TODO: Fetch actual employee data from database
-      const employees = [
-        {
-          id: 'EMP001',
-          name: 'Ahmed Al-Mansoori',
-          email: 'ahmed.mansoori@sak.ae',
-          position: 'Senior Software Engineer',
-          department: 'Engineering',
-          joinDate: '2022-03-15',
-          manager: 'Sarah Johnson',
-        },
-        {
-          id: 'EMP002',
-          name: 'Fatima Al-Zaabi',
-          email: 'fatima.zaabi@sak.ae',
-          position: 'Product Manager',
-          department: 'Product',
-          joinDate: '2021-08-20',
-          manager: 'Mohammed Al-Ahli',
-        },
-        {
-          id: 'EMP003',
-          name: 'Omar Hassan',
-          email: 'omar.hassan@sak.ae',
-          position: 'UX Designer',
-          department: 'Design',
-          joinDate: '2023-01-10',
-          manager: 'Layla Al-Maktoum',
-        },
-      ];
+      const employees = await prisma.employee.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: { department: true, role: true, manager: true },
+      });
 
-      buffer = await generateEmployeeListExcel(employees);
+      const mapped = employees.map((employee) => ({
+        id: employee.code || employee.id,
+        name: `${employee.firstName} ${employee.lastName}`,
+        email: employee.email,
+        position: employee.role?.title ?? 'N/A',
+        department: employee.department?.name ?? 'N/A',
+        joinDate: formatDate(employee.hireDate),
+        manager: employee.manager ? `${employee.manager.firstName} ${employee.manager.lastName}` : 'N/A',
+      }));
+
+      buffer = await generateEmployeeListExcel(mapped);
       filename = `Employees_${Date.now()}.xlsx`;
     } else if (type === 'performance') {
-      // TODO: Fetch actual performance data from database
+      const evaluations = await prisma.evaluation.findMany({
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          employee: { include: { department: true, role: true, manager: true } },
+          items: { include: { competency: true } },
+          cycle: true,
+        },
+      });
+
+      const competencySet = new Set<string>();
+      evaluations.forEach((evaluation) => {
+        evaluation.items
+          .filter((item) => item.type === 'COMPETENCY' && item.competency)
+          .forEach((item) => competencySet.add(item.competency!.name));
+      });
+
+      const employees = evaluations.map((evaluation) => {
+        const competencyRatings: Record<string, number> = {};
+        evaluation.items
+          .filter((item) => item.type === 'COMPETENCY' && item.competency)
+          .forEach((item) => {
+            const rating = item.finalScore ?? item.managerScore ?? item.selfScore ?? 0;
+            competencyRatings[item.competency!.name] = rating;
+          });
+
+        const employee = evaluation.employee;
+        const overallRating = evaluation.finalRating ?? evaluation.managerScore ?? evaluation.overallScore ?? 0;
+
+        return {
+          id: employee.code || employee.id,
+          name: `${employee.firstName} ${employee.lastName}`,
+          position: employee.role?.title ?? 'N/A',
+          department: employee.department?.name ?? 'N/A',
+          overallRating,
+          competencyRatings,
+          managerName: employee.manager ? `${employee.manager.firstName} ${employee.manager.lastName}` : 'N/A',
+          reviewDate: formatDate(evaluation.updatedAt),
+        };
+      });
+
       const performanceData = {
-        employees: [
-          {
-            id: 'EMP001',
-            name: 'Ahmed Al-Mansoori',
-            position: 'Senior Software Engineer',
-            department: 'Engineering',
-            overallRating: 4,
-            competencyRatings: {
-              Communication: 4,
-              'Problem Solving': 5,
-              'Technical Excellence': 4,
-              Teamwork: 5,
-              Leadership: 3,
-            },
-            managerName: 'Sarah Johnson',
-            reviewDate: '2024-12-15',
-          },
-          {
-            id: 'EMP002',
-            name: 'Fatima Al-Zaabi',
-            position: 'Product Manager',
-            department: 'Product',
-            overallRating: 5,
-            competencyRatings: {
-              Communication: 5,
-              'Problem Solving': 5,
-              'Technical Excellence': 4,
-              Teamwork: 5,
-              Leadership: 5,
-            },
-            managerName: 'Mohammed Al-Ahli',
-            reviewDate: '2024-12-14',
-          },
-          {
-            id: 'EMP003',
-            name: 'Omar Hassan',
-            position: 'UX Designer',
-            department: 'Design',
-            overallRating: 3,
-            competencyRatings: {
-              Communication: 3,
-              'Problem Solving': 4,
-              'Technical Excellence': 3,
-              Teamwork: 4,
-              Leadership: 2,
-            },
-            managerName: 'Layla Al-Maktoum',
-            reviewDate: '2024-12-13',
-          },
-        ],
-        competencies: ['Communication', 'Problem Solving', 'Technical Excellence', 'Teamwork', 'Leadership'],
+        employees,
+        competencies: Array.from(competencySet),
       };
 
       buffer = await generatePerformanceReport(performanceData);

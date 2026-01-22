@@ -141,9 +141,9 @@ export default function PerformanceAnalyticsPage() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={(entry: any) =>
-                      `${entry.rating}: ${(entry.percent * 100).toFixed(0)}%`
-                    }
+                      label={(entry: any) =>
+                        `${entry.label}: ${(entry.percent * 100).toFixed(0)}%`
+                      }
                     outerRadius={80}
                     fill="#6F4E37"
                     dataKey="count"

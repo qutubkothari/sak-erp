@@ -106,6 +106,7 @@ model Employee {
   improvementPlansApproved ImprovementPlan[] @relation("ImprovementPlanApprover")
   user User?
   managerReviews ManagerReview[]
+  goals Goal[]
 }
 
 model ReviewCycle {
@@ -195,6 +196,24 @@ model ManagerReview {
 
   evaluation Evaluation @relation(fields: [evaluationId], references: [id])
   manager    Employee?  @relation(fields: [managerId], references: [id])
+}
+
+model Goal {
+  id                 String   @id @default(uuid())
+  employeeId         String
+  title              String
+  description        String
+  category           String
+  priority           String
+  targetDate         DateTime
+  measurableMetric   String
+  alignedCompetency  String?
+  status             String   @default("draft")
+  progress           Float    @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
 }
 
 model EvaluationItem {
@@ -336,4 +355,16 @@ model ImprovementPlan {
   evaluation Evaluation @relation(fields: [evaluationId], references: [id])
   manager    Employee?  @relation("ImprovementPlanManager", fields: [managerId], references: [id])
   approvedBy Employee?  @relation("ImprovementPlanApprover", fields: [approvedById], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  actionUrl String?
+  metadata  Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }

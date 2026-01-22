@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useSession } from 'next-auth/react';
 
 const goalSchema = z.object({
   title: z.string().min(5, 'Title must be at least 5 characters'),
@@ -20,15 +21,22 @@ type GoalFormData = z.infer<typeof goalSchema>;
 
 interface Goal extends GoalFormData {
   id: string;
-  employeeId: number;
+  employeeId: string;
   status: 'draft' | 'active' | 'completed' | 'archived';
   progress: number;
   createdAt: string;
   updatedAt: string;
 }
 
+interface CompetencyOption {
+  id: string;
+  name: string;
+}
+
 export default function GoalsPage() {
+  const { data: session } = useSession();
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [competencies, setCompetencies] = useState<CompetencyOption[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
 
@@ -41,20 +49,55 @@ export default function GoalsPage() {
     resolver: zodResolver(goalSchema),
   });
 
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const employeeId = session?.user?.employeeId;
+        if (!employeeId) return;
+
+        const [goalsRes, compsRes] = await Promise.all([
+          fetch(`/api/goals?employeeId=${employeeId}`),
+          fetch('/api/competencies'),
+        ]);
+        const goalsData = await goalsRes.json();
+        const compsData = await compsRes.json();
+        setGoals(Array.isArray(goalsData) ? goalsData : []);
+        setCompetencies(Array.isArray(compsData) ? compsData : []);
+      } catch (error) {
+        console.error(error);
+        toast.error('Failed to load goals');
+      }
+    };
+
+    if (session?.user) {
+      load();
+    }
+  }, [session?.user]);
+
   const onSubmit = async (data: GoalFormData) => {
     try {
-      // TODO: Replace with actual API call
-      const newGoal: Goal = {
-        ...data,
-        id: `goal-${Date.now()}`,
-        employeeId: 1, // Replace with actual employee ID from auth
-        status: 'draft',
-        progress: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      const employeeId = session?.user?.employeeId;
+      if (!employeeId) {
+        toast.error('Employee profile not linked to user.');
+        return;
+      }
 
-      setGoals([newGoal, ...goals]);
+      const response = await fetch('/api/goals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId,
+          ...data,
+        }),
+      });
+
+      const created = await response.json();
+      if (!response.ok) {
+        toast.error(created?.message || 'Failed to create goal');
+        return;
+      }
+
+      setGoals([created, ...goals]);
       toast.success('Goal created successfully');
       reset();
       setShowForm(false);
@@ -229,11 +272,11 @@ export default function GoalsPage() {
                     className="mt-1 w-full rounded-lg border border-[#E8DCC4] px-3 py-2 text-sm focus:border-[#6F4E37] focus:outline-none focus:ring-2 focus:ring-[#6F4E37]/20"
                   >
                     <option value="">Select a competency...</option>
-                    <option value="leadership">Leadership</option>
-                    <option value="communication">Communication</option>
-                    <option value="technical">Technical Skills</option>
-                    <option value="teamwork">Teamwork</option>
-                    <option value="innovation">Innovation</option>
+                    {competencies.map((comp) => (
+                      <option key={comp.id} value={comp.id}>
+                        {comp.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
