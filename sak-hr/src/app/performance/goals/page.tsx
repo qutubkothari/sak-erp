@@ -61,8 +61,11 @@ export default function GoalsPage() {
         ]);
         const goalsData = await goalsRes.json();
         const compsData = await compsRes.json();
+        console.log('Competencies API response:', compsData);
+        console.log('Is array?', Array.isArray(compsData));
         setGoals(Array.isArray(goalsData) ? goalsData : []);
         setCompetencies(Array.isArray(compsData) ? compsData : []);
+        console.log('Competencies state set to:', Array.isArray(compsData) ? compsData : []);
       } catch (error) {
         console.error(error);
         toast.error('Failed to load goals');
