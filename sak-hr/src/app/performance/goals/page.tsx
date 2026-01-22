@@ -65,7 +65,15 @@ export default function GoalsPage() {
         console.log('Fetching competencies...');
         const compsRes = await fetch('/api/competencies');
         console.log('Competencies response status:', compsRes.status);
-        const compsData = await compsRes.json();
+        console.log('Competencies response headers:', Object.fromEntries(compsRes.headers.entries()));
+        const compsText = await compsRes.text();
+        console.log('Competencies raw response:', compsText);
+        let compsData: unknown = [];
+        try {
+          compsData = compsText ? JSON.parse(compsText) : [];
+        } catch (parseError) {
+          console.error('Failed to parse competencies JSON:', parseError);
+        }
         console.log('Competencies API response:', compsData);
         console.log('Is array?', Array.isArray(compsData));
         setCompetencies(Array.isArray(compsData) ? compsData : []);
@@ -80,7 +88,15 @@ export default function GoalsPage() {
         console.log('Fetching goals...');
         const goalsRes = await fetch(`/api/goals?employeeId=${employeeId}`);
         console.log('Goals response status:', goalsRes.status);
-        const goalsData = await goalsRes.json();
+        console.log('Goals response headers:', Object.fromEntries(goalsRes.headers.entries()));
+        const goalsText = await goalsRes.text();
+        console.log('Goals raw response:', goalsText);
+        let goalsData: unknown = [];
+        try {
+          goalsData = goalsText ? JSON.parse(goalsText) : [];
+        } catch (parseError) {
+          console.error('Failed to parse goals JSON:', parseError);
+        }
         setGoals(Array.isArray(goalsData) ? goalsData : []);
       } catch (error) {
         console.error('Error in load function:', error);
