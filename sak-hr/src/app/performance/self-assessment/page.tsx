@@ -41,7 +41,7 @@ interface ReviewCycle {
   name: string;
   startDate: string;
   endDate: string;
-  selfAssessmentDeadline: string;
+  selfAssessmentDeadline?: string | null;
   status: string;
 }
 
@@ -61,6 +61,17 @@ interface EvaluationItem {
   comments?: string | null;
 }
 
+interface EvidenceItem {
+  id?: string;
+  title: string;
+  url: string;
+  notes?: string | null;
+  stage?: 'SELF_ASSESSMENT' | 'MANAGER_REVIEW' | 'HR_REVIEW';
+  uploadedBy?: { firstName?: string; lastName?: string } | null;
+  createdAt?: string | null;
+  isNew?: boolean;
+}
+
 export default function SelfAssessmentPage() {
   const { data: session } = useSession();
   const [cycle, setCycle] = useState<ReviewCycle | null>(null);
@@ -71,6 +82,8 @@ export default function SelfAssessmentPage() {
   const [activeEvaluation, setActiveEvaluation] = useState<EvaluationSummary | null>(null);
   const [tab, setTab] = useState<'open' | 'submitted'>('open');
   const [loading, setLoading] = useState(true);
+  const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
+  const [evidenceDraft, setEvidenceDraft] = useState({ title: '', url: '', notes: '' });
 
   const [selectedRating, setSelectedRating] = useState<{ [key: string]: number }>({});
   const [kpiData, setKpiData] = useState<{ [key: string]: { achieved: number; evidence: string } }>({});
@@ -104,6 +117,25 @@ export default function SelfAssessmentPage() {
     };
     setKpiData(updated);
     setValue(`kpiAchievements.${kpiId}`, updated[kpiId]);
+  };
+
+  const addEvidenceItem = () => {
+    if (!evidenceDraft.title || !evidenceDraft.url) {
+      toast.error('Evidence title and URL are required');
+      return;
+    }
+
+    setEvidenceItems((prev) => [
+      {
+        title: evidenceDraft.title,
+        url: evidenceDraft.url,
+        notes: evidenceDraft.notes,
+        stage: 'SELF_ASSESSMENT',
+        isNew: true,
+      },
+      ...prev,
+    ]);
+    setEvidenceDraft({ title: '', url: '', notes: '' });
   };
 
   const onSubmit = async (data: AssessmentFormData) => {
@@ -153,6 +185,26 @@ export default function SelfAssessmentPage() {
           comments: data.comments,
         }),
       });
+
+      const newEvidence = evidenceItems.filter((item) => item.isNew);
+      if (newEvidence.length > 0) {
+        await Promise.all(
+          newEvidence.map((item) =>
+            fetch(`/api/evaluations/${evaluationId}/evidence`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                title: item.title,
+                url: item.url,
+                notes: item.notes,
+                stage: 'SELF_ASSESSMENT',
+                uploadedById: session?.user?.employeeId,
+              }),
+            })
+          )
+        );
+        setEvidenceItems((prev) => prev.map((item) => ({ ...item, isNew: false })));
+      }
 
       const avgScore = competencyEntries.length
         ? competencyEntries.reduce((sum, [, rating]) => sum + rating, 0) / competencyEntries.length
@@ -259,6 +311,10 @@ export default function SelfAssessmentPage() {
         kpiAchievements: kpiMap,
       });
     }
+
+    const evidenceRes = await fetch(`/api/evaluations/${evaluation.id}/evidence`);
+    const evidenceData = await evidenceRes.json();
+    setEvidenceItems(Array.isArray(evidenceData) ? evidenceData : []);
   };
 
   useEffect(() => {
@@ -336,7 +392,13 @@ export default function SelfAssessmentPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-[#36454F]">Self-Assessment</h1>
           <p className="mt-1 text-sm text-[#6F4E37]">
-            {cycle ? `${cycle.name} • Due ${new Date(cycle.selfAssessmentDeadline).toLocaleDateString()}` : 'Loading cycle...'}
+            {cycle
+              ? `${cycle.name}${
+                  cycle.selfAssessmentDeadline
+                    ? ` • Due ${new Date(cycle.selfAssessmentDeadline).toLocaleDateString()}`
+                    : ' • No deadline set'
+                }`
+              : 'Loading cycle...'}
           </p>
           {daysRemaining && daysRemaining > 0 && (
             <div className="mt-2 inline-block rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-800">
@@ -576,6 +638,69 @@ export default function SelfAssessmentPage() {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Evidence Attachments */}
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-[#36454F]">Evidence Attachments</h2>
+            <p className="mb-4 text-sm text-[#6F4E37]">
+              Add links to supporting documents (reports, dashboards, certificates, emails).
+            </p>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <input
+                type="text"
+                placeholder="Evidence title"
+                value={evidenceDraft.title}
+                onChange={(e) => setEvidenceDraft({ ...evidenceDraft, title: e.target.value })}
+                className="rounded-lg border border-[#E8DCC4] px-3 py-2 text-sm"
+              />
+              <input
+                type="url"
+                placeholder="https://..."
+                value={evidenceDraft.url}
+                onChange={(e) => setEvidenceDraft({ ...evidenceDraft, url: e.target.value })}
+                className="rounded-lg border border-[#E8DCC4] px-3 py-2 text-sm"
+              />
+              <input
+                type="text"
+                placeholder="Notes (optional)"
+                value={evidenceDraft.notes}
+                onChange={(e) => setEvidenceDraft({ ...evidenceDraft, notes: e.target.value })}
+                className="rounded-lg border border-[#E8DCC4] px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={addEvidenceItem}
+                className="rounded-lg border border-[#D9CBB6] px-3 py-2 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+              >
+                Add Evidence
+              </button>
+            </div>
+
+            {evidenceItems.length === 0 ? (
+              <p className="mt-4 text-xs text-[#9C8162]">No evidence added yet.</p>
+            ) : (
+              <div className="mt-4 space-y-2">
+                {evidenceItems.map((item, index) => (
+                  <div key={item.id ?? `${item.title}-${index}`} className="rounded-lg border border-[#E8DCC4] p-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[#36454F]">{item.title}</span>
+                      <span className="text-[10px] text-[#9C8162]">
+                        {item.stage?.replace('_', ' ') || 'SELF ASSESSMENT'}
+                      </span>
+                    </div>
+                    <a className="mt-1 block text-xs text-blue-600 underline" href={item.url} target="_blank" rel="noreferrer">
+                      {item.url}
+                    </a>
+                    {item.notes && <p className="mt-1 text-[10px] text-[#6F4E37]">{item.notes}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Reflection Section */}

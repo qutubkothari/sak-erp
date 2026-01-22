@@ -47,6 +47,12 @@ enum ApprovalStatus {
   REJECTED
 }
 
+enum EvidenceStage {
+  SELF_ASSESSMENT
+  MANAGER_REVIEW
+  HR_REVIEW
+}
+
 model Department {
   id        String     @id @default(uuid())
   name      String     @unique
@@ -158,6 +164,7 @@ model Evaluation {
   cycle    ReviewCycle   @relation(fields: [cycleId], references: [id])
   items    EvaluationItem[]
   approvals EvaluationApproval[]
+  evidence  EvaluationEvidence[]
   calibrations CalibrationEntry[]
   feedbackRequests FeedbackRequest[]
   feedbackResponses FeedbackResponse[]
@@ -165,6 +172,20 @@ model Evaluation {
   improvementPlan ImprovementPlan?
   selfAssessment SelfAssessment?
   managerReview ManagerReview?
+}
+
+model EvaluationEvidence {
+  id           String       @id @default(uuid())
+  evaluationId String
+  uploadedById String?
+  stage        EvidenceStage
+  title        String
+  url          String
+  notes        String?
+  createdAt    DateTime     @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  uploadedBy Employee?  @relation(fields: [uploadedById], references: [id])
 }
 
 model SelfAssessment {

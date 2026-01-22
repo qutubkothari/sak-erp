@@ -44,6 +44,17 @@ interface Competency {
   itemId?: string | null;
 }
 
+interface EvidenceItem {
+  id?: string;
+  title: string;
+  url: string;
+  notes?: string | null;
+  stage?: 'SELF_ASSESSMENT' | 'MANAGER_REVIEW' | 'HR_REVIEW';
+  uploadedBy?: { firstName?: string; lastName?: string } | null;
+  createdAt?: string | null;
+  isNew?: boolean;
+}
+
 export default function ManagerReviewPage() {
   const { data: session } = useSession();
   const [employee, setEmployee] = useState<Employee | null>(null);
@@ -52,6 +63,8 @@ export default function ManagerReviewPage() {
   const [evaluations, setEvaluations] = useState<any[]>([]);
   const [selectedEvaluationId, setSelectedEvaluationId] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
+  const [evidenceDraft, setEvidenceDraft] = useState({ title: '', url: '', notes: '' });
 
   const [managerRatings, setManagerRatings] = useState<{ [key: string]: number }>({});
   const [salaryRec, setSalaryRec] = useState<string>('no-change');
@@ -80,6 +93,25 @@ export default function ManagerReviewPage() {
   const handleOverallRating = (rating: number) => {
     setOverallRating(rating);
     setValue('overallRating', rating);
+  };
+
+  const addEvidenceItem = () => {
+    if (!evidenceDraft.title || !evidenceDraft.url) {
+      toast.error('Evidence title and URL are required');
+      return;
+    }
+
+    setEvidenceItems((prev) => [
+      {
+        title: evidenceDraft.title,
+        url: evidenceDraft.url,
+        notes: evidenceDraft.notes,
+        stage: 'MANAGER_REVIEW',
+        isNew: true,
+      },
+      ...prev,
+    ]);
+    setEvidenceDraft({ title: '', url: '', notes: '' });
   };
 
   const onSubmit = async (data: ManagerReviewFormData) => {
@@ -132,6 +164,26 @@ export default function ManagerReviewPage() {
           recommendedPromotion: data.recommendedPromotion,
         }),
       });
+
+      const newEvidence = evidenceItems.filter((item) => item.isNew);
+      if (newEvidence.length > 0) {
+        await Promise.all(
+          newEvidence.map((item) =>
+            fetch(`/api/evaluations/${selectedEvaluationId}/evidence`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                title: item.title,
+                url: item.url,
+                notes: item.notes,
+                stage: 'MANAGER_REVIEW',
+                uploadedById: managerId,
+              }),
+            })
+          )
+        );
+        setEvidenceItems((prev) => prev.map((item) => ({ ...item, isNew: false })));
+      }
 
       await fetch(`/api/evaluations/${selectedEvaluationId}/approvals`, {
         method: 'PATCH',
@@ -256,6 +308,10 @@ export default function ManagerReviewPage() {
           };
         });
         setCompetencies(mapped);
+
+        const evidenceRes = await fetch(`/api/evaluations/${selectedEvaluationId}/evidence`);
+        const evidenceData = await evidenceRes.json();
+        setEvidenceItems(Array.isArray(evidenceData) ? evidenceData : []);
       } catch (error) {
         console.error(error);
         toast.error('Failed to load evaluation details');
@@ -347,6 +403,69 @@ export default function ManagerReviewPage() {
               <p className="text-sm text-[#6F4E37]">{selfAssessment?.developmentNeeds || '—'}</p>
             </div>
           </div>
+        </div>
+
+        {/* Evidence Attachments */}
+        <div className="mb-6 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold text-[#36454F]">Evidence Attachments</h2>
+          <p className="mb-4 text-sm text-[#6F4E37]">
+            Review employee evidence and add manager evidence links.
+          </p>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <input
+              type="text"
+              placeholder="Evidence title"
+              value={evidenceDraft.title}
+              onChange={(e) => setEvidenceDraft({ ...evidenceDraft, title: e.target.value })}
+              className="rounded-lg border border-[#E8DCC4] px-3 py-2 text-sm"
+            />
+            <input
+              type="url"
+              placeholder="https://..."
+              value={evidenceDraft.url}
+              onChange={(e) => setEvidenceDraft({ ...evidenceDraft, url: e.target.value })}
+              className="rounded-lg border border-[#E8DCC4] px-3 py-2 text-sm"
+            />
+            <input
+              type="text"
+              placeholder="Notes (optional)"
+              value={evidenceDraft.notes}
+              onChange={(e) => setEvidenceDraft({ ...evidenceDraft, notes: e.target.value })}
+              className="rounded-lg border border-[#E8DCC4] px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={addEvidenceItem}
+              className="rounded-lg border border-[#D9CBB6] px-3 py-2 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+            >
+              Add Evidence
+            </button>
+          </div>
+
+          {evidenceItems.length === 0 ? (
+            <p className="mt-4 text-xs text-[#9C8162]">No evidence added yet.</p>
+          ) : (
+            <div className="mt-4 space-y-2">
+              {evidenceItems.map((item, index) => (
+                <div key={item.id ?? `${item.title}-${index}`} className="rounded-lg border border-[#E8DCC4] p-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-[#36454F]">{item.title}</span>
+                    <span className="text-[10px] text-[#9C8162]">
+                      {item.stage?.replace('_', ' ') || 'MANAGER REVIEW'}
+                    </span>
+                  </div>
+                  <a className="mt-1 block text-xs text-blue-600 underline" href={item.url} target="_blank" rel="noreferrer">
+                    {item.url}
+                  </a>
+                  {item.notes && <p className="mt-1 text-[10px] text-[#6F4E37]">{item.notes}</p>}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
