@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import AuthGuard from '@/components/AuthGuard';
 import HrSidebar from '@/components/HrSidebar';
-import { UserMenu } from '@/components/AuthGuard';
+import UserMenu from '@/components/UserMenu';
 
 interface HrShellProps {
   children: ReactNode;

@@ -9,6 +9,8 @@ declare module 'next-auth' {
       name?: string;
       role: string;
       employeeId?: string;
+      department?: string;
+      jobRole?: string;
     };
   }
 
@@ -18,6 +20,8 @@ declare module 'next-auth' {
     name?: string;
     role: string;
     employeeId?: string;
+    department?: string;
+    jobRole?: string;
   }
 }
 
@@ -26,5 +30,7 @@ declare module 'next-auth/jwt' {
     id: string;
     role: string;
     employeeId?: string;
+    department?: string;
+    jobRole?: string;
   }
 }

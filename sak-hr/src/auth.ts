@@ -33,7 +33,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           const user = await prisma.user.findUnique({
             where: { email },
             include: {
-              employee: true,
+              employee: {
+                include: {
+                  department: true,
+                  role: true,
+                },
+              },
             },
           });
 
@@ -54,6 +59,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             name: user.employee ? `${user.employee.firstName} ${user.employee.lastName}` : user.email,
             role: user.role,
             employeeId: user.employee?.id,
+            department: user.employee?.department?.name,
+            jobRole: user.employee?.role?.title,
           };
         } catch (error) {
           console.error('Auth error:', error);
@@ -68,6 +75,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.id = user.id;
         token.role = user.role;
         token.employeeId = user.employeeId;
+        token.department = user.department;
+        token.jobRole = user.jobRole;
       }
       return token;
     },
@@ -76,6 +85,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.id = token.id as string;
         session.user.role = token.role as string;
         session.user.employeeId = token.employeeId as string;
+        session.user.department = token.department as string;
+        session.user.jobRole = token.jobRole as string;
       }
       return session;
     },
