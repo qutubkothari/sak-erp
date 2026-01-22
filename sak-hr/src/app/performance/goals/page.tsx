@@ -40,6 +40,9 @@ export default function GoalsPage() {
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
 
+  console.log('GoalsPage render - session:', session);
+  console.log('GoalsPage render - competencies:', competencies);
+
   const {
     register,
     handleSubmit,
@@ -50,15 +53,24 @@ export default function GoalsPage() {
   });
 
   useEffect(() => {
+    console.log('useEffect triggered - session?.user:', session?.user);
+    console.log('useEffect triggered - employeeId:', session?.user?.employeeId);
+    
     const load = async () => {
       try {
         const employeeId = session?.user?.employeeId;
-        if (!employeeId) return;
+        console.log('Inside load function - employeeId:', employeeId);
+        if (!employeeId) {
+          console.log('No employeeId, returning early');
+          return;
+        }
 
+        console.log('Fetching goals and competencies...');
         const [goalsRes, compsRes] = await Promise.all([
           fetch(`/api/goals?employeeId=${employeeId}`),
           fetch('/api/competencies'),
         ]);
+        console.log('Responses received - goals status:', goalsRes.status, 'comps status:', compsRes.status);
         const goalsData = await goalsRes.json();
         const compsData = await compsRes.json();
         console.log('Competencies API response:', compsData);
@@ -67,13 +79,16 @@ export default function GoalsPage() {
         setCompetencies(Array.isArray(compsData) ? compsData : []);
         console.log('Competencies state set to:', Array.isArray(compsData) ? compsData : []);
       } catch (error) {
-        console.error(error);
+        console.error('Error in load function:', error);
         toast.error('Failed to load goals');
       }
     };
 
     if (session?.user) {
+      console.log('session.user exists, calling load()');
       load();
+    } else {
+      console.log('No session.user, not calling load()');
     }
   }, [session?.user]);
 
