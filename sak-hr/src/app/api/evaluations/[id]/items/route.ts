@@ -6,6 +6,9 @@ type EvaluationItemInput = {
   competencyId?: string;
   kpiId?: string;
   weight?: number;
+  selfScore?: number;
+  managerScore?: number;
+  finalScore?: number;
   comments?: string;
 };
 
@@ -24,9 +27,41 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       competencyId: body.competencyId || null,
       kpiId: body.kpiId || null,
       weight: body.weight ?? 1,
+      selfScore: body.selfScore ?? null,
+      managerScore: body.managerScore ?? null,
+      finalScore: body.finalScore ?? null,
       comments: body.comments || null,
     },
   });
 
   return NextResponse.json(item, { status: 201 });
+}
+
+export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
+  const body = (await request.json()) as {
+    itemId: string;
+    selfScore?: number;
+    managerScore?: number;
+    finalScore?: number;
+    comments?: string;
+    weight?: number;
+  };
+
+  if (!body.itemId) {
+    return NextResponse.json({ message: 'itemId is required' }, { status: 400 });
+  }
+
+  const item = await prisma.evaluationItem.update({
+    where: { id: body.itemId },
+    data: {
+      selfScore: body.selfScore ?? undefined,
+      managerScore: body.managerScore ?? undefined,
+      finalScore: body.finalScore ?? undefined,
+      comments: body.comments ?? undefined,
+      weight: body.weight ?? undefined,
+    },
+  });
+
+  return NextResponse.json(item);
 }

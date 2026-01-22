@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useSession } from 'next-auth/react';
 
 const managerReviewSchema = z.object({
   competencyRatings: z.record(z.string(), z.number().min(1).max(5)),
@@ -21,11 +22,11 @@ const managerReviewSchema = z.object({
 type ManagerReviewFormData = z.infer<typeof managerReviewSchema>;
 
 interface Employee {
-  id: number;
+  id: string;
   name: string;
-  position: string;
-  department: string;
-  joinDate: string;
+  position?: string | null;
+  department?: string | null;
+  joinDate?: string | null;
 }
 
 interface SelfAssessment {
@@ -38,34 +39,19 @@ interface SelfAssessment {
 interface Competency {
   id: string;
   name: string;
-  description: string;
-  selfRating: number;
+  description?: string | null;
+  selfRating?: number | null;
+  itemId?: string | null;
 }
 
 export default function ManagerReviewPage() {
-  // Mock data - replace with API calls
-  const [employee] = useState<Employee>({
-    id: 1,
-    name: 'Ahmed Al-Mansoori',
-    position: 'Senior Software Engineer',
-    department: 'Engineering',
-    joinDate: '2022-03-15',
-  });
-
-  const [selfAssessment] = useState<SelfAssessment>({
-    competencyRatings: { c1: 4, c2: 5, c3: 4, c4: 5, c5: 3 },
-    accomplishments: 'Led the successful migration of legacy systems to cloud infrastructure, resulting in 40% cost reduction. Mentored 3 junior developers.',
-    challenges: 'Initial resistance to change from team members. Overcame through regular workshops and hands-on support sessions.',
-    developmentNeeds: 'Would benefit from advanced cloud architecture certification and leadership training.',
-  });
-
-  const [competencies] = useState<Competency[]>([
-    { id: 'c1', name: 'Communication', description: 'Effectively conveys information', selfRating: 4 },
-    { id: 'c2', name: 'Problem Solving', description: 'Identifies and resolves issues', selfRating: 5 },
-    { id: 'c3', name: 'Technical Excellence', description: 'Job-specific expertise', selfRating: 4 },
-    { id: 'c4', name: 'Teamwork', description: 'Collaborates effectively', selfRating: 5 },
-    { id: 'c5', name: 'Leadership', description: 'Guides team members', selfRating: 3 },
-  ]);
+  const { data: session } = useSession();
+  const [employee, setEmployee] = useState<Employee | null>(null);
+  const [selfAssessment, setSelfAssessment] = useState<SelfAssessment | null>(null);
+  const [competencies, setCompetencies] = useState<Competency[]>([]);
+  const [evaluations, setEvaluations] = useState<any[]>([]);
+  const [selectedEvaluationId, setSelectedEvaluationId] = useState<string>('');
+  const [loading, setLoading] = useState(true);
 
   const [managerRatings, setManagerRatings] = useState<{ [key: string]: number }>({});
   const [salaryRec, setSalaryRec] = useState<string>('no-change');
@@ -98,8 +84,65 @@ export default function ManagerReviewPage() {
 
   const onSubmit = async (data: ManagerReviewFormData) => {
     try {
-      console.log('Submitting manager review:', data);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!selectedEvaluationId) {
+        toast.error('Please select an evaluation.');
+        return;
+      }
+
+      const managerId = session?.user?.employeeId || undefined;
+
+      await Promise.all(
+        Object.entries(data.competencyRatings || {}).map(([competencyId, rating]) => {
+          const item = competencies.find((c) => c.id === competencyId);
+          if (!item?.itemId) {
+            return fetch(`/api/evaluations/${selectedEvaluationId}/items`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'COMPETENCY',
+                competencyId,
+                managerScore: rating,
+              }),
+            });
+          }
+          return fetch(`/api/evaluations/${selectedEvaluationId}/items`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              itemId: item.itemId,
+              managerScore: rating,
+            }),
+          });
+        })
+      );
+
+      await fetch('/api/manager-reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          evaluationId: selectedEvaluationId,
+          managerId,
+          overallRating: data.overallRating,
+          managerComments: data.managerComments,
+          strengths: data.strengths,
+          areasForImprovement: data.areasForImprovement,
+          developmentPlan: data.developmentPlan,
+          salaryRecommendation: data.salaryRecommendation,
+          salaryIncreasePercent: data.salaryIncreasePercent,
+          recommendedPromotion: data.recommendedPromotion,
+        }),
+      });
+
+      await fetch(`/api/evaluations/${selectedEvaluationId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'HR_REVIEW',
+          managerScore: data.overallRating,
+          finalRating: data.overallRating,
+        }),
+      });
+
       toast.success('Manager review submitted successfully');
     } catch (error) {
       toast.error('Failed to submit review');
@@ -124,11 +167,92 @@ export default function ManagerReviewPage() {
     }
   };
 
-  const getRatingColor = (rating: number) => {
+  const getRatingColor = (rating?: number | null) => {
+    if (!rating) return 'text-[#9C8162]';
     if (rating >= 4) return 'text-green-600';
     if (rating === 3) return 'text-blue-600';
     return 'text-orange-600';
   };
+
+  const selectedEvaluation = useMemo(
+    () => evaluations.find((e) => e.id === selectedEvaluationId),
+    [evaluations, selectedEvaluationId]
+  );
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const evaluationsRes = await fetch('/api/evaluations');
+        const evals = await evaluationsRes.json();
+        const list = Array.isArray(evals) ? evals : [];
+        setEvaluations(list);
+        if (list.length) {
+          setSelectedEvaluationId(list[0].id);
+        }
+      } catch (error) {
+        console.error(error);
+        toast.error('Failed to load evaluations');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, []);
+
+  useEffect(() => {
+    const loadEvaluationDetails = async () => {
+      if (!selectedEvaluationId) return;
+      try {
+        const evaluationRes = await fetch(`/api/evaluations/${selectedEvaluationId}`);
+        const evaluation = await evaluationRes.json();
+
+        if (evaluation?.employee) {
+          setEmployee({
+            id: evaluation.employee.id,
+            name: `${evaluation.employee.firstName} ${evaluation.employee.lastName}`,
+            position: evaluation.employee.role?.title || null,
+            department: evaluation.employee.department?.name || null,
+            joinDate: evaluation.employee.hireDate || null,
+          });
+        }
+
+        const assessmentRes = await fetch(`/api/self-assessments?evaluationId=${selectedEvaluationId}`);
+        const assessment = await assessmentRes.json();
+        if (assessment) {
+          setSelfAssessment({
+            competencyRatings: {},
+            accomplishments: assessment.accomplishments ?? '',
+            challenges: assessment.challenges ?? '',
+            developmentNeeds: assessment.developmentNeeds ?? '',
+          });
+        }
+
+        const compsRes = await fetch('/api/competencies');
+        const comps = await compsRes.json();
+        const compList = Array.isArray(comps) ? comps : [];
+        const items = Array.isArray(evaluation?.items) ? evaluation.items : [];
+
+        const mapped = compList.map((comp: any) => {
+          const item = items.find((it: any) => it.competencyId === comp.id);
+          return {
+            id: comp.id,
+            name: comp.name,
+            description: comp.description,
+            selfRating: item?.selfScore ?? null,
+            itemId: item?.id ?? null,
+          };
+        });
+        setCompetencies(mapped);
+      } catch (error) {
+        console.error(error);
+        toast.error('Failed to load evaluation details');
+      }
+    };
+
+    loadEvaluationDetails();
+  }, [selectedEvaluationId]);
 
   return (
     <div className="min-h-screen bg-[#F7F4EF] p-6">
@@ -136,7 +260,41 @@ export default function ManagerReviewPage() {
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-[#36454F]">Manager Review</h1>
-          <p className="mt-1 text-sm text-[#6F4E37]">Performance evaluation for {employee.name}</p>
+          <p className="mt-1 text-sm text-[#6F4E37]">
+            {employee ? `Performance evaluation for ${employee.name}` : 'Select an evaluation to review'}
+          </p>
+        </div>
+
+        <div className="mb-6 rounded-2xl border border-[#E8DCC4] bg-white p-4 shadow-sm">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div>
+              <p className="text-xs text-[#9C8162]">Evaluation</p>
+              <select
+                className="mt-2 w-full rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                value={selectedEvaluationId}
+                onChange={(e) => setSelectedEvaluationId(e.target.value)}
+                disabled={loading}
+              >
+                {evaluations.map((evaluation) => (
+                  <option key={evaluation.id} value={evaluation.id}>
+                    {evaluation.employee?.firstName} {evaluation.employee?.lastName} • {evaluation.cycle?.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <p className="text-xs text-[#9C8162]">Status</p>
+              <p className="mt-2 text-sm font-semibold text-[#36454F]">
+                {selectedEvaluation?.status || '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-[#9C8162]">Cycle</p>
+              <p className="mt-2 text-sm font-semibold text-[#36454F]">
+                {selectedEvaluation?.cycle?.name || '—'}
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Employee Info Card */}
@@ -145,15 +303,15 @@ export default function ManagerReviewPage() {
           <div className="grid gap-4 md:grid-cols-3">
             <div>
               <span className="text-xs text-[#9C8162]">Name</span>
-              <p className="font-semibold text-[#36454F]">{employee.name}</p>
+              <p className="font-semibold text-[#36454F]">{employee?.name || '—'}</p>
             </div>
             <div>
               <span className="text-xs text-[#9C8162]">Position</span>
-              <p className="font-semibold text-[#36454F]">{employee.position}</p>
+              <p className="font-semibold text-[#36454F]">{employee?.position || '—'}</p>
             </div>
             <div>
               <span className="text-xs text-[#9C8162]">Department</span>
-              <p className="font-semibold text-[#36454F]">{employee.department}</p>
+              <p className="font-semibold text-[#36454F]">{employee?.department || '—'}</p>
             </div>
           </div>
         </div>
@@ -165,17 +323,17 @@ export default function ManagerReviewPage() {
           <div className="space-y-4">
             <div>
               <h3 className="mb-2 text-sm font-semibold text-[#36454F]">Key Accomplishments</h3>
-              <p className="text-sm text-[#6F4E37]">{selfAssessment.accomplishments}</p>
+              <p className="text-sm text-[#6F4E37]">{selfAssessment?.accomplishments || '—'}</p>
             </div>
             
             <div>
               <h3 className="mb-2 text-sm font-semibold text-[#36454F]">Challenges Faced</h3>
-              <p className="text-sm text-[#6F4E37]">{selfAssessment.challenges}</p>
+              <p className="text-sm text-[#6F4E37]">{selfAssessment?.challenges || '—'}</p>
             </div>
             
             <div>
               <h3 className="mb-2 text-sm font-semibold text-[#36454F]">Development Needs</h3>
-              <p className="text-sm text-[#6F4E37]">{selfAssessment.developmentNeeds}</p>
+              <p className="text-sm text-[#6F4E37]">{selfAssessment?.developmentNeeds || '—'}</p>
             </div>
           </div>
         </div>
@@ -199,7 +357,7 @@ export default function ManagerReviewPage() {
                     <div className="text-right">
                       <p className="text-xs text-[#9C8162]">Employee Rating</p>
                       <p className={`text-lg font-bold ${getRatingColor(comp.selfRating)}`}>
-                        {comp.selfRating}
+                        {comp.selfRating ?? '—'}
                       </p>
                     </div>
                   </div>

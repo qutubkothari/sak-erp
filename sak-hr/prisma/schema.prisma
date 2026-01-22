@@ -105,6 +105,7 @@ model Employee {
   appraisalLettersApproved AppraisalLetter[] @relation("AppraisalLetterApprover")
   improvementPlansApproved ImprovementPlan[] @relation("ImprovementPlanApprover")
   user User?
+  managerReviews ManagerReview[]
 }
 
 model ReviewCycle {
@@ -160,6 +161,40 @@ model Evaluation {
   feedbackResponses FeedbackResponse[]
   appraisalLetter AppraisalLetter?
   improvementPlan ImprovementPlan?
+  selfAssessment SelfAssessment?
+  managerReview ManagerReview?
+}
+
+model SelfAssessment {
+  id               String   @id @default(uuid())
+  evaluationId     String   @unique
+  accomplishments  String
+  challenges       String
+  developmentNeeds String
+  comments         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+}
+
+model ManagerReview {
+  id                     String   @id @default(uuid())
+  evaluationId           String   @unique
+  managerId              String?
+  overallRating          Float
+  managerComments        String
+  strengths              String
+  areasForImprovement    String
+  developmentPlan        String
+  salaryRecommendation   String
+  salaryIncreasePercent  Float?
+  recommendedPromotion   String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  manager    Employee?  @relation(fields: [managerId], references: [id])
 }
 
 model EvaluationItem {
