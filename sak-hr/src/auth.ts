@@ -93,8 +93,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         if (dbUser?.employeeId) {
           token.employeeId = dbUser.employeeId;
-          token.department = dbUser.employee?.department?.name ?? null;
-          token.jobRole = dbUser.employee?.role?.title ?? null;
+          token.department = dbUser.employee?.department?.name ?? undefined;
+          token.jobRole = dbUser.employee?.role?.title ?? undefined;
         }
       }
       return token;
