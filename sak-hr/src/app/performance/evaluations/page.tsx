@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 
 type Employee = {
   id: string;
@@ -23,9 +24,17 @@ type Evaluation = {
   status: string;
   employee: Employee;
   cycle: ReviewCycle;
+  approvals?: Array<{
+    id: string;
+    stage: 'EMPLOYEE' | 'MANAGER' | 'HR';
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    notes?: string | null;
+    approvedAt?: string | null;
+  }>;
 };
 
 export default function EvaluationsPage() {
+  const { data: session } = useSession();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [cycles, setCycles] = useState<ReviewCycle[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -66,6 +75,16 @@ export default function EvaluationsPage() {
       body: JSON.stringify(form),
     });
     setForm({ employeeId: '', cycleId: '' });
+    await fetchData();
+  };
+
+  const updateApproval = async (evaluationId: string, stage: 'EMPLOYEE' | 'MANAGER' | 'HR', status: 'APPROVED' | 'REJECTED') => {
+    const approverId = session?.user?.employeeId;
+    await fetch(`/api/evaluations/${evaluationId}/approvals`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage, status, approverId }),
+    });
     await fetchData();
   };
 
@@ -229,6 +248,66 @@ export default function EvaluationsPage() {
                     {evaluation.status.replace('_', ' ')}
                   </span>
                 </div>
+                {evaluation.approvals && evaluation.approvals.length > 0 && (
+                  <div className="mt-4 grid gap-2 md:grid-cols-3">
+                    {evaluation.approvals.map((approval) => (
+                      <div key={approval.id} className="rounded-lg border border-[#E8DCC4] p-3 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-[#36454F]">{approval.stage}</span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              approval.status === 'APPROVED'
+                                ? 'bg-green-100 text-green-700'
+                                : approval.status === 'REJECTED'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-yellow-100 text-yellow-700'
+                            }`}
+                          >
+                            {approval.status}
+                          </span>
+                        </div>
+                        {approval.approvedAt && (
+                          <p className="mt-1 text-[10px] text-[#9C8162]">
+                            Approved {new Date(approval.approvedAt).toLocaleDateString('en-GB')}
+                          </p>
+                        )}
+                        {approval.notes && <p className="mt-1 text-[10px] text-[#6F4E37]">{approval.notes}</p>}
+                        {session?.user?.role === 'admin' && approval.stage === 'HR' && approval.status === 'PENDING' && (
+                          <div className="mt-2 flex gap-2">
+                            <button
+                              className="rounded border border-green-200 px-2 py-1 text-[10px] font-semibold text-green-700 hover:bg-green-50"
+                              onClick={() => updateApproval(evaluation.id, 'HR', 'APPROVED')}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              className="rounded border border-red-200 px-2 py-1 text-[10px] font-semibold text-red-700 hover:bg-red-50"
+                              onClick={() => updateApproval(evaluation.id, 'HR', 'REJECTED')}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                        {session?.user?.role === 'manager' && approval.stage === 'MANAGER' && approval.status === 'PENDING' && (
+                          <div className="mt-2 flex gap-2">
+                            <button
+                              className="rounded border border-green-200 px-2 py-1 text-[10px] font-semibold text-green-700 hover:bg-green-50"
+                              onClick={() => updateApproval(evaluation.id, 'MANAGER', 'APPROVED')}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              className="rounded border border-red-200 px-2 py-1 text-[10px] font-semibold text-red-700 hover:bg-red-50"
+                              onClick={() => updateApproval(evaluation.id, 'MANAGER', 'REJECTED')}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))
           )}

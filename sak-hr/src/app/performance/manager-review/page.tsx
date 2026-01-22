@@ -133,6 +133,17 @@ export default function ManagerReviewPage() {
         }),
       });
 
+      await fetch(`/api/evaluations/${selectedEvaluationId}/approvals`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stage: 'MANAGER',
+          status: 'APPROVED',
+          approverId: managerId,
+          notes: 'Manager review submitted',
+        }),
+      });
+
       await fetch(`/api/evaluations/${selectedEvaluationId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },

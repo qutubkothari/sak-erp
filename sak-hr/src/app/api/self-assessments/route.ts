@@ -62,5 +62,17 @@ export async function POST(request: Request) {
     },
   });
 
+  await prisma.evaluationApproval.updateMany({
+    where: {
+      evaluationId: body.evaluationId,
+      stage: 'EMPLOYEE',
+    },
+    data: {
+      status: 'APPROVED',
+      approverId: evaluation.employeeId,
+      approvedAt: new Date(),
+    },
+  });
+
   return NextResponse.json(assessment, { status: 201 });
 }
