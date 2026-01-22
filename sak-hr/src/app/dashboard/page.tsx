@@ -61,8 +61,8 @@ export default function HrDashboardPage() {
   return (
     <div className="space-y-8">
       <header>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8B6F47]">HR Dashboard</p>
-        <h1 className="mt-3 text-3xl font-bold text-[#36454F]">Performance Overview</h1>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8B6F47]">Performance Hub</p>
+        <h1 className="mt-3 text-3xl font-bold text-[#36454F]">Executive Overview</h1>
         <p className="mt-2 text-sm text-[#6F4E37]">
           Enterprise snapshot of headcount, review velocity, and performance health.
         </p>

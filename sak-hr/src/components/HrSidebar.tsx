@@ -25,8 +25,7 @@ const sections = [
   {
     title: 'Overview',
     items: [
-      { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-      { label: 'Performance Hub', href: '/performance', icon: LineChart },
+      { label: 'Performance Hub', href: '/dashboard', icon: LayoutDashboard },
     ],
   },
   {
