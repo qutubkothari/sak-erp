@@ -31,27 +31,27 @@ const sections = [
   {
     title: 'Performance',
     items: [
-      { label: 'Goals', href: '/performance/goals', icon: Target },
-      { label: 'Self Assessment', href: '/performance/self-assessment', icon: ClipboardCheck },
-      { label: 'Manager Review', href: '/performance/manager-review', icon: UserCheck },
-      { label: 'Analytics', href: '/performance/analytics', icon: BarChart3 },
+      { label: 'Goals', href: '/performance/goals', icon: Target, roles: ['admin', 'manager', 'employee'] },
+      { label: 'Self Assessment', href: '/performance/self-assessment', icon: ClipboardCheck, roles: ['admin', 'manager', 'employee'] },
+      { label: 'Manager Review', href: '/performance/manager-review', icon: UserCheck, roles: ['admin', 'manager'] },
+      { label: 'Analytics', href: '/performance/analytics', icon: BarChart3, roles: ['admin', 'manager'] },
     ],
   },
   {
     title: 'Reviews & Reports',
     items: [
-      { label: 'Cycles', href: '/performance/cycles', icon: CalendarClock },
-      { label: 'Evaluations', href: '/performance/evaluations', icon: TrendingUp },
-      { label: 'Appraisal Letters', href: '/performance/appraisal-letters', icon: FileText },
-      { label: 'Reports', href: '/performance/reports', icon: Layers },
+      { label: 'Cycles', href: '/performance/cycles', icon: CalendarClock, roles: ['admin', 'manager'] },
+      { label: 'Evaluations', href: '/performance/evaluations', icon: TrendingUp, roles: ['admin', 'manager'] },
+      { label: 'Appraisal Letters', href: '/performance/appraisal-letters', icon: FileText, roles: ['admin', 'manager', 'employee'] },
+      { label: 'Reports', href: '/performance/reports', icon: Layers, roles: ['admin', 'manager'] },
     ],
   },
   {
     title: 'Administration',
     items: [
-      { label: 'Employees', href: '/performance/employees', icon: Users },
-      { label: 'Criteria', href: '/performance/criteria', icon: ShieldCheck },
-      { label: 'Scales', href: '/performance/scales', icon: Settings },
+      { label: 'Employees', href: '/performance/employees', icon: Users, roles: ['admin'] },
+      { label: 'Criteria', href: '/performance/criteria', icon: ShieldCheck, roles: ['admin'] },
+      { label: 'Scales', href: '/performance/scales', icon: Settings, roles: ['admin'] },
     ],
   },
 ];
@@ -69,6 +69,19 @@ interface HrSidebarProps {
 export default function HrSidebar({ collapsed, onToggle }: HrSidebarProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const rawRole = (session?.user?.role || 'employee').toString().toLowerCase();
+  const role = rawRole === 'hr' ? 'admin' : rawRole;
+  const isAllowedForRole = (roles?: string[]) => {
+    if (!roles || roles.length === 0) return true;
+    if (role === 'admin') return true;
+    return roles.includes(role);
+  };
+  const visibleSections = sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => isAllowedForRole((item as { roles?: string[] }).roles)),
+    }))
+    .filter((section) => section.items.length > 0);
 
   return (
     <aside
@@ -97,7 +110,7 @@ export default function HrSidebar({ collapsed, onToggle }: HrSidebarProps) {
       </div>
 
       <nav className={`flex-1 overflow-y-auto py-6 ${collapsed ? 'px-2' : 'px-4'}`}>
-        {sections.map((section) => (
+        {visibleSections.map((section) => (
           <div key={section.title} className="mb-6">
             {!collapsed && (
               <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-[#8B6F47]">

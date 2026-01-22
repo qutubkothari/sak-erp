@@ -4,7 +4,6 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import AuthGuard from '@/components/AuthGuard';
 import HrSidebar from '@/components/HrSidebar';
-import RoleSwitcher from '@/components/RoleSwitcher';
 import { UserMenu } from '@/components/AuthGuard';
 
 interface HrShellProps {
@@ -44,7 +43,6 @@ export default function HrShell({ children, title, subtitle }: HrShellProps) {
                 <h1 className="text-lg font-semibold text-[#36454F]">{title}</h1>
               </div>
               <div className="flex items-center gap-4">
-                <RoleSwitcher />
                 <UserMenu />
               </div>
             </div>
