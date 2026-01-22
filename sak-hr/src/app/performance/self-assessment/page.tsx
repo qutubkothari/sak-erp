@@ -45,6 +45,15 @@ interface ReviewCycle {
   status: string;
 }
 
+interface EvaluationItem {
+  id: string;
+  type: 'COMPETENCY' | 'KPI';
+  competencyId?: string | null;
+  kpiId?: string | null;
+  selfScore?: number | null;
+  comments?: string | null;
+}
+
 export default function SelfAssessmentPage() {
   const { data: session } = useSession();
   const [cycle, setCycle] = useState<ReviewCycle | null>(null);
@@ -234,6 +243,25 @@ export default function SelfAssessmentPage() {
 
         setEvaluationId(evaluation?.id || null);
 
+        const items: EvaluationItem[] = Array.isArray(existing?.items) ? existing.items : [];
+        const ratingMap: Record<string, number> = {};
+        const kpiMap: Record<string, { achieved: number; evidence: string }> = {};
+
+        items.forEach((item) => {
+          if (item.type === 'COMPETENCY' && item.competencyId && item.selfScore != null) {
+            ratingMap[item.competencyId] = item.selfScore;
+          }
+          if (item.type === 'KPI' && item.kpiId && item.selfScore != null) {
+            kpiMap[item.kpiId] = {
+              achieved: item.selfScore,
+              evidence: item.comments || '',
+            };
+          }
+        });
+
+        setSelectedRating(ratingMap);
+        setKpiData(kpiMap);
+
         if (evaluation?.id) {
           const assessmentRes = await fetch(`/api/self-assessments?evaluationId=${evaluation.id}`);
           const assessment = await assessmentRes.json();
@@ -243,8 +271,13 @@ export default function SelfAssessmentPage() {
               challenges: assessment.challenges ?? '',
               developmentNeeds: assessment.developmentNeeds ?? '',
               comments: assessment.comments ?? '',
-              competencyRatings: {},
-              kpiAchievements: {},
+              competencyRatings: ratingMap,
+              kpiAchievements: kpiMap,
+            });
+          } else {
+            reset({
+              competencyRatings: ratingMap,
+              kpiAchievements: kpiMap,
             });
           }
         }

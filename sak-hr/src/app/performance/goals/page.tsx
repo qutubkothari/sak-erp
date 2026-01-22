@@ -39,6 +39,7 @@ export default function GoalsPage() {
   const [competencies, setCompetencies] = useState<CompetencyOption[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
 
   console.log('GoalsPage render - session:', session);
   console.log('GoalsPage render - competencies:', competencies);
@@ -119,29 +120,86 @@ export default function GoalsPage() {
         toast.error('Employee profile not linked to user.');
         return;
       }
+      if (editingGoalId) {
+        const response = await fetch(`/api/goals/${editingGoalId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
 
-      const response = await fetch('/api/goals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employeeId,
-          ...data,
-        }),
-      });
+        const updated = await response.json();
+        if (!response.ok) {
+          toast.error(updated?.message || 'Failed to update goal');
+          return;
+        }
 
-      const created = await response.json();
-      if (!response.ok) {
-        toast.error(created?.message || 'Failed to create goal');
-        return;
+        setGoals(goals.map((goal) => (goal.id === editingGoalId ? updated : goal)));
+        toast.success('Goal updated successfully');
+      } else {
+        const response = await fetch('/api/goals', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            employeeId,
+            ...data,
+          }),
+        });
+
+        const created = await response.json();
+        if (!response.ok) {
+          toast.error(created?.message || 'Failed to create goal');
+          return;
+        }
+
+        setGoals([created, ...goals]);
+        toast.success('Goal created successfully');
       }
 
-      setGoals([created, ...goals]);
-      toast.success('Goal created successfully');
       reset();
+      setEditingGoalId(null);
       setShowForm(false);
     } catch (error) {
-      toast.error('Failed to create goal');
+      toast.error(editingGoalId ? 'Failed to update goal' : 'Failed to create goal');
       console.error(error);
+    }
+  };
+
+  const startEdit = (goal: Goal) => {
+    setEditingGoalId(goal.id);
+    setShowForm(true);
+    reset({
+      title: goal.title,
+      description: goal.description,
+      category: goal.category,
+      priority: goal.priority,
+      targetDate: new Date(goal.targetDate).toISOString().slice(0, 10),
+      measurableMetric: goal.measurableMetric,
+      alignedCompetency: goal.alignedCompetency || '',
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingGoalId(null);
+    reset();
+    setShowForm(false);
+  };
+
+  const deleteGoal = async (goalId: string) => {
+    const confirmed = window.confirm('Delete this goal? This cannot be undone.');
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`/api/goals/${goalId}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        toast.error(body?.message || 'Failed to delete goal');
+        return;
+      }
+      setGoals(goals.filter((goal) => goal.id !== goalId));
+      toast.success('Goal deleted');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to delete goal');
     }
   };
 
@@ -194,7 +252,15 @@ export default function GoalsPage() {
             </p>
           </div>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              if (showForm) {
+                cancelEdit();
+              } else {
+                setEditingGoalId(null);
+                reset();
+                setShowForm(true);
+              }
+            }}
             className="rounded-lg bg-[#6F4E37] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5A3E2C] transition-colors"
           >
             {showForm ? 'Cancel' : '+ New Goal'}
@@ -204,7 +270,9 @@ export default function GoalsPage() {
         {/* Goal Creation Form */}
         {showForm && (
           <div className="mb-6 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-lg font-semibold text-[#36454F]">Create New Goal</h2>
+            <h2 className="mb-4 text-lg font-semibold text-[#36454F]">
+              {editingGoalId ? 'Edit Goal' : 'Create New Goal'}
+            </h2>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="md:col-span-2">
@@ -322,7 +390,7 @@ export default function GoalsPage() {
               <div className="flex justify-end gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={cancelEdit}
                   className="rounded-lg border border-[#E8DCC4] px-4 py-2 text-sm font-medium text-[#6F4E37] hover:bg-[#F4ECE2] transition-colors"
                 >
                   Cancel
@@ -332,7 +400,13 @@ export default function GoalsPage() {
                   disabled={isSubmitting}
                   className="rounded-lg bg-[#6F4E37] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5A3E2C] disabled:opacity-50 transition-colors"
                 >
-                  {isSubmitting ? 'Creating...' : 'Create Goal'}
+                  {isSubmitting
+                    ? editingGoalId
+                      ? 'Saving...'
+                      : 'Creating...'
+                    : editingGoalId
+                      ? 'Save Changes'
+                      : 'Create Goal'}
                 </button>
               </div>
             </form>
@@ -380,7 +454,7 @@ export default function GoalsPage() {
                 key={goal.id}
                 className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm hover:shadow-md transition-shadow"
               >
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <h3 className="text-lg font-semibold text-[#36454F]">{goal.title}</h3>
@@ -436,6 +510,22 @@ export default function GoalsPage() {
                         />
                       </div>
                     </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(goal)}
+                      className="rounded-lg border border-[#E8DCC4] px-3 py-1 text-xs font-medium text-[#6F4E37] hover:bg-[#F4ECE2]"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteGoal(goal.id)}
+                      className="rounded-lg border border-red-200 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
               </div>
