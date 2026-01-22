@@ -44,6 +44,15 @@ interface Competency {
   itemId?: string | null;
 }
 
+interface KPIProgress {
+  id: string;
+  name: string;
+  target?: number | null;
+  unit?: string | null;
+  achieved?: number | null;
+  progress?: number | null;
+}
+
 interface EvidenceItem {
   id?: string;
   title: string;
@@ -65,6 +74,7 @@ export default function ManagerReviewPage() {
   const [loading, setLoading] = useState(true);
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
   const [evidenceDraft, setEvidenceDraft] = useState({ title: '', url: '', notes: '' });
+  const [kpiProgress, setKpiProgress] = useState<KPIProgress[]>([]);
 
   const [managerRatings, setManagerRatings] = useState<{ [key: string]: number }>({});
   const [salaryRec, setSalaryRec] = useState<string>('no-change');
@@ -292,9 +302,14 @@ export default function ManagerReviewPage() {
           });
         }
 
-        const compsRes = await fetch('/api/competencies');
+        const [compsRes, kpisRes] = await Promise.all([
+          fetch('/api/competencies'),
+          fetch('/api/kpis'),
+        ]);
         const comps = await compsRes.json();
+        const kpis = await kpisRes.json();
         const compList = Array.isArray(comps) ? comps : [];
+        const kpiList = Array.isArray(kpis) ? kpis : [];
         const items = Array.isArray(evaluation?.items) ? evaluation.items : [];
 
         const mapped = compList.map((comp: any) => {
@@ -308,6 +323,22 @@ export default function ManagerReviewPage() {
           };
         });
         setCompetencies(mapped);
+
+        const kpiMapped = kpiList.map((kpi: any) => {
+          const item = items.find((it: any) => it.kpiId === kpi.id);
+          const achieved = item?.selfScore ?? null;
+          const target = kpi.target ?? null;
+          const progress = target && achieved != null ? Math.min((achieved / target) * 100, 200) : null;
+          return {
+            id: kpi.id,
+            name: kpi.name,
+            target: kpi.target ?? null,
+            unit: kpi.unit ?? null,
+            achieved,
+            progress,
+          };
+        });
+        setKpiProgress(kpiMapped);
 
         const evidenceRes = await fetch(`/api/evaluations/${selectedEvaluationId}/evidence`);
         const evidenceData = await evidenceRes.json();
@@ -403,6 +434,44 @@ export default function ManagerReviewPage() {
               <p className="text-sm text-[#6F4E37]">{selfAssessment?.developmentNeeds || '—'}</p>
             </div>
           </div>
+        </div>
+
+        {/* KPI Progress Summary */}
+        <div className="mb-6 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold text-[#36454F]">KPI Progress (Auto)</h2>
+          {kpiProgress.length === 0 ? (
+            <p className="text-sm text-[#9C8162]">No KPI data available.</p>
+          ) : (
+            <div className="space-y-4">
+              {kpiProgress.map((kpi) => (
+                <div key={kpi.id} className="border-b border-[#F4ECE2] pb-4 last:border-0 last:pb-0">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-[#36454F]">{kpi.name}</p>
+                      <p className="text-xs text-[#6F4E37]">
+                        Target: {kpi.target ?? '—'}{kpi.unit ?? ''} • Achieved: {kpi.achieved ?? '—'}{kpi.unit ?? ''}
+                      </p>
+                    </div>
+                    <span className="text-xs font-semibold text-[#36454F]">
+                      {kpi.progress != null ? `${Math.round(kpi.progress)}%` : '—'}
+                    </span>
+                  </div>
+                  <div className="mt-2 h-2 w-full rounded-full bg-[#F4ECE2]">
+                    <div
+                      className={`h-2 rounded-full ${
+                        kpi.progress != null && kpi.progress >= 100
+                          ? 'bg-green-500'
+                          : kpi.progress != null && kpi.progress >= 75
+                            ? 'bg-[#6F4E37]'
+                            : 'bg-yellow-500'
+                      }`}
+                      style={{ width: `${Math.min(kpi.progress ?? 0, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Evidence Attachments */}
