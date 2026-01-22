@@ -38,6 +38,11 @@ export default function PerformanceHomePage() {
               href: '/performance/manager-review',
             },
             {
+              title: 'Manager Dashboard',
+              description: 'Track department evaluations, due items, and open reviews.',
+              href: '/performance/manager-dashboard',
+            },
+            {
               title: 'Review Cycles',
               description: 'Create UAE-aligned review cycles with calibration windows.',
               href: '/performance/cycles',
