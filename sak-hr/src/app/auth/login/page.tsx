@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { signIn } from 'next-auth/react';
+import { signIn, getCsrfToken } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -31,7 +31,14 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
+      const csrfToken = await getCsrfToken();
+      if (!csrfToken) {
+        toast.error('Unable to start sign-in. Please refresh and try again.');
+        return;
+      }
+
       const result = await signIn('credentials', {
+        csrfToken,
         email: data.email,
         password: data.password,
         redirect: false,
