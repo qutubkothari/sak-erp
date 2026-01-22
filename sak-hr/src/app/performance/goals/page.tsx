@@ -60,24 +60,28 @@ export default function GoalsPage() {
       try {
         const employeeId = session?.user?.employeeId;
         console.log('Inside load function - employeeId:', employeeId);
-        if (!employeeId) {
-          console.log('No employeeId, returning early');
-          return;
-        }
-
-        console.log('Fetching goals and competencies...');
-        const [goalsRes, compsRes] = await Promise.all([
-          fetch(`/api/goals?employeeId=${employeeId}`),
-          fetch('/api/competencies'),
-        ]);
-        console.log('Responses received - goals status:', goalsRes.status, 'comps status:', compsRes.status);
-        const goalsData = await goalsRes.json();
+        
+        // Always fetch competencies (they're global data)
+        console.log('Fetching competencies...');
+        const compsRes = await fetch('/api/competencies');
+        console.log('Competencies response status:', compsRes.status);
         const compsData = await compsRes.json();
         console.log('Competencies API response:', compsData);
         console.log('Is array?', Array.isArray(compsData));
-        setGoals(Array.isArray(goalsData) ? goalsData : []);
         setCompetencies(Array.isArray(compsData) ? compsData : []);
         console.log('Competencies state set to:', Array.isArray(compsData) ? compsData : []);
+
+        // Only fetch goals if we have an employeeId
+        if (!employeeId) {
+          console.log('No employeeId, skipping goals fetch');
+          return;
+        }
+
+        console.log('Fetching goals...');
+        const goalsRes = await fetch(`/api/goals?employeeId=${employeeId}`);
+        console.log('Goals response status:', goalsRes.status);
+        const goalsData = await goalsRes.json();
+        setGoals(Array.isArray(goalsData) ? goalsData : []);
       } catch (error) {
         console.error('Error in load function:', error);
         toast.error('Failed to load goals');
