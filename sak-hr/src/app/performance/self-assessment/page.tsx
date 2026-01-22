@@ -45,6 +45,13 @@ interface ReviewCycle {
   status: string;
 }
 
+interface EvaluationSummary {
+  id: string;
+  status: string;
+  cycle?: ReviewCycle | null;
+  items?: EvaluationItem[];
+}
+
 interface EvaluationItem {
   id: string;
   type: 'COMPETENCY' | 'KPI';
@@ -60,6 +67,9 @@ export default function SelfAssessmentPage() {
   const [competencies, setCompetencies] = useState<Competency[]>([]);
   const [kpis, setKpis] = useState<KPI[]>([]);
   const [evaluationId, setEvaluationId] = useState<string | null>(null);
+  const [evaluations, setEvaluations] = useState<EvaluationSummary[]>([]);
+  const [activeEvaluation, setActiveEvaluation] = useState<EvaluationSummary | null>(null);
+  const [tab, setTab] = useState<'open' | 'submitted'>('open');
   const [loading, setLoading] = useState(true);
 
   const [selectedRating, setSelectedRating] = useState<{ [key: string]: number }>({});
@@ -204,6 +214,48 @@ export default function SelfAssessmentPage() {
     );
   }, [cycle]);
 
+  const applyEvaluationData = async (evaluation: EvaluationSummary) => {
+    setActiveEvaluation(evaluation);
+    setEvaluationId(evaluation.id);
+
+    const items: EvaluationItem[] = Array.isArray(evaluation.items) ? evaluation.items : [];
+    const ratingMap: Record<string, number> = {};
+    const kpiMap: Record<string, { achieved: number; evidence: string }> = {};
+
+    items.forEach((item) => {
+      if (item.type === 'COMPETENCY' && item.competencyId && item.selfScore != null) {
+        ratingMap[item.competencyId] = item.selfScore;
+      }
+      if (item.type === 'KPI' && item.kpiId && item.selfScore != null) {
+        kpiMap[item.kpiId] = {
+          achieved: item.selfScore,
+          evidence: item.comments || '',
+        };
+      }
+    });
+
+    setSelectedRating(ratingMap);
+    setKpiData(kpiMap);
+
+    const assessmentRes = await fetch(`/api/self-assessments?evaluationId=${evaluation.id}`);
+    const assessment = await assessmentRes.json();
+    if (assessment) {
+      reset({
+        accomplishments: assessment.accomplishments ?? '',
+        challenges: assessment.challenges ?? '',
+        developmentNeeds: assessment.developmentNeeds ?? '',
+        comments: assessment.comments ?? '',
+        competencyRatings: ratingMap,
+        kpiAchievements: kpiMap,
+      });
+    } else {
+      reset({
+        competencyRatings: ratingMap,
+        kpiAchievements: kpiMap,
+      });
+    }
+  };
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -228,58 +280,36 @@ export default function SelfAssessmentPage() {
         if (!employeeId || !activeCycle?.id) return;
 
         const evaluationsRes = await fetch('/api/evaluations');
-        const evaluations = await evaluationsRes.json();
-        const existing = Array.isArray(evaluations)
-          ? evaluations.find((e) => e.employeeId === employeeId && e.cycleId === activeCycle.id)
-          : null;
+        const evaluationsData = await evaluationsRes.json();
+        const employeeEvaluations: EvaluationSummary[] = Array.isArray(evaluationsData)
+          ? evaluationsData.filter((e) => e.employeeId === employeeId)
+          : [];
 
-        const evaluation = existing
-          ? existing
-          : await (await fetch('/api/evaluations', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ employeeId, cycleId: activeCycle.id }),
-            })).json();
+        setEvaluations(employeeEvaluations);
 
-        setEvaluationId(evaluation?.id || null);
+        const openStatuses = new Set(['SELF_REVIEW', 'DRAFT']);
+        let current = employeeEvaluations.find(
+          (e) => e.cycle?.id === activeCycle.id && openStatuses.has(e.status)
+        );
 
-        const items: EvaluationItem[] = Array.isArray(existing?.items) ? existing.items : [];
-        const ratingMap: Record<string, number> = {};
-        const kpiMap: Record<string, { achieved: number; evidence: string }> = {};
+        if (!current) {
+          const created = await (await fetch('/api/evaluations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ employeeId, cycleId: activeCycle.id }),
+          })).json();
 
-        items.forEach((item) => {
-          if (item.type === 'COMPETENCY' && item.competencyId && item.selfScore != null) {
-            ratingMap[item.competencyId] = item.selfScore;
-          }
-          if (item.type === 'KPI' && item.kpiId && item.selfScore != null) {
-            kpiMap[item.kpiId] = {
-              achieved: item.selfScore,
-              evidence: item.comments || '',
-            };
-          }
-        });
+          const refreshRes = await fetch('/api/evaluations');
+          const refreshData = await refreshRes.json();
+          const refreshed: EvaluationSummary[] = Array.isArray(refreshData)
+            ? refreshData.filter((e) => e.employeeId === employeeId)
+            : [];
+          setEvaluations(refreshed);
+          current = refreshed.find((e) => e.id === created?.id) || created;
+        }
 
-        setSelectedRating(ratingMap);
-        setKpiData(kpiMap);
-
-        if (evaluation?.id) {
-          const assessmentRes = await fetch(`/api/self-assessments?evaluationId=${evaluation.id}`);
-          const assessment = await assessmentRes.json();
-          if (assessment) {
-            reset({
-              accomplishments: assessment.accomplishments ?? '',
-              challenges: assessment.challenges ?? '',
-              developmentNeeds: assessment.developmentNeeds ?? '',
-              comments: assessment.comments ?? '',
-              competencyRatings: ratingMap,
-              kpiAchievements: kpiMap,
-            });
-          } else {
-            reset({
-              competencyRatings: ratingMap,
-              kpiAchievements: kpiMap,
-            });
-          }
+        if (current?.id) {
+          await applyEvaluationData(current);
         }
       } catch (error) {
         console.error(error);
@@ -330,7 +360,83 @@ export default function SelfAssessmentPage() {
             Loading assessment...
           </div>
         ) : (
-          <form onSubmit={handleSubmit(onSubmit, onSubmitError)} className="space-y-6">
+          <>
+            <div className="mb-6 rounded-2xl border border-[#E8DCC4] bg-white p-4 shadow-sm">
+              <div className="flex gap-2">
+                {(['open', 'submitted'] as const).map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setTab(item)}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                      tab === item
+                        ? 'bg-[#6F4E37] text-white'
+                        : 'bg-white text-[#6F4E37] border border-[#E8DCC4] hover:bg-[#F4ECE2]'
+                    }`}
+                  >
+                    {item === 'open' ? 'Open Assessments' : 'Submitted Assessments'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {tab === 'open' ? (
+                  evaluations.filter((e) => ['SELF_REVIEW', 'DRAFT'].includes(e.status)).length === 0 ? (
+                    <p className="text-sm text-[#9C8162]">No open assessments right now.</p>
+                  ) : (
+                    evaluations
+                      .filter((e) => ['SELF_REVIEW', 'DRAFT'].includes(e.status))
+                      .map((evaluation) => (
+                        <button
+                          key={evaluation.id}
+                          type="button"
+                          onClick={() => applyEvaluationData(evaluation)}
+                          className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition-colors ${
+                            activeEvaluation?.id === evaluation.id
+                              ? 'border-[#6F4E37] bg-[#F4ECE2]'
+                              : 'border-[#E8DCC4] bg-white hover:bg-[#F7F4EF]'
+                          }`}
+                        >
+                          <span className="font-medium text-[#36454F]">
+                            {evaluation.cycle?.name || 'Assessment'}
+                          </span>
+                          <span className="text-xs text-[#9C8162]">{evaluation.status}</span>
+                        </button>
+                      ))
+                  )
+                ) : evaluations.filter((e) => !['SELF_REVIEW', 'DRAFT'].includes(e.status)).length === 0 ? (
+                  <p className="text-sm text-[#9C8162]">No submitted assessments yet.</p>
+                ) : (
+                  evaluations
+                    .filter((e) => !['SELF_REVIEW', 'DRAFT'].includes(e.status))
+                    .map((evaluation) => (
+                      <button
+                        key={evaluation.id}
+                        type="button"
+                        onClick={() => applyEvaluationData(evaluation)}
+                        className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition-colors ${
+                          activeEvaluation?.id === evaluation.id
+                            ? 'border-[#6F4E37] bg-[#F4ECE2]'
+                            : 'border-[#E8DCC4] bg-white hover:bg-[#F7F4EF]'
+                        }`}
+                      >
+                        <span className="font-medium text-[#36454F]">
+                          {evaluation.cycle?.name || 'Assessment'}
+                        </span>
+                        <span className="text-xs text-[#9C8162]">{evaluation.status}</span>
+                      </button>
+                    ))
+                )}
+              </div>
+            </div>
+
+            {activeEvaluation && !['SELF_REVIEW', 'DRAFT'].includes(activeEvaluation.status) && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                This assessment is submitted. You can view it, but changes are locked.
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit(onSubmit, onSubmitError)} className="space-y-6">
           {/* Competencies Section */}
           <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
             <h2 className="mb-4 text-lg font-semibold text-[#36454F]">Competency Ratings</h2>
@@ -544,13 +650,14 @@ export default function SelfAssessmentPage() {
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || (activeEvaluation ? !['SELF_REVIEW', 'DRAFT'].includes(activeEvaluation.status) : false)}
               className="rounded-lg bg-[#6F4E37] px-6 py-2 text-sm font-semibold text-white hover:bg-[#5A3E2C] disabled:opacity-50 transition-colors"
             >
               {isSubmitting ? 'Submitting...' : 'Submit Self-Assessment'}
             </button>
           </div>
           </form>
+          </>
         )}
       </div>
     </div>
