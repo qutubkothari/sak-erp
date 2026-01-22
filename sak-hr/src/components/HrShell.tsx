@@ -1,4 +1,7 @@
+'use client';
+
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import AuthGuard from '@/components/AuthGuard';
 import HrSidebar from '@/components/HrSidebar';
 import RoleSwitcher from '@/components/RoleSwitcher';
@@ -11,10 +14,28 @@ interface HrShellProps {
 }
 
 export default function HrShell({ children, title, subtitle }: HrShellProps) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = localStorage.getItem('hrSidebarCollapsed');
+    if (saved) {
+      setSidebarCollapsed(JSON.parse(saved));
+    }
+  }, []);
+
+  const toggleSidebar = () => {
+    const nextValue = !sidebarCollapsed;
+    setSidebarCollapsed(nextValue);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('hrSidebarCollapsed', JSON.stringify(nextValue));
+    }
+  };
+
   return (
     <AuthGuard>
       <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933] lg:flex">
-        <HrSidebar />
+        <HrSidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
         <div className="flex-1">
           <header className="sticky top-0 z-10 border-b border-[#E8DCC4] bg-white/95 backdrop-blur">
             <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-5">

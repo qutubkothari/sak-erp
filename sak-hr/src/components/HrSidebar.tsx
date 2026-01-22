@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
+  ChevronLeft,
+  ChevronRight,
   LayoutDashboard,
   LineChart,
   Target,
@@ -60,29 +62,50 @@ const isActivePath = (pathname: string, href: string) => {
   return pathname === href || pathname.startsWith(`${href}/`);
 };
 
-export default function HrSidebar() {
+interface HrSidebarProps {
+  collapsed: boolean;
+  onToggle: () => void;
+}
+
+export default function HrSidebar({ collapsed, onToggle }: HrSidebarProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-[#E8DCC4] bg-[#F4ECE2] lg:flex">
-      <div className="flex items-center gap-3 border-b border-[#E8DCC4] px-5 py-5">
+    <aside
+      className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-[#E8DCC4] bg-[#F4ECE2] lg:flex ${
+        collapsed ? 'w-20' : 'w-64'
+      }`}
+    >
+      <div className={`flex items-center border-b border-[#E8DCC4] ${collapsed ? 'px-3 py-5 justify-center' : 'px-5 py-5 gap-3'}`}>
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#6F4E37] text-white shadow">
           <span className="text-sm font-bold">SAK</span>
         </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8B6F47]">HR Suite</p>
-          <p className="text-sm font-semibold text-[#36454F]">Enterprise Console</p>
-        </div>
+        {!collapsed && (
+          <div className="flex-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8B6F47]">HR Suite</p>
+            <p className="text-sm font-semibold text-[#36454F]">Enterprise Console</p>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={onToggle}
+          className={`rounded-lg p-2 text-[#6F4E37] hover:bg-[#E8DCC4] ${collapsed ? 'ml-0 mt-3' : 'ml-auto'}`}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+        </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-4 py-6">
+      <nav className={`flex-1 overflow-y-auto py-6 ${collapsed ? 'px-2' : 'px-4'}`}>
         {sections.map((section) => (
           <div key={section.title} className="mb-6">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-[#8B6F47]">
-              {section.title}
-            </p>
-            <div className="space-y-1">
+            {!collapsed && (
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-[#8B6F47]">
+                {section.title}
+              </p>
+            )}
+            <div className={`space-y-1 ${collapsed ? 'flex flex-col items-center' : ''}`}>
               {section.items.map((item) => {
                 const active = isActivePath(pathname, item.href);
                 const Icon = item.icon;
@@ -90,14 +113,15 @@ export default function HrSidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`flex items-center rounded-xl text-sm font-medium transition-colors ${
                       active
                         ? 'bg-[#6F4E37] text-white shadow'
                         : 'text-[#6F4E37] hover:bg-[#E8DCC4]'
-                    }`}
+                    } ${collapsed ? 'h-10 w-10 justify-center' : 'gap-3 px-3 py-2'}`}
+                    title={collapsed ? item.label : undefined}
                   >
                     <Icon size={18} className="shrink-0" />
-                    <span className="truncate">{item.label}</span>
+                    {!collapsed && <span className="truncate">{item.label}</span>}
                   </Link>
                 );
               })}
@@ -106,12 +130,22 @@ export default function HrSidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-[#E8DCC4] px-5 py-4">
-        <p className="text-xs font-semibold text-[#8B6F47]">Signed in as</p>
-        <p className="mt-1 text-sm font-semibold text-[#36454F] truncate">
-          {session?.user?.name || session?.user?.email || 'User'}
-        </p>
-        <p className="text-xs text-[#6F4E37] capitalize">{session?.user?.role || 'employee'}</p>
+      <div className={`border-t border-[#E8DCC4] ${collapsed ? 'px-3 py-4' : 'px-5 py-4'}`}>
+        {collapsed ? (
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#6F4E37] text-xs font-semibold text-white">
+              {(session?.user?.name || session?.user?.email || 'U').slice(0, 2).toUpperCase()}
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="text-xs font-semibold text-[#8B6F47]">Signed in as</p>
+            <p className="mt-1 text-sm font-semibold text-[#36454F] truncate">
+              {session?.user?.name || session?.user?.email || 'User'}
+            </p>
+            <p className="text-xs text-[#6F4E37] capitalize">{session?.user?.role || 'employee'}</p>
+          </>
+        )}
       </div>
     </aside>
   );
