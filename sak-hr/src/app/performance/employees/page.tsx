@@ -19,6 +19,16 @@ type Employee = {
   manager?: { firstName: string; lastName: string } | null;
 };
 
+type Department = {
+  id: string;
+  name: string;
+};
+
+type RoleOption = {
+  id: string;
+  title: string;
+};
+
 const uaeLocations = [
   'Abu Dhabi',
   'Dubai',
@@ -80,12 +90,17 @@ const commonNationalities = [
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [roles, setRoles] = useState<RoleOption[]>([]);
   const [form, setForm] = useState({
     code: '',
     firstName: '',
     lastName: '',
     email: '',
     hireDate: '',
+    departmentId: '',
+    roleId: '',
+    managerId: '',
     location: '',
     nationality: '',
     emiratesId: '',
@@ -105,8 +120,22 @@ export default function EmployeesPage() {
     setEmployees(Array.isArray(data) ? data : []);
   };
 
+  const fetchDepartments = async () => {
+    const response = await fetch('/api/departments');
+    const data = await response.json();
+    setDepartments(Array.isArray(data) ? data : []);
+  };
+
+  const fetchRoles = async () => {
+    const response = await fetch('/api/roles');
+    const data = await response.json();
+    setRoles(Array.isArray(data) ? data : []);
+  };
+
   useEffect(() => {
     fetchEmployees();
+    fetchDepartments();
+    fetchRoles();
   }, []);
 
   const handleSubmit = async () => {
@@ -115,7 +144,12 @@ export default function EmployeesPage() {
     await fetch('/api/employees', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        ...form,
+        departmentId: form.departmentId || undefined,
+        roleId: form.roleId || undefined,
+        managerId: form.managerId || undefined,
+      }),
     });
     setForm({
       code: '',
@@ -123,6 +157,9 @@ export default function EmployeesPage() {
       lastName: '',
       email: '',
       hireDate: '',
+      departmentId: '',
+      roleId: '',
+      managerId: '',
       location: '',
       nationality: '',
       emiratesId: '',
@@ -213,6 +250,42 @@ export default function EmployeesPage() {
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
+            <select
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              value={form.departmentId}
+              onChange={(e) => setForm({ ...form, departmentId: e.target.value })}
+            >
+              <option value="">Select department</option>
+              {departments.map((dept) => (
+                <option key={dept.id} value={dept.id}>
+                  {dept.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              value={form.roleId}
+              onChange={(e) => setForm({ ...form, roleId: e.target.value })}
+            >
+              <option value="">Select role</option>
+              {roles.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.title}
+                </option>
+              ))}
+            </select>
+            <select
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              value={form.managerId}
+              onChange={(e) => setForm({ ...form, managerId: e.target.value })}
+            >
+              <option value="">Select manager</option>
+              {employees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.firstName} {employee.lastName}
+                </option>
+              ))}
+            </select>
             <input
               className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
               type="date"
