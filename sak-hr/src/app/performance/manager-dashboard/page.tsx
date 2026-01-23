@@ -37,6 +37,8 @@ interface Evaluation {
   cycle: ReviewCycle;
   employee: Employee;
   items?: EvaluationItem[];
+  managerScore?: number | null;
+  finalRating?: number | null;
 }
 
 export default function ManagerDashboardPage() {
