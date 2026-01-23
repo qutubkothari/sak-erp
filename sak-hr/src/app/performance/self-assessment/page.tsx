@@ -105,6 +105,7 @@ export default function SelfAssessmentPage() {
   const [activityItems, setActivityItems] = useState<any[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
   const [draftSaving, setDraftSaving] = useState(false);
+  const [formErrorSummary, setFormErrorSummary] = useState('');
 
   const [selectedRating, setSelectedRating] = useState<{ [key: string]: number }>({});
   const [selectedMeritRating, setSelectedMeritRating] = useState<{ [key: string]: number }>({});
@@ -279,6 +280,7 @@ export default function SelfAssessmentPage() {
 
   const onSubmit = async (data: AssessmentFormData) => {
     try {
+      setFormErrorSummary('');
       if (!evaluationId) {
         toast.error('Evaluation not ready. Please refresh and try again.');
         return;
@@ -350,6 +352,7 @@ export default function SelfAssessmentPage() {
     }
 
     try {
+      setFormErrorSummary('');
       setDraftSaving(true);
       const values = getValues();
       const competencyEntries = Object.entries(values.competencyRatings || {});
@@ -382,24 +385,35 @@ export default function SelfAssessmentPage() {
   };
 
   const onSubmitError = (formErrors: FieldErrors<AssessmentFormData>) => {
-    console.error('Self-assessment validation errors:', formErrors);
     const hasKpiErrors = !!formErrors.kpiAchievements && Object.keys(formErrors.kpiAchievements).length > 0;
     const hasCompetencyErrors = !!formErrors.competencyRatings && Object.keys(formErrors.competencyRatings).length > 0;
     const hasMeritErrors = !!formErrors.meritRatings && Object.keys(formErrors.meritRatings).length > 0;
     const hasDemeritErrors = !!formErrors.demeritRatings && Object.keys(formErrors.demeritRatings).length > 0;
     const messageParts = ['Please fix the highlighted fields.'];
+    const summaryParts: string[] = [];
 
+    if (formErrors.accomplishments) summaryParts.push('Accomplishments (min 50 chars)');
+    if (formErrors.challenges) summaryParts.push('Challenges (min 30 chars)');
+    if (formErrors.developmentNeeds) summaryParts.push('Development needs (min 30 chars)');
     if (hasCompetencyErrors) {
       messageParts.push('Select ratings for competencies.');
+      summaryParts.push('Competency ratings');
     }
     if (hasMeritErrors) {
       messageParts.push('Select ratings for merits.');
+      summaryParts.push('Merit ratings');
     }
     if (hasDemeritErrors) {
       messageParts.push('Select ratings for demerits.');
+      summaryParts.push('Demerit ratings');
     }
     if (hasKpiErrors) {
       messageParts.push('Provide KPI evidence (min 10 characters).');
+      summaryParts.push('KPI evidence');
+    }
+
+    if (summaryParts.length > 0) {
+      setFormErrorSummary(`Missing or invalid: ${summaryParts.join(', ')}`);
     }
 
     toast.error(messageParts.join(' '));
@@ -720,6 +734,11 @@ export default function SelfAssessmentPage() {
             )}
 
             <form onSubmit={handleSubmit(onSubmit, onSubmitError)} className="space-y-6">
+              {formErrorSummary ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {formErrorSummary}
+                </div>
+              ) : null}
           {/* Competencies Section */}
           <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
             <h2 className="mb-4 text-lg font-semibold text-[#36454F]">Competency Ratings</h2>
