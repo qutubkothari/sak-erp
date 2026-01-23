@@ -47,6 +47,14 @@ export default function ManagerDashboardPage() {
   const [departmentFilter, setDepartmentFilter] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
 
+  const rawRole = (session?.user?.role || 'employee').toString().toLowerCase();
+  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const canAccess = baseRole === 'admin' || baseRole === 'manager';
+
+  if (!canAccess) {
+    return <div className="py-16 text-center text-sm text-[#9C8162]">Access denied.</div>;
+  }
+
   const fetchEvaluations = async () => {
     try {
       setLoading(true);

@@ -75,10 +75,7 @@ export default function HrSidebar({ collapsed, onToggle }: HrSidebarProps) {
   const { data: session } = useSession();
   const rawRole = (session?.user?.role || 'employee').toString().toLowerCase();
   const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
-  const jobRole = (session?.user?.jobRole || '').toString().toLowerCase();
-  const managerKeywords = ['manager', 'lead', 'supervisor', 'head'];
-  const inferredManager = baseRole === 'employee' && managerKeywords.some((keyword) => jobRole.includes(keyword));
-  const role = inferredManager ? 'manager' : baseRole;
+  const role = baseRole;
   const isAllowedForRole = (roles?: string[]) => {
     if (!roles || roles.length === 0) return true;
     if (role === 'admin') return true;

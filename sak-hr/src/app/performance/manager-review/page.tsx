@@ -98,6 +98,14 @@ export default function ManagerReviewPage() {
   const [loading, setLoading] = useState(true);
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
   const [evidenceDraft, setEvidenceDraft] = useState({ title: '', url: '', notes: '' });
+
+  const rawRole = (session?.user?.role || 'employee').toString().toLowerCase();
+  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const canAccess = baseRole === 'admin' || baseRole === 'manager';
+
+  if (!canAccess) {
+    return <div className="py-16 text-center text-sm text-[#9C8162]">Access denied.</div>;
+  }
   const [kpiProgress, setKpiProgress] = useState<KPIProgress[]>([]);
   const [activityItems, setActivityItems] = useState<any[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
