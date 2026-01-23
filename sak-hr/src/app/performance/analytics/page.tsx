@@ -23,6 +23,8 @@ type AnalyticsResponse = {
     activeEmployees: number;
     evaluations: number;
     cycles: number;
+    activeCycles: number;
+    pendingApprovals: number;
     calibrationSessions: number;
     feedbackRequests: number;
     feedbackResponses: number;
@@ -96,20 +98,36 @@ export default function PerformanceAnalyticsPage() {
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
       <div className="mx-auto max-w-7xl px-6 py-12">
-        <h1 className="text-2xl font-bold text-[#36454F]">Performance Analytics</h1>
-        <p className="mt-2 text-sm text-[#6F4E37]">
-          Snapshot of evaluation coverage, feedback activity, and rating trends.
-        </p>
+        <div className="rounded-3xl border border-[#E8DCC4] bg-gradient-to-br from-[#6F4E37] via-[#8B6F47] to-[#C9A77C] p-6 text-white shadow-lg">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/80">Enterprise Analytics</p>
+          <h1 className="mt-3 text-3xl font-bold">Performance Analytics</h1>
+          <p className="mt-2 text-sm text-white/80">
+            Real-time pulse of company performance, decision readiness, and risks.
+          </p>
+          <div className="mt-6 grid gap-4 md:grid-cols-4">
+            {[
+              { label: 'Employees', value: data?.totals.employees ?? 0 },
+              { label: 'Active Employees', value: data?.totals.activeEmployees ?? 0 },
+              { label: 'Evaluations', value: data?.totals.evaluations ?? 0 },
+              { label: 'Appraisal Letters', value: data?.totals.appraisalLetters ?? 0 },
+            ].map((card) => (
+              <div key={card.label} className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur">
+                <p className="text-xs uppercase tracking-[0.25em] text-white/70">{card.label}</p>
+                <p className="mt-2 text-2xl font-semibold">{card.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
 
         {/* Stats Cards */}
         <div className="mt-6 grid gap-4 md:grid-cols-4">
           {[
-            { label: 'Employees', value: data?.totals.employees ?? 0 },
-            { label: 'Active Employees', value: data?.totals.activeEmployees ?? 0 },
-            { label: 'Evaluations', value: data?.totals.evaluations ?? 0 },
-            { label: 'Appraisal Letters', value: data?.totals.appraisalLetters ?? 0 },
+            { label: 'Cycles', value: data?.totals.cycles ?? 0 },
+            { label: 'Active Cycles', value: data?.totals.activeCycles ?? 0 },
+            { label: 'Pending Approvals', value: data?.totals.pendingApprovals ?? 0 },
+            { label: 'Improvement Plans', value: data?.totals.improvementPlans ?? 0 },
           ].map((card) => (
-            <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white p-5 shadow-sm">
+            <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-5 shadow-sm backdrop-blur">
               <p className="text-xs uppercase tracking-[0.2em] text-[#9C8162]">{card.label}</p>
               <p className="mt-2 text-2xl font-semibold text-[#36454F]">{card.value}</p>
             </div>
@@ -119,7 +137,7 @@ export default function PerformanceAnalyticsPage() {
         {/* Charts Row 1 */}
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           {/* Evaluations by Status - Bar Chart */}
-          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
             <h2 className="text-sm font-semibold text-[#36454F] mb-4">Evaluations by Status</h2>
             {data?.evaluationsByStatus && data.evaluationsByStatus.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
@@ -147,7 +165,7 @@ export default function PerformanceAnalyticsPage() {
           </div>
 
           {/* Rating Distribution - Pie Chart */}
-          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
             <h2 className="text-sm font-semibold text-[#36454F] mb-4">Rating Distribution</h2>
             {data?.ratingDistribution && data.ratingDistribution.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
@@ -190,7 +208,7 @@ export default function PerformanceAnalyticsPage() {
         {/* Charts Row 2 */}
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           {/* Departments - Bar Chart */}
-          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
             <h2 className="text-sm font-semibold text-[#36454F] mb-4">Employees by Department</h2>
             {data?.departments && data.departments.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
@@ -219,7 +237,7 @@ export default function PerformanceAnalyticsPage() {
           </div>
 
           {/* Scores Summary */}
-          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
             <h2 className="text-sm font-semibold text-[#36454F] mb-4">Average Scores</h2>
             <div className="space-y-6 py-8">
               {[
@@ -291,7 +309,7 @@ export default function PerformanceAnalyticsPage() {
 
         {/* Decision Clarity */}
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
             <h2 className="text-sm font-semibold text-[#36454F] mb-4">Decision Pipeline</h2>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="rounded-xl border border-[#E8DCC4] bg-[#FDF9F3] p-4">
@@ -342,7 +360,7 @@ export default function PerformanceAnalyticsPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
             <h2 className="text-sm font-semibold text-[#36454F] mb-4">Improvement Plan Health</h2>
             {improvementStatus.length ? (
               <ResponsiveContainer width="100%" height={300}>
@@ -366,7 +384,7 @@ export default function PerformanceAnalyticsPage() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+        <div className="mt-6 rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
           <h2 className="text-sm font-semibold text-[#36454F]">Reporting Exports</h2>
           <p className="mt-2 text-xs text-[#6F4E37]">Download UAE-ready CSV exports for audits and leadership reporting.</p>
           <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -390,7 +408,7 @@ export default function PerformanceAnalyticsPage() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+        <div className="mt-6 rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
           <h2 className="text-sm font-semibold text-[#36454F]">AI Insights</h2>
           <p className="mt-2 text-xs text-[#6F4E37]">Generate leadership-ready insights from live HR analytics.</p>
           <div className="mt-4 grid gap-3 md:grid-cols-3">

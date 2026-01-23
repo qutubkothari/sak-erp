@@ -125,15 +125,46 @@ function EmployeeDashboard() {
   }, []);
 
   const current = data?.currentEvaluation;
+  const completedEvaluations = data
+    ? Math.max(0, data.totals.evaluations - data.totals.openEvaluations)
+    : 0;
+  const completionRate = data?.totals.evaluations
+    ? Math.round((completedEvaluations / data.totals.evaluations) * 100)
+    : 0;
+  const scoreCandidates = [current?.finalRating, current?.managerScore, current?.selfScore].filter(
+    (value): value is number => typeof value === 'number'
+  );
+  const snapshotScore = scoreCandidates.length
+    ? scoreCandidates.reduce((sum, value) => sum + value, 0) / scoreCandidates.length
+    : null;
 
   return (
     <div className="space-y-8">
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8B6F47]">My Performance</p>
-        <h1 className="mt-3 text-3xl font-bold text-[#36454F]">Personal Overview</h1>
-        <p className="mt-2 text-sm text-[#6F4E37]">
-          Track your evaluations, KPIs, and merits/demerits in one place.
+      <header className="rounded-3xl border border-[#E8DCC4] bg-gradient-to-br from-[#6F4E37] via-[#8B6F47] to-[#C9A77C] p-6 text-white shadow-lg">
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/80">My Performance</p>
+        <h1 className="mt-3 text-3xl font-bold">Personal Overview</h1>
+        <p className="mt-2 text-sm text-white/80">
+          Your performance snapshot with the key decisions that matter right now.
         </p>
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur">
+            <p className="text-xs uppercase tracking-[0.25em] text-white/70">Current Rating</p>
+            <p className="mt-2 text-2xl font-semibold">
+              {snapshotScore !== null ? snapshotScore.toFixed(2) : '—'}
+            </p>
+            <p className="mt-1 text-xs text-white/70">Based on latest scores</p>
+          </div>
+          <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur">
+            <p className="text-xs uppercase tracking-[0.25em] text-white/70">Completion</p>
+            <p className="mt-2 text-2xl font-semibold">{completionRate}%</p>
+            <p className="mt-1 text-xs text-white/70">{completedEvaluations} of {data?.totals.evaluations ?? 0} cycles</p>
+          </div>
+          <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur">
+            <p className="text-xs uppercase tracking-[0.25em] text-white/70">Pending Actions</p>
+            <p className="mt-2 text-2xl font-semibold">{data?.totals.pendingActions ?? 0}</p>
+            <p className="mt-1 text-xs text-white/70">Items awaiting your input</p>
+          </div>
+        </div>
       </header>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -143,7 +174,7 @@ function EmployeeDashboard() {
           { label: 'Pending Actions', value: data?.totals.pendingActions ?? 0, hint: 'Requires your input' },
           { label: 'Total Evaluations', value: data?.totals.evaluations ?? 0, hint: 'All time' },
         ].map((card) => (
-          <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white p-5 shadow-sm">
+          <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-5 shadow-sm backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8B6F47]">{card.label}</p>
             <p className="mt-3 text-2xl font-bold text-[#36454F]">{card.value}</p>
             <p className="mt-2 text-xs text-[#6F4E37]">{card.hint}</p>
@@ -152,7 +183,7 @@ function EmployeeDashboard() {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-3">
-        <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm lg:col-span-2">
+        <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-[#36454F]">Current Evaluation</h2>
@@ -183,11 +214,23 @@ function EmployeeDashboard() {
                 <p className="mt-2 text-sm font-semibold text-[#36454F]">{formatDate(current.selfDeadline)}</p>
                 <p className="mt-2 text-xs text-[#6F4E37]">Manager score: {current.managerScore ?? '—'}</p>
               </div>
+              <div className="rounded-xl border border-[#E8DCC4] p-4 sm:col-span-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-[0.2em] text-[#9C8162]">Completion</p>
+                  <span className="text-xs font-semibold text-[#6F4E37]">{completionRate}%</span>
+                </div>
+                <div className="mt-2 h-2 w-full rounded-full bg-[#F4ECE2]">
+                  <div
+                    className="h-2 rounded-full bg-[#6F4E37]"
+                    style={{ width: `${completionRate}%` }}
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>
 
-        <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-[#36454F]">Open Reviews</h2>
             <p className="text-xs text-[#6F4E37]">Your active review items</p>
@@ -211,7 +254,7 @@ function EmployeeDashboard() {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-[#36454F]">My KPIs</h2>
             <p className="text-xs text-[#6F4E37]">KPIs from your current evaluation</p>
@@ -243,7 +286,7 @@ function EmployeeDashboard() {
           )}
         </div>
 
-        <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-[#36454F]">Merits & Demerits</h2>
             <p className="text-xs text-[#6F4E37]">Highlights from your evaluation</p>
@@ -319,17 +362,17 @@ function HrDashboard() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8B6F47]">Performance Hub</p>
-        <h1 className="mt-3 text-3xl font-bold text-[#36454F]">Executive Overview</h1>
-        <p className="mt-2 text-sm text-[#6F4E37]">
-          Enterprise snapshot of headcount, review velocity, and performance health.
+      <header className="rounded-3xl border border-[#E8DCC4] bg-gradient-to-br from-[#6F4E37] via-[#8B6F47] to-[#C9A77C] p-6 text-white shadow-lg">
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/80">Performance Hub</p>
+        <h1 className="mt-3 text-3xl font-bold">Executive Overview</h1>
+        <p className="mt-2 text-sm text-white/80">
+          Company performance in a shot — headcount, review velocity, and decision readiness.
         </p>
       </header>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpiCards.map((card) => (
-          <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white p-5 shadow-sm">
+          <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-5 shadow-sm backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8B6F47]">{card.label}</p>
             <p className="mt-3 text-3xl font-bold text-[#36454F]">{card.value}</p>
             <p className="mt-2 text-xs text-[#6F4E37]">{card.trend}</p>
@@ -338,7 +381,7 @@ function HrDashboard() {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-3">
-        <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm lg:col-span-2">
+        <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur lg:col-span-2">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-[#36454F]">Review Completion Velocity</h2>
             <p className="text-xs text-[#6F4E37]">Monthly review status across the organization</p>
@@ -354,7 +397,7 @@ function HrDashboard() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-[#36454F]">Headcount by Department</h2>
             <p className="text-xs text-[#6F4E37]">Distribution of employees by team</p>
@@ -378,7 +421,7 @@ function HrDashboard() {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-3">
-        <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-[#36454F]">Performance Distribution</h2>
             <p className="text-xs text-[#6F4E37]">Ratings spread across the workforce</p>
@@ -402,7 +445,7 @@ function HrDashboard() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm lg:col-span-2">
+        <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur lg:col-span-2">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-[#36454F]">Average Performance Trend</h2>
             <p className="text-xs text-[#6F4E37]">Quarterly movement in overall rating score</p>

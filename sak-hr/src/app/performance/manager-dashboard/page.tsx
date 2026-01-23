@@ -131,7 +131,14 @@ export default function ManagerDashboardPage() {
       if (!e.cycle?.selfAssessmentDeadline) return false;
       return new Date(e.cycle.selfAssessmentDeadline).getTime() < Date.now() && e.status === 'SELF_REVIEW';
     }).length;
-    return { total, open, due };
+    const uniqueEmployees = new Set(evaluations.map((evaluation) => evaluation.employeeId)).size;
+    const scored = evaluations
+      .map((evaluation) => evaluation.finalRating ?? evaluation.managerScore)
+      .filter((value): value is number => typeof value === 'number');
+    const avgScore = scored.length ? scored.reduce((sum, value) => sum + value, 0) / scored.length : null;
+    const completed = evaluations.filter((e) => e.status === 'FINALIZED').length;
+    const completionRate = total ? Math.round((completed / total) * 100) : 0;
+    return { total, open, due, uniqueEmployees, avgScore, completionRate };
   }, [evaluations]);
 
   const departments = useMemo(() => {
@@ -199,10 +206,45 @@ export default function ManagerDashboardPage() {
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
       <div className="mx-auto max-w-6xl px-6 py-12">
-        <h1 className="text-2xl font-bold text-[#36454F]">Manager Dashboard</h1>
-        <p className="mt-2 text-sm text-[#6F4E37]">
-          Track department assessments, due items, and review status.
-        </p>
+        <div className="rounded-3xl border border-[#E8DCC4] bg-gradient-to-br from-[#6F4E37] via-[#8B6F47] to-[#C9A77C] p-6 text-white shadow-lg">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/80">Team Performance</p>
+          <h1 className="mt-3 text-3xl font-bold">Manager Dashboard</h1>
+          <p className="mt-2 text-sm text-white/80">
+            Team performance in one shot — progress, risk, and decision readiness.
+          </p>
+          <div className="mt-6 grid gap-4 md:grid-cols-4">
+            <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur">
+              <p className="text-xs uppercase tracking-[0.25em] text-white/70">Team Size</p>
+              <p className="mt-2 text-2xl font-semibold">{stats.uniqueEmployees}</p>
+            </div>
+            <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur">
+              <p className="text-xs uppercase tracking-[0.25em] text-white/70">Open Reviews</p>
+              <p className="mt-2 text-2xl font-semibold">{stats.open}</p>
+            </div>
+            <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur">
+              <p className="text-xs uppercase tracking-[0.25em] text-white/70">Overdue</p>
+              <p className="mt-2 text-2xl font-semibold">{stats.due}</p>
+            </div>
+            <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur">
+              <p className="text-xs uppercase tracking-[0.25em] text-white/70">Avg Rating</p>
+              <p className="mt-2 text-2xl font-semibold">
+                {stats.avgScore !== null ? stats.avgScore.toFixed(2) : '—'}
+              </p>
+            </div>
+          </div>
+          <div className="mt-5">
+            <div className="flex items-center justify-between text-xs text-white/70">
+              <span>Completion Rate</span>
+              <span>{stats.completionRate}%</span>
+            </div>
+            <div className="mt-2 h-2 w-full rounded-full bg-white/20">
+              <div
+                className="h-2 rounded-full bg-white"
+                style={{ width: `${stats.completionRate}%` }}
+              />
+            </div>
+          </div>
+        </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           {[
@@ -210,7 +252,7 @@ export default function ManagerDashboardPage() {
             { label: 'Open Reviews', value: stats.open },
             { label: 'Overdue Self-Assessments', value: stats.due },
           ].map((card) => (
-            <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white p-5 shadow-sm">
+            <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-5 shadow-sm backdrop-blur">
               <p className="text-xs uppercase tracking-[0.2em] text-[#9C8162]">{card.label}</p>
               <p className="mt-2 text-2xl font-semibold text-[#36454F]">{card.value}</p>
             </div>
@@ -258,14 +300,14 @@ export default function ManagerDashboardPage() {
           </button>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+        <div className="mt-6 rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
           <h2 className="text-lg font-semibold text-[#36454F]">Department Summary</h2>
           {departmentSummary.length === 0 ? (
             <p className="mt-3 text-sm text-[#9C8162]">No department data available.</p>
           ) : (
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               {departmentSummary.map((summary) => (
-                <div key={summary.department} className="rounded-xl border border-[#E8DCC4] p-4">
+                <div key={summary.department} className="rounded-xl border border-[#E8DCC4] bg-white/80 p-4 shadow-sm">
                   <p className="text-sm font-semibold text-[#36454F]">{summary.department}</p>
                   <div className="mt-2 text-xs text-[#6F4E37]">
                     <p>Total: {summary.total}</p>
@@ -280,16 +322,16 @@ export default function ManagerDashboardPage() {
 
         <div className="mt-6 space-y-3">
           {loading ? (
-            <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 text-center text-sm text-[#9C8162]">
+            <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 text-center text-sm text-[#9C8162] shadow-sm backdrop-blur">
               Loading dashboard...
             </div>
           ) : filtered.length === 0 ? (
-            <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 text-center text-sm text-[#9C8162]">
+            <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 text-center text-sm text-[#9C8162] shadow-sm backdrop-blur">
               No evaluations to show.
             </div>
           ) : (
             filtered.map((evaluation) => (
-              <div key={evaluation.id} className="rounded-xl border border-[#E8DCC4] bg-white p-4">
+              <div key={evaluation.id} className="rounded-xl border border-[#E8DCC4] bg-white/90 p-4 shadow-sm backdrop-blur">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-semibold text-[#36454F]">

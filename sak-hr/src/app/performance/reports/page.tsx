@@ -58,10 +58,13 @@ export default function ReportsPage() {
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
       <div className="mx-auto max-w-6xl px-6 py-12">
-        <h1 className="text-2xl font-bold text-[#36454F]">Enterprise Reports</h1>
-        <p className="mt-2 text-sm text-[#6F4E37]">
-          UAE-ready reporting packs for audits, management reviews, and board updates.
-        </p>
+        <div className="rounded-3xl border border-[#E8DCC4] bg-gradient-to-br from-[#6F4E37] via-[#8B6F47] to-[#C9A77C] p-6 text-white shadow-lg">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/80">Board Reporting</p>
+          <h1 className="mt-3 text-3xl font-bold">Enterprise Reports</h1>
+          <p className="mt-2 text-sm text-white/80">
+            Decision-ready reporting packs for audits, leadership meetings, and executive reviews.
+          </p>
+        </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           {[
@@ -69,14 +72,14 @@ export default function ReportsPage() {
             { label: 'Evaluations', value: data?.totals.evaluations ?? 0 },
             { label: 'Appraisal Letters', value: data?.totals.appraisalLetters ?? 0 },
           ].map((card) => (
-            <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white p-5 shadow-sm">
+            <div key={card.label} className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-5 shadow-sm backdrop-blur">
               <p className="text-xs uppercase tracking-[0.2em] text-[#9C8162]">{card.label}</p>
               <p className="mt-2 text-2xl font-semibold text-[#36454F]">{card.value}</p>
             </div>
           ))}
         </div>
 
-        <div className="mt-6 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm md:grid-cols-3">
+        <div className="mt-6 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur md:grid-cols-3">
           <div className="md:col-span-2">
             <h2 className="text-sm font-semibold text-[#36454F]">Export Pack</h2>
             <p className="mt-2 text-xs text-[#6F4E37]">
@@ -108,7 +111,7 @@ export default function ReportsPage() {
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
             <h2 className="text-sm font-semibold text-[#36454F]">Appraisal Decisions</h2>
             <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
               {appraisalApprovals.map((row) => (
@@ -119,7 +122,7 @@ export default function ReportsPage() {
               ))}
             </div>
           </div>
-          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
             <h2 className="text-sm font-semibold text-[#36454F]">Improvement Plan Decisions</h2>
             <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
               {improvementApprovals.map((row) => (
@@ -130,7 +133,7 @@ export default function ReportsPage() {
               ))}
             </div>
           </div>
-          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
             <h2 className="text-sm font-semibold text-[#36454F]">Pending Approvals</h2>
             <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
               {pendingApprovals.map((row) => (
@@ -146,7 +149,7 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+        <div className="mt-6 rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
           <h2 className="text-sm font-semibold text-[#36454F]">Improvement Plan Status</h2>
           <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
             {improvementStatus.map((row) => (
@@ -162,7 +165,7 @@ export default function ReportsPage() {
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
             <h2 className="text-sm font-semibold text-[#36454F]">Evaluation Status Snapshot</h2>
             <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
               {(data?.evaluationsByStatus ?? []).map((row) => (
@@ -176,7 +179,7 @@ export default function ReportsPage() {
               )}
             </div>
           </div>
-          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white/90 p-6 shadow-sm backdrop-blur">
             <h2 className="text-sm font-semibold text-[#36454F]">Rating Distribution</h2>
             <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
               {(data?.ratingDistribution ?? []).map((row) => (
