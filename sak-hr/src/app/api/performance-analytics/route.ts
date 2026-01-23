@@ -25,6 +25,10 @@ export async function GET() {
     pendingApprovalCount,
     departments,
     ratings,
+    appraisalApprovalStatuses,
+    improvementApprovalStatuses,
+    improvementPlanStatuses,
+    pendingApprovalsByStage,
   ] = await Promise.all([
     prisma.employee.count(),
     prisma.employee.count({ where: { status: 'ACTIVE' } }),
@@ -51,6 +55,23 @@ export async function GET() {
     prisma.evaluation.findMany({
       where: { finalRating: { not: null } },
       select: { finalRating: true },
+    }),
+    prisma.appraisalLetter.groupBy({
+      by: ['approvalStatus'],
+      _count: { approvalStatus: true },
+    }),
+    prisma.improvementPlan.groupBy({
+      by: ['approvalStatus'],
+      _count: { approvalStatus: true },
+    }),
+    prisma.improvementPlan.groupBy({
+      by: ['status'],
+      _count: { status: true },
+    }),
+    prisma.evaluationApproval.groupBy({
+      by: ['stage'],
+      where: { status: 'PENDING' },
+      _count: { stage: true },
     }),
   ]);
 
@@ -91,5 +112,21 @@ export async function GET() {
       employeeCount: department._count.employees,
     })),
     ratingDistribution,
+    appraisalApprovals: appraisalApprovalStatuses.map((row) => ({
+      status: row.approvalStatus,
+      count: row._count.approvalStatus,
+    })),
+    improvementApprovals: improvementApprovalStatuses.map((row) => ({
+      status: row.approvalStatus,
+      count: row._count.approvalStatus,
+    })),
+    improvementPlansByStatus: improvementPlanStatuses.map((row) => ({
+      status: row.status,
+      count: row._count.status,
+    })),
+    pendingApprovalsByStage: pendingApprovalsByStage.map((row) => ({
+      stage: row.stage,
+      count: row._count.stage,
+    })),
   });
 }

@@ -16,7 +16,18 @@ type AnalyticsResponse = {
   };
   evaluationsByStatus: { status: string; count: number }[];
   ratingDistribution: { label: string; count: number }[];
+  appraisalApprovals: { status: string; count: number }[];
+  improvementApprovals: { status: string; count: number }[];
+  improvementPlansByStatus: { status: string; count: number }[];
+  pendingApprovalsByStage: { stage: string; count: number }[];
 };
+
+const approvalStatuses = ['PENDING', 'APPROVED', 'REJECTED'] as const;
+const normalizeApprovals = (entries: { status: string; count: number }[] = []) =>
+  approvalStatuses.map((status) => ({
+    status,
+    count: entries.find((entry) => entry.status === status)?.count ?? 0,
+  }));
 
 const exportOptions = [
   { label: 'Employees', type: 'employees' },
@@ -29,6 +40,11 @@ const exportOptions = [
 export default function ReportsPage() {
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [selectedExport, setSelectedExport] = useState('employees');
+
+  const appraisalApprovals = normalizeApprovals(data?.appraisalApprovals);
+  const improvementApprovals = normalizeApprovals(data?.improvementApprovals);
+  const pendingApprovals = data?.pendingApprovalsByStage ?? [];
+  const improvementStatus = data?.improvementPlansByStatus ?? [];
 
   useEffect(() => {
     const load = async () => {
@@ -88,6 +104,60 @@ export default function ReportsPage() {
           </div>
           <div className="rounded-xl border border-dashed border-[#E8DCC4] p-4 text-xs text-[#9C8162]">
             Exports include approval status, Emirates ID, and cycle coverage for audit readiness.
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="text-sm font-semibold text-[#36454F]">Appraisal Decisions</h2>
+            <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
+              {appraisalApprovals.map((row) => (
+                <div key={row.status} className="flex items-center justify-between">
+                  <span>{row.status}</span>
+                  <span className="font-semibold text-[#36454F]">{row.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="text-sm font-semibold text-[#36454F]">Improvement Plan Decisions</h2>
+            <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
+              {improvementApprovals.map((row) => (
+                <div key={row.status} className="flex items-center justify-between">
+                  <span>{row.status}</span>
+                  <span className="font-semibold text-[#36454F]">{row.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="text-sm font-semibold text-[#36454F]">Pending Approvals</h2>
+            <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
+              {pendingApprovals.map((row) => (
+                <div key={row.stage} className="flex items-center justify-between">
+                  <span>{row.stage}</span>
+                  <span className="font-semibold text-[#36454F]">{row.count}</span>
+                </div>
+              ))}
+              {pendingApprovals.length ? null : (
+                <p className="text-xs text-[#9C8162]">No pending approvals.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-[#36454F]">Improvement Plan Status</h2>
+          <div className="mt-4 space-y-2 text-sm text-[#4B5563]">
+            {improvementStatus.map((row) => (
+              <div key={row.status} className="flex items-center justify-between">
+                <span>{row.status}</span>
+                <span className="font-semibold text-[#36454F]">{row.count}</span>
+              </div>
+            ))}
+            {improvementStatus.length ? null : (
+              <p className="text-xs text-[#9C8162]">No improvement plans yet.</p>
+            )}
           </div>
         </div>
 

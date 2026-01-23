@@ -37,9 +37,20 @@ type AnalyticsResponse = {
   };
   departments: { id: string; name: string; employeeCount: number }[];
   ratingDistribution: { label: string; count: number }[];
+  appraisalApprovals: { status: string; count: number }[];
+  improvementApprovals: { status: string; count: number }[];
+  improvementPlansByStatus: { status: string; count: number }[];
+  pendingApprovalsByStage: { stage: string; count: number }[];
 };
 
 const formatScore = (value: number | null | undefined) => (value === null || value === undefined ? '-' : value.toFixed(2));
+const approvalStatuses = ['PENDING', 'APPROVED', 'REJECTED'] as const;
+
+const normalizeApprovals = (entries: { status: string; count: number }[] = []) =>
+  approvalStatuses.map((status) => ({
+    status,
+    count: entries.find((entry) => entry.status === status)?.count ?? 0,
+  }));
 
 // UAE-themed colors
 const COLORS = ['#6F4E37', '#8B6F47', '#A0826D', '#B8956A', '#C9A77C', '#D4B996'];
@@ -76,6 +87,11 @@ export default function PerformanceAnalyticsPage() {
     setAiResponse(payload.message ?? payload.summary ?? 'No response');
     setAiLoading(false);
   };
+
+  const appraisalApprovals = normalizeApprovals(data?.appraisalApprovals);
+  const improvementApprovals = normalizeApprovals(data?.improvementApprovals);
+  const pendingApprovals = data?.pendingApprovalsByStage ?? [];
+  const improvementStatus = data?.improvementPlansByStatus ?? [];
 
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
@@ -270,6 +286,83 @@ export default function PerformanceAnalyticsPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Decision Clarity */}
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="text-sm font-semibold text-[#36454F] mb-4">Decision Pipeline</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-xl border border-[#E8DCC4] bg-[#FDF9F3] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#9C8162]">Appraisal Approvals</p>
+                <div className="mt-3 space-y-2 text-sm">
+                  {appraisalApprovals.map((row) => (
+                    <div key={row.status} className="flex items-center justify-between">
+                      <span className="text-[#6F4E37]">{row.status}</span>
+                      <span className="font-semibold text-[#36454F]">{row.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border border-[#E8DCC4] bg-[#FDF9F3] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#9C8162]">Improvement Approvals</p>
+                <div className="mt-3 space-y-2 text-sm">
+                  {improvementApprovals.map((row) => (
+                    <div key={row.status} className="flex items-center justify-between">
+                      <span className="text-[#6F4E37]">{row.status}</span>
+                      <span className="font-semibold text-[#36454F]">{row.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="mt-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#9C8162]">Pending Approvals by Stage</p>
+              {pendingApprovals.length ? (
+                <div className="mt-3">
+                  {pendingApprovals.map((row) => (
+                    <div key={row.stage} className="mb-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-[#6F4E37]">{row.stage}</span>
+                        <span className="font-semibold text-[#36454F]">{row.count}</span>
+                      </div>
+                      <div className="mt-1 h-2 w-full rounded-full bg-[#F4ECE2]">
+                        <div
+                          className="h-2 rounded-full bg-[#6F4E37]"
+                          style={{ width: `${Math.min(100, row.count * 12)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-xs text-[#9C8162]">No pending approvals right now.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="text-sm font-semibold text-[#36454F] mb-4">Improvement Plan Health</h2>
+            {improvementStatus.length ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={improvementStatus}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E8DCC4" />
+                  <XAxis dataKey="status" tick={{ fontSize: 12, fill: '#6F4E37' }} />
+                  <YAxis tick={{ fontSize: 12, fill: '#6F4E37' }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#FFFFFF',
+                      border: '2px solid #E8DCC4',
+                      borderRadius: '8px',
+                    }}
+                  />
+                  <Bar dataKey="count" fill="#A0826D" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-xs text-[#9C8162] text-center py-20">No improvement plan data yet.</p>
+            )}
           </div>
         </div>
 
