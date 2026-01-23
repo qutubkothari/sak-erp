@@ -19,6 +19,15 @@ type RatingScale = {
 export default function RatingScalesPage() {
   const [scales, setScales] = useState<RatingScale[]>([]);
   const [scaleName, setScaleName] = useState('');
+  const [editingScaleId, setEditingScaleId] = useState<string | null>(null);
+  const [editingScaleName, setEditingScaleName] = useState('');
+  const [editingLevelId, setEditingLevelId] = useState<string | null>(null);
+  const [editingLevelForm, setEditingLevelForm] = useState({
+    label: '',
+    minScore: 0,
+    maxScore: 5,
+    description: '',
+  });
   const [levelForm, setLevelForm] = useState({
     scaleId: '',
     label: '',
@@ -57,6 +66,45 @@ export default function RatingScalesPage() {
       body: JSON.stringify(levelForm),
     });
     setLevelForm({ ...levelForm, label: '', description: '' });
+    await fetchScales();
+  };
+
+  const startEditScale = (scale: RatingScale) => {
+    setEditingScaleId(scale.id);
+    setEditingScaleName(scale.name);
+  };
+
+  const saveScale = async () => {
+    if (!editingScaleId || !editingScaleName.trim()) return;
+    await fetch(`/api/rating-scales/${editingScaleId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editingScaleName.trim() }),
+    });
+    setEditingScaleId(null);
+    setEditingScaleName('');
+    await fetchScales();
+  };
+
+  const startEditLevel = (level: RatingLevel) => {
+    setEditingLevelId(level.id);
+    setEditingLevelForm({
+      label: level.label,
+      minScore: level.minScore,
+      maxScore: level.maxScore,
+      description: level.description ?? '',
+    });
+  };
+
+  const saveLevel = async () => {
+    if (!editingLevelId || !editingLevelForm.label) return;
+    await fetch(`/api/rating-scales/levels/${editingLevelId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editingLevelForm),
+    });
+    setEditingLevelId(null);
+    setEditingLevelForm({ label: '', minScore: 0, maxScore: 5, description: '' });
     await fetchScales();
   };
 
@@ -169,17 +217,105 @@ export default function RatingScalesPage() {
           ) : (
             filteredScales.map((scale) => (
               <div key={scale.id} className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-semibold text-[#36454F]">{scale.name}</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  {editingScaleId === scale.id ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                        value={editingScaleName}
+                        onChange={(e) => setEditingScaleName(e.target.value)}
+                      />
+                      <button
+                        className="rounded border border-green-200 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-50"
+                        onClick={saveScale}
+                      >
+                        Save
+                      </button>
+                      <button
+                        className="rounded border border-[#E8DCC4] px-3 py-2 text-xs text-[#9C8162]"
+                        onClick={() => setEditingScaleId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <h2 className="text-lg font-semibold text-[#36454F]">{scale.name}</h2>
+                      <button
+                        className="rounded border border-[#D9CBB6] px-3 py-2 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                        onClick={() => startEditScale(scale)}
+                      >
+                        Edit Scale
+                      </button>
+                    </>
+                  )}
+                </div>
                 <div className="mt-4 grid gap-2 md:grid-cols-2">
                   {scale.levels.map((level) => (
                     <div key={level.id} className="rounded-lg border border-[#E8DCC4] p-3">
-                      <p className="text-sm font-semibold text-[#36454F]">{level.label}</p>
-                      <p className="text-xs text-[#6F4E37]">
-                        {level.minScore} - {level.maxScore}
-                      </p>
-                      {level.description ? (
-                        <p className="text-xs text-[#4B5563]">{level.description}</p>
-                      ) : null}
+                      {editingLevelId === level.id ? (
+                        <div className="space-y-2">
+                          <input
+                            className="w-full rounded border border-[#E8DCC4] px-2 py-1 text-sm"
+                            value={editingLevelForm.label}
+                            onChange={(e) => setEditingLevelForm({ ...editingLevelForm, label: e.target.value })}
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              className="rounded border border-[#E8DCC4] px-2 py-1 text-sm"
+                              type="number"
+                              value={editingLevelForm.minScore}
+                              onChange={(e) => setEditingLevelForm({ ...editingLevelForm, minScore: Number(e.target.value) })}
+                            />
+                            <input
+                              className="rounded border border-[#E8DCC4] px-2 py-1 text-sm"
+                              type="number"
+                              value={editingLevelForm.maxScore}
+                              onChange={(e) => setEditingLevelForm({ ...editingLevelForm, maxScore: Number(e.target.value) })}
+                            />
+                          </div>
+                          <input
+                            className="w-full rounded border border-[#E8DCC4] px-2 py-1 text-sm"
+                            value={editingLevelForm.description}
+                            onChange={(e) => setEditingLevelForm({ ...editingLevelForm, description: e.target.value })}
+                            placeholder="Description"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              className="rounded border border-green-200 px-2 py-1 text-xs font-semibold text-green-700 hover:bg-green-50"
+                              onClick={saveLevel}
+                            >
+                              Save
+                            </button>
+                            <button
+                              className="rounded border border-[#E8DCC4] px-2 py-1 text-xs text-[#9C8162]"
+                              onClick={() => setEditingLevelId(null)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-[#36454F]">{level.label}</p>
+                              <p className="text-xs text-[#6F4E37]">
+                                {level.minScore} - {level.maxScore}
+                              </p>
+                              {level.description ? (
+                                <p className="text-xs text-[#4B5563]">{level.description}</p>
+                              ) : null}
+                            </div>
+                            <button
+                              className="rounded border border-[#D9CBB6] px-2 py-1 text-[10px] font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                              onClick={() => startEditLevel(level)}
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
