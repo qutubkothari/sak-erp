@@ -124,6 +124,7 @@ export default function EmployeesPage() {
     firstName: '',
     lastName: '',
     email: '',
+    password: '',
     hireDate: '',
     departmentId: '',
     roleId: '',
@@ -220,6 +221,7 @@ export default function EmployeesPage() {
       firstName: employee.firstName,
       lastName: employee.lastName,
       email: employee.email,
+      password: '',
       hireDate: employee.hireDate ? employee.hireDate.split('T')[0] : '',
       departmentId: employee.departmentId ?? '',
       roleId: employee.roleId ?? '',
@@ -240,6 +242,7 @@ export default function EmployeesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...editForm,
+          password: editForm.password || undefined,
           departmentId: editForm.departmentId || null,
           roleId: editForm.roleId || null,
           managerId: editForm.managerId || null,
@@ -598,6 +601,13 @@ export default function EmployeesPage() {
                 placeholder="Email"
                 value={editForm.email}
                 onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="New password (optional)"
+                type="password"
+                value={editForm.password}
+                onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
               />
               <input
                 className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import bcrypt from 'bcryptjs';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -11,6 +12,7 @@ type EmployeeUpdate = {
   lastName?: string;
   email?: string;
   hireDate?: string;
+  password?: string;
   status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'TERMINATED';
   employmentType?: 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'PROBATION';
   departmentId?: string | null;
@@ -24,6 +26,10 @@ type EmployeeUpdate = {
 export async function PATCH(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const body = (await request.json()) as EmployeeUpdate;
+
+  if (body.password && body.password.length < 6) {
+    return NextResponse.json({ message: 'Password must be at least 6 characters' }, { status: 400 });
+  }
 
   const employee = await prisma.employee.update({
     where: { id },
@@ -43,6 +49,30 @@ export async function PATCH(request: Request, context: RouteContext) {
       emiratesId: body.emiratesId ?? undefined,
     },
   });
+
+  if (body.password) {
+    const hashed = await bcrypt.hash(body.password, 10);
+    const existingUser = await prisma.user.findFirst({ where: { employeeId: id } });
+
+    if (existingUser) {
+      await prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          password: hashed,
+          email: body.email ?? existingUser.email,
+        },
+      });
+    } else if (employee.email) {
+      await prisma.user.create({
+        data: {
+          email: employee.email,
+          password: hashed,
+          role: 'employee',
+          employeeId: employee.id,
+        },
+      });
+    }
+  }
 
   return NextResponse.json(employee);
 }
