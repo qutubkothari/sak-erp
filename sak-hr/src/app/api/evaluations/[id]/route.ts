@@ -5,7 +5,12 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
   const { id } = await context.params;
   const evaluation = await prisma.evaluation.findUnique({
     where: { id },
-    include: { employee: true, cycle: true, items: true, approvals: true },
+    include: {
+      employee: { include: { department: true, role: true } },
+      cycle: true,
+      items: true,
+      approvals: true,
+    },
   });
 
   if (!evaluation) {
