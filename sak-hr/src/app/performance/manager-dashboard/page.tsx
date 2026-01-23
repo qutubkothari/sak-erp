@@ -85,14 +85,6 @@ export default function ManagerDashboardPage() {
     };
   }, [baseRole, session?.user?.employeeId]);
 
-  if (checkingReports && baseRole === 'manager') {
-    return <div className="py-16 text-center text-sm text-[#9C8162]">Checking access...</div>;
-  }
-
-  if (!canAccess) {
-    return <div className="py-16 text-center text-sm text-[#9C8162]">Access denied.</div>;
-  }
-
   const fetchEvaluations = async () => {
     try {
       setLoading(true);
@@ -121,10 +113,19 @@ export default function ManagerDashboardPage() {
   };
 
   useEffect(() => {
-    if (session?.user?.employeeId) {
+    if (canAccess && session?.user?.employeeId) {
       fetchEvaluations();
     }
-  }, [session?.user?.employeeId]);
+  }, [canAccess, session?.user?.employeeId]);
+
+  // Render loading/access states after all hooks
+  if (checkingReports && baseRole === 'manager') {
+    return <div className="py-16 text-center text-sm text-[#9C8162]">Checking access...</div>;
+  }
+
+  if (!canAccess) {
+    return <div className="py-16 text-center text-sm text-[#9C8162]">Access denied.</div>;
+  }
 
   const stats = useMemo(() => {
     const total = evaluations.length;
