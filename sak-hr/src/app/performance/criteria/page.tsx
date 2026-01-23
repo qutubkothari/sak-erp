@@ -17,27 +17,52 @@ type KPI = {
   weight: number;
 };
 
+type MeritDemerit = {
+  id: string;
+  name: string;
+  description?: string;
+  weight: number;
+  type: 'MERIT' | 'DEMERIT';
+};
+
 export default function CriteriaPage() {
   const [competencies, setCompetencies] = useState<Competency[]>([]);
   const [kpis, setKpis] = useState<KPI[]>([]);
+  const [merits, setMerits] = useState<MeritDemerit[]>([]);
+  const [demerits, setDemerits] = useState<MeritDemerit[]>([]);
   const [competencyForm, setCompetencyForm] = useState({ name: '', description: '', weight: 1 });
   const [kpiForm, setKpiForm] = useState({ name: '', description: '', unit: '', weight: 1 });
+  const [meritForm, setMeritForm] = useState({ name: '', description: '', weight: 1 });
+  const [demeritForm, setDemeritForm] = useState({ name: '', description: '', weight: 1 });
   const [competencySearch, setCompetencySearch] = useState('');
   const [kpiSearch, setKpiSearch] = useState('');
+  const [meritSearch, setMeritSearch] = useState('');
+  const [demeritSearch, setDemeritSearch] = useState('');
   const [editingCompetencyId, setEditingCompetencyId] = useState<string | null>(null);
   const [editingCompetencyForm, setEditingCompetencyForm] = useState({ name: '', description: '', weight: 1 });
   const [editingKpiId, setEditingKpiId] = useState<string | null>(null);
   const [editingKpiForm, setEditingKpiForm] = useState({ name: '', description: '', unit: '', weight: 1 });
+  const [editingMeritId, setEditingMeritId] = useState<string | null>(null);
+  const [editingMeritForm, setEditingMeritForm] = useState({ name: '', description: '', weight: 1 });
+  const [editingDemeritId, setEditingDemeritId] = useState<string | null>(null);
+  const [editingDemeritForm, setEditingDemeritForm] = useState({ name: '', description: '', weight: 1 });
+  const [templateStatus, setTemplateStatus] = useState('');
 
   const fetchData = async () => {
-    const [compRes, kpiRes] = await Promise.all([
+    const [compRes, kpiRes, meritRes, demeritRes] = await Promise.all([
       fetch('/api/competencies'),
       fetch('/api/kpis'),
+      fetch('/api/merit-demerits?type=MERIT'),
+      fetch('/api/merit-demerits?type=DEMERIT'),
     ]);
     const compData = await compRes.json();
     const kpiData = await kpiRes.json();
+    const meritData = await meritRes.json();
+    const demeritData = await demeritRes.json();
     setCompetencies(Array.isArray(compData) ? compData : []);
     setKpis(Array.isArray(kpiData) ? kpiData : []);
+    setMerits(Array.isArray(meritData) ? meritData : []);
+    setDemerits(Array.isArray(demeritData) ? demeritData : []);
   };
 
   useEffect(() => {
@@ -63,6 +88,28 @@ export default function CriteriaPage() {
       body: JSON.stringify(kpiForm),
     });
     setKpiForm({ name: '', description: '', unit: '', weight: 1 });
+    await fetchData();
+  };
+
+  const createMerit = async () => {
+    if (!meritForm.name) return;
+    await fetch('/api/merit-demerits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...meritForm, type: 'MERIT' }),
+    });
+    setMeritForm({ name: '', description: '', weight: 1 });
+    await fetchData();
+  };
+
+  const createDemerit = async () => {
+    if (!demeritForm.name) return;
+    await fetch('/api/merit-demerits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...demeritForm, type: 'DEMERIT' }),
+    });
+    setDemeritForm({ name: '', description: '', weight: 1 });
     await fetchData();
   };
 
@@ -117,6 +164,70 @@ export default function CriteriaPage() {
     await fetchData();
   };
 
+  const startEditMerit = (entry: MeritDemerit) => {
+    setEditingMeritId(entry.id);
+    setEditingMeritForm({
+      name: entry.name,
+      description: entry.description ?? '',
+      weight: entry.weight,
+    });
+  };
+
+  const saveMerit = async () => {
+    if (!editingMeritId) return;
+    await fetch(`/api/merit-demerits/${editingMeritId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editingMeritForm),
+    });
+    setEditingMeritId(null);
+    await fetchData();
+  };
+
+  const deleteMerit = async (id: string) => {
+    await fetch(`/api/merit-demerits/${id}`, { method: 'DELETE' });
+    await fetchData();
+  };
+
+  const startEditDemerit = (entry: MeritDemerit) => {
+    setEditingDemeritId(entry.id);
+    setEditingDemeritForm({
+      name: entry.name,
+      description: entry.description ?? '',
+      weight: entry.weight,
+    });
+  };
+
+  const saveDemerit = async () => {
+    if (!editingDemeritId) return;
+    await fetch(`/api/merit-demerits/${editingDemeritId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editingDemeritForm),
+    });
+    setEditingDemeritId(null);
+    await fetchData();
+  };
+
+  const deleteDemerit = async (id: string) => {
+    await fetch(`/api/merit-demerits/${id}`, { method: 'DELETE' });
+    await fetchData();
+  };
+
+  const applyUaeTemplate = async () => {
+    setTemplateStatus('Applying UAE template...');
+    const response = await fetch('/api/criteria/uae-template', { method: 'POST' });
+    if (!response.ok) {
+      setTemplateStatus('Failed to apply UAE template');
+      return;
+    }
+    const result = await response.json();
+    setTemplateStatus(
+      `Added ${result.competenciesAdded} competencies, ${result.kpisAdded} KPIs, ${result.meritsAdded} merits, ${result.demeritsAdded} demerits.`
+    );
+    await fetchData();
+  };
+
   const filteredCompetencies = competencies.filter((comp) => {
     const query = competencySearch.trim().toLowerCase();
     return !query || comp.name.toLowerCase().includes(query) || comp.description?.toLowerCase().includes(query);
@@ -127,11 +238,30 @@ export default function CriteriaPage() {
     return !query || kpi.name.toLowerCase().includes(query) || kpi.description?.toLowerCase().includes(query);
   });
 
+  const filteredMerits = merits.filter((entry) => {
+    const query = meritSearch.trim().toLowerCase();
+    return !query || entry.name.toLowerCase().includes(query) || entry.description?.toLowerCase().includes(query);
+  });
+
+  const filteredDemerits = demerits.filter((entry) => {
+    const query = demeritSearch.trim().toLowerCase();
+    return !query || entry.name.toLowerCase().includes(query) || entry.description?.toLowerCase().includes(query);
+  });
+
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
       <div className="mx-auto max-w-6xl px-6 py-12">
-        <h1 className="text-2xl font-bold text-[#36454F]">Competencies & KPIs</h1>
-        <p className="mt-2 text-sm text-[#6F4E37]">Define UAE-standard competencies and KPI scorecards.</p>
+        <h1 className="text-2xl font-bold text-[#36454F]">Evaluation Criteria</h1>
+        <p className="mt-2 text-sm text-[#6F4E37]">Define UAE-standard competencies, KPIs, merits, and demerits.</p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            className="rounded-lg border border-[#D9CBB6] bg-white px-3 py-2 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+            onClick={applyUaeTemplate}
+          >
+            Apply UAE Standard Template
+          </button>
+          {templateStatus ? <span className="text-xs text-[#9C8162]">{templateStatus}</span> : null}
+        </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
@@ -346,6 +476,220 @@ export default function CriteriaPage() {
                           <button
                             className="rounded border border-[#E7C7C0] px-2 py-1 text-[11px] font-semibold text-[#7A2E2E] hover:bg-[#F8EDEC]"
                             onClick={() => deleteKpi(kpi.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-[#36454F]">Merits</h2>
+            <input
+              className="mt-4 rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              placeholder="Search merits"
+              value={meritSearch}
+              onChange={(e) => setMeritSearch(e.target.value)}
+            />
+            <div className="mt-4 grid gap-2">
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Merit name"
+                value={meritForm.name}
+                onChange={(e) => setMeritForm({ ...meritForm, name: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Description"
+                value={meritForm.description}
+                onChange={(e) => setMeritForm({ ...meritForm, description: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                type="number"
+                min={1}
+                step={0.1}
+                value={meritForm.weight}
+                onChange={(e) => setMeritForm({ ...meritForm, weight: Number(e.target.value) })}
+              />
+              <button
+                className="w-fit rounded-lg bg-[#6F4E37] px-3 py-2 text-xs font-semibold text-white hover:bg-[#5A3E2C]"
+                onClick={createMerit}
+              >
+                Add Merit
+              </button>
+            </div>
+            <div className="mt-4 space-y-2">
+              {filteredMerits.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-[#E8DCC4] p-4 text-xs text-[#9C8162]">
+                  No merits match this search.
+                </div>
+              ) : (
+                filteredMerits.map((entry) => (
+                  <div key={entry.id} className="rounded-lg border border-[#E8DCC4] p-3">
+                    {editingMeritId === entry.id ? (
+                      <div className="grid gap-2">
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          value={editingMeritForm.name}
+                          onChange={(e) => setEditingMeritForm({ ...editingMeritForm, name: e.target.value })}
+                        />
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          value={editingMeritForm.description}
+                          onChange={(e) =>
+                            setEditingMeritForm({ ...editingMeritForm, description: e.target.value })
+                          }
+                        />
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          type="number"
+                          value={editingMeritForm.weight}
+                          onChange={(e) => setEditingMeritForm({ ...editingMeritForm, weight: Number(e.target.value) })}
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            className="rounded border border-[#D9CBB6] px-2 py-1 text-[11px] font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                            onClick={saveMerit}
+                          >
+                            Save
+                          </button>
+                          <button
+                            className="rounded border border-[#E8DCC4] px-2 py-1 text-[11px] text-[#9C8162]"
+                            onClick={() => setEditingMeritId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-semibold">{entry.name}</p>
+                        {entry.description ? <p className="text-xs text-[#6F4E37]">{entry.description}</p> : null}
+                        <p className="text-[11px] text-[#9C8162]">Weight: {entry.weight}</p>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            className="rounded border border-[#D9CBB6] px-2 py-1 text-[11px] font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                            onClick={() => startEditMerit(entry)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="rounded border border-[#E7C7C0] px-2 py-1 text-[11px] font-semibold text-[#7A2E2E] hover:bg-[#F8EDEC]"
+                            onClick={() => deleteMerit(entry.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-[#36454F]">Demerits</h2>
+            <input
+              className="mt-4 rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              placeholder="Search demerits"
+              value={demeritSearch}
+              onChange={(e) => setDemeritSearch(e.target.value)}
+            />
+            <div className="mt-4 grid gap-2">
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Demerit name"
+                value={demeritForm.name}
+                onChange={(e) => setDemeritForm({ ...demeritForm, name: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Description"
+                value={demeritForm.description}
+                onChange={(e) => setDemeritForm({ ...demeritForm, description: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                type="number"
+                min={1}
+                step={0.1}
+                value={demeritForm.weight}
+                onChange={(e) => setDemeritForm({ ...demeritForm, weight: Number(e.target.value) })}
+              />
+              <button
+                className="w-fit rounded-lg bg-[#6F4E37] px-3 py-2 text-xs font-semibold text-white hover:bg-[#5A3E2C]"
+                onClick={createDemerit}
+              >
+                Add Demerit
+              </button>
+            </div>
+            <div className="mt-4 space-y-2">
+              {filteredDemerits.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-[#E8DCC4] p-4 text-xs text-[#9C8162]">
+                  No demerits match this search.
+                </div>
+              ) : (
+                filteredDemerits.map((entry) => (
+                  <div key={entry.id} className="rounded-lg border border-[#E8DCC4] p-3">
+                    {editingDemeritId === entry.id ? (
+                      <div className="grid gap-2">
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          value={editingDemeritForm.name}
+                          onChange={(e) => setEditingDemeritForm({ ...editingDemeritForm, name: e.target.value })}
+                        />
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          value={editingDemeritForm.description}
+                          onChange={(e) =>
+                            setEditingDemeritForm({ ...editingDemeritForm, description: e.target.value })
+                          }
+                        />
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          type="number"
+                          value={editingDemeritForm.weight}
+                          onChange={(e) =>
+                            setEditingDemeritForm({ ...editingDemeritForm, weight: Number(e.target.value) })
+                          }
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            className="rounded border border-[#D9CBB6] px-2 py-1 text-[11px] font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                            onClick={saveDemerit}
+                          >
+                            Save
+                          </button>
+                          <button
+                            className="rounded border border-[#E8DCC4] px-2 py-1 text-[11px] text-[#9C8162]"
+                            onClick={() => setEditingDemeritId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-semibold">{entry.name}</p>
+                        {entry.description ? <p className="text-xs text-[#6F4E37]">{entry.description}</p> : null}
+                        <p className="text-[11px] text-[#9C8162]">Weight: {entry.weight}</p>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            className="rounded border border-[#D9CBB6] px-2 py-1 text-[11px] font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                            onClick={() => startEditDemerit(entry)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="rounded border border-[#E7C7C0] px-2 py-1 text-[11px] font-semibold text-[#7A2E2E] hover:bg-[#F8EDEC]"
+                            onClick={() => deleteDemerit(entry.id)}
                           >
                             Delete
                           </button>

@@ -2,9 +2,10 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 type EvaluationItemInput = {
-  type: 'COMPETENCY' | 'KPI';
+  type: 'COMPETENCY' | 'KPI' | 'MERIT' | 'DEMERIT';
   competencyId?: string;
   kpiId?: string;
+  meritDemeritId?: string;
   weight?: number;
   selfScore?: number;
   managerScore?: number;
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       type: body.type,
       competencyId: body.competencyId || null,
       kpiId: body.kpiId || null,
+      meritDemeritId: body.meritDemeritId || null,
       weight: body.weight ?? 1,
       selfScore: body.selfScore ?? null,
       managerScore: body.managerScore ?? null,

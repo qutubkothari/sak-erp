@@ -33,6 +33,13 @@ enum EvaluationStatus {
 enum EvaluationItemType {
   COMPETENCY
   KPI
+  MERIT
+  DEMERIT
+}
+
+enum MeritDemeritType {
+  MERIT
+  DEMERIT
 }
 
 enum ApprovalStage {
@@ -148,6 +155,16 @@ model KPI {
   unit        String?
   weight      Float            @default(1)
   createdAt   DateTime         @default(now())
+  items       EvaluationItem[]
+}
+
+model MeritDemerit {
+  id          String            @id @default(uuid())
+  name        String
+  description String?
+  weight      Float             @default(1)
+  type        MeritDemeritType
+  createdAt   DateTime          @default(now())
   items       EvaluationItem[]
 }
 
@@ -275,6 +292,7 @@ model EvaluationItem {
   type         EvaluationItemType
   competencyId String?
   kpiId        String?
+  meritDemeritId String?
   weight       Float               @default(1)
   selfScore    Float?
   managerScore Float?
@@ -284,6 +302,7 @@ model EvaluationItem {
   evaluation Evaluation @relation(fields: [evaluationId], references: [id])
   competency Competency? @relation(fields: [competencyId], references: [id])
   kpi        KPI?       @relation(fields: [kpiId], references: [id])
+  meritDemerit MeritDemerit? @relation(fields: [meritDemeritId], references: [id])
 }
 
 model EvaluationApproval {

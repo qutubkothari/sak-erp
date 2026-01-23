@@ -6,9 +6,10 @@ import { toast } from 'sonner';
 
 interface EvaluationItem {
   id: string;
-  type: 'COMPETENCY' | 'KPI';
+  type: 'COMPETENCY' | 'KPI' | 'MERIT' | 'DEMERIT';
   competencyId?: string | null;
   kpiId?: string | null;
+  meritDemeritId?: string | null;
   selfScore?: number | null;
   managerScore?: number | null;
 }

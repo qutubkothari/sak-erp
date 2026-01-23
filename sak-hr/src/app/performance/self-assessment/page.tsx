@@ -10,6 +10,8 @@ import { toast } from 'sonner';
 
 const assessmentSchema = z.object({
   competencyRatings: z.record(z.string(), z.number().min(1).max(5)),
+  meritRatings: z.record(z.string(), z.number().min(1).max(5)),
+  demeritRatings: z.record(z.string(), z.number().min(1).max(5)),
   kpiAchievements: z.record(z.string(), z.object({
     achieved: z.number(),
     evidence: z.string().min(10, 'Please provide evidence'),
@@ -37,6 +39,14 @@ interface KPI {
   unit?: string | null;
 }
 
+interface MeritDemerit {
+  id: string;
+  name: string;
+  description?: string | null;
+  weight?: number | null;
+  type: 'MERIT' | 'DEMERIT';
+}
+
 interface ReviewCycle {
   id: string;
   name: string;
@@ -55,9 +65,10 @@ interface EvaluationSummary {
 
 interface EvaluationItem {
   id: string;
-  type: 'COMPETENCY' | 'KPI';
+  type: 'COMPETENCY' | 'KPI' | 'MERIT' | 'DEMERIT';
   competencyId?: string | null;
   kpiId?: string | null;
+  meritDemeritId?: string | null;
   selfScore?: number | null;
   comments?: string | null;
 }
@@ -79,6 +90,8 @@ export default function SelfAssessmentPage() {
   const [cycle, setCycle] = useState<ReviewCycle | null>(null);
   const [competencies, setCompetencies] = useState<Competency[]>([]);
   const [kpis, setKpis] = useState<KPI[]>([]);
+  const [merits, setMerits] = useState<MeritDemerit[]>([]);
+  const [demerits, setDemerits] = useState<MeritDemerit[]>([]);
   const [evaluationId, setEvaluationId] = useState<string | null>(null);
   const [evaluations, setEvaluations] = useState<EvaluationSummary[]>([]);
   const [activeEvaluation, setActiveEvaluation] = useState<EvaluationSummary | null>(null);
@@ -91,6 +104,8 @@ export default function SelfAssessmentPage() {
   const [draftSaving, setDraftSaving] = useState(false);
 
   const [selectedRating, setSelectedRating] = useState<{ [key: string]: number }>({});
+  const [selectedMeritRating, setSelectedMeritRating] = useState<{ [key: string]: number }>({});
+  const [selectedDemeritRating, setSelectedDemeritRating] = useState<{ [key: string]: number }>({});
   const [kpiData, setKpiData] = useState<{ [key: string]: { achieved: number; evidence: string } }>({});
 
   const {
@@ -104,6 +119,8 @@ export default function SelfAssessmentPage() {
     resolver: zodResolver(assessmentSchema),
     defaultValues: {
       competencyRatings: {},
+      meritRatings: {},
+      demeritRatings: {},
       kpiAchievements: {},
     },
   });
@@ -111,6 +128,16 @@ export default function SelfAssessmentPage() {
   const handleRatingClick = (competencyId: string, rating: number) => {
     setSelectedRating({ ...selectedRating, [competencyId]: rating });
     setValue(`competencyRatings.${competencyId}`, rating);
+  };
+
+  const handleMeritRatingClick = (meritId: string, rating: number) => {
+    setSelectedMeritRating({ ...selectedMeritRating, [meritId]: rating });
+    setValue(`meritRatings.${meritId}`, rating);
+  };
+
+  const handleDemeritRatingClick = (demeritId: string, rating: number) => {
+    setSelectedDemeritRating({ ...selectedDemeritRating, [demeritId]: rating });
+    setValue(`demeritRatings.${demeritId}`, rating);
   };
 
   const handleKpiChange = (kpiId: string, field: 'achieved' | 'evidence', value: string | number) => {
@@ -146,6 +173,8 @@ export default function SelfAssessmentPage() {
 
   const upsertEvaluationItems = async (
     competencyEntries: Array<[string, number]>,
+    meritEntries: Array<[string, number]>,
+    demeritEntries: Array<[string, number]>,
     kpiEntries: Array<[string, { achieved: number; evidence: string }]>
   ) => {
     if (!evaluationId) return;
@@ -170,6 +199,50 @@ export default function SelfAssessmentPage() {
           body: JSON.stringify({
             type: 'COMPETENCY',
             competencyId,
+            selfScore: rating,
+          }),
+        });
+      }),
+      ...meritEntries.map(([meritId, rating]) => {
+        const existing = existingItems.find((item) => item.meritDemeritId === meritId);
+        if (existing?.id) {
+          return fetch(`/api/evaluations/${evaluationId}/items`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              itemId: existing.id,
+              selfScore: rating,
+            }),
+          });
+        }
+        return fetch(`/api/evaluations/${evaluationId}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'MERIT',
+            meritDemeritId: meritId,
+            selfScore: rating,
+          }),
+        });
+      }),
+      ...demeritEntries.map(([demeritId, rating]) => {
+        const existing = existingItems.find((item) => item.meritDemeritId === demeritId);
+        if (existing?.id) {
+          return fetch(`/api/evaluations/${evaluationId}/items`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              itemId: existing.id,
+              selfScore: rating,
+            }),
+          });
+        }
+        return fetch(`/api/evaluations/${evaluationId}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'DEMERIT',
+            meritDemeritId: demeritId,
             selfScore: rating,
           }),
         });
@@ -209,9 +282,11 @@ export default function SelfAssessmentPage() {
       }
 
       const competencyEntries = Object.entries(data.competencyRatings || {});
+      const meritEntries = Object.entries(data.meritRatings || {});
+      const demeritEntries = Object.entries(data.demeritRatings || {});
       const kpiEntries = Object.entries(data.kpiAchievements || {});
 
-      await upsertEvaluationItems(competencyEntries, kpiEntries);
+      await upsertEvaluationItems(competencyEntries, meritEntries, demeritEntries, kpiEntries);
 
       await fetch('/api/self-assessments', {
         method: 'POST',
@@ -275,9 +350,11 @@ export default function SelfAssessmentPage() {
       setDraftSaving(true);
       const values = getValues();
       const competencyEntries = Object.entries(values.competencyRatings || {});
+      const meritEntries = Object.entries(values.meritRatings || {});
+      const demeritEntries = Object.entries(values.demeritRatings || {});
       const kpiEntries = Object.entries(values.kpiAchievements || {});
 
-      await upsertEvaluationItems(competencyEntries, kpiEntries);
+      await upsertEvaluationItems(competencyEntries, meritEntries, demeritEntries, kpiEntries);
 
       await fetch('/api/self-assessments', {
         method: 'POST',
@@ -305,10 +382,18 @@ export default function SelfAssessmentPage() {
     console.error('Self-assessment validation errors:', formErrors);
     const hasKpiErrors = !!formErrors.kpiAchievements && Object.keys(formErrors.kpiAchievements).length > 0;
     const hasCompetencyErrors = !!formErrors.competencyRatings && Object.keys(formErrors.competencyRatings).length > 0;
+    const hasMeritErrors = !!formErrors.meritRatings && Object.keys(formErrors.meritRatings).length > 0;
+    const hasDemeritErrors = !!formErrors.demeritRatings && Object.keys(formErrors.demeritRatings).length > 0;
     const messageParts = ['Please fix the highlighted fields.'];
 
     if (hasCompetencyErrors) {
       messageParts.push('Select ratings for competencies.');
+    }
+    if (hasMeritErrors) {
+      messageParts.push('Select ratings for merits.');
+    }
+    if (hasDemeritErrors) {
+      messageParts.push('Select ratings for demerits.');
     }
     if (hasKpiErrors) {
       messageParts.push('Provide KPI evidence (min 10 characters).');
@@ -352,11 +437,19 @@ export default function SelfAssessmentPage() {
 
     const items: EvaluationItem[] = Array.isArray(evaluation.items) ? evaluation.items : [];
     const ratingMap: Record<string, number> = {};
+    const meritMap: Record<string, number> = {};
+    const demeritMap: Record<string, number> = {};
     const kpiMap: Record<string, { achieved: number; evidence: string }> = {};
 
     items.forEach((item) => {
       if (item.type === 'COMPETENCY' && item.competencyId && item.selfScore != null) {
         ratingMap[item.competencyId] = item.selfScore;
+      }
+      if (item.type === 'MERIT' && item.meritDemeritId && item.selfScore != null) {
+        meritMap[item.meritDemeritId] = item.selfScore;
+      }
+      if (item.type === 'DEMERIT' && item.meritDemeritId && item.selfScore != null) {
+        demeritMap[item.meritDemeritId] = item.selfScore;
       }
       if (item.type === 'KPI' && item.kpiId && item.selfScore != null) {
         kpiMap[item.kpiId] = {
@@ -367,6 +460,8 @@ export default function SelfAssessmentPage() {
     });
 
     setSelectedRating(ratingMap);
+    setSelectedMeritRating(meritMap);
+    setSelectedDemeritRating(demeritMap);
     setKpiData(kpiMap);
 
     const assessmentRes = await fetch(`/api/self-assessments?evaluationId=${evaluation.id}`);
@@ -378,11 +473,15 @@ export default function SelfAssessmentPage() {
         developmentNeeds: assessment.developmentNeeds ?? '',
         comments: assessment.comments ?? '',
         competencyRatings: ratingMap,
+        meritRatings: meritMap,
+        demeritRatings: demeritMap,
         kpiAchievements: kpiMap,
       });
     } else {
       reset({
         competencyRatings: ratingMap,
+        meritRatings: meritMap,
+        demeritRatings: demeritMap,
         kpiAchievements: kpiMap,
       });
     }
@@ -407,14 +506,18 @@ export default function SelfAssessmentPage() {
     const load = async () => {
       try {
         setLoading(true);
-        const [cyclesRes, compsRes, kpisRes] = await Promise.all([
+        const [cyclesRes, compsRes, kpisRes, meritsRes, demeritsRes] = await Promise.all([
           fetch('/api/review-cycles'),
           fetch('/api/competencies'),
           fetch('/api/kpis'),
+          fetch('/api/merit-demerits?type=MERIT'),
+          fetch('/api/merit-demerits?type=DEMERIT'),
         ]);
         const cycles = await cyclesRes.json();
         const comps = await compsRes.json();
         const kpiList = await kpisRes.json();
+        const meritList = await meritsRes.json();
+        const demeritList = await demeritsRes.json();
 
         const activeCycle = Array.isArray(cycles)
           ? cycles.find((c) => c.status === 'ACTIVE') || cycles[0]
@@ -422,6 +525,8 @@ export default function SelfAssessmentPage() {
         setCycle(activeCycle || null);
         setCompetencies(Array.isArray(comps) ? comps : []);
         setKpis(Array.isArray(kpiList) ? kpiList : []);
+        setMerits(Array.isArray(meritList) ? meritList : []);
+        setDemerits(Array.isArray(demeritList) ? demeritList : []);
 
         const employeeId = session?.user?.employeeId;
         if (!employeeId || !activeCycle?.id) return;
@@ -503,6 +608,7 @@ export default function SelfAssessmentPage() {
           </h2>
           <ul className="space-y-1 text-xs text-blue-800">
             <li>• Rate yourself honestly on each competency using the 1-5 scale</li>
+            <li>• Capture merit contributions and demerit areas using the same scale</li>
             <li>• Provide evidence for your KPI achievements</li>
             <li>• Reflect on accomplishments, challenges, and development needs</li>
             <li>• Your manager will review and provide their assessment</li>
@@ -631,6 +737,88 @@ export default function SelfAssessmentPage() {
                     {selectedRating[comp.id] && (
                       <span className="ml-4 text-sm font-medium text-[#6F4E37]">
                         {getRatingLabel(selectedRating[comp.id])}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Merits Section */}
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-[#36454F]">Merits</h2>
+            <p className="mb-6 text-sm text-[#6F4E37]">
+              Highlight merit-based contributions (1 = Needs Improvement, 5 = Outstanding)
+            </p>
+
+            <div className="space-y-6">
+              {merits.map((entry) => (
+                <div key={entry.id} className="border-b border-[#F4ECE2] pb-6 last:border-0 last:pb-0">
+                  <div className="mb-3">
+                    <h3 className="font-semibold text-[#36454F]">{entry.name}</h3>
+                    <p className="text-xs text-[#6F4E37]">{entry.description}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map((rating) => (
+                      <button
+                        key={rating}
+                        type="button"
+                        onClick={() => handleMeritRatingClick(entry.id, rating)}
+                        className={`flex h-12 w-12 items-center justify-center rounded-lg border-2 text-lg font-bold transition-all ${
+                          selectedMeritRating[entry.id] === rating
+                            ? 'border-[#6F4E37] bg-[#6F4E37] text-white scale-110'
+                            : 'border-[#E8DCC4] bg-white text-[#9C8162] hover:border-[#6F4E37] hover:bg-[#F4ECE2]'
+                        }`}
+                      >
+                        {rating}
+                      </button>
+                    ))}
+                    {selectedMeritRating[entry.id] && (
+                      <span className="ml-4 text-sm font-medium text-[#6F4E37]">
+                        {getRatingLabel(selectedMeritRating[entry.id])}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Demerits Section */}
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-[#36454F]">Demerits</h2>
+            <p className="mb-6 text-sm text-[#6F4E37]">
+              Identify demerit areas that need improvement (1 = Needs Improvement, 5 = Outstanding)
+            </p>
+
+            <div className="space-y-6">
+              {demerits.map((entry) => (
+                <div key={entry.id} className="border-b border-[#F4ECE2] pb-6 last:border-0 last:pb-0">
+                  <div className="mb-3">
+                    <h3 className="font-semibold text-[#36454F]">{entry.name}</h3>
+                    <p className="text-xs text-[#6F4E37]">{entry.description}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map((rating) => (
+                      <button
+                        key={rating}
+                        type="button"
+                        onClick={() => handleDemeritRatingClick(entry.id, rating)}
+                        className={`flex h-12 w-12 items-center justify-center rounded-lg border-2 text-lg font-bold transition-all ${
+                          selectedDemeritRating[entry.id] === rating
+                            ? 'border-[#6F4E37] bg-[#6F4E37] text-white scale-110'
+                            : 'border-[#E8DCC4] bg-white text-[#9C8162] hover:border-[#6F4E37] hover:bg-[#F4ECE2]'
+                        }`}
+                      >
+                        {rating}
+                      </button>
+                    ))}
+                    {selectedDemeritRating[entry.id] && (
+                      <span className="ml-4 text-sm font-medium text-[#6F4E37]">
+                        {getRatingLabel(selectedDemeritRating[entry.id])}
                       </span>
                     )}
                   </div>

@@ -10,6 +10,8 @@ import { useSearchParams } from 'next/navigation';
 
 const managerReviewSchema = z.object({
   competencyRatings: z.record(z.string(), z.number().min(1).max(5)),
+  meritRatings: z.record(z.string(), z.number().min(1).max(5)),
+  demeritRatings: z.record(z.string(), z.number().min(1).max(5)),
   overallRating: z.number().min(1).max(5),
   managerComments: z.string().min(50, 'Please provide detailed feedback (minimum 50 characters)'),
   strengths: z.string().min(30, 'Please describe employee strengths (minimum 30 characters)'),
@@ -50,6 +52,14 @@ interface Competency {
   itemId?: string | null;
 }
 
+interface MeritDemerit {
+  id: string;
+  name: string;
+  description?: string | null;
+  selfRating?: number | null;
+  itemId?: string | null;
+}
+
 interface KPIProgress {
   id: string;
   name: string;
@@ -76,6 +86,8 @@ export default function ManagerReviewPage() {
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [selfAssessment, setSelfAssessment] = useState<SelfAssessment | null>(null);
   const [competencies, setCompetencies] = useState<Competency[]>([]);
+  const [merits, setMerits] = useState<MeritDemerit[]>([]);
+  const [demerits, setDemerits] = useState<MeritDemerit[]>([]);
   const [evaluations, setEvaluations] = useState<any[]>([]);
   const [selectedEvaluationId, setSelectedEvaluationId] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -86,6 +98,8 @@ export default function ManagerReviewPage() {
   const [activityLoading, setActivityLoading] = useState(false);
 
   const [managerRatings, setManagerRatings] = useState<{ [key: string]: number }>({});
+  const [managerMeritRatings, setManagerMeritRatings] = useState<{ [key: string]: number }>({});
+  const [managerDemeritRatings, setManagerDemeritRatings] = useState<{ [key: string]: number }>({});
   const [salaryRec, setSalaryRec] = useState<string>('no-change');
   const [overallRating, setOverallRating] = useState<number>(0);
 
@@ -98,6 +112,8 @@ export default function ManagerReviewPage() {
   } = useForm<ManagerReviewFormData>({
     resolver: zodResolver(managerReviewSchema),
     defaultValues: {
+      meritRatings: {},
+      demeritRatings: {},
       salaryRecommendation: 'no-change',
     },
   });
@@ -107,6 +123,16 @@ export default function ManagerReviewPage() {
   const handleRatingClick = (competencyId: string, rating: number) => {
     setManagerRatings({ ...managerRatings, [competencyId]: rating });
     setValue(`competencyRatings.${competencyId}`, rating);
+  };
+
+  const handleMeritRatingClick = (meritId: string, rating: number) => {
+    setManagerMeritRatings({ ...managerMeritRatings, [meritId]: rating });
+    setValue(`meritRatings.${meritId}`, rating);
+  };
+
+  const handleDemeritRatingClick = (demeritId: string, rating: number) => {
+    setManagerDemeritRatings({ ...managerDemeritRatings, [demeritId]: rating });
+    setValue(`demeritRatings.${demeritId}`, rating);
   };
 
   const handleOverallRating = (rating: number) => {
@@ -143,28 +169,74 @@ export default function ManagerReviewPage() {
       const managerId = session?.user?.employeeId || undefined;
 
       await Promise.all(
-        Object.entries(data.competencyRatings || {}).map(([competencyId, rating]) => {
-          const item = competencies.find((c) => c.id === competencyId);
-          if (!item?.itemId) {
+        [
+          ...Object.entries(data.competencyRatings || {}).map(([competencyId, rating]) => {
+            const item = competencies.find((c) => c.id === competencyId);
+            if (!item?.itemId) {
+              return fetch(`/api/evaluations/${selectedEvaluationId}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'COMPETENCY',
+                  competencyId,
+                  managerScore: rating,
+                }),
+              });
+            }
             return fetch(`/api/evaluations/${selectedEvaluationId}/items`, {
-              method: 'POST',
+              method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                type: 'COMPETENCY',
-                competencyId,
+                itemId: item.itemId,
                 managerScore: rating,
               }),
             });
-          }
-          return fetch(`/api/evaluations/${selectedEvaluationId}/items`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              itemId: item.itemId,
-              managerScore: rating,
-            }),
-          });
-        })
+          }),
+          ...Object.entries(data.meritRatings || {}).map(([meritId, rating]) => {
+            const item = merits.find((m) => m.id === meritId);
+            if (!item?.itemId) {
+              return fetch(`/api/evaluations/${selectedEvaluationId}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'MERIT',
+                  meritDemeritId: meritId,
+                  managerScore: rating,
+                }),
+              });
+            }
+            return fetch(`/api/evaluations/${selectedEvaluationId}/items`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                itemId: item.itemId,
+                managerScore: rating,
+              }),
+            });
+          }),
+          ...Object.entries(data.demeritRatings || {}).map(([demeritId, rating]) => {
+            const item = demerits.find((m) => m.id === demeritId);
+            if (!item?.itemId) {
+              return fetch(`/api/evaluations/${selectedEvaluationId}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'DEMERIT',
+                  meritDemeritId: demeritId,
+                  managerScore: rating,
+                }),
+              });
+            }
+            return fetch(`/api/evaluations/${selectedEvaluationId}/items`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                itemId: item.itemId,
+                managerScore: rating,
+              }),
+            });
+          }),
+        ]
       );
 
       await fetch('/api/manager-reviews', {
@@ -334,18 +406,31 @@ export default function ManagerReviewPage() {
           });
         }
 
-        const [compsRes, kpisRes] = await Promise.all([
+        const [compsRes, kpisRes, meritsRes, demeritsRes] = await Promise.all([
           fetch('/api/competencies'),
           fetch('/api/kpis'),
+          fetch('/api/merit-demerits?type=MERIT'),
+          fetch('/api/merit-demerits?type=DEMERIT'),
         ]);
         const comps = await compsRes.json();
         const kpis = await kpisRes.json();
+        const meritsData = await meritsRes.json();
+        const demeritsData = await demeritsRes.json();
         const compList = Array.isArray(comps) ? comps : [];
         const kpiList = Array.isArray(kpis) ? kpis : [];
+        const meritList = Array.isArray(meritsData) ? meritsData : [];
+        const demeritList = Array.isArray(demeritsData) ? demeritsData : [];
         const items = Array.isArray(evaluation?.items) ? evaluation.items : [];
+
+        const competencyManagerRatings: Record<string, number> = {};
+        const meritManagerRatings: Record<string, number> = {};
+        const demeritManagerRatings: Record<string, number> = {};
 
         const mapped = compList.map((comp: any) => {
           const item = items.find((it: any) => it.competencyId === comp.id);
+          if (item?.managerScore != null) {
+            competencyManagerRatings[comp.id] = item.managerScore;
+          }
           return {
             id: comp.id,
             name: comp.name,
@@ -355,6 +440,36 @@ export default function ManagerReviewPage() {
           };
         });
         setCompetencies(mapped);
+
+        const meritMapped = meritList.map((entry: any) => {
+          const item = items.find((it: any) => it.meritDemeritId === entry.id && it.type === 'MERIT');
+          if (item?.managerScore != null) {
+            meritManagerRatings[entry.id] = item.managerScore;
+          }
+          return {
+            id: entry.id,
+            name: entry.name,
+            description: entry.description,
+            selfRating: item?.selfScore ?? null,
+            itemId: item?.id ?? null,
+          };
+        });
+        setMerits(meritMapped);
+
+        const demeritMapped = demeritList.map((entry: any) => {
+          const item = items.find((it: any) => it.meritDemeritId === entry.id && it.type === 'DEMERIT');
+          if (item?.managerScore != null) {
+            demeritManagerRatings[entry.id] = item.managerScore;
+          }
+          return {
+            id: entry.id,
+            name: entry.name,
+            description: entry.description,
+            selfRating: item?.selfScore ?? null,
+            itemId: item?.id ?? null,
+          };
+        });
+        setDemerits(demeritMapped);
 
         const kpiMapped = kpiList.map((kpi: any) => {
           const item = items.find((it: any) => it.kpiId === kpi.id);
@@ -371,6 +486,13 @@ export default function ManagerReviewPage() {
           };
         });
         setKpiProgress(kpiMapped);
+
+        setManagerRatings(competencyManagerRatings);
+        setManagerMeritRatings(meritManagerRatings);
+        setManagerDemeritRatings(demeritManagerRatings);
+        setValue('competencyRatings', competencyManagerRatings);
+        setValue('meritRatings', meritManagerRatings);
+        setValue('demeritRatings', demeritManagerRatings);
 
         const evidenceRes = await fetch(`/api/evaluations/${selectedEvaluationId}/evidence`);
         const evidenceData = await evidenceRes.json();
@@ -666,6 +788,102 @@ export default function ManagerReviewPage() {
                       </p>
                     </div>
                   )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Merits */}
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-[#36454F]">Merit Evaluation</h2>
+            <p className="mb-6 text-sm text-[#6F4E37]">Evaluate merit-based contributions</p>
+
+            <div className="space-y-6">
+              {merits.map((entry) => (
+                <div key={entry.id} className="border-b border-[#F4ECE2] pb-6 last:border-0 last:pb-0">
+                  <div className="mb-3 flex items-start justify-between">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-[#36454F]">{entry.name}</h3>
+                      <p className="text-xs text-[#6F4E37]">{entry.description}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-[#9C8162]">Employee Rating</p>
+                      <p className={`text-lg font-bold ${getRatingColor(entry.selfRating)}`}>
+                        {entry.selfRating ?? '—'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#9C8162] w-24">Your Rating:</span>
+                    {[1, 2, 3, 4, 5].map((rating) => (
+                      <button
+                        key={rating}
+                        type="button"
+                        onClick={() => handleMeritRatingClick(entry.id, rating)}
+                        className={`flex h-12 w-12 items-center justify-center rounded-lg border-2 text-lg font-bold transition-all ${
+                          managerMeritRatings[entry.id] === rating
+                            ? 'border-[#6F4E37] bg-[#6F4E37] text-white scale-110'
+                            : 'border-[#E8DCC4] bg-white text-[#9C8162] hover:border-[#6F4E37] hover:bg-[#F4ECE2]'
+                        }`}
+                      >
+                        {rating}
+                      </button>
+                    ))}
+                    {managerMeritRatings[entry.id] && (
+                      <span className="ml-4 text-sm font-medium text-[#6F4E37]">
+                        {getRatingLabel(managerMeritRatings[entry.id])}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Demerits */}
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-[#36454F]">Demerit Evaluation</h2>
+            <p className="mb-6 text-sm text-[#6F4E37]">Evaluate areas that need improvement</p>
+
+            <div className="space-y-6">
+              {demerits.map((entry) => (
+                <div key={entry.id} className="border-b border-[#F4ECE2] pb-6 last:border-0 last:pb-0">
+                  <div className="mb-3 flex items-start justify-between">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-[#36454F]">{entry.name}</h3>
+                      <p className="text-xs text-[#6F4E37]">{entry.description}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-[#9C8162]">Employee Rating</p>
+                      <p className={`text-lg font-bold ${getRatingColor(entry.selfRating)}`}>
+                        {entry.selfRating ?? '—'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#9C8162] w-24">Your Rating:</span>
+                    {[1, 2, 3, 4, 5].map((rating) => (
+                      <button
+                        key={rating}
+                        type="button"
+                        onClick={() => handleDemeritRatingClick(entry.id, rating)}
+                        className={`flex h-12 w-12 items-center justify-center rounded-lg border-2 text-lg font-bold transition-all ${
+                          managerDemeritRatings[entry.id] === rating
+                            ? 'border-[#6F4E37] bg-[#6F4E37] text-white scale-110'
+                            : 'border-[#E8DCC4] bg-white text-[#9C8162] hover:border-[#6F4E37] hover:bg-[#F4ECE2]'
+                        }`}
+                      >
+                        {rating}
+                      </button>
+                    ))}
+                    {managerDemeritRatings[entry.id] && (
+                      <span className="ml-4 text-sm font-medium text-[#6F4E37]">
+                        {getRatingLabel(managerDemeritRatings[entry.id])}
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
