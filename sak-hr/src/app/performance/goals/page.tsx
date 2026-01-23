@@ -45,6 +45,16 @@ export default function GoalsPage() {
   console.log('GoalsPage render - session:', session);
   console.log('GoalsPage render - competencies:', competencies);
 
+  const initialGoalValues: GoalFormData = {
+    title: '',
+    description: '',
+    category: 'individual',
+    priority: 'medium',
+    targetDate: '',
+    measurableMetric: '',
+    alignedCompetency: '',
+  };
+
   const {
     register,
     handleSubmit,
@@ -52,7 +62,14 @@ export default function GoalsPage() {
     formState: { errors, isSubmitting },
   } = useForm<GoalFormData>({
     resolver: zodResolver(goalSchema),
+    defaultValues: initialGoalValues,
   });
+
+  useEffect(() => {
+    if (showForm && !editingGoalId) {
+      reset(initialGoalValues);
+    }
+  }, [showForm, editingGoalId, reset]);
 
   useEffect(() => {
     console.log('useEffect triggered - session?.user:', session?.user);
@@ -156,7 +173,7 @@ export default function GoalsPage() {
         toast.success('Goal created successfully');
       }
 
-      reset();
+      reset(initialGoalValues);
       setEditingGoalId(null);
       setShowForm(false);
     } catch (error) {
@@ -181,7 +198,15 @@ export default function GoalsPage() {
 
   const cancelEdit = () => {
     setEditingGoalId(null);
-    reset();
+    reset({
+      title: '',
+      description: '',
+      category: 'individual',
+      priority: 'medium',
+      targetDate: '',
+      measurableMetric: '',
+      alignedCompetency: '',
+    });
     setShowForm(false);
   };
 

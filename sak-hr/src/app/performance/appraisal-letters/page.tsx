@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 
 type Employee = {
   id: string;
@@ -32,25 +33,25 @@ type AppraisalLetter = {
 };
 
 export default function AppraisalLettersPage() {
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const { data: session } = useSession();
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [letters, setLetters] = useState<AppraisalLetter[]>([]);
   const [form, setForm] = useState({ evaluationId: '', subject: '', summary: '', rating: '', adjustment: '' });
   const [search, setSearch] = useState('');
-  const [approverMap, setApproverMap] = useState<Record<string, string>>({});
+  const rawRole = (session?.user?.role || 'employee').toString().toLowerCase();
+  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const canCreate = baseRole === 'admin';
+  const canApprove = baseRole === 'manager';
 
   const loadData = async () => {
-    const [empRes, evalRes, letterRes] = await Promise.all([
-      fetch('/api/employees'),
+    const [evalRes, letterRes] = await Promise.all([
       fetch('/api/evaluations'),
       fetch('/api/appraisal-letters'),
     ]);
 
-    const empData = await empRes.json();
     const evalData = await evalRes.json();
     const letterData = await letterRes.json();
 
-    setEmployees(Array.isArray(empData) ? empData : []);
     setEvaluations(Array.isArray(evalData) ? evalData : []);
     setLetters(Array.isArray(letterData) ? letterData : []);
   };
@@ -91,12 +92,14 @@ export default function AppraisalLettersPage() {
   const formattedDate = (value: string) => new Date(value).toLocaleDateString('en-GB');
 
   const updateApproval = async (id: string, status: 'PENDING' | 'APPROVED' | 'REJECTED') => {
+    const approverId = session?.user?.employeeId;
+    if (!approverId) return;
     await fetch(`/api/appraisal-letters/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         approvalStatus: status,
-        approvedById: approverMap[id] || undefined,
+        approvedById: approverId,
       }),
     });
     await loadData();
@@ -121,54 +124,60 @@ export default function AppraisalLettersPage() {
           ))}
         </div>
 
-        <div className="mt-6 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-[#36454F]">Create Letter</h2>
-          <div className="grid gap-3 md:grid-cols-2">
-            <select
-              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
-              value={form.evaluationId}
-              onChange={(e) => setForm({ ...form, evaluationId: e.target.value })}
+        {canCreate ? (
+          <div className="mt-6 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-[#36454F]">Create Letter</h2>
+            <div className="grid gap-3 md:grid-cols-2">
+              <select
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                value={form.evaluationId}
+                onChange={(e) => setForm({ ...form, evaluationId: e.target.value })}
+              >
+                <option value="">Select evaluation</option>
+                {evaluations.map((evaluation) => (
+                  <option key={evaluation.id} value={evaluation.id}>
+                    {evaluation.employee.firstName} {evaluation.employee.lastName} • {evaluation.cycle.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Subject"
+                value={form.subject}
+                onChange={(e) => setForm({ ...form, subject: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Final Rating (optional)"
+                type="number"
+                value={form.rating}
+                onChange={(e) => setForm({ ...form, rating: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Adjustment notes (optional)"
+                value={form.adjustment}
+                onChange={(e) => setForm({ ...form, adjustment: e.target.value })}
+              />
+            </div>
+            <textarea
+              className="min-h-[120px] rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              placeholder="Appraisal summary"
+              value={form.summary}
+              onChange={(e) => setForm({ ...form, summary: e.target.value })}
+            />
+            <button
+              className="w-fit rounded-lg bg-[#6F4E37] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5A3E2C]"
+              onClick={createLetter}
             >
-              <option value="">Select evaluation</option>
-              {evaluations.map((evaluation) => (
-                <option key={evaluation.id} value={evaluation.id}>
-                  {evaluation.employee.firstName} {evaluation.employee.lastName} • {evaluation.cycle.name}
-                </option>
-              ))}
-            </select>
-            <input
-              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
-              placeholder="Subject"
-              value={form.subject}
-              onChange={(e) => setForm({ ...form, subject: e.target.value })}
-            />
-            <input
-              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
-              placeholder="Final Rating (optional)"
-              type="number"
-              value={form.rating}
-              onChange={(e) => setForm({ ...form, rating: e.target.value })}
-            />
-            <input
-              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
-              placeholder="Adjustment notes (optional)"
-              value={form.adjustment}
-              onChange={(e) => setForm({ ...form, adjustment: e.target.value })}
-            />
+              Create Letter
+            </button>
           </div>
-          <textarea
-            className="min-h-[120px] rounded border border-[#E8DCC4] px-3 py-2 text-sm"
-            placeholder="Appraisal summary"
-            value={form.summary}
-            onChange={(e) => setForm({ ...form, summary: e.target.value })}
-          />
-          <button
-            className="w-fit rounded-lg bg-[#6F4E37] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5A3E2C]"
-            onClick={createLetter}
-          >
-            Create Letter
-          </button>
-        </div>
+        ) : (
+          <div className="mt-6 rounded-2xl border border-dashed border-[#E8DCC4] bg-white p-6 text-sm text-[#6F4E37]">
+            Appraisal letters are prepared by HR. Managers can approve and employees can view.
+          </div>
+        )}
 
         <div className="mt-6 grid gap-3 rounded-2xl border border-[#E8DCC4] bg-white p-4 shadow-sm md:grid-cols-3">
           <input
@@ -221,32 +230,22 @@ export default function AppraisalLettersPage() {
                     </span>
                   ) : null}
                 </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  <select
-                    className="rounded border border-[#E8DCC4] px-3 py-2 text-xs"
-                    value={approverMap[letter.id] ?? ''}
-                    onChange={(e) => setApproverMap({ ...approverMap, [letter.id]: e.target.value })}
-                  >
-                    <option value="">Select approver</option>
-                    {employees.map((employee) => (
-                      <option key={employee.id} value={employee.id}>
-                        {employee.firstName} {employee.lastName}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="rounded-lg border border-[#D9CBB6] px-3 py-2 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
-                    onClick={() => updateApproval(letter.id, 'APPROVED')}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    className="rounded-lg border border-[#E7C7C0] px-3 py-2 text-xs font-semibold text-[#7A2E2E] hover:bg-[#F8EDEC]"
-                    onClick={() => updateApproval(letter.id, 'REJECTED')}
-                  >
-                    Reject
-                  </button>
-                </div>
+                {canApprove ? (
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <button
+                      className="rounded-lg border border-[#D9CBB6] px-3 py-2 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                      onClick={() => updateApproval(letter.id, 'APPROVED')}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      className="rounded-lg border border-[#E7C7C0] px-3 py-2 text-xs font-semibold text-[#7A2E2E] hover:bg-[#F8EDEC]"
+                      onClick={() => updateApproval(letter.id, 'REJECTED')}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ))
           )}

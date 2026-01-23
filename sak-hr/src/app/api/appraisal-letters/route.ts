@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
 
 type AppraisalLetterInput = {
   evaluationId: string;
@@ -10,7 +11,26 @@ type AppraisalLetterInput = {
 };
 
 export async function GET() {
+  const session = await auth();
+  if (!session) {
+    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+  }
+
+  const rawRole = (session.user.role || 'employee').toString().toLowerCase();
+  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const employeeId = session.user.employeeId || undefined;
+
+  const where =
+    baseRole === 'admin'
+      ? undefined
+      : baseRole === 'manager' && employeeId
+        ? { evaluation: { employee: { managerId: employeeId } } }
+        : employeeId
+          ? { evaluation: { employeeId } }
+          : { evaluationId: '__none__' };
+
   const letters = await prisma.appraisalLetter.findMany({
+    where,
     orderBy: { createdAt: 'desc' },
     include: {
       evaluation: {
@@ -27,6 +47,17 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const session = await auth();
+  if (!session) {
+    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+  }
+
+  const rawRole = (session.user.role || 'employee').toString().toLowerCase();
+  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  if (baseRole !== 'admin') {
+    return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+  }
+
   const body = (await request.json()) as AppraisalLetterInput;
 
   if (!body.evaluationId || !body.subject || !body.summary) {

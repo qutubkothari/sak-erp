@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -24,6 +25,7 @@ const generatePdfBuffer = async (id: string) => {
           cycle: true,
         },
       },
+      approvedBy: true,
     },
   });
 
@@ -70,6 +72,12 @@ const generatePdfBuffer = async (id: string) => {
   doc.moveDown(2);
   doc.text('Sincerely,');
   doc.text('HR Team');
+  doc.moveDown();
+  if (letter.approvedBy) {
+    doc.text(`Approved By: ${letter.approvedBy.firstName} ${letter.approvedBy.lastName}`);
+  } else if (letter.approvalStatus) {
+    doc.text(`Approval Status: ${letter.approvalStatus}`);
+  }
 
   doc.end();
 
@@ -81,7 +89,36 @@ const generatePdfBuffer = async (id: string) => {
 };
 
 export async function GET(_request: Request, context: RouteContext) {
+  const session = await auth();
+  if (!session) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
   const { id } = await context.params;
+
+  const rawRole = (session.user.role || 'employee').toString().toLowerCase();
+  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const sessionEmployeeId = session.user.employeeId || undefined;
+
+  if (baseRole !== 'admin') {
+    const letter = await prisma.appraisalLetter.findUnique({
+      where: { id },
+      include: { evaluation: { include: { employee: true } } },
+    });
+
+    if (!letter) {
+      return new Response('Appraisal letter not found', { status: 404 });
+    }
+
+    if (
+      !sessionEmployeeId ||
+      (baseRole === 'manager'
+        ? letter.evaluation.employee.managerId !== sessionEmployeeId
+        : letter.evaluation.employeeId !== sessionEmployeeId)
+    ) {
+      return new Response('Forbidden', { status: 403 });
+    }
+  }
 
   const result = await generatePdfBuffer(id);
 
