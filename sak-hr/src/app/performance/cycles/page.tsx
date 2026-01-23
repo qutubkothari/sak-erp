@@ -81,6 +81,13 @@ export default function ReviewCyclesPage() {
         </div>
 
         <div className="mt-6 grid gap-4 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <div className="grid gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#8B6F47] md:grid-cols-5">
+            <span>Cycle name</span>
+            <span>Start date</span>
+            <span>End date</span>
+            <span>Self-assessment deadline</span>
+            <span>Status</span>
+          </div>
           <div className="grid gap-3 md:grid-cols-5">
             <input
               className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
@@ -121,13 +128,6 @@ export default function ReviewCyclesPage() {
               <option value="ACTIVE">Active</option>
               <option value="CLOSED">Closed</option>
             </select>
-          </div>
-          <div className="grid gap-2 text-xs text-[#9C8162] md:grid-cols-5">
-            <span>Cycle name</span>
-            <span>Start date</span>
-            <span>End date</span>
-            <span>Self-assessment deadline</span>
-            <span>Status</span>
           </div>
           <button
             className="w-fit rounded-lg bg-[#6F4E37] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5A3E2C]"
