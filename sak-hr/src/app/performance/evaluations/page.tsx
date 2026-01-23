@@ -14,6 +14,7 @@ type Employee = {
 type ReviewCycle = {
   id: string;
   name: string;
+  selfAssessmentDeadline?: string | null;
 };
 
 type Department = {
