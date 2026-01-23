@@ -532,7 +532,7 @@ export default function SelfAssessmentPage() {
         setDemerits(Array.isArray(demeritList) ? demeritList : []);
 
         const employeeId = session?.user?.employeeId;
-        if (!employeeId || !activeCycle?.id) return;
+        if (!employeeId) return;
 
         const evaluationsRes = await fetch('/api/evaluations');
         const evaluationsData = await evaluationsRes.json();
@@ -545,11 +545,19 @@ export default function SelfAssessmentPage() {
         const openStatuses = new Set(['SELF_REVIEW', 'DRAFT']);
         let current = evaluationIdFromQuery
           ? employeeEvaluations.find((e) => e.id === evaluationIdFromQuery)
-          : employeeEvaluations.find(
-              (e) => e.cycle?.id === activeCycle.id && openStatuses.has(e.status)
-            );
+          : undefined;
+
+        if (!current && activeCycle?.id) {
+          current = employeeEvaluations.find(
+            (e) => e.cycle?.id === activeCycle.id && openStatuses.has(e.status)
+          );
+        }
 
         if (!current) {
+          current = employeeEvaluations.find((e) => openStatuses.has(e.status)) || employeeEvaluations[0];
+        }
+
+        if (!current && activeCycle?.id) {
           const created = await (await fetch('/api/evaluations', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -563,6 +571,11 @@ export default function SelfAssessmentPage() {
             : [];
           setEvaluations(refreshed);
           current = refreshed.find((e) => e.id === created?.id) || created;
+        }
+
+        if (!current && !activeCycle?.id) {
+          toast.error('No active review cycle found. Contact HR to open a cycle.');
+          return;
         }
 
         if (current?.id) {
