@@ -57,7 +57,7 @@ Traditional performance reviews often involve:
 |------|----------------|
 | **Employees** | Complete self-assessments, set goals, request feedback, view appraisal letters |
 | **Managers** | Review team members, provide ratings, approve improvement plans, conduct calibration |
-| **HR Administrators** | Set up review cycles, configure competencies/KPIs, generate reports, finalize evaluations |
+| **HR Administrators** | Set up review cycles, configure competencies/KPIs/merits/demerits, generate reports, finalize evaluations |
 | **Senior Leadership** | View analytics, review calibration results, approve compensation recommendations |
 
 ---
@@ -72,14 +72,14 @@ Traditional performance reviews often involve:
 ---
 
 ### 📝 2. Self Assessment
-**What it does:** Employees evaluate their own performance against competencies and KPIs before their manager review.
+**What it does:** Employees evaluate their own performance against competencies, KPIs, merits, and demerits before manager review.
 
 **Example:** An employee rates themselves on "Communication Skills" (1-5 scale) and provides evidence of achievements.
 
 ---
 
 ### 👔 3. Manager Review
-**What it does:** Managers review their direct reports, provide ratings, and make compensation recommendations.
+**What it does:** Managers review their direct reports, provide ratings (competencies, KPIs, merits, demerits), and make compensation recommendations.
 
 **Example:** A manager reviews their team member's self-assessment, adjusts ratings if needed, and recommends a 10% salary increase.
 
@@ -99,8 +99,8 @@ Traditional performance reviews often involve:
 
 ---
 
-### 🎓 6. Competencies & KPIs
-**What it does:** Defines the evaluation criteria (soft skills, technical skills, performance metrics) with weights.
+### 🎓 6. Evaluation Criteria (Competencies, KPIs, Merits & Demerits)
+**What it does:** Defines the evaluation questionnaire (soft skills, performance metrics, merits, demerits) with weights, and lets HR add/remove items.
 
 **Example:** 
 - **Competency:** "Leadership" (weight: 20%)
@@ -169,7 +169,12 @@ Traditional performance reviews often involve:
 ---
 
 ### 🔔 15. Notifications
-**What it does:** Real-time alerts for pending actions, approvals, and deadlines.
+**What it does:** Real-time alerts for pending actions, approvals, deadlines, and an in-app inbox for managing items.
+
+---
+
+### 🧾 16. Activity & Audit Trail
+**What it does:** Logs evaluation activity (self submissions, manager reviews, approvals) for transparency and audit readiness.
 
 **Example:** "Your self-assessment for Annual Review 2026 is due in 3 days."
 
@@ -203,7 +208,7 @@ After login, you'll see the **Performance Evaluation Workspace** with tiles for 
 
 ### Step 4: Check Notifications
 - Look at the **notification bell icon** in the top-right corner
-- Click it to see pending tasks and deadlines
+- Click it to see pending tasks and open the **Notifications Inbox**
 - Examples: "Complete self-assessment by Jan 31", "Feedback request from Sara"
 
 ---
@@ -258,6 +263,8 @@ After login, you'll see the **Performance Evaluation Workspace** with tiles for 
 
 **Step 2:** You'll see your evaluation with sections:
 - **Competencies:** Rate yourself on each competency (e.g., Communication, Leadership)
+- **Merits:** Rate positive contributions (e.g., Innovation, Customer Appreciation)
+- **Demerits:** Rate improvement areas (e.g., Policy Compliance, Quality Lapse)
 - **KPIs:** Enter your achievement for each KPI (e.g., "Achieved 95% of sales target")
 
 **Step 3:** For each competency:
@@ -270,9 +277,13 @@ After login, you'll see the **Performance Evaluation Workspace** with tiles for 
 2. System will show your **target** and calculate **% achievement**
 3. Add **comments** if needed
 
-**Step 5:** Review your entries and click **"Submit Self Assessment"**
+**Step 5:** (Optional) Add **evidence links** (documents, dashboards, reports)
 
-**Step 6:** Evaluation moves to "Manager Review" stage
+**Step 6:** (Optional) Click **"Save Draft"** if you want to continue later
+
+**Step 7:** Review your entries and click **"Submit Self Assessment"**
+
+**Step 8:** Evaluation moves to "Manager Review" stage
 
 #### What Happens Next
 - Your manager receives a notification
@@ -303,11 +314,13 @@ Employee Rating: 4 (Exceeds Expectations)
 Your Rating: [Select rating]
 ```
 
-**Step 4:** For each competency/KPI:
-1. Review employee's self-rating and comments
+**Step 4:** For each competency, merit, demerit, and KPI:
+1. Review employee's self-rating and evidence
 2. Provide your **manager rating** (can agree or differ)
 3. Write **manager comments** with specific examples:
    - Example: "Ahmed consistently delivered clear presentations to stakeholders. Area for growth: written communication could be more concise."
+4. Review **KPI progress** and add a KPI rating
+5. Add manager evidence links if required
 
 **Step 5:** Provide overall feedback:
 - **Strengths:** What the employee does well
@@ -410,7 +423,7 @@ A defined period for conducting performance evaluations across the organization.
 
 ---
 
-### 🎓 Competencies & KPIs
+### 🎓 Evaluation Criteria (Competencies, KPIs, Merits & Demerits)
 
 *(For HR Administrators)*
 
@@ -420,9 +433,15 @@ Skills and behaviors expected from employees (e.g., Communication, Leadership, P
 #### What are KPIs?
 Measurable performance metrics (e.g., Sales Revenue, Customer Satisfaction Score, Project Completion Rate)
 
+#### What are Merits & Demerits?
+Merits are positive contributions (e.g., Innovation, Customer Appreciation). Demerits are improvement areas (e.g., Policy Non-Compliance, Quality Lapse).
+
+#### UAE Standard Template
+Use **"Apply UAE Standard Template"** to preload a baseline questionnaire. You can add, edit, or delete items after applying it.
+
 #### How to Create a Competency
 
-**Step 1:** Click **"Competencies & KPIs"**
+**Step 1:** Click **"Evaluation Criteria"**
 
 **Step 2:** Click **"Add Competency"**
 
@@ -456,6 +475,17 @@ Measurable performance metrics (e.g., Sales Revenue, Customer Satisfaction Score
 - **Frequency:** Annual / Quarterly / Monthly
 
 **Step 3:** Click **"Save KPI"**
+
+#### How to Create a Merit or Demerit
+
+**Step 1:** Scroll to **Merits** or **Demerits** section
+
+**Step 2:** Fill in details:
+- **Name:** "Innovation / Improvement"
+- **Description:** "Introduced measurable process improvements"
+- **Weight:** 10%
+
+**Step 3:** Click **"Add Merit"** or **"Add Demerit"**
 
 ---
 
@@ -819,30 +849,21 @@ A structured, time-bound development plan for employees who need performance sup
 
 #### What You Can Do in Evaluations Section
 
-1. **Launch New Evaluations**
-2. **Track Evaluation Status**
-3. **Manage Approval Workflows**
-4. **Finalize Ratings**
+1. **Create evaluations** for an individual employee
+2. **Assign evaluations** by department
+3. **Track evaluation status** with filters and overdue indicators
+4. **Manage approval workflows** (notes required on rejection)
+5. **Export CSV** and view activity history
 
 #### How to Launch Evaluations (HR)
 
 **Step 1:** Click **"Evaluations"**
 
-**Step 2:** Click **"Launch New Evaluation"**
+**Step 2:** Create **Individual Evaluation** or **Department Assignment**:
+- **Individual:** Select employee + review cycle → Create
+- **Department:** Select department + review cycle → Assign
 
-**Step 3:** Select evaluation parameters:
-- **Review Cycle:** Annual Review 2026
-- **Employees:** 
-  - Option A: Select all active employees
-  - Option B: Select specific department(s)
-  - Option C: Select individual employees
-- **Competencies:** Select which competencies to evaluate
-- **KPIs:** Select which KPIs to evaluate
-- **Rating Scale:** Select scale to use
-
-**Step 4:** Click **"Launch Evaluations"**
-
-**Step 5:** System creates evaluations for all selected employees
+**Step 3:** System creates evaluations and notifies employees/managers
 
 **Step 6:** Employees receive notification: "Your performance evaluation for 2026 is ready. Please complete your self-assessment by [date]."
 
@@ -869,7 +890,7 @@ Each evaluation goes through these stages:
 #### How to Track Evaluations
 
 **View by Status:**
-- Click filters to see evaluations in each stage
+- Use filters for status, cycle, department, and overdue
 - Example: "Show all evaluations in MANAGER_REVIEW stage"
 
 **View by Employee:**
@@ -878,6 +899,11 @@ Each evaluation goes through these stages:
 
 **View by Department:**
 - Filter by department to track team progress
+
+#### Activity Log & Reminders
+
+- Open an evaluation to view the **Activity** timeline
+- Use **Send Reminders** to notify overdue self-assessments
 
 #### How to Finalize Evaluations (HR)
 
@@ -925,19 +951,14 @@ Each evaluation goes through these stages:
 
 **Step 1:** Click the **bell icon** 🔔 in top-right corner
 
-**Step 2:** View all notifications (newest first)
+**Step 2:** Open the **Notifications Inbox** to view all items
 
-**Step 3:** Click a notification to:
-- Go directly to the related task
+**Step 3:** Use actions:
 - Mark as read
-- Dismiss
+- Delete
+- Open the related task (deep link)
 
-**Step 4:** Click **"Mark All as Read"** to clear notifications
-
-**Step 5:** Set notification preferences (optional):
-- Email notifications: On/Off
-- In-app notifications: On/Off
-- Notification frequency: Real-time / Daily digest
+**Step 4:** Use **Reminders** in Evaluations to notify overdue self-assessments
 
 ---
 
