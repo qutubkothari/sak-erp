@@ -40,12 +40,41 @@ export async function GET() {
   })) as Array<any>;
 
   const openEvaluations = evaluations.filter((evaluation) => evaluation.status !== 'FINALIZED');
-  const pendingActions = evaluations.reduce((count, evaluation) => {
+  const isManager = session.user.role === 'manager';
+  let pendingActions = evaluations.reduce((count, evaluation) => {
     return (
       count +
       evaluation.approvals.filter((approval: { stage: string; status: string }) => approval.stage === 'EMPLOYEE' && approval.status === 'PENDING').length
     );
   }, 0);
+  let openReviews = openEvaluations;
+
+  if (isManager) {
+    const managedEmployees = (await prismaAny.employee.findMany({
+      where: { managerId: employeeId },
+      select: { id: true },
+    })) as Array<{ id: string }>;
+    const managedIds = managedEmployees.map((emp) => emp.id);
+
+    const managedEvaluations = managedIds.length
+      ? ((await prismaAny.evaluation.findMany({
+          where: {
+            employeeId: { in: managedIds },
+            status: 'MANAGER_REVIEW',
+          },
+          orderBy: { updatedAt: 'desc' },
+          include: { cycle: true, approvals: true },
+        })) as Array<any>)
+      : [];
+
+    openReviews = managedEvaluations;
+    pendingActions = managedEvaluations.reduce((count, evaluation) => {
+      return (
+        count +
+        evaluation.approvals.filter((approval: { stage: string; status: string }) => approval.stage === 'MANAGER' && approval.status === 'PENDING').length
+      );
+    }, 0);
+  }
 
   const currentEvaluation = openEvaluations[0] ?? evaluations[0] ?? null;
 
@@ -122,8 +151,8 @@ export async function GET() {
       managerName: employee.manager ? `${employee.manager.firstName} ${employee.manager.lastName}`.trim() : null,
     },
     totals: {
-      evaluations: evaluations.length,
-      openEvaluations: openEvaluations.length,
+      evaluations: isManager ? openReviews.length : evaluations.length,
+      openEvaluations: isManager ? openReviews.length : openEvaluations.length,
       pendingActions,
     },
     currentEvaluation: currentEvaluation
@@ -137,7 +166,7 @@ export async function GET() {
           selfDeadline: (currentEvaluation.cycle as { selfAssessmentDeadline?: Date | null } | null)?.selfAssessmentDeadline ?? null,
         }
       : null,
-    openReviews: openEvaluations.map((evaluation) => ({
+    openReviews: openReviews.map((evaluation) => ({
       id: evaluation.id,
       cycle: evaluation.cycle?.name ?? null,
       status: evaluation.status,
