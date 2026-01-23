@@ -38,3 +38,24 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
   return NextResponse.json(evaluation);
 }
+
+export async function DELETE(_: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
+
+  await prisma.$transaction([
+    prisma.feedbackResponse.deleteMany({ where: { evaluationId: id } }),
+    prisma.feedbackRequest.deleteMany({ where: { evaluationId: id } }),
+    prisma.calibrationEntry.deleteMany({ where: { evaluationId: id } }),
+    prisma.appraisalLetter.deleteMany({ where: { evaluationId: id } }),
+    prisma.improvementPlan.deleteMany({ where: { evaluationId: id } }),
+    prisma.evaluationEvidence.deleteMany({ where: { evaluationId: id } }),
+    prisma.evaluationItem.deleteMany({ where: { evaluationId: id } }),
+    prisma.evaluationApproval.deleteMany({ where: { evaluationId: id } }),
+    prisma.evaluationActivity.deleteMany({ where: { evaluationId: id } }),
+    prisma.managerReview.deleteMany({ where: { evaluationId: id } }),
+    prisma.selfAssessment.deleteMany({ where: { evaluationId: id } }),
+    prisma.evaluation.delete({ where: { id } }),
+  ]);
+
+  return NextResponse.json({ success: true });
+}

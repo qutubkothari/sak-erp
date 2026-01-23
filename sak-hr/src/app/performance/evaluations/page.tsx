@@ -27,6 +27,10 @@ type Evaluation = {
   status: string;
   employee: Employee;
   cycle: ReviewCycle;
+  overallScore?: number | null;
+  selfScore?: number | null;
+  managerScore?: number | null;
+  finalRating?: number | null;
   approvals?: Array<{
     id: string;
     stage: 'EMPLOYEE' | 'MANAGER' | 'HR';
@@ -51,8 +55,11 @@ export default function EvaluationsPage() {
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [reminderStatus, setReminderStatus] = useState('');
   const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
+  const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
   const [activityMap, setActivityMap] = useState<Record<string, any[]>>({});
   const [approvalNotes, setApprovalNotes] = useState<Record<string, string>>({});
+  const [editingEvaluationId, setEditingEvaluationId] = useState<string | null>(null);
+  const [statusEdits, setStatusEdits] = useState<Record<string, string>>({});
 
   const fetchData = async () => {
     const [empRes, cycleRes, evalRes] = await Promise.all([
@@ -105,6 +112,30 @@ export default function EvaluationsPage() {
       body: JSON.stringify({ stage, status, approverId, notes }),
     });
     setApprovalNotes((prev) => ({ ...prev, [noteKey]: '' }));
+    await fetchData();
+  };
+
+  const startEdit = (evaluation: Evaluation) => {
+    setEditingEvaluationId(evaluation.id);
+    setStatusEdits((prev) => ({ ...prev, [evaluation.id]: evaluation.status }));
+  };
+
+  const saveEdit = async (evaluationId: string) => {
+    const status = statusEdits[evaluationId];
+    if (!status) return;
+    await fetch(`/api/evaluations/${evaluationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    setEditingEvaluationId(null);
+    await fetchData();
+  };
+
+  const deleteEvaluation = async (evaluationId: string) => {
+    const confirmed = window.confirm('Delete this evaluation? This cannot be undone.');
+    if (!confirmed) return;
+    await fetch(`/api/evaluations/${evaluationId}`, { method: 'DELETE' });
     await fetchData();
   };
 
@@ -422,6 +453,24 @@ export default function EvaluationsPage() {
                   )}
                   <button
                     className="rounded border border-[#D9CBB6] px-2 py-1 font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                    onClick={() => setExpandedDetailsId(expandedDetailsId === evaluation.id ? null : evaluation.id)}
+                  >
+                    View Details
+                  </button>
+                  <button
+                    className="rounded border border-[#D9CBB6] px-2 py-1 font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                    onClick={() => startEdit(evaluation)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="rounded border border-red-200 px-2 py-1 font-semibold text-red-700 hover:bg-red-50"
+                    onClick={() => deleteEvaluation(evaluation.id)}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    className="rounded border border-[#D9CBB6] px-2 py-1 font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
                     onClick={async () => {
                       const next = expandedActivityId === evaluation.id ? null : evaluation.id;
                       setExpandedActivityId(next);
@@ -437,6 +486,61 @@ export default function EvaluationsPage() {
                     Export Activity CSV
                   </button>
                 </div>
+                {expandedDetailsId === evaluation.id && (
+                  <div className="mt-3 rounded-lg border border-[#E8DCC4] bg-[#FDF9F3] p-3 text-xs text-[#6F4E37]">
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <div>
+                        <span className="text-[10px] text-[#9C8162]">Evaluation ID</span>
+                        <p className="text-xs font-semibold text-[#36454F]">{evaluation.id}</p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-[#9C8162]">Scores</span>
+                        <p className="text-xs text-[#36454F]">
+                          Self: {evaluation.selfScore ?? '—'} • Manager: {evaluation.managerScore ?? '—'} • Final: {evaluation.finalRating ?? '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-[#9C8162]">Overall Score</span>
+                        <p className="text-xs text-[#36454F]">{evaluation.overallScore ?? '—'}</p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-[#9C8162]">Status</span>
+                        <p className="text-xs text-[#36454F]">{evaluation.status.replace('_', ' ')}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {editingEvaluationId === evaluation.id && (
+                  <div className="mt-3 rounded-lg border border-[#E8DCC4] bg-white p-3 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                        value={statusEdits[evaluation.id] || evaluation.status}
+                        onChange={(e) =>
+                          setStatusEdits((prev) => ({ ...prev, [evaluation.id]: e.target.value }))
+                        }
+                      >
+                        {['DRAFT', 'SELF_REVIEW', 'MANAGER_REVIEW', 'HR_REVIEW', 'CALIBRATION', 'FINALIZED'].map((status) => (
+                          <option key={status} value={status}>
+                            {status.replace('_', ' ')}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="rounded border border-green-200 px-2 py-1 text-[10px] font-semibold text-green-700 hover:bg-green-50"
+                        onClick={() => saveEdit(evaluation.id)}
+                      >
+                        Save
+                      </button>
+                      <button
+                        className="rounded border border-[#E8DCC4] px-2 py-1 text-[10px] text-[#9C8162]"
+                        onClick={() => setEditingEvaluationId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {expandedActivityId === evaluation.id && (
                   <div className="mt-3 rounded-lg border border-[#E8DCC4] bg-[#FDF9F3] p-3 text-xs text-[#6F4E37]">
                     {(activityMap[evaluation.id] || []).length === 0 ? (
