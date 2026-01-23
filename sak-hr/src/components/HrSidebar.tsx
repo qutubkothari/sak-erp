@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Settings,
   Layers,
+  Building2,
 } from 'lucide-react';
 
 const sections = [
@@ -50,6 +51,7 @@ const sections = [
     title: 'Administration',
     items: [
       { label: 'Employees', href: '/performance/employees', icon: Users, roles: ['admin'] },
+      { label: 'Departments', href: '/performance/departments', icon: Building2, roles: ['admin'] },
       { label: 'Criteria', href: '/performance/criteria', icon: ShieldCheck, roles: ['admin'] },
       { label: 'Scales', href: '/performance/scales', icon: Settings, roles: ['admin'] },
     ],
