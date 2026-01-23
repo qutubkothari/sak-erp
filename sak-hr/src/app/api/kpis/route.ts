@@ -5,6 +5,10 @@ type KpiInput = {
   name: string;
   description?: string;
   unit?: string;
+  category?: string;
+  target?: number;
+  frequency?: string;
+  dataSource?: string;
   weight?: number;
 };
 
@@ -28,6 +32,10 @@ export async function POST(request: Request) {
       name: body.name,
       description: body.description || null,
       unit: body.unit || null,
+      category: body.category || null,
+      target: body.target ?? null,
+      frequency: body.frequency || null,
+      dataSource: body.dataSource || null,
       weight: body.weight ?? 1,
     },
   });

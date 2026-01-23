@@ -66,6 +66,9 @@ interface KPIProgress {
   name: string;
   target?: number | null;
   unit?: string | null;
+  category?: string | null;
+  frequency?: string | null;
+  dataSource?: string | null;
   achieved?: number | null;
   progress?: number | null;
   itemId?: string | null;
@@ -516,6 +519,9 @@ export default function ManagerReviewPage() {
             name: kpi.name,
             target: kpi.target ?? null,
             unit: kpi.unit ?? null,
+            category: kpi.category ?? null,
+            frequency: kpi.frequency ?? null,
+            dataSource: kpi.dataSource ?? null,
             achieved,
             progress,
             itemId: item?.id ?? null,
@@ -653,6 +659,15 @@ export default function ManagerReviewPage() {
                       <p className="text-xs text-[#6F4E37]">
                         Target: {kpi.target ?? '—'}{kpi.unit ?? ''} • Achieved: {kpi.achieved ?? '—'}{kpi.unit ?? ''}
                       </p>
+                      {(kpi.category || kpi.frequency || kpi.dataSource) && (
+                        <p className="mt-1 text-[11px] text-[#9C8162]">
+                          {[kpi.category ? `Category: ${kpi.category}` : null,
+                            kpi.frequency ? `Frequency: ${kpi.frequency}` : null,
+                            kpi.dataSource ? `Source: ${kpi.dataSource}` : null]
+                            .filter(Boolean)
+                            .join(' • ')}
+                        </p>
+                      )}
                     </div>
                     <span className="text-xs font-semibold text-[#36454F]">
                       {kpi.progress != null ? `${Math.round(kpi.progress)}%` : '—'}

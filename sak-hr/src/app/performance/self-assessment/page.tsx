@@ -37,6 +37,9 @@ interface KPI {
   name: string;
   target?: number | null;
   unit?: string | null;
+  category?: string | null;
+  frequency?: string | null;
+  dataSource?: string | null;
 }
 
 interface MeritDemerit {
@@ -842,6 +845,15 @@ export default function SelfAssessmentPage() {
                     Target: {kpi.target}
                     {kpi.unit}
                   </p>
+                  {kpi.category || kpi.frequency || kpi.dataSource ? (
+                    <p className="mb-3 text-[11px] text-[#9C8162]">
+                      {[kpi.category ? `Category: ${kpi.category}` : null,
+                        kpi.frequency ? `Frequency: ${kpi.frequency}` : null,
+                        kpi.dataSource ? `Source: ${kpi.dataSource}` : null]
+                        .filter(Boolean)
+                        .join(' • ')}
+                    </p>
+                  ) : null}
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>

@@ -14,6 +14,10 @@ type KPI = {
   name: string;
   description?: string;
   unit?: string;
+  category?: string;
+  target?: number | null;
+  frequency?: string;
+  dataSource?: string;
   weight: number;
 };
 
@@ -31,7 +35,16 @@ export default function CriteriaPage() {
   const [merits, setMerits] = useState<MeritDemerit[]>([]);
   const [demerits, setDemerits] = useState<MeritDemerit[]>([]);
   const [competencyForm, setCompetencyForm] = useState({ name: '', description: '', weight: 1 });
-  const [kpiForm, setKpiForm] = useState({ name: '', description: '', unit: '', weight: 1 });
+  const [kpiForm, setKpiForm] = useState({
+    name: '',
+    description: '',
+    unit: '',
+    category: '',
+    target: '',
+    frequency: '',
+    dataSource: '',
+    weight: 1,
+  });
   const [meritForm, setMeritForm] = useState({ name: '', description: '', weight: 1 });
   const [demeritForm, setDemeritForm] = useState({ name: '', description: '', weight: 1 });
   const [competencySearch, setCompetencySearch] = useState('');
@@ -41,7 +54,16 @@ export default function CriteriaPage() {
   const [editingCompetencyId, setEditingCompetencyId] = useState<string | null>(null);
   const [editingCompetencyForm, setEditingCompetencyForm] = useState({ name: '', description: '', weight: 1 });
   const [editingKpiId, setEditingKpiId] = useState<string | null>(null);
-  const [editingKpiForm, setEditingKpiForm] = useState({ name: '', description: '', unit: '', weight: 1 });
+  const [editingKpiForm, setEditingKpiForm] = useState({
+    name: '',
+    description: '',
+    unit: '',
+    category: '',
+    target: '',
+    frequency: '',
+    dataSource: '',
+    weight: 1,
+  });
   const [editingMeritId, setEditingMeritId] = useState<string | null>(null);
   const [editingMeritForm, setEditingMeritForm] = useState({ name: '', description: '', weight: 1 });
   const [editingDemeritId, setEditingDemeritId] = useState<string | null>(null);
@@ -85,9 +107,21 @@ export default function CriteriaPage() {
     await fetch('/api/kpis', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(kpiForm),
+      body: JSON.stringify({
+        ...kpiForm,
+        target: kpiForm.target === '' ? undefined : Number(kpiForm.target),
+      }),
     });
-    setKpiForm({ name: '', description: '', unit: '', weight: 1 });
+    setKpiForm({
+      name: '',
+      description: '',
+      unit: '',
+      category: '',
+      target: '',
+      frequency: '',
+      dataSource: '',
+      weight: 1,
+    });
     await fetchData();
   };
 
@@ -144,6 +178,10 @@ export default function CriteriaPage() {
       name: kpi.name,
       description: kpi.description ?? '',
       unit: kpi.unit ?? '',
+      category: kpi.category ?? '',
+      target: kpi.target != null ? String(kpi.target) : '',
+      frequency: kpi.frequency ?? '',
+      dataSource: kpi.dataSource ?? '',
       weight: kpi.weight,
     });
   };
@@ -153,7 +191,10 @@ export default function CriteriaPage() {
     await fetch(`/api/kpis/${editingKpiId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(editingKpiForm),
+      body: JSON.stringify({
+        ...editingKpiForm,
+        target: editingKpiForm.target === '' ? undefined : Number(editingKpiForm.target),
+      }),
     });
     setEditingKpiId(null);
     await fetchData();
@@ -395,9 +436,33 @@ export default function CriteriaPage() {
               />
               <input
                 className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Category (e.g., Attendance, Sales)"
+                value={kpiForm.category}
+                onChange={(e) => setKpiForm({ ...kpiForm, category: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
                 placeholder="Unit (e.g., %, AED)"
                 value={kpiForm.unit}
                 onChange={(e) => setKpiForm({ ...kpiForm, unit: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Target value"
+                value={kpiForm.target}
+                onChange={(e) => setKpiForm({ ...kpiForm, target: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Frequency (Monthly, Quarterly, Annual)"
+                value={kpiForm.frequency}
+                onChange={(e) => setKpiForm({ ...kpiForm, frequency: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Data source (HRMS, POS, CRM)"
+                value={kpiForm.dataSource}
+                onChange={(e) => setKpiForm({ ...kpiForm, dataSource: e.target.value })}
               />
               <input
                 className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
@@ -436,8 +501,28 @@ export default function CriteriaPage() {
                         />
                         <input
                           className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          value={editingKpiForm.category}
+                          onChange={(e) => setEditingKpiForm({ ...editingKpiForm, category: e.target.value })}
+                        />
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
                           value={editingKpiForm.unit}
                           onChange={(e) => setEditingKpiForm({ ...editingKpiForm, unit: e.target.value })}
+                        />
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          value={editingKpiForm.target}
+                          onChange={(e) => setEditingKpiForm({ ...editingKpiForm, target: e.target.value })}
+                        />
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          value={editingKpiForm.frequency}
+                          onChange={(e) => setEditingKpiForm({ ...editingKpiForm, frequency: e.target.value })}
+                        />
+                        <input
+                          className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
+                          value={editingKpiForm.dataSource}
+                          onChange={(e) => setEditingKpiForm({ ...editingKpiForm, dataSource: e.target.value })}
                         />
                         <input
                           className="rounded border border-[#E8DCC4] px-2 py-1 text-xs"
@@ -466,6 +551,12 @@ export default function CriteriaPage() {
                         {kpi.description ? <p className="text-xs text-[#6F4E37]">{kpi.description}</p> : null}
                         <p className="text-[11px] text-[#9C8162]">Weight: {kpi.weight}</p>
                         {kpi.unit ? <p className="text-[11px] text-[#9C8162]">Unit: {kpi.unit}</p> : null}
+                        {kpi.category ? <p className="text-[11px] text-[#9C8162]">Category: {kpi.category}</p> : null}
+                        {kpi.target != null ? (
+                          <p className="text-[11px] text-[#9C8162]">Target: {kpi.target}</p>
+                        ) : null}
+                        {kpi.frequency ? <p className="text-[11px] text-[#9C8162]">Frequency: {kpi.frequency}</p> : null}
+                        {kpi.dataSource ? <p className="text-[11px] text-[#9C8162]">Source: {kpi.dataSource}</p> : null}
                         <div className="mt-3 flex gap-2">
                           <button
                             className="rounded border border-[#D9CBB6] px-2 py-1 text-[11px] font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"

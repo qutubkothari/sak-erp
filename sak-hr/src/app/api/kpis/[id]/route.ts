@@ -9,6 +9,10 @@ type KpiUpdate = {
   name?: string;
   description?: string | null;
   unit?: string | null;
+  category?: string | null;
+  target?: number | null;
+  frequency?: string | null;
+  dataSource?: string | null;
   weight?: number;
 };
 
@@ -22,6 +26,10 @@ export async function PATCH(request: Request, context: RouteContext) {
       name: body.name,
       description: body.description ?? undefined,
       unit: body.unit ?? undefined,
+      category: body.category ?? undefined,
+      target: body.target ?? undefined,
+      frequency: body.frequency ?? undefined,
+      dataSource: body.dataSource ?? undefined,
       weight: body.weight,
     },
   });

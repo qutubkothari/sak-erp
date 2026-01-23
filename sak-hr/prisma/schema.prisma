@@ -153,6 +153,10 @@ model KPI {
   name        String
   description String?
   unit        String?
+  category    String?
+  target      Float?
+  frequency   String?
+  dataSource  String?
   weight      Float            @default(1)
   createdAt   DateTime         @default(now())
   items       EvaluationItem[]
