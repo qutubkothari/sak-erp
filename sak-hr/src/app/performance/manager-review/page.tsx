@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 
 const managerReviewSchema = z.object({
   competencyRatings: z.record(z.string(), z.number().min(1).max(5)),
@@ -27,6 +28,11 @@ interface Employee {
   position?: string | null;
   department?: string | null;
   joinDate?: string | null;
+}
+
+interface EmployeeRecord {
+  id: string;
+  managerId?: string | null;
 }
 
 interface SelfAssessment {
@@ -66,6 +72,7 @@ interface EvidenceItem {
 
 export default function ManagerReviewPage() {
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [selfAssessment, setSelfAssessment] = useState<SelfAssessment | null>(null);
   const [competencies, setCompetencies] = useState<Competency[]>([]);
@@ -75,6 +82,8 @@ export default function ManagerReviewPage() {
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
   const [evidenceDraft, setEvidenceDraft] = useState({ title: '', url: '', notes: '' });
   const [kpiProgress, setKpiProgress] = useState<KPIProgress[]>([]);
+  const [activityItems, setActivityItems] = useState<any[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
 
   const [managerRatings, setManagerRatings] = useState<{ [key: string]: number }>({});
   const [salaryRec, setSalaryRec] = useState<string>('no-change');
@@ -252,16 +261,39 @@ export default function ManagerReviewPage() {
     [evaluations, selectedEvaluationId]
   );
 
+  const evaluationIdFromQuery = useMemo(() => searchParams.get('evaluationId') || '', [searchParams]);
+
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
-        const evaluationsRes = await fetch('/api/evaluations');
+        const [evaluationsRes, employeesRes] = await Promise.all([
+          fetch('/api/evaluations'),
+          fetch('/api/employees'),
+        ]);
         const evals = await evaluationsRes.json();
-        const list = Array.isArray(evals) ? evals : [];
+        const employees = await employeesRes.json();
+
+        const evaluationList = Array.isArray(evals) ? evals : [];
+        const employeeList = Array.isArray(employees) ? employees : [];
+        const managerId = session?.user?.employeeId;
+
+        const managedIds = new Set(
+          (employeeList as EmployeeRecord[])
+            .filter((emp) => emp.managerId === managerId)
+            .map((emp) => emp.id)
+        );
+
+        const list = evaluationList.filter(
+          (evaluation: any) => managedIds.has(evaluation.employeeId) && evaluation.status === 'MANAGER_REVIEW'
+        );
+
         setEvaluations(list);
         if (list.length) {
-          setSelectedEvaluationId(list[0].id);
+          const preferred = evaluationIdFromQuery && list.find((evaluation: any) => evaluation.id === evaluationIdFromQuery);
+          setSelectedEvaluationId(preferred ? preferred.id : list[0].id);
+        } else {
+          setSelectedEvaluationId('');
         }
       } catch (error) {
         console.error(error);
@@ -272,7 +304,7 @@ export default function ManagerReviewPage() {
     };
 
     load();
-  }, []);
+  }, [evaluationIdFromQuery, session?.user?.employeeId]);
 
   useEffect(() => {
     const loadEvaluationDetails = async () => {
@@ -343,9 +375,16 @@ export default function ManagerReviewPage() {
         const evidenceRes = await fetch(`/api/evaluations/${selectedEvaluationId}/evidence`);
         const evidenceData = await evidenceRes.json();
         setEvidenceItems(Array.isArray(evidenceData) ? evidenceData : []);
+
+        setActivityLoading(true);
+        const activityRes = await fetch(`/api/evaluations/${selectedEvaluationId}/activity`);
+        const activityData = await activityRes.json();
+        setActivityItems(Array.isArray(activityData) ? activityData : []);
+        setActivityLoading(false);
       } catch (error) {
         console.error(error);
         toast.error('Failed to load evaluation details');
+        setActivityLoading(false);
       }
     };
 
@@ -379,6 +418,9 @@ export default function ManagerReviewPage() {
                   </option>
                 ))}
               </select>
+              {!loading && evaluations.length === 0 && (
+                <p className="mt-2 text-xs text-[#9C8162]">No manager reviews pending for your team.</p>
+              )}
             </div>
             <div>
               <p className="text-xs text-[#9C8162]">Status</p>
@@ -471,6 +513,39 @@ export default function ManagerReviewPage() {
                 </div>
               ))}
             </div>
+          )}
+        </div>
+
+        {/* Evaluation Activity */}
+        <div className="mb-6 rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold text-[#36454F]">Evaluation Activity</h2>
+          {activityLoading ? (
+            <p className="text-sm text-[#9C8162]">Loading activity...</p>
+          ) : activityItems.length === 0 ? (
+            <p className="text-sm text-[#9C8162]">No activity logged yet.</p>
+          ) : (
+            <ul className="space-y-3">
+              {activityItems.map((item) => (
+                <li key={item.id} className="rounded-lg border border-[#E8DCC4] p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-[#36454F]">
+                      {String(item.action).replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-[10px] text-[#9C8162]">
+                      {new Date(item.createdAt).toLocaleString('en-GB')}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[10px] text-[#9C8162]">by {item.actor?.email || 'System'}</p>
+                  {item.details && (
+                    <div className="mt-2 text-[10px] text-[#6F4E37]">
+                      {item.details.stage && <span>Stage: {item.details.stage} </span>}
+                      {item.details.status && <span>Status: {item.details.status} </span>}
+                      {item.details.notes && <span>• Notes: {item.details.notes}</span>}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
 

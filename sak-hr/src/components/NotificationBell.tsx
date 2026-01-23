@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Bell, X, Check, CheckCheck } from 'lucide-react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 
 interface Notification {
   id: string;
@@ -15,20 +16,23 @@ interface Notification {
 }
 
 export default function NotificationBell({ userId }: { userId?: string }) {
+  const { data: session } = useSession();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const resolvedUserId = useMemo(() => userId || session?.user?.id, [session?.user?.id, userId]);
+
   useEffect(() => {
-    if (userId) {
+    if (resolvedUserId) {
       fetchNotifications();
     }
-  }, [userId]);
+  }, [resolvedUserId]);
 
   const fetchNotifications = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/notifications?userId=${userId || 'demo-user'}`);
+      const response = await fetch(`/api/notifications?userId=${resolvedUserId}`);
       if (response.ok) {
         const data = await response.json();
         setNotifications(data);

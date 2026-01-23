@@ -88,6 +88,11 @@ export default function PerformanceHomePage() {
               href: '/performance/reports',
             },
             {
+              title: 'Notifications',
+              description: 'Review alerts and workflow reminders.',
+              href: '/performance/notifications',
+            },
+            {
               title: 'Improvement Plans',
               description: 'Create targeted improvement plans after evaluations.',
               href: '/performance/improvement-plans',

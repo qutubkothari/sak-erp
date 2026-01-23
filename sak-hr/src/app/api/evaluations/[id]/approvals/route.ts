@@ -14,6 +14,10 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     return NextResponse.json({ message: 'stage and status are required' }, { status: 400 });
   }
 
+  if (body.status === 'REJECTED' && !body.notes?.trim()) {
+    return NextResponse.json({ message: 'Rejection notes are required' }, { status: 400 });
+  }
+
   const approval = await prisma.evaluationApproval.updateMany({
     where: {
       evaluationId: id,
@@ -29,6 +33,32 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
   if (approval.count === 0) {
     return NextResponse.json({ message: 'Approval stage not found' }, { status: 404 });
+  }
+
+  const evaluation = await prisma.evaluation.findUnique({
+    where: { id },
+    include: {
+      cycle: true,
+      employee: { select: { id: true, firstName: true, lastName: true, managerId: true } },
+    },
+  });
+
+  if (evaluation) {
+    const approverUser = body.approverId
+      ? await prisma.user.findFirst({ where: { employeeId: body.approverId }, select: { id: true } })
+      : null;
+    await prisma.evaluationActivity.create({
+      data: {
+        evaluationId: evaluation.id,
+        actorId: approverUser?.id ?? null,
+        action: 'APPROVAL_UPDATED',
+        details: {
+          stage: body.stage,
+          status: body.status,
+          notes: body.notes ?? null,
+        },
+      },
+    });
   }
 
   if (body.status === 'REJECTED') {
@@ -50,6 +80,90 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       where: { id },
       data: { status: 'FINALIZED' },
     });
+  }
+
+  if (evaluation) {
+    const managerId = evaluation.employee?.managerId;
+    const users = await prisma.user.findMany({
+      where: {
+        OR: [
+          { employeeId: evaluation.employeeId },
+          { employeeId: managerId ?? '' },
+          { role: { in: ['admin', 'hr'] } },
+        ],
+      },
+      select: { id: true, employeeId: true, role: true },
+    });
+
+    const userByEmployeeId = new Map(users.map((user) => [user.employeeId, user.id]));
+    const hrUserIds = users.filter((user) => ['admin', 'hr'].includes(user.role)).map((user) => user.id);
+
+    const notifications = [] as Array<{
+      userId: string;
+      type: string;
+      title: string;
+      message: string;
+      actionUrl?: string;
+      metadata?: Record<string, unknown>;
+    }>;
+
+    if (body.stage === 'MANAGER' && body.status === 'APPROVED') {
+      hrUserIds.forEach((userId) => {
+        notifications.push({
+          userId,
+          type: 'approval_needed',
+          title: 'HR approval needed',
+          message: `${evaluation.employee?.firstName} ${evaluation.employee?.lastName} is ready for HR approval.`,
+          actionUrl: '/performance/evaluations',
+          metadata: { evaluationId: evaluation.id, cycleId: evaluation.cycleId },
+        });
+      });
+    }
+
+    if (body.stage === 'HR' && body.status === 'APPROVED') {
+      const employeeUserId = userByEmployeeId.get(evaluation.employeeId);
+      if (employeeUserId) {
+        notifications.push({
+          userId: employeeUserId,
+          type: 'rating_published',
+          title: 'Evaluation finalized',
+          message: `Your evaluation for ${evaluation.cycle?.name ?? 'the review cycle'} has been finalized.`,
+          actionUrl: '/performance/evaluations',
+          metadata: { evaluationId: evaluation.id, cycleId: evaluation.cycleId },
+        });
+      }
+    }
+
+    if (body.status === 'REJECTED') {
+      const employeeUserId = userByEmployeeId.get(evaluation.employeeId);
+      if (employeeUserId) {
+        notifications.push({
+          userId: employeeUserId,
+          type: 'review_reminder',
+          title: 'Review needs attention',
+          message: `Your evaluation requires updates after ${body.stage.toLowerCase()} review.`,
+          actionUrl: `/performance/self-assessment?evaluationId=${evaluation.id}`,
+          metadata: { evaluationId: evaluation.id, cycleId: evaluation.cycleId },
+        });
+      }
+      if (managerId) {
+        const managerUserId = userByEmployeeId.get(managerId);
+        if (managerUserId) {
+          notifications.push({
+            userId: managerUserId,
+            type: 'review_reminder',
+            title: 'Review needs attention',
+            message: `The evaluation for ${evaluation.employee?.firstName} ${evaluation.employee?.lastName} was rejected in ${body.stage.toLowerCase()} review.`,
+            actionUrl: '/performance/manager-review',
+            metadata: { evaluationId: evaluation.id, cycleId: evaluation.cycleId },
+          });
+        }
+      }
+    }
+
+    if (notifications.length) {
+      await prisma.notification.createMany({ data: notifications });
+    }
   }
 
   return NextResponse.json({ success: true });

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 import { useForm, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -74,6 +75,7 @@ interface EvidenceItem {
 
 export default function SelfAssessmentPage() {
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
   const [cycle, setCycle] = useState<ReviewCycle | null>(null);
   const [competencies, setCompetencies] = useState<Competency[]>([]);
   const [kpis, setKpis] = useState<KPI[]>([]);
@@ -84,6 +86,9 @@ export default function SelfAssessmentPage() {
   const [loading, setLoading] = useState(true);
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
   const [evidenceDraft, setEvidenceDraft] = useState({ title: '', url: '', notes: '' });
+  const [activityItems, setActivityItems] = useState<any[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [draftSaving, setDraftSaving] = useState(false);
 
   const [selectedRating, setSelectedRating] = useState<{ [key: string]: number }>({});
   const [kpiData, setKpiData] = useState<{ [key: string]: { achieved: number; evidence: string } }>({});
@@ -93,6 +98,7 @@ export default function SelfAssessmentPage() {
     handleSubmit,
     formState: { errors, isSubmitting },
     setValue,
+    getValues,
     reset,
   } = useForm<AssessmentFormData>({
     resolver: zodResolver(assessmentSchema),
@@ -138,6 +144,63 @@ export default function SelfAssessmentPage() {
     setEvidenceDraft({ title: '', url: '', notes: '' });
   };
 
+  const upsertEvaluationItems = async (
+    competencyEntries: Array<[string, number]>,
+    kpiEntries: Array<[string, { achieved: number; evidence: string }]>
+  ) => {
+    if (!evaluationId) return;
+    const existingItems = activeEvaluation?.items || [];
+
+    await Promise.all([
+      ...competencyEntries.map(([competencyId, rating]) => {
+        const existing = existingItems.find((item) => item.competencyId === competencyId);
+        if (existing?.id) {
+          return fetch(`/api/evaluations/${evaluationId}/items`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              itemId: existing.id,
+              selfScore: rating,
+            }),
+          });
+        }
+        return fetch(`/api/evaluations/${evaluationId}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'COMPETENCY',
+            competencyId,
+            selfScore: rating,
+          }),
+        });
+      }),
+      ...kpiEntries.map(([kpiId, payload]) => {
+        const existing = existingItems.find((item) => item.kpiId === kpiId);
+        if (existing?.id) {
+          return fetch(`/api/evaluations/${evaluationId}/items`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              itemId: existing.id,
+              selfScore: payload.achieved,
+              comments: payload.evidence,
+            }),
+          });
+        }
+        return fetch(`/api/evaluations/${evaluationId}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'KPI',
+            kpiId,
+            selfScore: payload.achieved,
+            comments: payload.evidence,
+          }),
+        });
+      }),
+    ]);
+  };
+
   const onSubmit = async (data: AssessmentFormData) => {
     try {
       if (!evaluationId) {
@@ -148,31 +211,7 @@ export default function SelfAssessmentPage() {
       const competencyEntries = Object.entries(data.competencyRatings || {});
       const kpiEntries = Object.entries(data.kpiAchievements || {});
 
-      await Promise.all([
-        ...competencyEntries.map(([competencyId, rating]) =>
-          fetch(`/api/evaluations/${evaluationId}/items`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'COMPETENCY',
-              competencyId,
-              selfScore: rating,
-            }),
-          })
-        ),
-        ...kpiEntries.map(([kpiId, payload]) =>
-          fetch(`/api/evaluations/${evaluationId}/items`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'KPI',
-              kpiId,
-              selfScore: payload.achieved,
-              comments: payload.evidence,
-            }),
-          })
-        ),
-      ]);
+      await upsertEvaluationItems(competencyEntries, kpiEntries);
 
       await fetch('/api/self-assessments', {
         method: 'POST',
@@ -223,6 +262,42 @@ export default function SelfAssessmentPage() {
     } catch (error) {
       toast.error('Failed to submit assessment');
       console.error(error);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!evaluationId) {
+      toast.error('Evaluation not ready. Please refresh and try again.');
+      return;
+    }
+
+    try {
+      setDraftSaving(true);
+      const values = getValues();
+      const competencyEntries = Object.entries(values.competencyRatings || {});
+      const kpiEntries = Object.entries(values.kpiAchievements || {});
+
+      await upsertEvaluationItems(competencyEntries, kpiEntries);
+
+      await fetch('/api/self-assessments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          evaluationId,
+          accomplishments: values.accomplishments || '',
+          challenges: values.challenges || '',
+          developmentNeeds: values.developmentNeeds || '',
+          comments: values.comments || '',
+          submit: false,
+        }),
+      });
+
+      toast.success('Draft saved');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to save draft');
+    } finally {
+      setDraftSaving(false);
     }
   };
 
@@ -315,7 +390,18 @@ export default function SelfAssessmentPage() {
     const evidenceRes = await fetch(`/api/evaluations/${evaluation.id}/evidence`);
     const evidenceData = await evidenceRes.json();
     setEvidenceItems(Array.isArray(evidenceData) ? evidenceData : []);
+
+    setActivityLoading(true);
+    const activityRes = await fetch(`/api/evaluations/${evaluation.id}/activity`);
+    const activityData = await activityRes.json();
+    setActivityItems(Array.isArray(activityData) ? activityData : []);
+    setActivityLoading(false);
   };
+
+  const evaluationIdFromQuery = useMemo(
+    () => searchParams.get('evaluationId') || '',
+    [searchParams]
+  );
 
   useEffect(() => {
     const load = async () => {
@@ -349,9 +435,11 @@ export default function SelfAssessmentPage() {
         setEvaluations(employeeEvaluations);
 
         const openStatuses = new Set(['SELF_REVIEW', 'DRAFT']);
-        let current = employeeEvaluations.find(
-          (e) => e.cycle?.id === activeCycle.id && openStatuses.has(e.status)
-        );
+        let current = evaluationIdFromQuery
+          ? employeeEvaluations.find((e) => e.id === evaluationIdFromQuery)
+          : employeeEvaluations.find(
+              (e) => e.cycle?.id === activeCycle.id && openStatuses.has(e.status)
+            );
 
         if (!current) {
           const created = await (await fetch('/api/evaluations', {
@@ -383,7 +471,7 @@ export default function SelfAssessmentPage() {
     if (session?.user) {
       load();
     }
-  }, [session?.user, reset]);
+  }, [session?.user, reset, evaluationIdFromQuery]);
 
   return (
     <div className="min-h-screen bg-[#F7F4EF] p-6">
@@ -703,6 +791,39 @@ export default function SelfAssessmentPage() {
             )}
           </div>
 
+          {/* Evaluation Activity */}
+          <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-[#36454F]">Evaluation Activity</h2>
+            {activityLoading ? (
+              <p className="text-sm text-[#9C8162]">Loading activity...</p>
+            ) : activityItems.length === 0 ? (
+              <p className="text-sm text-[#9C8162]">No activity logged yet.</p>
+            ) : (
+              <ul className="space-y-3">
+                {activityItems.map((item) => (
+                  <li key={item.id} className="rounded-lg border border-[#E8DCC4] p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-[#36454F]">
+                        {String(item.action).replace(/_/g, ' ')}
+                      </span>
+                      <span className="text-[10px] text-[#9C8162]">
+                        {new Date(item.createdAt).toLocaleString('en-GB')}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[10px] text-[#9C8162]">by {item.actor?.email || 'System'}</p>
+                    {item.details && (
+                      <div className="mt-2 text-[10px] text-[#6F4E37]">
+                        {item.details.stage && <span>Stage: {item.details.stage} </span>}
+                        {item.details.status && <span>Status: {item.details.status} </span>}
+                        {item.details.notes && <span>• Notes: {item.details.notes}</span>}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           {/* Reflection Section */}
           <div className="rounded-2xl border border-[#E8DCC4] bg-white p-6 shadow-sm">
             <h2 className="mb-4 text-lg font-semibold text-[#36454F]">Self-Reflection</h2>
@@ -780,9 +901,11 @@ export default function SelfAssessmentPage() {
           <div className="flex justify-end gap-3">
             <button
               type="button"
-              className="rounded-lg border border-[#E8DCC4] px-6 py-2 text-sm font-medium text-[#6F4E37] hover:bg-[#F4ECE2] transition-colors"
+              onClick={handleSaveDraft}
+              disabled={draftSaving || isPastDeadline}
+              className="rounded-lg border border-[#E8DCC4] px-6 py-2 text-sm font-medium text-[#6F4E37] hover:bg-[#F4ECE2] transition-colors disabled:opacity-50"
             >
-              Save Draft
+              {draftSaving ? 'Saving...' : 'Save Draft'}
             </button>
             <button
               type="submit"

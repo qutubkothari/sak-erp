@@ -70,6 +70,8 @@ model User {
   updatedAt     DateTime  @updatedAt
 
   employee      Employee? @relation(fields: [employeeId], references: [id])
+  notifications Notification[]
+  evaluationActivities EvaluationActivity[]
 }
 
 model Role {
@@ -166,6 +168,7 @@ model Evaluation {
   items    EvaluationItem[]
   approvals EvaluationApproval[]
   evidence  EvaluationEvidence[]
+  activities EvaluationActivity[]
   calibrations CalibrationEntry[]
   feedbackRequests FeedbackRequest[]
   feedbackResponses FeedbackResponse[]
@@ -173,6 +176,18 @@ model Evaluation {
   improvementPlan ImprovementPlan?
   selfAssessment SelfAssessment?
   managerReview ManagerReview?
+}
+
+model EvaluationActivity {
+  id           String   @id @default(uuid())
+  evaluationId String
+  actorId      String?
+  action       String
+  details      Json?
+  createdAt    DateTime @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  actor      User?      @relation(fields: [actorId], references: [id])
 }
 
 model EvaluationEvidence {
@@ -187,6 +202,21 @@ model EvaluationEvidence {
 
   evaluation Evaluation @relation(fields: [evaluationId], references: [id])
   uploadedBy Employee?  @relation("EvidenceUploadedBy", fields: [uploadedById], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  actionUrl String?
+  metadata  Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
 }
 
 model SelfAssessment {
@@ -378,16 +408,4 @@ model ImprovementPlan {
   evaluation Evaluation @relation(fields: [evaluationId], references: [id])
   manager    Employee?  @relation("ImprovementPlanManager", fields: [managerId], references: [id])
   approvedBy Employee?  @relation("ImprovementPlanApprover", fields: [approvedById], references: [id])
-}
-
-model Notification {
-  id        String   @id @default(uuid())
-  userId    String
-  type      String
-  title     String
-  message   String
-  actionUrl String?
-  metadata  Json?
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
 }

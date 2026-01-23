@@ -61,5 +61,18 @@ export async function POST(request: Request) {
     },
   });
 
+  const managerUser = body.managerId
+    ? await prisma.user.findFirst({ where: { employeeId: body.managerId }, select: { id: true } })
+    : null;
+
+  await prisma.evaluationActivity.create({
+    data: {
+      evaluationId: body.evaluationId,
+      actorId: managerUser?.id ?? null,
+      action: 'MANAGER_REVIEW_SUBMITTED',
+      details: { overallRating: body.overallRating },
+    },
+  });
+
   return NextResponse.json(review, { status: 201 });
 }

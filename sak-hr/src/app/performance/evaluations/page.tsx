@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 
@@ -7,6 +8,7 @@ type Employee = {
   id: string;
   firstName: string;
   lastName: string;
+  department?: Department | null;
 };
 
 type ReviewCycle = {
@@ -44,6 +46,12 @@ export default function EvaluationsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [cycleFilter, setCycleFilter] = useState('ALL');
+  const [departmentFilter, setDepartmentFilter] = useState('ALL');
+  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [reminderStatus, setReminderStatus] = useState('');
+  const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
+  const [activityMap, setActivityMap] = useState<Record<string, any[]>>({});
+  const [approvalNotes, setApprovalNotes] = useState<Record<string, string>>({});
 
   const fetchData = async () => {
     const [empRes, cycleRes, evalRes] = await Promise.all([
@@ -78,13 +86,24 @@ export default function EvaluationsPage() {
     await fetchData();
   };
 
-  const updateApproval = async (evaluationId: string, stage: 'EMPLOYEE' | 'MANAGER' | 'HR', status: 'APPROVED' | 'REJECTED') => {
+  const updateApproval = async (
+    evaluationId: string,
+    stage: 'EMPLOYEE' | 'MANAGER' | 'HR',
+    status: 'APPROVED' | 'REJECTED'
+  ) => {
     const approverId = session?.user?.employeeId;
+    const noteKey = `${evaluationId}:${stage}`;
+    const notes = approvalNotes[noteKey];
+    if (status === 'REJECTED' && !notes?.trim()) {
+      setReminderStatus('Add notes before rejecting an evaluation.');
+      return;
+    }
     await fetch(`/api/evaluations/${evaluationId}/approvals`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stage, status, approverId }),
+      body: JSON.stringify({ stage, status, approverId, notes }),
     });
+    setApprovalNotes((prev) => ({ ...prev, [noteKey]: '' }));
     await fetchData();
   };
 
@@ -109,8 +128,92 @@ export default function EvaluationsPage() {
       evaluation.cycle.name.toLowerCase().includes(query);
     const matchesStatus = statusFilter === 'ALL' || evaluation.status === statusFilter;
     const matchesCycle = cycleFilter === 'ALL' || evaluation.cycle.id === cycleFilter;
-    return matchesQuery && matchesStatus && matchesCycle;
+    const departmentName = employees.find((emp) => emp.id === evaluation.employee.id)?.department?.name || 'Unassigned';
+    const matchesDepartment = departmentFilter === 'ALL' || departmentName === departmentFilter;
+    const isOverdue = evaluation.status === 'SELF_REVIEW' && evaluation.cycle?.selfAssessmentDeadline
+      ? new Date(evaluation.cycle.selfAssessmentDeadline).getTime() < Date.now()
+      : false;
+    const matchesOverdue = !overdueOnly || isOverdue;
+    return matchesQuery && matchesStatus && matchesCycle && matchesDepartment && matchesOverdue;
   });
+
+  const exportCsv = () => {
+    if (!filteredEvaluations.length) return;
+    const headers = ['Employee', 'Department', 'Cycle', 'Status'];
+    const rows = filteredEvaluations.map((evaluation) => {
+      const dept = employees.find((emp) => emp.id === evaluation.employee.id)?.department?.name || 'Unassigned';
+      return [
+        `${evaluation.employee.firstName} ${evaluation.employee.lastName}`,
+        dept,
+        evaluation.cycle.name,
+        evaluation.status,
+      ];
+    });
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'evaluations.csv';
+    link.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const sendOverdueReminders = async () => {
+    try {
+      setReminderStatus('Sending reminders...');
+      const response = await fetch('/api/notifications/reminders', { method: 'POST' });
+      if (!response.ok) {
+        setReminderStatus('Failed to send reminders');
+        return;
+      }
+      const result = await response.json();
+      setReminderStatus(`Sent ${result.sent || 0} reminders for ${result.overdue || 0} overdue evaluations`);
+    } catch (error) {
+      console.error(error);
+      setReminderStatus('Failed to send reminders');
+    }
+  };
+
+  const loadActivity = async (evaluationId: string) => {
+    if (activityMap[evaluationId]) return activityMap[evaluationId];
+    const response = await fetch(`/api/evaluations/${evaluationId}/activity`);
+    if (response.ok) {
+      const data = await response.json();
+      const list = Array.isArray(data) ? data : [];
+      setActivityMap((prev) => ({ ...prev, [evaluationId]: list }));
+      return list;
+    }
+    return [];
+  };
+
+  const exportActivityCsv = async (evaluationId: string) => {
+    const items = (await loadActivity(evaluationId)) || [];
+    if (!items.length) return;
+    const headers = ['Action', 'Actor', 'Stage', 'Status', 'Notes', 'Date'];
+    const rows = items.map((item) => [
+      item.action,
+      item.actor?.email || 'System',
+      item.details?.stage || '',
+      item.details?.status || '',
+      item.details?.notes || '',
+      new Date(item.createdAt).toLocaleString('en-GB'),
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `evaluation-${evaluationId}-activity.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-[#1F2933]">
@@ -197,7 +300,7 @@ export default function EvaluationsPage() {
           </button>
         </div>
 
-        <div className="mt-6 grid gap-3 rounded-2xl border border-[#E8DCC4] bg-white p-4 shadow-sm md:grid-cols-3">
+        <div className="mt-6 grid gap-3 rounded-2xl border border-[#E8DCC4] bg-white p-4 shadow-sm md:grid-cols-4">
           <input
             className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
             placeholder="Search by employee or cycle"
@@ -218,6 +321,18 @@ export default function EvaluationsPage() {
           </select>
           <select
             className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+            value={departmentFilter}
+            onChange={(e) => setDepartmentFilter(e.target.value)}
+          >
+            <option value="ALL">All departments</option>
+            {departments.map((department) => (
+              <option key={department.id} value={department.name}>
+                {department.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
@@ -227,6 +342,36 @@ export default function EvaluationsPage() {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="mt-3 flex items-center gap-2 text-xs text-[#6F4E37]">
+          <input
+            id="overdue-only"
+            type="checkbox"
+            checked={overdueOnly}
+            onChange={(e) => setOverdueOnly(e.target.checked)}
+          />
+          <label htmlFor="overdue-only">Show overdue self-assessments only</label>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-xs text-[#9C8162]">{reminderStatus}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            {(session?.user?.role === 'admin' || session?.user?.role === 'hr') && (
+              <button
+                className="rounded-lg border border-[#D9CBB6] px-4 py-2 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                onClick={sendOverdueReminders}
+              >
+                Send overdue reminders
+              </button>
+            )}
+            <button
+              className="rounded-lg border border-[#D9CBB6] px-4 py-2 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+              onClick={exportCsv}
+            >
+              Export CSV
+            </button>
+          </div>
         </div>
 
         <div className="mt-6 space-y-3">
@@ -243,11 +388,90 @@ export default function EvaluationsPage() {
                       {evaluation.employee.firstName} {evaluation.employee.lastName}
                     </p>
                     <p className="text-xs text-[#6F4E37]">Cycle: {evaluation.cycle.name}</p>
+                    <p className="text-[10px] text-[#9C8162]">
+                      Department: {employees.find((emp) => emp.id === evaluation.employee.id)?.department?.name || '—'}
+                    </p>
+                    <p className="text-[10px] text-[#9C8162]">
+                      Self deadline:{' '}
+                      {evaluation.cycle?.selfAssessmentDeadline
+                        ? new Date(evaluation.cycle.selfAssessmentDeadline).toLocaleDateString('en-GB')
+                        : '—'}
+                    </p>
                   </div>
                   <span className="rounded-full bg-[#F4ECE2] px-3 py-1 text-xs font-semibold text-[#6F4E37]">
                     {evaluation.status.replace('_', ' ')}
                   </span>
                 </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  {['SELF_REVIEW', 'DRAFT'].includes(evaluation.status) && (
+                    <Link
+                      href={`/performance/self-assessment?evaluationId=${evaluation.id}`}
+                      className="rounded border border-[#D9CBB6] px-2 py-1 font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                    >
+                      Open Self-Assessment
+                    </Link>
+                  )}
+                  {evaluation.status === 'MANAGER_REVIEW' && (
+                    <Link
+                      href={`/performance/manager-review?evaluationId=${evaluation.id}`}
+                      className="rounded border border-[#D9CBB6] px-2 py-1 font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                    >
+                      Open Manager Review
+                    </Link>
+                  )}
+                  <button
+                    className="rounded border border-[#D9CBB6] px-2 py-1 font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                    onClick={async () => {
+                      const next = expandedActivityId === evaluation.id ? null : evaluation.id;
+                      setExpandedActivityId(next);
+                      if (next) await loadActivity(evaluation.id);
+                    }}
+                  >
+                    Activity
+                  </button>
+                  <button
+                    className="rounded border border-[#D9CBB6] px-2 py-1 font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                    onClick={() => exportActivityCsv(evaluation.id)}
+                  >
+                    Export Activity CSV
+                  </button>
+                </div>
+                {expandedActivityId === evaluation.id && (
+                  <div className="mt-3 rounded-lg border border-[#E8DCC4] bg-[#FDF9F3] p-3 text-xs text-[#6F4E37]">
+                    {(activityMap[evaluation.id] || []).length === 0 ? (
+                      <p>No activity logged yet.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {activityMap[evaluation.id].map((item) => (
+                          <li key={item.id} className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <span className="font-semibold text-[#36454F]">{item.action.replace(/_/g, ' ')}</span>
+                              <span className="ml-2 text-[10px] text-[#9C8162]">
+                                by {item.actor?.email || 'System'}
+                              </span>
+                              {item.details && (
+                                <div className="mt-1 text-[10px] text-[#6F4E37]">
+                                  {item.details.stage && <span>Stage: {item.details.stage} </span>}
+                                  {item.details.status && <span>Status: {item.details.status} </span>}
+                                  {item.details.notes && <span>• Notes: {item.details.notes}</span>}
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-[#9C8162]">
+                              {new Date(item.createdAt).toLocaleString('en-GB')}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                {evaluation.status === 'SELF_REVIEW' && evaluation.cycle?.selfAssessmentDeadline &&
+                new Date(evaluation.cycle.selfAssessmentDeadline).getTime() < Date.now() ? (
+                  <div className="mt-3 inline-flex items-center rounded-full bg-red-50 px-3 py-1 text-[10px] font-semibold text-red-600">
+                    Overdue self-assessment
+                  </div>
+                ) : null}
                 {evaluation.approvals && evaluation.approvals.length > 0 && (
                   <div className="mt-4 grid gap-2 md:grid-cols-3">
                     {evaluation.approvals.map((approval) => (
@@ -266,12 +490,28 @@ export default function EvaluationsPage() {
                             {approval.status}
                           </span>
                         </div>
+                        {(session?.user?.role === 'admin' || session?.user?.role === 'hr' || session?.user?.role === 'manager') && approval.status === 'PENDING' && (
+                          <input
+                            type="text"
+                            placeholder="Approval notes (optional)"
+                            value={approvalNotes[`${evaluation.id}:${approval.stage}`] || ''}
+                            onChange={(e) =>
+                              setApprovalNotes((prev) => ({
+                                ...prev,
+                                [`${evaluation.id}:${approval.stage}`]: e.target.value,
+                              }))
+                            }
+                            className="mt-2 w-full rounded border border-[#E8DCC4] px-2 py-1 text-[10px]"
+                          />
+                        )}
                         {approval.approvedAt && (
                           <p className="mt-1 text-[10px] text-[#9C8162]">
                             Approved {new Date(approval.approvedAt).toLocaleDateString('en-GB')}
                           </p>
                         )}
-                        {approval.notes && <p className="mt-1 text-[10px] text-[#6F4E37]">{approval.notes}</p>}
+                        {approval.notes && (
+                          <p className="mt-1 text-[10px] text-[#6F4E37]">Notes: {approval.notes}</p>
+                        )}
                         {session?.user?.role === 'admin' && approval.stage === 'HR' && approval.status === 'PENDING' && (
                           <div className="mt-2 flex gap-2">
                             <button

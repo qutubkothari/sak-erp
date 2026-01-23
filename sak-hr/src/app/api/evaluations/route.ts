@@ -42,5 +42,71 @@ export async function POST(request: Request) {
     },
   });
 
+  await prisma.evaluationActivity.create({
+    data: {
+      evaluationId: evaluation.id,
+      action: 'EVALUATION_CREATED',
+      details: { cycleId: body.cycleId, employeeId: body.employeeId },
+    },
+  });
+
+  const [employee, cycle] = await Promise.all([
+    prisma.employee.findUnique({
+      where: { id: body.employeeId },
+      select: { id: true, firstName: true, lastName: true, managerId: true },
+    }),
+    prisma.reviewCycle.findUnique({
+      where: { id: body.cycleId },
+      select: { name: true },
+    }),
+  ]);
+
+  if (employee) {
+    const users = await prisma.user.findMany({
+      where: { employeeId: { in: [employee.id, employee.managerId || ''] } },
+      select: { id: true, employeeId: true },
+    });
+    const userByEmployeeId = new Map(users.map((user) => [user.employeeId, user.id]));
+
+    const notificationData = [] as Array<{
+      userId: string;
+      type: string;
+      title: string;
+      message: string;
+      actionUrl?: string;
+      metadata?: Record<string, unknown>;
+    }>;
+
+    const employeeUserId = userByEmployeeId.get(employee.id);
+    if (employeeUserId) {
+      notificationData.push({
+        userId: employeeUserId,
+        type: 'cycle_started',
+        title: 'Self-assessment opened',
+        message: `Your self-assessment for ${cycle?.name ?? 'the review cycle'} is ready.`,
+        actionUrl: `/performance/self-assessment?evaluationId=${evaluation.id}`,
+        metadata: { evaluationId: evaluation.id, cycleId: body.cycleId },
+      });
+    }
+
+    if (employee.managerId) {
+      const managerUserId = userByEmployeeId.get(employee.managerId);
+      if (managerUserId) {
+        notificationData.push({
+          userId: managerUserId,
+          type: 'approval_needed',
+          title: 'Upcoming manager review',
+          message: `${employee.firstName} ${employee.lastName} has a new evaluation in ${cycle?.name ?? 'the review cycle'}.`,
+          actionUrl: `/performance/manager-review?evaluationId=${evaluation.id}`,
+          metadata: { evaluationId: evaluation.id, employeeId: employee.id, cycleId: body.cycleId },
+        });
+      }
+    }
+
+    if (notificationData.length) {
+      await prisma.notification.createMany({ data: notificationData });
+    }
+  }
+
   return NextResponse.json(evaluation, { status: 201 });
 }
