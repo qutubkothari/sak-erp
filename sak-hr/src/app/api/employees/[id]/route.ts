@@ -6,6 +6,11 @@ type RouteContext = {
 };
 
 type EmployeeUpdate = {
+  code?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  hireDate?: string;
   status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'TERMINATED';
   employmentType?: 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'PROBATION';
   departmentId?: string | null;
@@ -23,6 +28,11 @@ export async function PATCH(request: Request, context: RouteContext) {
   const employee = await prisma.employee.update({
     where: { id },
     data: {
+      code: body.code,
+      firstName: body.firstName,
+      lastName: body.lastName,
+      email: body.email,
+      hireDate: body.hireDate ? new Date(body.hireDate) : undefined,
       status: body.status,
       employmentType: body.employmentType,
       departmentId: body.departmentId ?? undefined,

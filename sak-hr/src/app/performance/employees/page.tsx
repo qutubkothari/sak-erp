@@ -9,6 +9,9 @@ type Employee = {
   lastName: string;
   email: string;
   hireDate: string;
+  departmentId?: string | null;
+  roleId?: string | null;
+  managerId?: string | null;
   status?: string;
   employmentType?: string;
   location?: string | null;
@@ -113,6 +116,22 @@ export default function EmployeesPage() {
   const [employmentFilter, setEmploymentFilter] = useState('ALL');
   const [statusMap, setStatusMap] = useState<Record<string, string>>({});
   const [employmentMap, setEmploymentMap] = useState<Record<string, string>>({});
+  const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    code: '',
+    firstName: '',
+    lastName: '',
+    email: '',
+    hireDate: '',
+    departmentId: '',
+    roleId: '',
+    managerId: '',
+    location: '',
+    nationality: '',
+    emiratesId: '',
+    status: 'ACTIVE',
+    employmentType: 'FULL_TIME',
+  });
 
   const fetchEmployees = async () => {
     const response = await fetch('/api/employees');
@@ -181,6 +200,43 @@ export default function EmployeesPage() {
         }),
       }
     );
+    await fetchEmployees();
+  };
+
+  const startEdit = (employee: Employee) => {
+    setEditingEmployeeId(employee.id);
+    setEditForm({
+      code: employee.code,
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      email: employee.email,
+      hireDate: employee.hireDate ? employee.hireDate.split('T')[0] : '',
+      departmentId: employee.departmentId ?? '',
+      roleId: employee.roleId ?? '',
+      managerId: employee.managerId ?? '',
+      location: employee.location ?? '',
+      nationality: employee.nationality ?? '',
+      emiratesId: employee.emiratesId ?? '',
+      status: employee.status ?? 'ACTIVE',
+      employmentType: employee.employmentType ?? 'FULL_TIME',
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editingEmployeeId) return;
+    await fetch(`/api/employees/${editingEmployeeId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...editForm,
+          departmentId: editForm.departmentId || null,
+          roleId: editForm.roleId || null,
+          managerId: editForm.managerId || null,
+        }),
+      }
+    );
+    setEditingEmployeeId(null);
     await fetchEmployees();
   };
 
@@ -389,13 +445,14 @@ export default function EmployeesPage() {
         </div>
 
         <div className="mt-6 overflow-hidden rounded-2xl border border-[#E8DCC4] bg-white shadow-sm">
-          <div className="grid grid-cols-6 gap-2 border-b border-[#E8DCC4] bg-[#F4ECE2] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[#8B6F47]">
+          <div className="grid grid-cols-7 gap-2 border-b border-[#E8DCC4] bg-[#F4ECE2] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[#8B6F47]">
             <span>Employee</span>
             <span>Contact</span>
             <span>Role</span>
             <span>Location</span>
             <span>Status</span>
             <span>Hire Date</span>
+            <span>Actions</span>
           </div>
           <div className="divide-y divide-[#E8DCC4]">
             {filteredEmployees.length === 0 ? (
@@ -468,6 +525,12 @@ export default function EmployeesPage() {
                     >
                       Update
                     </button>
+                    <button
+                      className="w-full rounded border border-[#D9CBB6] px-2 py-1 text-[11px] font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
+                      onClick={() => startEdit(employee)}
+                    >
+                      Edit
+                    </button>
                   </div>
                 </div>
               ))
@@ -475,6 +538,158 @@ export default function EmployeesPage() {
           </div>
         </div>
       </div>
+
+      {editingEmployeeId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-lg">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-[#36454F]">Edit Employee</h2>
+              <button
+                className="rounded border border-[#E8DCC4] px-2 py-1 text-xs text-[#9C8162]"
+                onClick={() => setEditingEmployeeId(null)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="EMP Code"
+                value={editForm.code}
+                onChange={(e) => setEditForm({ ...editForm, code: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="First name"
+                value={editForm.firstName}
+                onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Last name"
+                value={editForm.lastName}
+                onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Email"
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              />
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                type="date"
+                value={editForm.hireDate}
+                onChange={(e) => setEditForm({ ...editForm, hireDate: e.target.value })}
+              />
+              <select
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                value={editForm.departmentId}
+                onChange={(e) => setEditForm({ ...editForm, departmentId: e.target.value })}
+              >
+                <option value="">Select department</option>
+                {departments.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                value={editForm.roleId}
+                onChange={(e) => setEditForm({ ...editForm, roleId: e.target.value })}
+              >
+                <option value="">Select role</option>
+                {roles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.title}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                value={editForm.managerId}
+                onChange={(e) => setEditForm({ ...editForm, managerId: e.target.value })}
+              >
+                <option value="">Select manager</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.firstName} {employee.lastName}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                value={editForm.status}
+                onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+              >
+                {employmentStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status.replace('_', ' ')}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                value={editForm.employmentType}
+                onChange={(e) => setEditForm({ ...editForm, employmentType: e.target.value })}
+              >
+                {employmentTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type.replace('_', ' ')}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                value={editForm.location}
+                onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+              >
+                <option value="">Select location</option>
+                {uaeLocations.map((location) => (
+                  <option key={location} value={location}>
+                    {location}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                value={editForm.nationality}
+                onChange={(e) => setEditForm({ ...editForm, nationality: e.target.value })}
+              >
+                <option value="">Select nationality</option>
+                {commonNationalities.map((nationality) => (
+                  <option key={nationality} value={nationality}>
+                    {nationality}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+                placeholder="Emirates ID (784-XXXX-XXXXXXX-X)"
+                value={editForm.emiratesId}
+                onChange={(e) => setEditForm({ ...editForm, emiratesId: e.target.value })}
+              />
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                className="rounded border border-[#E8DCC4] px-4 py-2 text-sm text-[#6F4E37]"
+                onClick={() => setEditingEmployeeId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-lg bg-[#6F4E37] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5A3E2C]"
+                onClick={saveEdit}
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
