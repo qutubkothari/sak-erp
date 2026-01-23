@@ -100,6 +100,7 @@ export default function EmployeesPage() {
     firstName: '',
     lastName: '',
     email: '',
+    password: '',
     hireDate: '',
     departmentId: '',
     roleId: '',
@@ -111,6 +112,7 @@ export default function EmployeesPage() {
     employmentType: 'FULL_TIME',
   });
   const [loading, setLoading] = useState(false);
+  const [createError, setCreateError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [employmentFilter, setEmploymentFilter] = useState('ALL');
@@ -160,7 +162,8 @@ export default function EmployeesPage() {
   const handleSubmit = async () => {
     if (!form.code || !form.firstName || !form.lastName || !form.email || !form.hireDate) return;
     setLoading(true);
-    await fetch('/api/employees', {
+    setCreateError('');
+    const response = await fetch('/api/employees', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -170,11 +173,18 @@ export default function EmployeesPage() {
         managerId: form.managerId || undefined,
       }),
     });
+    if (!response.ok) {
+      const payload = await response.json();
+      setCreateError(payload?.message || 'Failed to create employee');
+      setLoading(false);
+      return;
+    }
     setForm({
       code: '',
       firstName: '',
       lastName: '',
       email: '',
+      password: '',
       hireDate: '',
       departmentId: '',
       roleId: '',
@@ -306,6 +316,13 @@ export default function EmployeesPage() {
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
+            <input
+              className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
+              placeholder="Password (optional)"
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+            />
             <select
               className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
               value={form.departmentId}
@@ -401,6 +418,11 @@ export default function EmployeesPage() {
               onChange={(e) => setForm({ ...form, emiratesId: e.target.value })}
             />
           </div>
+          {createError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {createError}
+            </div>
+          ) : null}
           <button
             className="w-fit rounded-lg bg-[#6F4E37] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5A3E2C]"
             onClick={handleSubmit}

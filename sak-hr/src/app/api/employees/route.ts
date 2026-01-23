@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import bcrypt from 'bcryptjs';
 
 type EmployeeInput = {
   code: string;
@@ -7,6 +8,7 @@ type EmployeeInput = {
   lastName: string;
   email: string;
   hireDate: string;
+  password?: string;
   departmentId?: string;
   roleId?: string;
   managerId?: string;
@@ -33,6 +35,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
   }
 
+  if (body.password && body.password.length < 6) {
+    return NextResponse.json({ message: 'Password must be at least 6 characters' }, { status: 400 });
+  }
+
+  if (body.password) {
+    const existingUser = await prisma.user.findUnique({ where: { email: body.email } });
+    if (existingUser) {
+      return NextResponse.json({ message: 'Login user already exists for this email' }, { status: 400 });
+    }
+  }
+
   const employee = await prisma.employee.create({
     data: {
       code: body.code,
@@ -50,6 +63,18 @@ export async function POST(request: Request) {
       employmentType: body.employmentType ?? 'FULL_TIME',
     },
   });
+
+  if (body.password) {
+    const hashed = await bcrypt.hash(body.password, 10);
+    await prisma.user.create({
+      data: {
+        email: body.email,
+        password: hashed,
+        role: 'employee',
+        employeeId: employee.id,
+      },
+    });
+  }
 
   return NextResponse.json(employee, { status: 201 });
 }
