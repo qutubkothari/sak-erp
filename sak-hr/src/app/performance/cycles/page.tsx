@@ -93,18 +93,23 @@ export default function ReviewCyclesPage() {
               type="date"
               value={form.startDate}
               onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+              aria-label="Cycle start date"
+              placeholder="Start date"
             />
             <input
               className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
               type="date"
               value={form.endDate}
               onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+              aria-label="Cycle end date"
+              placeholder="End date"
             />
             <input
               className="rounded border border-[#E8DCC4] px-3 py-2 text-sm"
               type="date"
               value={form.selfAssessmentDeadline}
               onChange={(e) => setForm({ ...form, selfAssessmentDeadline: e.target.value })}
+              aria-label="Self-assessment deadline"
               placeholder="Self-assessment deadline"
             />
             <select
@@ -116,6 +121,13 @@ export default function ReviewCyclesPage() {
               <option value="ACTIVE">Active</option>
               <option value="CLOSED">Closed</option>
             </select>
+          </div>
+          <div className="grid gap-2 text-xs text-[#9C8162] md:grid-cols-5">
+            <span>Cycle name</span>
+            <span>Start date</span>
+            <span>End date</span>
+            <span>Self-assessment deadline</span>
+            <span>Status</span>
           </div>
           <button
             className="w-fit rounded-lg bg-[#6F4E37] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5A3E2C]"
