@@ -35,6 +35,7 @@ const sections = [
       { label: 'Goals', href: '/performance/goals', icon: Target, roles: ['admin', 'manager', 'employee'] },
       { label: 'Self Assessment', href: '/performance/self-assessment', icon: ClipboardCheck, roles: ['admin', 'manager', 'employee'] },
       { label: 'Manager Review', href: '/performance/manager-review', icon: UserCheck, roles: ['admin', 'manager'] },
+      { label: 'Manager Dashboard', href: '/performance/manager-dashboard', icon: Users, roles: ['admin', 'manager'] },
       { label: 'Analytics', href: '/performance/analytics', icon: BarChart3, roles: ['admin', 'manager'] },
     ],
   },
@@ -73,7 +74,11 @@ export default function HrSidebar({ collapsed, onToggle }: HrSidebarProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const rawRole = (session?.user?.role || 'employee').toString().toLowerCase();
-  const role = rawRole === 'hr' ? 'admin' : rawRole;
+  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const jobRole = (session?.user?.jobRole || '').toString().toLowerCase();
+  const managerKeywords = ['manager', 'lead', 'supervisor', 'head'];
+  const inferredManager = baseRole === 'employee' && managerKeywords.some((keyword) => jobRole.includes(keyword));
+  const role = inferredManager ? 'manager' : baseRole;
   const isAllowedForRole = (roles?: string[]) => {
     if (!roles || roles.length === 0) return true;
     if (role === 'admin') return true;

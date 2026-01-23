@@ -425,13 +425,17 @@ function HrDashboard() {
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const rawRole = (session?.user?.role || 'employee').toString().toLowerCase();
-  const role = rawRole === 'hr' ? 'admin' : rawRole;
+  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const jobRole = (session?.user?.jobRole || '').toString().toLowerCase();
+  const managerKeywords = ['manager', 'lead', 'supervisor', 'head'];
+  const inferredManager = baseRole === 'employee' && managerKeywords.some((keyword) => jobRole.includes(keyword));
+  const role = inferredManager ? 'manager' : baseRole;
 
   if (status === 'loading') {
     return <div className="py-16 text-center text-sm text-[#9C8162]">Loading dashboard...</div>;
   }
 
-  if (role === 'employee') {
+  if (role !== 'admin') {
     return <EmployeeDashboard />;
   }
 

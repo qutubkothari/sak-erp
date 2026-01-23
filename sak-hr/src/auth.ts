@@ -97,6 +97,22 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           token.jobRole = dbUser.employee?.role?.title ?? undefined;
         }
       }
+
+      const jobRole = (token.jobRole || '').toString().toLowerCase();
+      const managerKeywords = ['manager', 'lead', 'supervisor', 'head'];
+      let inferredManager = managerKeywords.some((keyword) => jobRole.includes(keyword));
+
+      if (!inferredManager && token.employeeId) {
+        const reportCount = await prisma.employee.count({
+          where: { managerId: token.employeeId as string },
+        });
+        inferredManager = reportCount > 0;
+      }
+
+      if (token.role === 'employee' && inferredManager) {
+        token.role = 'manager';
+      }
+
       return token;
     },
     async session({ session, token }) {
