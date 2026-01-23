@@ -158,7 +158,9 @@ export default function HrSidebar({ collapsed, onToggle }: HrSidebarProps) {
             <p className="mt-1 text-sm font-semibold text-[#36454F] truncate">
               {session?.user?.name || session?.user?.email || 'User'}
             </p>
-            <p className="text-xs text-[#6F4E37] capitalize">{session?.user?.role || 'employee'}</p>
+            <p className="text-xs text-[#6F4E37] capitalize">
+              {session?.user?.jobRole || session?.user?.role || 'employee'}
+            </p>
           </>
         )}
       </div>
