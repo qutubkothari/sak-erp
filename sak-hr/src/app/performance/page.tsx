@@ -53,6 +53,11 @@ export default function PerformanceHomePage() {
               href: '/performance/employees',
             },
             {
+              title: 'Departments',
+              description: 'Create and maintain departments used across the system.',
+              href: '/performance/departments',
+            },
+            {
               title: 'Competencies & KPIs',
               description: 'Define weighted competencies, KPIs, and score guides.',
               href: '/performance/criteria',
