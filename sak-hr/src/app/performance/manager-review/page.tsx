@@ -12,6 +12,7 @@ const managerReviewSchema = z.object({
   competencyRatings: z.record(z.string(), z.number().min(1).max(5)),
   meritRatings: z.record(z.string(), z.number().min(1).max(5)),
   demeritRatings: z.record(z.string(), z.number().min(1).max(5)),
+  kpiRatings: z.record(z.string(), z.number().min(1).max(5)),
   overallRating: z.number().min(1).max(5),
   managerComments: z.string().min(50, 'Please provide detailed feedback (minimum 50 characters)'),
   strengths: z.string().min(30, 'Please describe employee strengths (minimum 30 characters)'),
@@ -67,6 +68,7 @@ interface KPIProgress {
   unit?: string | null;
   achieved?: number | null;
   progress?: number | null;
+  itemId?: string | null;
 }
 
 interface EvidenceItem {
@@ -100,6 +102,7 @@ export default function ManagerReviewPage() {
   const [managerRatings, setManagerRatings] = useState<{ [key: string]: number }>({});
   const [managerMeritRatings, setManagerMeritRatings] = useState<{ [key: string]: number }>({});
   const [managerDemeritRatings, setManagerDemeritRatings] = useState<{ [key: string]: number }>({});
+  const [managerKpiRatings, setManagerKpiRatings] = useState<{ [key: string]: number }>({});
   const [salaryRec, setSalaryRec] = useState<string>('no-change');
   const [overallRating, setOverallRating] = useState<number>(0);
 
@@ -114,6 +117,7 @@ export default function ManagerReviewPage() {
     defaultValues: {
       meritRatings: {},
       demeritRatings: {},
+      kpiRatings: {},
       salaryRecommendation: 'no-change',
     },
   });
@@ -133,6 +137,11 @@ export default function ManagerReviewPage() {
   const handleDemeritRatingClick = (demeritId: string, rating: number) => {
     setManagerDemeritRatings({ ...managerDemeritRatings, [demeritId]: rating });
     setValue(`demeritRatings.${demeritId}`, rating);
+  };
+
+  const handleKpiRatingClick = (kpiId: string, rating: number) => {
+    setManagerKpiRatings({ ...managerKpiRatings, [kpiId]: rating });
+    setValue(`kpiRatings.${kpiId}`, rating);
   };
 
   const handleOverallRating = (rating: number) => {
@@ -223,6 +232,28 @@ export default function ManagerReviewPage() {
                 body: JSON.stringify({
                   type: 'DEMERIT',
                   meritDemeritId: demeritId,
+                  managerScore: rating,
+                }),
+              });
+            }
+            return fetch(`/api/evaluations/${selectedEvaluationId}/items`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                itemId: item.itemId,
+                managerScore: rating,
+              }),
+            });
+          }),
+          ...Object.entries(data.kpiRatings || {}).map(([kpiId, rating]) => {
+            const item = kpiProgress.find((kpi) => kpi.id === kpiId);
+            if (!item?.itemId) {
+              return fetch(`/api/evaluations/${selectedEvaluationId}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'KPI',
+                  kpiId,
                   managerScore: rating,
                 }),
               });
@@ -425,6 +456,7 @@ export default function ManagerReviewPage() {
         const competencyManagerRatings: Record<string, number> = {};
         const meritManagerRatings: Record<string, number> = {};
         const demeritManagerRatings: Record<string, number> = {};
+        const kpiManagerRatings: Record<string, number> = {};
 
         const mapped = compList.map((comp: any) => {
           const item = items.find((it: any) => it.competencyId === comp.id);
@@ -476,6 +508,9 @@ export default function ManagerReviewPage() {
           const achieved = item?.selfScore ?? null;
           const target = kpi.target ?? null;
           const progress = target && achieved != null ? Math.min((achieved / target) * 100, 200) : null;
+          if (item?.managerScore != null) {
+            kpiManagerRatings[kpi.id] = item.managerScore;
+          }
           return {
             id: kpi.id,
             name: kpi.name,
@@ -483,6 +518,7 @@ export default function ManagerReviewPage() {
             unit: kpi.unit ?? null,
             achieved,
             progress,
+            itemId: item?.id ?? null,
           };
         });
         setKpiProgress(kpiMapped);
@@ -490,9 +526,11 @@ export default function ManagerReviewPage() {
         setManagerRatings(competencyManagerRatings);
         setManagerMeritRatings(meritManagerRatings);
         setManagerDemeritRatings(demeritManagerRatings);
+        setManagerKpiRatings(kpiManagerRatings);
         setValue('competencyRatings', competencyManagerRatings);
         setValue('meritRatings', meritManagerRatings);
         setValue('demeritRatings', demeritManagerRatings);
+        setValue('kpiRatings', kpiManagerRatings);
 
         const evidenceRes = await fetch(`/api/evaluations/${selectedEvaluationId}/evidence`);
         const evidenceData = await evidenceRes.json();
@@ -631,6 +669,28 @@ export default function ManagerReviewPage() {
                       }`}
                       style={{ width: `${Math.min(kpi.progress ?? 0, 100)}%` }}
                     />
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="text-xs text-[#9C8162] w-24">Your Rating:</span>
+                    {[1, 2, 3, 4, 5].map((rating) => (
+                      <button
+                        key={rating}
+                        type="button"
+                        onClick={() => handleKpiRatingClick(kpi.id, rating)}
+                        className={`flex h-10 w-10 items-center justify-center rounded-lg border-2 text-sm font-bold transition-all ${
+                          managerKpiRatings[kpi.id] === rating
+                            ? 'border-[#6F4E37] bg-[#6F4E37] text-white scale-110'
+                            : 'border-[#E8DCC4] bg-white text-[#9C8162] hover:border-[#6F4E37] hover:bg-[#F4ECE2]'
+                        }`}
+                      >
+                        {rating}
+                      </button>
+                    ))}
+                    {managerKpiRatings[kpi.id] && (
+                      <span className="ml-3 text-sm font-medium text-[#6F4E37]">
+                        {getRatingLabel(managerKpiRatings[kpi.id])}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
