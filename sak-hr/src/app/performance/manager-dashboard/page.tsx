@@ -118,15 +118,6 @@ export default function ManagerDashboardPage() {
     }
   }, [canAccess, session?.user?.employeeId]);
 
-  // Render loading/access states after all hooks
-  if (checkingReports && baseRole === 'manager') {
-    return <div className="py-16 text-center text-sm text-[#9C8162]">Checking access...</div>;
-  }
-
-  if (!canAccess) {
-    return <div className="py-16 text-center text-sm text-[#9C8162]">Access denied.</div>;
-  }
-
   const stats = useMemo(() => {
     const total = evaluations.length;
     const open = evaluations.filter((e) => ['SELF_REVIEW', 'MANAGER_REVIEW'].includes(e.status)).length;
@@ -152,17 +143,6 @@ export default function ManagerDashboardPage() {
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [evaluations]);
 
-  const filtered = evaluations.filter((evaluation) => {
-    if (statusFilter !== 'ALL' && evaluation.status !== statusFilter) return false;
-    const dept = evaluation.employee?.department?.name || 'Unassigned';
-    if (departmentFilter !== 'ALL' && dept !== departmentFilter) return false;
-    if (searchTerm.trim()) {
-      const name = `${evaluation.employee?.firstName || ''} ${evaluation.employee?.lastName || ''}`.toLowerCase();
-      if (!name.includes(searchTerm.trim().toLowerCase())) return false;
-    }
-    return true;
-  });
-
   const departmentSummary = useMemo(() => {
     const map = new Map<string, { total: number; open: number; overdue: number }>();
     evaluations.forEach((evaluation) => {
@@ -180,6 +160,26 @@ export default function ManagerDashboardPage() {
     });
     return Array.from(map.entries()).map(([department, summary]) => ({ department, ...summary }));
   }, [evaluations]);
+
+  // Render loading/access states after all hooks
+  if (checkingReports && baseRole === 'manager') {
+    return <div className="py-16 text-center text-sm text-[#9C8162]">Checking access...</div>;
+  }
+
+  if (!canAccess) {
+    return <div className="py-16 text-center text-sm text-[#9C8162]">Access denied.</div>;
+  }
+
+  const filtered = evaluations.filter((evaluation) => {
+    if (statusFilter !== 'ALL' && evaluation.status !== statusFilter) return false;
+    const dept = evaluation.employee?.department?.name || 'Unassigned';
+    if (departmentFilter !== 'ALL' && dept !== departmentFilter) return false;
+    if (searchTerm.trim()) {
+      const name = `${evaluation.employee?.firstName || ''} ${evaluation.employee?.lastName || ''}`.toLowerCase();
+      if (!name.includes(searchTerm.trim().toLowerCase())) return false;
+    }
+    return true;
+  });
 
   const exportCsv = () => {
     if (!filtered.length) return;
