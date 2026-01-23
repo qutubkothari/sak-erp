@@ -49,7 +49,43 @@ export default function ManagerDashboardPage() {
 
   const rawRole = (session?.user?.role || 'employee').toString().toLowerCase();
   const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
-  const canAccess = baseRole === 'admin' || baseRole === 'manager';
+  const [hasDirectReports, setHasDirectReports] = useState(false);
+  const [checkingReports, setCheckingReports] = useState(baseRole === 'manager');
+  const canAccess = baseRole === 'admin' || (baseRole === 'manager' && hasDirectReports);
+
+  useEffect(() => {
+    const managerId = session?.user?.employeeId;
+    if (baseRole !== 'manager' || !managerId) {
+      setHasDirectReports(false);
+      setCheckingReports(false);
+      return;
+    }
+
+    let active = true;
+    setCheckingReports(true);
+    fetch(`/api/employees?managerId=${managerId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        setHasDirectReports(Array.isArray(data) && data.length > 0);
+      })
+      .catch(() => {
+        if (!active) return;
+        setHasDirectReports(false);
+      })
+      .finally(() => {
+        if (!active) return;
+        setCheckingReports(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [baseRole, session?.user?.employeeId]);
+
+  if (checkingReports && baseRole === 'manager') {
+    return <div className="py-16 text-center text-sm text-[#9C8162]">Checking access...</div>;
+  }
 
   if (!canAccess) {
     return <div className="py-16 text-center text-sm text-[#9C8162]">Access denied.</div>;

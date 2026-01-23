@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
@@ -75,11 +76,49 @@ export default function HrSidebar({ collapsed, onToggle }: HrSidebarProps) {
   const { data: session } = useSession();
   const rawRole = (session?.user?.role || 'employee').toString().toLowerCase();
   const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
-  const role = baseRole;
+  const [hasDirectReports, setHasDirectReports] = useState(false);
+  const [checkingReports, setCheckingReports] = useState(baseRole === 'manager');
+
+  useEffect(() => {
+    const managerId = session?.user?.employeeId;
+    if (baseRole !== 'manager' || !managerId) {
+      setHasDirectReports(false);
+      setCheckingReports(false);
+      return;
+    }
+
+    let active = true;
+    setCheckingReports(true);
+    fetch(`/api/employees?managerId=${managerId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        setHasDirectReports(Array.isArray(data) && data.length > 0);
+      })
+      .catch(() => {
+        if (!active) return;
+        setHasDirectReports(false);
+      })
+      .finally(() => {
+        if (!active) return;
+        setCheckingReports(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [baseRole, session?.user?.employeeId]);
+
+  const effectiveRole = useMemo(() => {
+    if (baseRole === 'admin') return 'admin';
+    if (baseRole === 'manager' && hasDirectReports) return 'manager';
+    return 'employee';
+  }, [baseRole, hasDirectReports]);
   const isAllowedForRole = (roles?: string[]) => {
     if (!roles || roles.length === 0) return true;
-    if (role === 'admin') return true;
-    return roles.includes(role);
+    if (effectiveRole === 'admin') return true;
+    if (checkingReports && roles.includes('manager')) return false;
+    return roles.includes(effectiveRole);
   };
   const visibleSections = sections
     .map((section) => ({

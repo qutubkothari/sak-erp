@@ -19,8 +19,12 @@ type EmployeeInput = {
   employmentType?: 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'PROBATION';
 };
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const managerId = searchParams.get('managerId');
+
   const employees = await prisma.employee.findMany({
+    where: managerId ? { managerId } : undefined,
     orderBy: { createdAt: 'desc' },
     include: { department: true, role: true, manager: true },
   });
