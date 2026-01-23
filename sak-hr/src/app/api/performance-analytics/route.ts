@@ -21,6 +21,8 @@ export async function GET() {
     appraisalLetterCount,
     improvementPlanCount,
     cycleCount,
+    activeCycleCount,
+    pendingApprovalCount,
     departments,
     ratings,
   ] = await Promise.all([
@@ -40,6 +42,8 @@ export async function GET() {
     prisma.appraisalLetter.count(),
     prisma.improvementPlan.count(),
     prisma.reviewCycle.count(),
+    prisma.reviewCycle.count({ where: { status: 'ACTIVE' } }),
+    prisma.evaluationApproval.count({ where: { status: 'PENDING' } }),
     prisma.department.findMany({
       orderBy: { name: 'asc' },
       include: { _count: { select: { employees: true } } },
@@ -64,6 +68,8 @@ export async function GET() {
       activeEmployees: activeEmployeeCount,
       evaluations: evaluationCount,
       cycles: cycleCount,
+      activeCycles: activeCycleCount,
+      pendingApprovals: pendingApprovalCount,
       calibrationSessions: calibrationSessionCount,
       feedbackRequests: feedbackRequestCount,
       feedbackResponses: feedbackResponseCount,
