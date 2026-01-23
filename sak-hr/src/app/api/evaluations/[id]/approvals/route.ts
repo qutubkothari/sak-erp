@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -98,14 +99,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     const userByEmployeeId = new Map(users.map((user) => [user.employeeId, user.id]));
     const hrUserIds = users.filter((user) => ['admin', 'hr'].includes(user.role)).map((user) => user.id);
 
-    const notifications = [] as Array<{
-      userId: string;
-      type: string;
-      title: string;
-      message: string;
-      actionUrl?: string;
-      metadata?: Record<string, unknown>;
-    }>;
+    const notifications: Prisma.NotificationCreateManyInput[] = [];
 
     if (body.stage === 'MANAGER' && body.status === 'APPROVED') {
       hrUserIds.forEach((userId) => {
