@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 type AssignInput = {
@@ -87,14 +88,7 @@ export async function POST(request: Request) {
       const employee = employeeMap.get(employeeId);
       if (!employee) return [];
 
-      const notifications = [] as Array<{
-        userId: string;
-        type: string;
-        title: string;
-        message: string;
-        actionUrl?: string;
-        metadata?: Record<string, unknown>;
-      }>;
+      const notifications: Prisma.NotificationCreateManyInput[] = [];
 
       const employeeUserId = userByEmployeeId.get(employeeId);
       if (employeeUserId) {

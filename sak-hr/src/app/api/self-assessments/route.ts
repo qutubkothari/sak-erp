@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(request: Request) {
@@ -106,14 +107,7 @@ export async function POST(request: Request) {
     data: { status: 'MANAGER_REVIEW' },
   });
 
-  const notifications = [] as Array<{
-    userId: string;
-    type: string;
-    title: string;
-    message: string;
-    actionUrl?: string;
-    metadata?: Record<string, unknown>;
-  }>;
+  const notifications: Prisma.NotificationCreateManyInput[] = [];
 
   const managerUserId = managerId ? userByEmployeeId.get(managerId) : undefined;
   if (managerUserId) {

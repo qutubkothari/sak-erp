@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 export async function POST() {
@@ -41,14 +42,7 @@ export async function POST() {
       ? userByEmployeeId.get(evaluation.employee.managerId)
       : undefined;
 
-    const entries: Array<{
-      userId: string;
-      type: string;
-      title: string;
-      message: string;
-      actionUrl?: string;
-      metadata?: Record<string, unknown>;
-    }> = [];
+    const entries: Prisma.NotificationCreateManyInput[] = [];
 
     if (employeeUserId) {
       entries.push({
