@@ -1838,117 +1838,104 @@ function PurchaseOrdersContent() {
                     placeholder="Enter payment details or notes..."
                   />
                 </div>
-                    {canApprovePO && (
-                      <>
-                        <button
-                          onClick={async () => {
-                            try {
-                              const token = localStorage.getItem('accessToken');
-                              const response = await fetch(`/api/v1/purchase/orders/${selectedPO.id}/status`, {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                  Authorization: `Bearer ${token}`,
-                                },
-                                body: JSON.stringify({ status: 'APPROVED' }),
-                              });
-                              if (response.ok) {
-                                setAlertMessage({ type: 'success', message: 'Purchase Order approved successfully!' });
-                                setShowViewModal(false);
-                                fetchOrders();
-                              } else {
-                                const errorData = await response.json();
-                                console.error('Approve failed:', errorData);
-                                setAlertMessage({ type: 'error', message: `Failed to approve PO: ${errorData.message || 'Unknown error'}` });
-                              }
-                            } catch (error) {
-                              console.error('Error approving PO:', error);
-                              setAlertMessage({ type: 'error', message: 'Error approving PO' });
-                            }
-                          }}
-                          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={async () => {
-                            try {
-                              const token = localStorage.getItem('accessToken');
-                              const response = await fetch(`/api/v1/purchase/orders/${selectedPO.id}/status`, {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                  Authorization: `Bearer ${token}`,
-                                },
-                                body: JSON.stringify({ status: 'REJECTED' }),
-                              });
-                              if (response.ok) {
-                                setAlertMessage({ type: 'success', message: 'Purchase Order rejected successfully!' });
-                                setShowViewModal(false);
-                                fetchOrders();
-                              } else {
-                                const errorData = await response.json();
-                                console.error('Approve failed:', errorData);
-                                setAlertMessage({ type: 'error', message: `Failed to reject PO: ${errorData.message || 'Unknown error'}` });
-                              }
-                            } catch (error) {
-                              console.error('Error rejecting PO:', error);
-                              setAlertMessage({ type: 'error', message: 'Error rejecting PO' });
-                            }
-                          }}
-                          className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                        >
-                          Reject
-                        </button>
-                      </>
+              )}
+              {/* Items */}
+              {editingMode !== 'tracking' && (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Items</h3>
+                    {(editingMode === 'create' || editingMode === 'edit') && (
+                      <button
+                        onClick={handleAddItem}
+                        className="px-4 py-2 text-amber-600 hover:text-amber-800 font-medium border border-amber-300 hover:border-amber-500 rounded-lg transition-colors"
+                      >
+                        + Add Item
+                      </button>
                     )}
-                                        {resolvedItemId ? (
-                                          <div className="mt-1 flex items-center justify-between gap-2 min-w-0">
-                                            <span className={`text-xs px-2 py-0.5 rounded ${
-                                              drawingRequired === 'COMPULSORY'
-                                                ? 'bg-red-100 text-red-800'
-                                                : 'bg-gray-100 text-gray-700'
-                                            }`}>
-                                              Drawing: {drawingRequired}
-                                            </span>
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setPendingItemIndex(index);
-                                                setSelectedItemForDrawing({
-                                                  id: resolvedItemId,
-                                                  code: displayCode,
-                                                  name: displayName,
-                                                  mandatory: drawingRequired === 'COMPULSORY',
-                                                });
-                                                setShowDrawingManager(true);
-                                              }}
-                                              className="text-xs text-amber-700 hover:text-amber-900 font-medium shrink-0"
-                                            >
-                                              Manage Drawings
-                                            </button>
-                                          </div>
-                                        ) : null}
-                                      </>
-                                    );
-                                  })()}
-                                  {item.itemId && stockInfo[item.itemId] && (
-                                    <div className="text-xs text-gray-600 mt-1 space-y-0.5">
-                                      <div className="flex justify-between">
-                                        <span>Stock in Hand:</span>
-                                        <span className="font-semibold text-blue-600">{stockInfo[item.itemId].total_quantity || 0}</span>
+                  </div>
+
+                  {formData.items.length === 0 ? (
+                    <div className="text-sm text-gray-500">No items added yet.</div>
+                  ) : (
+                    <div className="space-y-4">
+                      {formData.items.map((item, index) => (
+                        <div key={index} className="border border-gray-200 rounded-lg p-4">
+                          <div className="grid grid-cols-8 gap-3">
+                            <div className="col-span-2 min-w-0">
+                              {item.itemId ? (
+                                <div className="flex flex-col gap-2 min-w-0">
+                                  <div className="min-w-0">
+                                    {(() => {
+                                      const masterItem = items.find((i) => i.id === item.itemId || i.code === item.itemCode);
+                                      const resolvedItemId = masterItem?.id || item.itemId;
+                                      const drawingRequired = masterItem?.drawing_required || 'OPTIONAL';
+                                      const displayCode = item.itemCode || masterItem?.code || '';
+                                      const displayName = item.itemName || masterItem?.name || '';
+
+                                      return (
+                                        <>
+                                          <div className="text-sm font-medium text-gray-900">{displayCode || '-'}</div>
+                                          <div className="text-xs text-gray-500 truncate">{displayName || '-'}</div>
+                                          {resolvedItemId ? (
+                                            <div className="mt-1 flex items-center justify-between gap-2 min-w-0">
+                                              <span className={`text-xs px-2 py-0.5 rounded ${
+                                                drawingRequired === 'COMPULSORY'
+                                                  ? 'bg-red-100 text-red-800'
+                                                  : 'bg-gray-100 text-gray-700'
+                                              }`}>
+                                                Drawing: {drawingRequired}
+                                              </span>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setPendingItemIndex(index);
+                                                  setSelectedItemForDrawing({
+                                                    id: resolvedItemId,
+                                                    code: displayCode,
+                                                    name: displayName,
+                                                    mandatory: drawingRequired === 'COMPULSORY',
+                                                  });
+                                                  setShowDrawingManager(true);
+                                                }}
+                                                className="text-xs text-amber-700 hover:text-amber-900 font-medium shrink-0"
+                                              >
+                                                Manage Drawings
+                                              </button>
+                                            </div>
+                                          ) : null}
+                                        </>
+                                      );
+                                    })()}
+                                    {item.itemId && stockInfo[item.itemId] && (
+                                      <div className="text-xs text-gray-600 mt-1 space-y-0.5">
+                                        <div className="flex justify-between">
+                                          <span>Stock in Hand:</span>
+                                          <span className="font-semibold text-blue-600">{stockInfo[item.itemId].total_quantity || 0}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span>Available:</span>
+                                          <span className="font-semibold text-green-600">{stockInfo[item.itemId].available_quantity || 0}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span>Allocated:</span>
+                                          <span className="font-semibold text-amber-600">{stockInfo[item.itemId].allocated_quantity || 0}</span>
+                                        </div>
                                       </div>
-                                      <div className="flex justify-between">
-                                        <span>Available:</span>
-                                        <span className="font-semibold text-green-600">{stockInfo[item.itemId].available_quantity || 0}</span>
-                                      </div>
-                                      <div className="flex justify-between">
-                                        <span>Allocated:</span>
-                                        <span className="font-semibold text-amber-600">{stockInfo[item.itemId].allocated_quantity || 0}</span>
-                                      </div>
-                                    </div>
-                                  )}
+                                    )}
+                                  </div>
+                                  <SearchableSelect
+                                    value={item.itemId}
+                                    onChange={(value) => handleUpdateItem(index, 'itemId', value)}
+                                    options={items.map(i => ({
+                                      value: i.id,
+                                      label: i.code,
+                                      subtitle: i.name
+                                    }))}
+                                    placeholder="Change item..."
+                                    className="text-xs"
+                                  />
                                 </div>
+                              ) : (
                                 <SearchableSelect
                                   value={item.itemId}
                                   onChange={(value) => handleUpdateItem(index, 'itemId', value)}
@@ -1957,71 +1944,136 @@ function PurchaseOrdersContent() {
                                     label: i.code,
                                     subtitle: i.name
                                   }))}
-                                  placeholder="Change item..."
-                                  className="text-xs"
+                                  placeholder="Select Item"
+                                  required
                                 />
-                              </div>
-                            ) : (
+                              )}
+                            </div>
+                            <div className="min-w-0">
                               <SearchableSelect
-                                value={item.itemId}
-                                onChange={(value) => handleUpdateItem(index, 'itemId', value)}
-                                options={items.map(i => ({
-                                  value: i.id,
-                                  label: i.code,
-                                  subtitle: i.name
+                                value={item.vendorId}
+                                onChange={(value) => handleUpdateItem(index, 'vendorId', String(value || ''))}
+                                options={vendors.map((v) => ({
+                                  value: v.id,
+                                  label: v.name,
+                                  subtitle: v.contact_person,
                                 }))}
-                                placeholder="Select Item"
-                                required
-                              />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <SearchableSelect
-                              value={item.vendorId}
-                              onChange={(value) => handleUpdateItem(index, 'vendorId', String(value || ''))}
-                              options={vendors.map((v) => ({
-                                value: v.id,
-                                label: v.name,
-                                subtitle: v.contact_person,
-                              }))}
-                              placeholder="Search vendor..."
-                              required
-                            />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                value={item.quantity}
-                                onChange={(e) => handleUpdateItem(index, 'quantity', parseFloat(e.target.value))}
-                                placeholder="Quantity"
-                                className="w-full border border-gray-300 rounded px-3 py-2"
+                                placeholder="Search vendor..."
                                 required
                               />
                             </div>
-                          </div>
-                          <div className="min-w-0">
-                            <input
-                              type="text"
-                              value={(() => {
-                                const masterItem = items.find((i) => i.id === item.itemId || i.code === item.itemCode);
-                                return masterItem ? resolveUomFromItem(masterItem) : (item.uom || '');
-                              })()}
-                              readOnly
-                              placeholder="UOM"
-                              className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 cursor-not-allowed"
-                              title="UOM is auto-filled from master item"
-                            />
-                          </div>
-                          <div className="relative min-w-0">
-                            <div className="flex items-center gap-1">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  value={item.quantity}
+                                  onChange={(e) => handleUpdateItem(index, 'quantity', parseFloat(e.target.value))}
+                                  placeholder="Quantity"
+                                  className="w-full border border-gray-300 rounded px-3 py-2"
+                                  required
+                                />
+                              </div>
+                            </div>
+                            <div className="min-w-0">
                               <input
-                                type="number"
-                                value={item.unitPrice}
-                                onChange={(e) => handleUpdateItem(index, 'unitPrice', parseFloat(e.target.value))}
-                                placeholder="Unit Price"
-                                className="w-full border border-gray-300 rounded px-3 py-2"
+                                type="text"
+                                value={(() => {
+                                  const masterItem = items.find((i) => i.id === item.itemId || i.code === item.itemCode);
+                                  return masterItem ? resolveUomFromItem(masterItem) : (item.uom || '');
+                                })()}
+                                readOnly
+                                placeholder="UOM"
+                                className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 cursor-not-allowed"
+                                title="UOM is auto-filled from master item"
                               />
+                            </div>
+                            <div className="relative min-w-0">
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  value={item.unitPrice}
+                                  onChange={(e) => handleUpdateItem(index, 'unitPrice', parseFloat(e.target.value))}
+                                  placeholder="Unit Price"
+                                  className="w-full border border-gray-300 rounded px-3 py-2"
+                                />
+                                {(() => {
+                                  const effectiveVendorId = String(item.vendorId || formData.vendorId || '').trim();
+                                  const effectiveItemId =
+                                    String(item.itemId || '').trim() ||
+                                    String(items.find((i) => i.code === item.itemCode)?.id || '').trim();
+                                  if (!effectiveItemId || !effectiveVendorId) return null;
+
+                                  return (
+                                  <div
+                                    className="relative"
+                                    onMouseEnter={() => {
+                                      setHoveredItem(index);
+                                      fetchPriceHistory(effectiveItemId, effectiveVendorId);
+                                    }}
+                                    onMouseLeave={() => setHoveredItem(null)}
+                                  >
+                                    <button
+                                      type="button"
+                                      className="p-1 text-blue-500 hover:text-blue-700 cursor-help"
+                                    >
+                                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                      </svg>
+                                    </button>
+                                    
+                                    {hoveredItem === index && (
+                                      <div className="absolute z-50 right-0 mr-2 top-0 w-80 bg-white border border-gray-300 rounded-lg shadow-xl p-4">
+                                        <div className="text-sm font-semibold text-gray-700 mb-2">Last 3 Purchase Prices</div>
+                                        {(() => {
+                                          const key = `${effectiveItemId}-${effectiveVendorId}`;
+                                          const history = priceHistory[key];
+                                          
+                                          if (!history) {
+                                            return <div className="text-xs text-gray-500">Loading...</div>;
+                                          }
+                                          
+                                          if (history.length === 0) {
+                                            return <div className="text-xs text-gray-500">No purchase history available</div>;
+                                          }
+                                          
+                                          return (
+                                            <div className="space-y-2">
+                                              {history.map((record, idx) => (
+                                                <div key={idx} className="border-b border-gray-200 pb-2 last:border-0">
+                                                  <div className="flex justify-between items-start">
+                                                    <div>
+                                                      <div className="text-xs font-medium text-gray-900">
+                                                        PO: {record.po_number}
+                                                      </div>
+                                                      <div className="text-xs text-gray-500">
+                                                        {new Date(record.po_date).toLocaleDateString()}
+                                                      </div>
+                                                      <div className="text-xs text-gray-500">
+                                                        Qty: {record.quantity}
+                                                      </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                      <div className="text-sm font-semibold text-blue-600">
+                                                        ₹{record.unit_price?.toFixed(2) || '0.00'}
+                                                      </div>
+                                                      <div className="text-xs text-gray-500 capitalize">
+                                                        {record.po_status.replace('_', ' ')}
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          );
+                                        })()}
+
+                                      </div>
+                                    )}
+                                  </div>
+                                  );
+                                })()}
+                              </div>
+
                               {(() => {
                                 const effectiveVendorId = String(item.vendorId || formData.vendorId || '').trim();
                                 const effectiveItemId =
@@ -2029,156 +2081,78 @@ function PurchaseOrdersContent() {
                                   String(items.find((i) => i.code === item.itemCode)?.id || '').trim();
                                 if (!effectiveItemId || !effectiveVendorId) return null;
 
+                                const key = `${effectiveItemId}-${effectiveVendorId}`;
+                                const history = priceHistory[key];
+                                if (!history) {
+                                  return <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-500">Last: Loading...</div>;
+                                }
+                                const last = history?.[0];
+                                if (!last) {
+                                  return <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-500">Last purchase price not available</div>;
+                                }
                                 return (
-                                <div
-                                  className="relative"
-                                  onMouseEnter={() => {
-                                    setHoveredItem(index);
-                                    fetchPriceHistory(effectiveItemId, effectiveVendorId);
-                                  }}
-                                  onMouseLeave={() => setHoveredItem(null)}
-                                >
-                                  <button
-                                    type="button"
-                                    className="p-1 text-blue-500 hover:text-blue-700 cursor-help"
-                                  >
-                                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                                    </svg>
-                                  </button>
-                                  
-                                  {hoveredItem === index && (
-                                    <div className="absolute z-50 right-0 mr-2 top-0 w-80 bg-white border border-gray-300 rounded-lg shadow-xl p-4">
-                                      <div className="text-sm font-semibold text-gray-700 mb-2">Last 3 Purchase Prices</div>
-                                      {(() => {
-                                        const key = `${effectiveItemId}-${effectiveVendorId}`;
-                                        const history = priceHistory[key];
-                                        
-                                        if (!history) {
-                                          return <div className="text-xs text-gray-500">Loading...</div>;
-                                        }
-                                        
-                                        if (history.length === 0) {
-                                          return <div className="text-xs text-gray-500">No purchase history available</div>;
-                                        }
-                                        
-                                        return (
-                                          <div className="space-y-2">
-                                            {history.map((record, idx) => (
-                                              <div key={idx} className="border-b border-gray-200 pb-2 last:border-0">
-                                                <div className="flex justify-between items-start">
-                                                  <div>
-                                                    <div className="text-xs font-medium text-gray-900">
-                                                      PO: {record.po_number}
-                                                    </div>
-                                                    <div className="text-xs text-gray-500">
-                                                      {new Date(record.po_date).toLocaleDateString()}
-                                                    </div>
-                                                    <div className="text-xs text-gray-500">
-                                                      Qty: {record.quantity}
-                                                    </div>
-                                                  </div>
-                                                  <div className="text-right">
-                                                    <div className="text-sm font-semibold text-blue-600">
-                                                      ₹{record.unit_price?.toFixed(2) || '0.00'}
-                                                    </div>
-                                                    <div className="text-xs text-gray-500 capitalize">
-                                                      {record.po_status.replace('_', ' ')}
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        );
-                                      })()}
-
-                                    </div>
-                                  )}
-                                </div>
+                                  <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-600">
+                                    Last: <span className="font-medium text-gray-800">₹{Number(last.unit_price || 0).toFixed(2)}</span>
+                                  </div>
                                 );
                               })()}
                             </div>
-
-                            {(() => {
-                              const effectiveVendorId = String(item.vendorId || formData.vendorId || '').trim();
-                              const effectiveItemId =
-                                String(item.itemId || '').trim() ||
-                                String(items.find((i) => i.code === item.itemCode)?.id || '').trim();
-                              if (!effectiveItemId || !effectiveVendorId) return null;
-
-                              const key = `${effectiveItemId}-${effectiveVendorId}`;
-                              const history = priceHistory[key];
-                              if (!history) {
-                                return <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-500">Last: Loading...</div>;
-                              }
-                              const last = history?.[0];
-                              if (!last) {
-                                return <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-500">Last purchase price not available</div>;
-                              }
-                              return (
-                                <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-600">
-                                  Last: <span className="font-medium text-gray-800">₹{Number(last.unit_price || 0).toFixed(2)}</span>
-                                </div>
-                              );
-                            })()}
+                            <div>
+                              <input
+                                type="number"
+                                value={item.taxRate}
+                                onChange={(e) => handleUpdateItem(index, 'taxRate', parseFloat(e.target.value))}
+                                placeholder="Tax %"
+                                className="w-full border border-gray-300 rounded px-3 py-2"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between gap-2 min-w-0 pt-2">
+                              <span className="font-medium">₹{item.totalPrice.toFixed(2)}</span>
+                              <button
+                                onClick={() => handleRemoveItem(index)}
+                                className="shrink-0 px-2 py-1 bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-800 rounded font-bold text-lg"
+                                title="Remove this item"
+                              >
+                                ×
+                              </button>
+                            </div>
                           </div>
-                          <div>
-                            <input
-                              type="number"
-                              value={item.taxRate}
-                              onChange={(e) => handleUpdateItem(index, 'taxRate', parseFloat(e.target.value))}
-                              placeholder="Tax %"
-                              className="w-full border border-gray-300 rounded px-3 py-2"
-                            />
-                          </div>
-                          <div className="flex items-center justify-between gap-2 min-w-0 pt-2">
-                            <span className="font-medium">₹{item.totalPrice.toFixed(2)}</span>
-                            <button
-                              onClick={() => handleRemoveItem(index)}
-                              className="shrink-0 px-2 py-1 bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-800 rounded font-bold text-lg"
-                              title="Remove this item"
-                            >
-                              ×
-                            </button>
+
+                          <div className="mt-3 grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Line Payment Terms</label>
+                              <input
+                                type="text"
+                                value={(item as any).paymentTerms || ''}
+                                onChange={(e) => handleUpdateItem(index, 'paymentTerms', e.target.value)}
+                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Line Delivery Terms</label>
+                              <input
+                                type="text"
+                                value={(item as any).deliveryTerms || ''}
+                                onChange={(e) => handleUpdateItem(index, 'deliveryTerms', e.target.value)}
+                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                              />
+                            </div>
                           </div>
                         </div>
-
-                        <div className="mt-3 grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Line Payment Terms</label>
-                            <input
-                              type="text"
-                              value={(item as any).paymentTerms || ''}
-                              onChange={(e) => handleUpdateItem(index, 'paymentTerms', e.target.value)}
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Line Delivery Terms</label>
-                            <input
-                              type="text"
-                              value={(item as any).deliveryTerms || ''}
-                              onChange={(e) => handleUpdateItem(index, 'deliveryTerms', e.target.value)}
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {(editingMode === 'create' || editingMode === 'edit') && formData.items.length > 0 && (
-                  <div className="mt-4 flex justify-center">
-                    <button
-                      onClick={handleAddItem}
-                      className="px-6 py-2 text-amber-600 hover:text-amber-800 font-medium border-2 border-dashed border-amber-300 hover:border-amber-500 rounded-lg transition-colors"
-                    >
-                      + Add Another Item
-                    </button>
-                  </div>
-                )}
-              </div>
+                      ))}
+                    </div>
+                  )}
+                  {(editingMode === 'create' || editingMode === 'edit') && formData.items.length > 0 && (
+                    <div className="mt-4 flex justify-center">
+                      <button
+                        onClick={handleAddItem}
+                        className="px-6 py-2 text-amber-600 hover:text-amber-800 font-medium border-2 border-dashed border-amber-300 hover:border-amber-500 rounded-lg transition-colors"
+                      >
+                        + Add Another Item
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
 
               <div>
