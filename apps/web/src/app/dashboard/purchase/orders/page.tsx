@@ -1964,7 +1964,7 @@ function PurchaseOrdersContent() {
                                     )}
                                   </div>
                                   <SearchableSelect
-                                    value={item.itemId}
+                                    value={item.itemId || ''}
                                     onChange={(value) => handleUpdateItem(index, 'itemId', value)}
                                     options={items.map(i => ({
                                       value: i.id,
@@ -1977,7 +1977,7 @@ function PurchaseOrdersContent() {
                                 </div>
                               ) : (
                                 <SearchableSelect
-                                  value={item.itemId}
+                                  value={item.itemId || ''}
                                   onChange={(value) => handleUpdateItem(index, 'itemId', value)}
                                   options={items.map(i => ({
                                     value: i.id,
