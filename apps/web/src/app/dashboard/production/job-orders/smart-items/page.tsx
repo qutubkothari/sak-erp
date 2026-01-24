@@ -1718,7 +1718,7 @@ function SmartJobOrdersItemsPageContent() {
                 }}
                 className="w-full border rounded px-3 py-2 text-sm"
               >
-                <option value="">All Product Categories</option>
+                <option value="">Select Product Category</option>
                 {finishedGoodsCategories.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat.replace(/_/g, ' ')}
