@@ -121,6 +121,47 @@ type ItemMasterMini = {
   name?: string;
 };
 
+type UIDRecord = {
+  uid: string;
+  entity_type?: string;
+  status?: string;
+  batch_number?: string;
+  location?: string;
+  created_at: string;
+  item?: {
+    name: string;
+    code: string;
+  };
+};
+
+type PurchaseTrail = {
+  uid: string;
+  item: {
+    code: string;
+    name: string;
+  };
+  supplier?: {
+    name: string;
+    contact_person?: string;
+  };
+  purchase_order?: {
+    po_number: string;
+    order_date: string;
+    total_amount: number;
+  };
+  grn?: {
+    grn_number: string;
+    received_date: string;
+    received_quantity: number;
+  };
+  lifecycle?: Array<{
+    stage: string;
+    location: string;
+    reference: string;
+    timestamp: string;
+  }>;
+};
+
 function GRNContent() {
   // const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
