@@ -1991,7 +1991,7 @@ function PurchaseOrdersContent() {
                             </div>
                             <div className="min-w-0">
                               <SearchableSelect
-                                value={item.vendorId}
+                                value={item.vendorId || ''}
                                 onChange={(value) => handleUpdateItem(index, 'vendorId', String(value || ''))}
                                 options={vendors.map((v) => ({
                                   value: v.id,
