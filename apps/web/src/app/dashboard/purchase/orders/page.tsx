@@ -1061,7 +1061,10 @@ function PurchaseOrdersContent() {
       Boolean(row?.vendorId);
 
     if (shouldTryAutofill) {
-      const history = await fetchPriceHistory(row.itemId, row.vendorId);
+      const itemId = String(row.itemId || '').trim();
+      const vendorId = String(row.vendorId || '').trim();
+      if (!itemId || !vendorId) return;
+      const history = await fetchPriceHistory(itemId, vendorId);
       const last = history?.[0];
       if (last && typeof last.unit_price === 'number' && !Number.isNaN(last.unit_price)) {
         row.unitPrice = Number(last.unit_price);
