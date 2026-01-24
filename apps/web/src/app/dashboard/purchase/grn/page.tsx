@@ -2410,11 +2410,11 @@ function GRNContent() {
                   <div className="text-sm">{purchaseTrail.grn.grn_number} | {formatDate(purchaseTrail.grn.received_date)} | Qty: {purchaseTrail.grn.received_quantity}</div>
                 </div>
               )}
-              {purchaseTrail.lifecycle?.length > 0 && (
+              {(purchaseTrail.lifecycle?.length ?? 0) > 0 && (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                   <h3 className="font-semibold text-gray-900 mb-4">🕐 Timeline</h3>
                   <div className="space-y-3">
-                    {purchaseTrail.lifecycle.map((event, i) => (
+                    {purchaseTrail.lifecycle?.map((event, i) => (
                       <div key={i} className="flex gap-3">
                         <div className="w-2 h-2 bg-amber-600 rounded-full mt-1"></div>
                         <div className="flex-1">
