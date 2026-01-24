@@ -135,13 +135,6 @@ export default function ManagerReviewPage() {
     };
   }, [baseRole, session?.user?.employeeId]);
 
-  if (checkingReports && baseRole === 'manager') {
-    return <div className="py-16 text-center text-sm text-[#9C8162]">Checking access...</div>;
-  }
-
-  if (!canAccess) {
-    return <div className="py-16 text-center text-sm text-[#9C8162]">Access denied.</div>;
-  }
   const [kpiProgress, setKpiProgress] = useState<KPIProgress[]>([]);
   const [activityItems, setActivityItems] = useState<any[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -170,6 +163,210 @@ export default function ManagerReviewPage() {
   });
 
   const salaryRecommendation = watch('salaryRecommendation');
+
+  const selectedEvaluation = useMemo(
+    () => evaluations.find((e) => e.id === selectedEvaluationId),
+    [evaluations, selectedEvaluationId]
+  );
+
+  const evaluationIdFromQuery = useMemo(() => searchParams.get('evaluationId') || '', [searchParams]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const [evaluationsRes, employeesRes] = await Promise.all([
+          fetch('/api/evaluations'),
+          fetch('/api/employees'),
+        ]);
+        const evals = await evaluationsRes.json();
+        const employees = await employeesRes.json();
+
+        const evaluationList = Array.isArray(evals) ? evals : [];
+        const employeeList = Array.isArray(employees) ? employees : [];
+        const managerId = session?.user?.employeeId;
+
+        const managedIds = new Set(
+          (employeeList as EmployeeRecord[])
+            .filter((emp) => emp.managerId === managerId)
+            .map((emp) => emp.id)
+        );
+
+        const list = evaluationList.filter(
+          (evaluation: any) => managedIds.has(evaluation.employeeId) && evaluation.status === 'MANAGER_REVIEW'
+        );
+
+        setEvaluations(list);
+        if (list.length) {
+          const preferred = evaluationIdFromQuery && list.find((evaluation: any) => evaluation.id === evaluationIdFromQuery);
+          setSelectedEvaluationId(preferred ? preferred.id : list[0].id);
+        } else {
+          setSelectedEvaluationId('');
+        }
+      } catch (error) {
+        console.error(error);
+        toast.error('Failed to load evaluations');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, [evaluationIdFromQuery, session?.user?.employeeId, canAccess]);
+
+  useEffect(() => {
+    const loadEvaluationDetails = async () => {
+      if (!selectedEvaluationId) return;
+      try {
+        const evaluationRes = await fetch(`/api/evaluations/${selectedEvaluationId}`);
+        const evaluation = await evaluationRes.json();
+
+        if (evaluation?.employee) {
+          setEmployee({
+            id: evaluation.employee.id,
+            name: `${evaluation.employee.firstName} ${evaluation.employee.lastName}`,
+            position: evaluation.employee.role?.title || null,
+            department: evaluation.employee.department?.name || null,
+            joinDate: evaluation.employee.hireDate || null,
+          });
+        }
+
+        const assessmentRes = await fetch(`/api/self-assessments?evaluationId=${selectedEvaluationId}`);
+        const assessment = await assessmentRes.json();
+        if (assessment) {
+          setSelfAssessment({
+            competencyRatings: {},
+            accomplishments: assessment.accomplishments ?? '',
+            challenges: assessment.challenges ?? '',
+            developmentNeeds: assessment.developmentNeeds ?? '',
+          });
+        }
+
+        const [compsRes, kpisRes, meritsRes, demeritsRes] = await Promise.all([
+          fetch('/api/competencies'),
+          fetch('/api/kpis'),
+          fetch('/api/merit-demerits?type=MERIT'),
+          fetch('/api/merit-demerits?type=DEMERIT'),
+        ]);
+        const comps = await compsRes.json();
+        const kpis = await kpisRes.json();
+        const meritsData = await meritsRes.json();
+        const demeritsData = await demeritsRes.json();
+        const compList = Array.isArray(comps) ? comps : [];
+        const kpiList = Array.isArray(kpis) ? kpis : [];
+        const meritList = Array.isArray(meritsData) ? meritsData : [];
+        const demeritList = Array.isArray(demeritsData) ? demeritsData : [];
+        const items = Array.isArray(evaluation?.items) ? evaluation.items : [];
+
+        const competencyManagerRatings: Record<string, number> = {};
+        const meritManagerRatings: Record<string, number> = {};
+        const demeritManagerRatings: Record<string, number> = {};
+        const kpiManagerRatings: Record<string, number> = {};
+
+        const mapped = compList.map((comp: any) => {
+          const item = items.find((it: any) => it.competencyId === comp.id);
+          if (item?.managerScore != null) {
+            competencyManagerRatings[comp.id] = item.managerScore;
+          }
+          return {
+            id: comp.id,
+            name: comp.name,
+            description: comp.description,
+            selfRating: item?.selfScore ?? null,
+            itemId: item?.id ?? null,
+          };
+        });
+        setCompetencies(mapped);
+
+        const meritMapped = meritList.map((entry: any) => {
+          const item = items.find((it: any) => it.meritDemeritId === entry.id && it.type === 'MERIT');
+          if (item?.managerScore != null) {
+            meritManagerRatings[entry.id] = item.managerScore;
+          }
+          return {
+            id: entry.id,
+            name: entry.name,
+            description: entry.description,
+            selfRating: item?.selfScore ?? null,
+            itemId: item?.id ?? null,
+          };
+        });
+        setMerits(meritMapped);
+
+        const demeritMapped = demeritList.map((entry: any) => {
+          const item = items.find((it: any) => it.meritDemeritId === entry.id && it.type === 'DEMERIT');
+          if (item?.managerScore != null) {
+            demeritManagerRatings[entry.id] = item.managerScore;
+          }
+          return {
+            id: entry.id,
+            name: entry.name,
+            description: entry.description,
+            selfRating: item?.selfScore ?? null,
+            itemId: item?.id ?? null,
+          };
+        });
+        setDemerits(demeritMapped);
+
+        const kpiMapped = kpiList.map((kpi: any) => {
+          const item = items.find((it: any) => it.kpiId === kpi.id);
+          const achieved = item?.selfScore ?? null;
+          const target = kpi.target ?? null;
+          const progress = target && achieved != null ? Math.min((achieved / target) * 100, 200) : null;
+          if (item?.managerScore != null) {
+            kpiManagerRatings[kpi.id] = item.managerScore;
+          }
+          return {
+            id: kpi.id,
+            name: kpi.name,
+            target: kpi.target ?? null,
+            unit: kpi.unit ?? null,
+            category: kpi.category ?? null,
+            frequency: kpi.frequency ?? null,
+            dataSource: kpi.dataSource ?? null,
+            achieved,
+            progress,
+            itemId: item?.id ?? null,
+          };
+        });
+        setKpiProgress(kpiMapped);
+
+        setManagerRatings(competencyManagerRatings);
+        setManagerMeritRatings(meritManagerRatings);
+        setManagerDemeritRatings(demeritManagerRatings);
+        setManagerKpiRatings(kpiManagerRatings);
+        setValue('competencyRatings', competencyManagerRatings);
+        setValue('meritRatings', meritManagerRatings);
+        setValue('demeritRatings', demeritManagerRatings);
+        setValue('kpiRatings', kpiManagerRatings);
+
+        const evidenceRes = await fetch(`/api/evaluations/${selectedEvaluationId}/evidence`);
+        const evidenceData = await evidenceRes.json();
+        setEvidenceItems(Array.isArray(evidenceData) ? evidenceData : []);
+
+        setActivityLoading(true);
+        const activityRes = await fetch(`/api/evaluations/${selectedEvaluationId}/activity`);
+        const activityData = await activityRes.json();
+        setActivityItems(Array.isArray(activityData) ? activityData : []);
+        setActivityLoading(false);
+      } catch (error) {
+        console.error(error);
+        toast.error('Failed to load evaluation details');
+        setActivityLoading(false);
+      }
+    };
+
+    loadEvaluationDetails();
+  }, [selectedEvaluationId, setValue]);
+
+  // Render loading/access states after all hooks
+  if (checkingReports && baseRole === 'manager') {
+    return <div className="py-16 text-center text-sm text-[#9C8162]">Checking access...</div>;
+  }
+
+  if (!canAccess) {
+    return <div className="py-16 text-center text-sm text-[#9C8162]">Access denied.</div>;
+  }
 
   const handleRatingClick = (competencyId: string, rating: number) => {
     setManagerRatings({ ...managerRatings, [competencyId]: rating });
@@ -405,201 +602,6 @@ export default function ManagerReviewPage() {
     if (rating === 3) return 'text-blue-600';
     return 'text-orange-600';
   };
-
-  const selectedEvaluation = useMemo(
-    () => evaluations.find((e) => e.id === selectedEvaluationId),
-    [evaluations, selectedEvaluationId]
-  );
-
-  const evaluationIdFromQuery = useMemo(() => searchParams.get('evaluationId') || '', [searchParams]);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        const [evaluationsRes, employeesRes] = await Promise.all([
-          fetch('/api/evaluations'),
-          fetch('/api/employees'),
-        ]);
-        const evals = await evaluationsRes.json();
-        const employees = await employeesRes.json();
-
-        const evaluationList = Array.isArray(evals) ? evals : [];
-        const employeeList = Array.isArray(employees) ? employees : [];
-        const managerId = session?.user?.employeeId;
-
-        const managedIds = new Set(
-          (employeeList as EmployeeRecord[])
-            .filter((emp) => emp.managerId === managerId)
-            .map((emp) => emp.id)
-        );
-
-        const list = evaluationList.filter(
-          (evaluation: any) => managedIds.has(evaluation.employeeId) && evaluation.status === 'MANAGER_REVIEW'
-        );
-
-        setEvaluations(list);
-        if (list.length) {
-          const preferred = evaluationIdFromQuery && list.find((evaluation: any) => evaluation.id === evaluationIdFromQuery);
-          setSelectedEvaluationId(preferred ? preferred.id : list[0].id);
-        } else {
-          setSelectedEvaluationId('');
-        }
-      } catch (error) {
-        console.error(error);
-        toast.error('Failed to load evaluations');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, [evaluationIdFromQuery, session?.user?.employeeId]);
-
-  useEffect(() => {
-    const loadEvaluationDetails = async () => {
-      if (!selectedEvaluationId) return;
-      try {
-        const evaluationRes = await fetch(`/api/evaluations/${selectedEvaluationId}`);
-        const evaluation = await evaluationRes.json();
-
-        if (evaluation?.employee) {
-          setEmployee({
-            id: evaluation.employee.id,
-            name: `${evaluation.employee.firstName} ${evaluation.employee.lastName}`,
-            position: evaluation.employee.role?.title || null,
-            department: evaluation.employee.department?.name || null,
-            joinDate: evaluation.employee.hireDate || null,
-          });
-        }
-
-        const assessmentRes = await fetch(`/api/self-assessments?evaluationId=${selectedEvaluationId}`);
-        const assessment = await assessmentRes.json();
-        if (assessment) {
-          setSelfAssessment({
-            competencyRatings: {},
-            accomplishments: assessment.accomplishments ?? '',
-            challenges: assessment.challenges ?? '',
-            developmentNeeds: assessment.developmentNeeds ?? '',
-          });
-        }
-
-        const [compsRes, kpisRes, meritsRes, demeritsRes] = await Promise.all([
-          fetch('/api/competencies'),
-          fetch('/api/kpis'),
-          fetch('/api/merit-demerits?type=MERIT'),
-          fetch('/api/merit-demerits?type=DEMERIT'),
-        ]);
-        const comps = await compsRes.json();
-        const kpis = await kpisRes.json();
-        const meritsData = await meritsRes.json();
-        const demeritsData = await demeritsRes.json();
-        const compList = Array.isArray(comps) ? comps : [];
-        const kpiList = Array.isArray(kpis) ? kpis : [];
-        const meritList = Array.isArray(meritsData) ? meritsData : [];
-        const demeritList = Array.isArray(demeritsData) ? demeritsData : [];
-        const items = Array.isArray(evaluation?.items) ? evaluation.items : [];
-
-        const competencyManagerRatings: Record<string, number> = {};
-        const meritManagerRatings: Record<string, number> = {};
-        const demeritManagerRatings: Record<string, number> = {};
-        const kpiManagerRatings: Record<string, number> = {};
-
-        const mapped = compList.map((comp: any) => {
-          const item = items.find((it: any) => it.competencyId === comp.id);
-          if (item?.managerScore != null) {
-            competencyManagerRatings[comp.id] = item.managerScore;
-          }
-          return {
-            id: comp.id,
-            name: comp.name,
-            description: comp.description,
-            selfRating: item?.selfScore ?? null,
-            itemId: item?.id ?? null,
-          };
-        });
-        setCompetencies(mapped);
-
-        const meritMapped = meritList.map((entry: any) => {
-          const item = items.find((it: any) => it.meritDemeritId === entry.id && it.type === 'MERIT');
-          if (item?.managerScore != null) {
-            meritManagerRatings[entry.id] = item.managerScore;
-          }
-          return {
-            id: entry.id,
-            name: entry.name,
-            description: entry.description,
-            selfRating: item?.selfScore ?? null,
-            itemId: item?.id ?? null,
-          };
-        });
-        setMerits(meritMapped);
-
-        const demeritMapped = demeritList.map((entry: any) => {
-          const item = items.find((it: any) => it.meritDemeritId === entry.id && it.type === 'DEMERIT');
-          if (item?.managerScore != null) {
-            demeritManagerRatings[entry.id] = item.managerScore;
-          }
-          return {
-            id: entry.id,
-            name: entry.name,
-            description: entry.description,
-            selfRating: item?.selfScore ?? null,
-            itemId: item?.id ?? null,
-          };
-        });
-        setDemerits(demeritMapped);
-
-        const kpiMapped = kpiList.map((kpi: any) => {
-          const item = items.find((it: any) => it.kpiId === kpi.id);
-          const achieved = item?.selfScore ?? null;
-          const target = kpi.target ?? null;
-          const progress = target && achieved != null ? Math.min((achieved / target) * 100, 200) : null;
-          if (item?.managerScore != null) {
-            kpiManagerRatings[kpi.id] = item.managerScore;
-          }
-          return {
-            id: kpi.id,
-            name: kpi.name,
-            target: kpi.target ?? null,
-            unit: kpi.unit ?? null,
-            category: kpi.category ?? null,
-            frequency: kpi.frequency ?? null,
-            dataSource: kpi.dataSource ?? null,
-            achieved,
-            progress,
-            itemId: item?.id ?? null,
-          };
-        });
-        setKpiProgress(kpiMapped);
-
-        setManagerRatings(competencyManagerRatings);
-        setManagerMeritRatings(meritManagerRatings);
-        setManagerDemeritRatings(demeritManagerRatings);
-        setManagerKpiRatings(kpiManagerRatings);
-        setValue('competencyRatings', competencyManagerRatings);
-        setValue('meritRatings', meritManagerRatings);
-        setValue('demeritRatings', demeritManagerRatings);
-        setValue('kpiRatings', kpiManagerRatings);
-
-        const evidenceRes = await fetch(`/api/evaluations/${selectedEvaluationId}/evidence`);
-        const evidenceData = await evidenceRes.json();
-        setEvidenceItems(Array.isArray(evidenceData) ? evidenceData : []);
-
-        setActivityLoading(true);
-        const activityRes = await fetch(`/api/evaluations/${selectedEvaluationId}/activity`);
-        const activityData = await activityRes.json();
-        setActivityItems(Array.isArray(activityData) ? activityData : []);
-        setActivityLoading(false);
-      } catch (error) {
-        console.error(error);
-        toast.error('Failed to load evaluation details');
-        setActivityLoading(false);
-      }
-    };
-
-    loadEvaluationDetails();
-  }, [selectedEvaluationId]);
 
   return (
     <div className="min-h-screen bg-[#F7F4EF] p-6">
