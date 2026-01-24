@@ -22,89 +22,56 @@ interface GRN {
   invoice_file_url?: string;
   invoice_file_name?: string;
   invoice_file_type?: string;
-                    {canApproveGRN && (
-                      <>
-                        <button
-                          onClick={async () => {
-                            console.log('Approve button clicked!');
-                            console.log('GRN ID:', selectedGRN.id);
-                            console.log('GRN Status:', selectedGRN.status);
-                            try {
-                              const token = localStorage.getItem('accessToken');
-                              console.log('Token exists:', !!token);
-                              const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/status`, {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                  Authorization: `Bearer ${token}`,
-                                },
-                                body: JSON.stringify({ status: 'APPROVED' }),
-                              });
+  invoice_file_size?: number;
+  status: string;
+  remarks?: string;
+  qc_completed?: boolean;
+  gross_amount?: number;
+  debit_note_amount?: number;
+  net_payable_amount?: number;
+  vendor: {
+    name: string;
+    code: string;
+  };
+  purchase_order: {
+    po_number: string;
+  };
+  warehouse: {
+    id?: string;
+    name: string;
+  };
+  grn_items: Array<{
+    id?: string;
+    item_code?: string;
+    item_name?: string;
+    item?: { name: string; code: string; hsn_code?: string };
+    received_qty?: number;
+    accepted_qty?: number;
+    rejected_qty?: number;
+    received_quantity?: number;
+    accepted_quantity?: number;
+    rejected_quantity?: number;
+    uid?: string;
+    batch_number?: string;
+    supplier_hsn_code?: string;
+    unit_price?: number;
+    rejection_amount?: number;
+    rejection_reason?: string;
+    qc_notes?: string;
+    qc_file_url?: string;
+    qc_file_name?: string;
+    qc_file_type?: string;
+    qc_file_size?: number;
+    return_status?: string;
+    debit_note_id?: string;
+  }>;
+}
 
-                              console.log('Response status:', response.status);
-                              const responseData = await response.json();
-                              console.log('Response data:', responseData);
-                              
-                              if (response.ok) {
-                                setAlertMessage({ type: 'success', message: 'GRN approved successfully! UIDs generated.' });
-                                setShowViewModal(false);
-                                fetchGRNs();
-                              } else {
-                                console.error('Error response:', responseData);
-                                setAlertMessage({ type: 'error', message: `Failed to approve GRN: ${responseData.message}` });
-                              }
-                            } catch (error) {
-                              console.error('Catch error:', error);
-                              setAlertMessage({ type: 'error', message: 'Failed to approve GRN. Please try again.' });
-                            }
-                          }}
-                          disabled={selectedGRN.status !== 'DRAFT'}
-                          className={`px-6 py-2 text-white rounded-lg ${
-                            selectedGRN.status === 'DRAFT' 
-                              ? 'bg-green-600 hover:bg-green-700 cursor-pointer' 
-                              : 'bg-gray-400 cursor-not-allowed'
-                          }`}
-                        >
-                          ✓ Approve
-                        </button>
-                        <button
-                          onClick={async () => {
-                            console.log('Reject button clicked!');
-                            try {
-                              const token = localStorage.getItem('accessToken');
-                              const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/status`, {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                  Authorization: `Bearer ${token}`,
-                                },
-                                body: JSON.stringify({ status: 'REJECTED' }),
-                              });
-
-                              if (response.ok) {
-                                setAlertMessage({ type: 'success', message: 'GRN rejected successfully!' });
-                                setShowViewModal(false);
-                                fetchGRNs();
-                              } else {
-                                const responseData = await response.json();
-                                setAlertMessage({ type: 'error', message: responseData.message || 'Failed to reject GRN' });
-                              }
-                            } catch (error) {
-                              console.error('Reject error:', error);
-                              setAlertMessage({ type: 'error', message: 'Failed to reject GRN. Please try again.' });
-                            }
-                          }}
-                          disabled={selectedGRN.status !== 'DRAFT'}
-                          className={`px-6 py-2 text-white rounded-lg ${
-                            selectedGRN.status === 'DRAFT' 
-                              ? 'bg-red-600 hover:bg-red-700 cursor-pointer' 
-                              : 'bg-gray-400 cursor-not-allowed'
-                          }`}
-                        >
-                          ✕ Reject
-                        </button>
-                      </>
-                    )}
+interface PurchaseOrder {
+  id: string;
+  po_number: string;
+  vendor_id: string;
+  vendor: {
     id: string;
     name: string;
     code: string;

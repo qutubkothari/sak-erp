@@ -413,7 +413,7 @@ function SmartJobOrdersItemsPageContent() {
   const allItemCategories = useMemo(() => {
     const set = new Set<string>();
     allItems.forEach((i) => {
-      const cat = String(i.category ?? '').trim();
+      const cat = String(i.product_category ?? '').trim();
       if (cat) set.add(cat);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
@@ -422,11 +422,11 @@ function SmartJobOrdersItemsPageContent() {
   // Helper function to get filtered item options by category
   const getFilteredItemOptions = (originalItemId: string, selectedCategory?: string) => {
     const originalItem = allItemsById.get(originalItemId);
-    const categoryToUse = String(selectedCategory || originalItem?.category || '').trim();
+    const categoryToUse = String(selectedCategory || originalItem?.product_category || '').trim();
     if (!categoryToUse) return allItemOptions;
 
     return allItems
-      .filter((item) => item.category === categoryToUse)
+      .filter((item) => item.product_category === categoryToUse)
       .map((i) => ({
         value: i.id,
         label: formatItemLabel(i),
@@ -1216,7 +1216,10 @@ function SmartJobOrdersItemsPageContent() {
                       const key = nodeKey(node);
                       const selectedItemId = selectedItemByNodeKey[key] || node.itemId;
                       const categoryValue =
-                        selectedCategoryByNodeKey[key] || allItemsById.get(String(node.itemId))?.category || '';
+                        selectedCategoryByNodeKey[key] || allItemsById.get(String(node.itemId))?.product_category || '';
+                      const hasProductCategory = Boolean(
+                        allItemsById.get(String(selectedItemId || node.itemId))?.product_category,
+                      );
                       const itemOptions = getFilteredItemOptions(node.itemId, categoryValue);
                       const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                       const available = stockState?.available ?? node.availableQuantity;
@@ -1240,7 +1243,7 @@ function SmartJobOrdersItemsPageContent() {
                                   onChange={async (value) => {
                                     const next = String(value || '');
                                     setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
-                                    const nextCategory = allItemsById.get(next)?.category || '';
+                                    const nextCategory = allItemsById.get(next)?.product_category || '';
                                     if (nextCategory) {
                                       setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
                                     }
@@ -1250,27 +1253,29 @@ function SmartJobOrdersItemsPageContent() {
                                   disabled={itemsLoading || itemOptions.length === 0}
                                 />
                               </div>
-                              <select
-                                value={categoryValue}
-                                onChange={(e) => {
-                                  const nextCategory = e.target.value;
-                                  setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
-                                  if (nextCategory) {
-                                    const currentItemCategory = allItemsById.get(String(selectedItemId))?.category || '';
-                                    if (currentItemCategory !== nextCategory) {
-                                      setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: node.itemId }));
+                              {hasProductCategory && (
+                                <select
+                                  value={categoryValue}
+                                  onChange={(e) => {
+                                    const nextCategory = e.target.value;
+                                    setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
+                                    if (nextCategory) {
+                                      const currentItemCategory = allItemsById.get(String(selectedItemId))?.product_category || '';
+                                      if (currentItemCategory !== nextCategory) {
+                                        setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: node.itemId }));
+                                      }
                                     }
-                                  }
-                                }}
-                                className="w-48 border rounded px-2 py-1 text-sm"
-                              >
-                                <option value="">All Categories</option>
-                                {allItemCategories.map((cat) => (
-                                  <option key={cat} value={cat}>
-                                    {cat.replace(/_/g, ' ')}
-                                  </option>
-                                ))}
-                              </select>
+                                  }}
+                                  className="w-48 border rounded px-2 py-1 text-sm"
+                                >
+                                  <option value="">All Product Categories</option>
+                                  {allItemCategories.map((cat) => (
+                                    <option key={cat} value={cat}>
+                                      {cat.replace(/_/g, ' ')}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-2 text-sm text-right text-gray-900">{formatQuantity(node.requiredQuantity)}</td>
@@ -1331,7 +1336,10 @@ function SmartJobOrdersItemsPageContent() {
                       const key = nodeKey(node);
                       const selectedItemId = selectedItemByNodeKey[key] || node.itemId;
                       const categoryValue =
-                        selectedCategoryByNodeKey[key] || allItemsById.get(String(node.itemId))?.category || '';
+                        selectedCategoryByNodeKey[key] || allItemsById.get(String(node.itemId))?.product_category || '';
+                      const hasProductCategory = Boolean(
+                        allItemsById.get(String(selectedItemId || node.itemId))?.product_category,
+                      );
                       const itemOptions = getFilteredItemOptions(node.itemId, categoryValue);
                       const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                       const available = stockState?.available ?? node.availableQuantity;
@@ -1355,7 +1363,7 @@ function SmartJobOrdersItemsPageContent() {
                                   onChange={async (value) => {
                                     const next = String(value || '');
                                     setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: next }));
-                                    const nextCategory = allItemsById.get(next)?.category || '';
+                                    const nextCategory = allItemsById.get(next)?.product_category || '';
                                     if (nextCategory) {
                                       setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
                                     }
@@ -1365,27 +1373,29 @@ function SmartJobOrdersItemsPageContent() {
                                   disabled={itemsLoading || itemOptions.length === 0}
                                 />
                               </div>
-                              <select
-                                value={categoryValue}
-                                onChange={(e) => {
-                                  const nextCategory = e.target.value;
-                                  setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
-                                  if (nextCategory) {
-                                    const currentItemCategory = allItemsById.get(String(selectedItemId))?.category || '';
-                                    if (currentItemCategory !== nextCategory) {
-                                      setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: node.itemId }));
+                              {hasProductCategory && (
+                                <select
+                                  value={categoryValue}
+                                  onChange={(e) => {
+                                    const nextCategory = e.target.value;
+                                    setSelectedCategoryByNodeKey((prev) => ({ ...prev, [key]: nextCategory }));
+                                    if (nextCategory) {
+                                      const currentItemCategory = allItemsById.get(String(selectedItemId))?.product_category || '';
+                                      if (currentItemCategory !== nextCategory) {
+                                        setSelectedItemByNodeKey((prev) => ({ ...prev, [key]: node.itemId }));
+                                      }
                                     }
-                                  }
-                                }}
-                                className="w-48 border rounded px-2 py-1 text-sm"
-                              >
-                                <option value="">All Categories</option>
-                                {allItemCategories.map((cat) => (
-                                  <option key={cat} value={cat}>
-                                    {cat.replace(/_/g, ' ')}
-                                  </option>
-                                ))}
-                              </select>
+                                  }}
+                                  className="w-48 border rounded px-2 py-1 text-sm"
+                                >
+                                  <option value="">All Product Categories</option>
+                                  {allItemCategories.map((cat) => (
+                                    <option key={cat} value={cat}>
+                                      {cat.replace(/_/g, ' ')}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-2 text-sm text-right text-gray-900">{formatQuantity(node.requiredQuantity)}</td>
