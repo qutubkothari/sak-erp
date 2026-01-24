@@ -172,6 +172,8 @@ export default function ManagerReviewPage() {
   const evaluationIdFromQuery = useMemo(() => searchParams.get('evaluationId') || '', [searchParams]);
 
   useEffect(() => {
+    if (!canAccess) return;
+    
     const load = async () => {
       try {
         setLoading(true);
@@ -215,8 +217,9 @@ export default function ManagerReviewPage() {
   }, [evaluationIdFromQuery, session?.user?.employeeId, canAccess]);
 
   useEffect(() => {
+    if (!canAccess || !selectedEvaluationId) return;
+    
     const loadEvaluationDetails = async () => {
-      if (!selectedEvaluationId) return;
       try {
         const evaluationRes = await fetch(`/api/evaluations/${selectedEvaluationId}`);
         const evaluation = await evaluationRes.json();
