@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 
@@ -140,6 +141,8 @@ function JobOrdersPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const legacy = searchParams.get('legacy') === '1';
+  const currentUser = readStoredUser();
+  const canApproveQC = hasModulePermission(currentUser, 'Quality Control', 'approve');
 
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -2090,13 +2093,15 @@ function JobOrdersPageContent() {
                     >
                       Repair Smart + Issue
                     </button>
-                    <button
-                      onClick={openQcModal}
-                      disabled={selectedJobOrder.status !== 'COMPLETED' || qcLocked}
-                      className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50"
-                    >
-                      {qcLocked ? 'Job Order Processed' : 'Complete QC'}
-                    </button>
+                    {canApproveQC && (
+                      <button
+                        onClick={openQcModal}
+                        disabled={selectedJobOrder.status !== 'COMPLETED' || qcLocked}
+                        className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {qcLocked ? 'Job Order Processed' : 'Complete QC'}
+                      </button>
+                    )}
                   </div>
                 );
               })()}
@@ -2605,76 +2610,78 @@ function JobOrdersPageContent() {
                     >
                       Close
                     </button>
-                    <button
-                      onClick={async () => {
-                        const approvedUids = qcUids.filter(u => String(u?.quality_status || '').toUpperCase() === 'PASSED').map(u => u.uid);
-                        const rejectedUids = qcUids.filter(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED').map(u => u.uid);
+                    {canApproveQC && (
+                      <button
+                        onClick={async () => {
+                          const approvedUids = qcUids.filter(u => String(u?.quality_status || '').toUpperCase() === 'PASSED').map(u => u.uid);
+                          const rejectedUids = qcUids.filter(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED').map(u => u.uid);
 
-                        if (approvedUids.length === 0) {
-                          alert('No PASSED UIDs to submit. Please mark at least one UID as PASSED.');
-                          return;
-                        }
-
-                        if (!qcMetadata.qcDate) {
-                          alert('QC Date is required');
-                          return;
-                        }
-
-                        if (!confirm(`Submit ${approvedUids.length} PASSED items to stock?\n\n${rejectedUids.length} failed/pending items will remain in the Job Order for re-inspection.`)) {
-                          return;
-                        }
-
-                        setQcSubmitting(true);
-                        try {
-                          const response = await apiClient.post(`/job-orders/${selectedJobOrder.id}/qc-approve`, {
-                            approvedUids,
-                            rejectedUids,
-                            metadata: qcMetadata,
-                            checkedBy: qcCheckedBy,
-                          });
-
-                          console.log('[QC] Approval response', response);
-                          const stockAdded = Number((response as any)?.stockAdded ?? 0);
-                          const message = String((response as any)?.message || '').trim();
-                          const itemCode = String((response as any)?.itemCode || '').trim();
-                          const itemName = String((response as any)?.itemName || '').trim();
-                          const stockAvailable = Number((response as any)?.stockAvailable ?? 0);
-                          alert(
-                            `✅ QC Submitted!\n\n${message || `${stockAdded} units added to stock.`}\n` +
-                            `${itemCode ? `Item: ${itemCode}${itemName ? ` - ${itemName}` : ''}\n` : ''}` +
-                            `Available Stock Now: ${Number.isFinite(stockAvailable) ? stockAvailable : 0}\n` +
-                            `${rejectedUids.length > 0 ? `${rejectedUids.length} items remain for rework - you can re-QC them anytime.` : ''}`
-                          );
-                          
-                          // Reload UIDs to show only remaining items
-                          const reloadResponse = await apiClient.get<any>(
-                            `/uid?job_order_id=${selectedJobOrder.id}&limit=5000&sortBy=created_at&sortOrder=asc`,
-                          );
-                          const reloadData = Array.isArray(reloadResponse) ? reloadResponse : reloadResponse?.data || [];
-                          const reloadList = (reloadData || []) as JobOrderUID[];
-                          setQcUids(reloadList);
-                          
-                          // If all passed, close modal; otherwise keep it open
-                          const remainingPending = reloadList.filter(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED');
-                          if (remainingPending.length === 0) {
-                            alert('✅ All items passed! Job Order complete.');
-                            setShowQcModal(false);
+                          if (approvedUids.length === 0) {
+                            alert('No PASSED UIDs to submit. Please mark at least one UID as PASSED.');
+                            return;
                           }
-                          
-                          fetchJobOrders();
-                        } catch (error: any) {
-                          console.error('Error submitting QC results:', error);
-                          const errorMsg = error.response?.data?.message || error.message || 'Failed to submit QC results';
-                          alert(errorMsg);
-                        } finally {
-                          setQcSubmitting(false);
-                        }
-                      }}
-                      disabled={qcLoading || qcSubmitting}
-                      className="w-full sm:flex-1 px-6 py-3 bg-blue-600 text-white font-semibold rounded hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {qcSubmitting ? 'Adding to Stock…' : 'Submit PASSED Items to Stock'}
-                    </button>
+
+                          if (!qcMetadata.qcDate) {
+                            alert('QC Date is required');
+                            return;
+                          }
+
+                          if (!confirm(`Submit ${approvedUids.length} PASSED items to stock?\n\n${rejectedUids.length} failed/pending items will remain in the Job Order for re-inspection.`)) {
+                            return;
+                          }
+
+                          setQcSubmitting(true);
+                          try {
+                            const response = await apiClient.post(`/job-orders/${selectedJobOrder.id}/qc-approve`, {
+                              approvedUids,
+                              rejectedUids,
+                              metadata: qcMetadata,
+                              checkedBy: qcCheckedBy,
+                            });
+
+                            console.log('[QC] Approval response', response);
+                            const stockAdded = Number((response as any)?.stockAdded ?? 0);
+                            const message = String((response as any)?.message || '').trim();
+                            const itemCode = String((response as any)?.itemCode || '').trim();
+                            const itemName = String((response as any)?.itemName || '').trim();
+                            const stockAvailable = Number((response as any)?.stockAvailable ?? 0);
+                            alert(
+                              `✅ QC Submitted!\n\n${message || `${stockAdded} units added to stock.`}\n` +
+                              `${itemCode ? `Item: ${itemCode}${itemName ? ` - ${itemName}` : ''}\n` : ''}` +
+                              `Available Stock Now: ${Number.isFinite(stockAvailable) ? stockAvailable : 0}\n` +
+                              `${rejectedUids.length > 0 ? `${rejectedUids.length} items remain for rework - you can re-QC them anytime.` : ''}`
+                            );
+                            
+                            // Reload UIDs to show only remaining items
+                            const reloadResponse = await apiClient.get<any>(
+                              `/uid?job_order_id=${selectedJobOrder.id}&limit=5000&sortBy=created_at&sortOrder=asc`,
+                            );
+                            const reloadData = Array.isArray(reloadResponse) ? reloadResponse : reloadResponse?.data || [];
+                            const reloadList = (reloadData || []) as JobOrderUID[];
+                            setQcUids(reloadList);
+                            
+                            // If all passed, close modal; otherwise keep it open
+                            const remainingPending = reloadList.filter(u => String(u?.quality_status || '').toUpperCase() !== 'PASSED');
+                            if (remainingPending.length === 0) {
+                              alert('✅ All items passed! Job Order complete.');
+                              setShowQcModal(false);
+                            }
+                            
+                            fetchJobOrders();
+                          } catch (error: any) {
+                            console.error('Error submitting QC results:', error);
+                            const errorMsg = error.response?.data?.message || error.message || 'Failed to submit QC results';
+                            alert(errorMsg);
+                          } finally {
+                            setQcSubmitting(false);
+                          }
+                        }}
+                        disabled={qcLoading || qcSubmitting}
+                        className="w-full sm:flex-1 px-6 py-3 bg-blue-600 text-white font-semibold rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {qcSubmitting ? 'Adding to Stock…' : 'Submit PASSED Items to Stock'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 
@@ -103,6 +104,8 @@ const resolveUomFromItem = (item: any): string => {
 function PRContent() {
   const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
+  const currentUser = readStoredUser();
+  const canApprovePR = hasModulePermission(currentUser, 'Purchase Management', 'approve');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [items, setItems] = useState<PRItem[]>([]);
@@ -235,7 +238,7 @@ function PRContent() {
               Edit
             </button>
           )}
-          {(req.status === 'DRAFT' || req.status === 'SUBMITTED') && (
+          {(req.status === 'DRAFT' || req.status === 'SUBMITTED') && canApprovePR && (
             <>
               <button
                 type="button"
@@ -1775,18 +1778,22 @@ function PRContent() {
                         >
                           Edit
                         </button>
-                        <button
-                          onClick={() => handleReject(selectedPR.id)}
-                          className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                        >
-                          Reject
-                        </button>
-                        <button
-                          onClick={() => handleApprove(selectedPR.id)}
-                          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                        >
-                          Approve
-                        </button>
+                        {canApprovePR && (
+                          <>
+                            <button
+                              onClick={() => handleReject(selectedPR.id)}
+                              className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                            >
+                              Reject
+                            </button>
+                            <button
+                              onClick={() => handleApprove(selectedPR.id)}
+                              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                            >
+                              Approve
+                            </button>
+                          </>
+                        )}
                       </>
                     )}
                     {selectedPR.status === 'APPROVED' && (

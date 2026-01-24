@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import DrawingManager from '../../../../components/DrawingManager';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { useSelection } from '../../../../hooks/useSelection';
@@ -47,6 +48,8 @@ function PurchaseOrdersContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prId = searchParams?.get('prId');
+  const currentUser = readStoredUser();
+  const canApprovePO = hasModulePermission(currentUser, 'Purchase Management', 'approve');
 
   const [purchaseRequisitions, setPurchaseRequisitions] = useState<
     Array<{ id: string; pr_number: string; department?: string; status?: string }>
@@ -1894,66 +1897,70 @@ function PurchaseOrdersContent() {
                     placeholder="Enter payment details or notes..."
                   />
                 </div>
-              )}
-
-              {/* Items */}
-              {editingMode !== 'tracking' && (
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900">Items</h3>
-                    <button
-                      onClick={handleAddItem}
-                      className="text-amber-600 hover:text-amber-800 font-medium"
-                    >
-                      + Add Item
-                    </button>
-                  </div>
-                  {editingMode === 'create' && currentPrId && (
-                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <p className="text-sm text-blue-800">
-                        <strong>Multiple Vendors?</strong> Remove items not from the selected vendor (click × button), then create PO. You can create another PO from the same PR for different vendors.
-                      </p>
-                    </div>
-                  )}
-
-                {formData.items.length === 0 ? (
-                  <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
-                    <p className="text-gray-500">No items added. Click &ldquo;Add Item&rdquo; to get started.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* Column Headers */}
-                    <div className="grid grid-cols-[48px_minmax(280px,3fr)_minmax(220px,2fr)_minmax(90px,1fr)_minmax(90px,1fr)_minmax(110px,1fr)_minmax(90px,1fr)_minmax(170px,1.2fr)] gap-4 px-4 pb-2 border-b border-gray-300">
-                      <div className="text-sm font-semibold text-gray-700">S. No</div>
-                      <div className="text-sm font-semibold text-gray-700">Item</div>
-                      <div className="text-sm font-semibold text-gray-700">Vendor</div>
-                      <div className="text-sm font-semibold text-gray-700">Quantity</div>
-                      <div className="text-sm font-semibold text-gray-700">UOM</div>
-                      <div className="text-sm font-semibold text-gray-700">Unit Price</div>
-                      <div className="text-sm font-semibold text-gray-700">Tax %</div>
-                      <div className="text-sm font-semibold text-gray-700">Total Price</div>
-                    </div>
-                    
-                    {formData.items.map((item, index) => (
-                      <div key={index} className={`border border-gray-300 rounded-lg p-4 ${pendingItemIndex === index ? 'ring-2 ring-red-300' : ''}`}>
-                        <div className="grid grid-cols-[48px_minmax(280px,3fr)_minmax(220px,2fr)_minmax(90px,1fr)_minmax(90px,1fr)_minmax(110px,1fr)_minmax(90px,1fr)_minmax(170px,1.2fr)] gap-4 items-start">
-                          <div className="pt-2 text-sm font-medium text-gray-700">{index + 1}</div>
-                          <div className="min-w-0">
-                            {item.itemId ? (
-                              <div className="space-y-1">
-                                <div className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 overflow-hidden">
-                                  {(() => {
-                                    const masterItem = items.find((i) => i.id === item.itemId || i.code === item.itemCode);
-                                    const displayCode = item.itemCode || masterItem?.code || '';
-                                    const displayName = item.itemName || masterItem?.name || '';
-                                    const drawingRequired = masterItem?.drawing_required || 'OPTIONAL';
-                                    const resolvedItemId = masterItem?.id || item.itemId;
-
-                                    return (
-                                      <>
-                                        <div className="font-medium text-sm leading-snug whitespace-normal break-words">
-                                          {displayCode && displayName ? `${displayCode} - ${displayName}` : (displayName || displayCode || 'Selected Item')}
-                                        </div>
+                    {canApprovePO && (
+                      <>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const token = localStorage.getItem('accessToken');
+                              const response = await fetch(`/api/v1/purchase/orders/${selectedPO.id}/status`, {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  Authorization: `Bearer ${token}`,
+                                },
+                                body: JSON.stringify({ status: 'APPROVED' }),
+                              });
+                              if (response.ok) {
+                                setAlertMessage({ type: 'success', message: 'Purchase Order approved successfully!' });
+                                setShowViewModal(false);
+                                fetchOrders();
+                              } else {
+                                const errorData = await response.json();
+                                console.error('Approve failed:', errorData);
+                                setAlertMessage({ type: 'error', message: `Failed to approve PO: ${errorData.message || 'Unknown error'}` });
+                              }
+                            } catch (error) {
+                              console.error('Error approving PO:', error);
+                              setAlertMessage({ type: 'error', message: 'Error approving PO' });
+                            }
+                          }}
+                          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const token = localStorage.getItem('accessToken');
+                              const response = await fetch(`/api/v1/purchase/orders/${selectedPO.id}/status`, {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  Authorization: `Bearer ${token}`,
+                                },
+                                body: JSON.stringify({ status: 'REJECTED' }),
+                              });
+                              if (response.ok) {
+                                setAlertMessage({ type: 'success', message: 'Purchase Order rejected successfully!' });
+                                setShowViewModal(false);
+                                fetchOrders();
+                              } else {
+                                const errorData = await response.json();
+                                console.error('Approve failed:', errorData);
+                                setAlertMessage({ type: 'error', message: `Failed to reject PO: ${errorData.message || 'Unknown error'}` });
+                              }
+                            } catch (error) {
+                              console.error('Error rejecting PO:', error);
+                              setAlertMessage({ type: 'error', message: 'Error rejecting PO' });
+                            }
+                          }}
+                          className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                        >
+                          Reject
+                        </button>
+                      </>
+                    )}
                                         {resolvedItemId ? (
                                           <div className="mt-1 flex items-center justify-between gap-2 min-w-0">
                                             <span className={`text-xs px-2 py-0.5 rounded ${
