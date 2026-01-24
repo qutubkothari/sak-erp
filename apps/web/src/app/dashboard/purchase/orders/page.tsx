@@ -118,6 +118,11 @@ function PurchaseOrdersContent() {
     estimatedDeliveryDate: '',
     carrierName: '',
     trackingUrl: '',
+    deliveryStatus: 'PENDING',
+    items: [],
+  });
+
+  useEffect(() => {
     if (!showModal) return;
     if (items.length > 0) return;
     fetchItems();
