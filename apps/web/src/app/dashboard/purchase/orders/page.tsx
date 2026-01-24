@@ -681,12 +681,14 @@ function PurchaseOrdersContent() {
       
       // Group items by vendor
       const itemsByVendor = formData.items.reduce((acc, item) => {
-        if (!acc[item.vendorId]) {
-          acc[item.vendorId] = [];
+        const vendorKey = String(item.vendorId || formData.vendorId || '').trim();
+        if (!vendorKey) return acc;
+        if (!acc[vendorKey]) {
+          acc[vendorKey] = [];
         }
-        acc[item.vendorId].push(item);
+        acc[vendorKey].push({ ...item, vendorId: vendorKey });
         return acc;
-      }, {} as Record<string, typeof formData.items>);
+      }, {} as Record<string, PurchaseOrderFormItem[]>);
 
       const vendorIds = Object.keys(itemsByVendor);
       console.log(`Creating ${vendorIds.length} PO(s) for ${vendorIds.length} vendor(s)`);
