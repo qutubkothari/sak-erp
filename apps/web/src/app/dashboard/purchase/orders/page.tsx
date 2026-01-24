@@ -44,6 +44,41 @@ interface PurchaseOrder {
   }>;
 }
 
+type PurchaseOrderFormItem = {
+  itemId?: string;
+  itemCode?: string;
+  itemName?: string;
+  vendorId?: string;
+  quantity: number;
+  unitPrice: number;
+  taxRate: number;
+  totalPrice: number;
+  specifications?: string;
+  uom?: string;
+  paymentTerms?: string;
+  deliveryTerms?: string;
+};
+
+type PurchaseOrderFormData = {
+  vendorId: string;
+  orderDate: string;
+  expectedDelivery: string;
+  paymentTerms: string;
+  paymentStatus: string;
+  paymentNotes: string;
+  deliveryAddress: string;
+  notes: string;
+  customsDuty: number;
+  otherCharges: number;
+  trackingNumber: string;
+  shippedDate: string;
+  estimatedDeliveryDate: string;
+  carrierName: string;
+  trackingUrl: string;
+  deliveryStatus: string;
+  items: PurchaseOrderFormItem[];
+};
+
 function PurchaseOrdersContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -102,7 +137,7 @@ function PurchaseOrdersContent() {
   const orderSelection = useSelection(orders);
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<PurchaseOrderFormData>({
     vendorId: '',
     orderDate: new Date().toISOString().split('T')[0],
     expectedDelivery: '',
