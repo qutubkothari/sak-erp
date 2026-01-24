@@ -420,17 +420,28 @@ function SmartJobOrdersItemsPageContent() {
   }, [allItems]);
 
   // Helper function to get filtered item options by category
-  const getFilteredItemOptions = (originalItemId: string, selectedCategory?: string) => {
+  const getFilteredItemOptions = (originalItemId: string, selectedCategory?: string, selectedItemId?: string) => {
     const originalItem = allItemsById.get(originalItemId);
     const categoryToUse = String(selectedCategory || originalItem?.product_category || '').trim();
-    if (!categoryToUse) return allItemOptions;
+    const baseOptions = !categoryToUse
+      ? allItemOptions
+      : allItems
+          .filter((item) => item.product_category === categoryToUse)
+          .map((i) => ({
+            value: i.id,
+            label: formatItemLabel(i),
+          }));
 
-    return allItems
-      .filter((item) => item.product_category === categoryToUse)
-      .map((i) => ({
-        value: i.id,
-        label: formatItemLabel(i),
-      }));
+    const normalizedSelectedId = String(selectedItemId || '').trim();
+    if (!normalizedSelectedId) return baseOptions;
+    if (baseOptions.some((opt) => opt.value === normalizedSelectedId)) return baseOptions;
+
+    const selectedItem = allItems.find((it) => String(it.id) === normalizedSelectedId);
+    if (!selectedItem) return baseOptions;
+    return [
+      { value: String(selectedItem.id), label: formatItemLabel(selectedItem) },
+      ...baseOptions,
+    ];
   };
 
   const allItemsById = useMemo(() => {
@@ -1220,7 +1231,7 @@ function SmartJobOrdersItemsPageContent() {
                       const hasProductCategory = Boolean(
                         allItemsById.get(String(selectedItemId || node.itemId))?.product_category,
                       );
-                      const itemOptions = getFilteredItemOptions(String(node.itemId || ''), categoryValue);
+                      const itemOptions = getFilteredItemOptions(String(node.itemId || ''), categoryValue, selectedItemId);
                       const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                       const available = stockState?.available ?? node.availableQuantity;
                       const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
@@ -1340,7 +1351,7 @@ function SmartJobOrdersItemsPageContent() {
                       const hasProductCategory = Boolean(
                         allItemsById.get(String(selectedItemId || node.itemId))?.product_category,
                       );
-                      const itemOptions = getFilteredItemOptions(String(node.itemId || ''), categoryValue);
+                      const itemOptions = getFilteredItemOptions(String(node.itemId || ''), categoryValue, selectedItemId);
                       const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                       const available = stockState?.available ?? node.availableQuantity;
                       const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
@@ -1466,7 +1477,7 @@ function SmartJobOrdersItemsPageContent() {
                 const hasProductCategory = Boolean(
                   allItemsById.get(String(selectedItemId || node.itemId))?.product_category,
                 );
-                const itemOptions = getFilteredItemOptions(String(node.itemId || ''), categoryValue);
+                const itemOptions = getFilteredItemOptions(String(node.itemId || ''), categoryValue, selectedItemId);
                 const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                 const available = stockState?.available ?? node.availableQuantity;
                 const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
@@ -1575,7 +1586,7 @@ function SmartJobOrdersItemsPageContent() {
                 const hasProductCategory = Boolean(
                   allItemsById.get(String(selectedItemId || node.itemId))?.product_category,
                 );
-                const itemOptions = getFilteredItemOptions(String(node.itemId || ''), categoryValue);
+                const itemOptions = getFilteredItemOptions(String(node.itemId || ''), categoryValue, selectedItemId);
                 const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                 const available = stockState?.available ?? node.availableQuantity;
                 const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
