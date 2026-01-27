@@ -38,7 +38,7 @@ export default function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [competencies, setCompetencies] = useState<CompetencyOption[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const [filter, setFilter] = useState<'all' | 'draft' | 'active' | 'completed'>('all');
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [progressDrafts, setProgressDrafts] = useState<Record<string, number>>({});
 
@@ -256,8 +256,31 @@ export default function GoalsPage() {
     }
   };
 
+  const activateGoal = async (goalId: string) => {
+    try {
+      const response = await fetch(`/api/goals/${goalId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'active' }),
+      });
+
+      const updated = await response.json();
+      if (!response.ok) {
+        toast.error(updated?.message || 'Failed to activate goal');
+        return;
+      }
+
+      setGoals(goals.map((item) => (item.id === goalId ? updated : item)));
+      toast.success('Goal activated');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to activate goal');
+    }
+  };
+
   const filteredGoals = goals.filter((goal) => {
     if (filter === 'all') return true;
+    if (filter === 'draft') return goal.status === 'draft';
     if (filter === 'active') return goal.status === 'active';
     if (filter === 'completed') return goal.status === 'completed';
     return true;
@@ -468,7 +491,7 @@ export default function GoalsPage() {
 
         {/* Filter Tabs */}
         <div className="mb-4 flex gap-2">
-          {(['all', 'active', 'completed'] as const).map((tab) => (
+          {(['all', 'draft', 'active', 'completed'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setFilter(tab)}
@@ -591,6 +614,15 @@ export default function GoalsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {goal.status === 'draft' && (
+                      <button
+                        type="button"
+                        onClick={() => activateGoal(goal.id)}
+                        className="rounded-lg border border-green-200 bg-green-50 px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-100"
+                      >
+                        Activate
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => startEdit(goal)}

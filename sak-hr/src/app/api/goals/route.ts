@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       targetDate: new Date(body.targetDate),
       measurableMetric: body.measurableMetric,
       alignedCompetency: body.alignedCompetency || null,
-      status: 'draft',
+      status: 'active',
       progress: 0,
     },
   });
