@@ -44,6 +44,13 @@ export default function AppraisalLettersPage() {
   const canApprove = baseRole === 'manager';
 
   const loadData = async () => {
+    console.log('[Appraisal Letters Page] Loading data...');
+    console.log('[Appraisal Letters Page] Session:', {
+      email: session?.user?.email,
+      role: session?.user?.role,
+      employeeId: session?.user?.employeeId,
+    });
+
     const [evalRes, letterRes] = await Promise.all([
       fetch('/api/evaluations'),
       fetch('/api/appraisal-letters'),
@@ -51,6 +58,10 @@ export default function AppraisalLettersPage() {
 
     const evalData = await evalRes.json();
     const letterData = await letterRes.json();
+
+    console.log('[Appraisal Letters Page] Evaluations received:', evalData.length);
+    console.log('[Appraisal Letters Page] Letters received:', letterData.length);
+    console.log('[Appraisal Letters Page] Letters data:', letterData);
 
     setEvaluations(Array.isArray(evalData) ? evalData : []);
     setLetters(Array.isArray(letterData) ? letterData : []);

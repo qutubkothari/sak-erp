@@ -12,6 +12,12 @@ type AppraisalLetterInput = {
 
 export async function GET() {
   const session = await auth();
+  console.log('[Appraisal Letters API] Session:', {
+    email: session?.user?.email,
+    role: session?.user?.role,
+    employeeId: session?.user?.employeeId,
+  });
+
   if (!session) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
   }
@@ -20,14 +26,40 @@ export async function GET() {
   const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
   const employeeId = session.user.employeeId || undefined;
 
-  const where =
-    baseRole === 'admin'
-      ? undefined
-      : baseRole === 'manager' && employeeId
-        ? { evaluation: { employee: { managerId: employeeId } } }
-        : employeeId
-          ? { evaluation: { employeeId } }
-          : { evaluationId: '__none__' };
+  console.log('[Appraisal Letters API] Computed role:', {
+    rawRole,
+    baseRole,
+    employeeId,
+  });
+
+  let where: any;
+  
+  if (baseRole === 'admin') {
+    where = undefined;
+    console.log('[Appraisal Letters API] Admin mode: showing all letters');
+  } else if (baseRole === 'manager' && employeeId) {
+    // For managers: show their team's letters + their own
+    const managedEmployees = await prisma.employee.findMany({
+      where: { managerId: employeeId },
+      select: { id: true },
+    });
+    const managedIds = managedEmployees.map(e => e.id);
+    where = { evaluation: { employeeId: { in: [...managedIds, employeeId] } } };
+    console.log('[Appraisal Letters API] Manager mode:', {
+      managerId: employeeId,
+      teamSize: managedIds.length,
+      showingFor: [...managedIds, employeeId],
+    });
+  } else if (employeeId) {
+    where = { evaluation: { employeeId } };
+    console.log('[Appraisal Letters API] Employee mode:', {
+      employeeId,
+      filteringBy: where,
+    });
+  } else {
+    where = { evaluationId: '__none__' };
+    console.log('[Appraisal Letters API] No employeeId - returning empty');
+  }
 
   const letters = await prisma.appraisalLetter.findMany({
     where,
@@ -41,6 +73,16 @@ export async function GET() {
       },
       approvedBy: true,
     },
+  });
+
+  console.log('[Appraisal Letters API] Found letters:', letters.length);
+  letters.forEach((letter, i) => {
+    console.log(`  Letter ${i + 1}:`, {
+      subject: letter.subject,
+      employee: `${letter.evaluation.employee.firstName} ${letter.evaluation.employee.lastName}`,
+      employeeId: letter.evaluation.employeeId,
+      cycle: letter.evaluation.cycle.name,
+    });
   });
 
   return NextResponse.json(letters);
