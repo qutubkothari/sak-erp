@@ -164,40 +164,45 @@ export default function EmployeesPage() {
     if (!form.code || !form.firstName || !form.lastName || !form.email || !form.hireDate) return;
     setLoading(true);
     setCreateError('');
-    const response = await fetch('/api/employees', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form,
-        departmentId: form.departmentId || undefined,
-        roleId: form.roleId || undefined,
-        managerId: form.managerId || undefined,
-      }),
-    });
-    if (!response.ok) {
-      const payload = await response.json();
-      setCreateError(payload?.message || 'Failed to create employee');
+    try {
+      const response = await fetch('/api/employees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          departmentId: form.departmentId || undefined,
+          roleId: form.roleId || undefined,
+          managerId: form.managerId || undefined,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json();
+        setCreateError(payload?.message || 'Failed to create employee');
+        setLoading(false);
+        return;
+      }
+      setForm({
+        code: '',
+        firstName: '',
+        lastName: '',
+        email: '',
+        password: '',
+        hireDate: '',
+        departmentId: '',
+        roleId: '',
+        managerId: '',
+        location: '',
+        nationality: '',
+        emiratesId: '',
+        status: 'ACTIVE',
+        employmentType: 'FULL_TIME',
+      });
+      await fetchEmployees();
       setLoading(false);
-      return;
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : 'Network error - please try again');
+      setLoading(false);
     }
-    setForm({
-      code: '',
-      firstName: '',
-      lastName: '',
-      email: '',
-      password: '',
-      hireDate: '',
-      departmentId: '',
-      roleId: '',
-      managerId: '',
-      location: '',
-      nationality: '',
-      emiratesId: '',
-      status: 'ACTIVE',
-      employmentType: 'FULL_TIME',
-    });
-    await fetchEmployees();
-    setLoading(false);
   };
 
   const updateEmployee = async (employeeId: string) => {
