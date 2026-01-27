@@ -241,7 +241,7 @@ export default function AppraisalLettersPage() {
                     </span>
                   ) : null}
                 </div>
-                {canApprove ? (
+                {canApprove && letter.evaluation.employee.id !== session?.user?.employeeId ? (
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     <button
                       className="rounded-lg border border-[#D9CBB6] px-3 py-2 text-xs font-semibold text-[#6F4E37] hover:bg-[#F4ECE2]"
