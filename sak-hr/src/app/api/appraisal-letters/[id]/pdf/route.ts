@@ -110,12 +110,14 @@ export async function GET(_request: Request, context: RouteContext) {
       return new Response('Appraisal letter not found', { status: 404 });
     }
 
-    if (
-      !sessionEmployeeId ||
-      (baseRole === 'manager'
-        ? letter.evaluation.employee.managerId !== sessionEmployeeId
-        : letter.evaluation.employee.id !== sessionEmployeeId)
-    ) {
+    // Check access: admin sees all, employees see their own, managers see their own + team members
+    const canAccess =
+      !sessionEmployeeId
+        ? false
+        : letter.evaluation.employee.id === sessionEmployeeId || // their own letter
+          (baseRole === 'manager' && letter.evaluation.employee.managerId === sessionEmployeeId); // manager viewing team member
+
+    if (!canAccess) {
       return new Response('Forbidden', { status: 403 });
     }
   }
