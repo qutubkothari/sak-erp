@@ -114,7 +114,7 @@ export async function GET(_request: Request, context: RouteContext) {
       !sessionEmployeeId ||
       (baseRole === 'manager'
         ? letter.evaluation.employee.managerId !== sessionEmployeeId
-        : letter.evaluation.employeeId !== sessionEmployeeId)
+        : letter.evaluation.employee.id !== sessionEmployeeId)
     ) {
       return new Response('Forbidden', { status: 403 });
     }
