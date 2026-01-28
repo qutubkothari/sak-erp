@@ -18,7 +18,7 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const rawRole = (session.user.role || 'employee').toString().toLowerCase();
-  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const baseRole = ['hr', 'admin'].includes(rawRole) ? 'admin' : rawRole;
   const sessionEmployeeId = session.user.employeeId || undefined;
 
   const { id } = await context.params;
@@ -61,7 +61,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const rawRole = (session.user.role || 'employee').toString().toLowerCase();
-  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const baseRole = ['hr', 'admin'].includes(rawRole) ? 'admin' : rawRole;
   const sessionEmployeeId = session.user.employeeId || undefined;
   if (baseRole !== 'admin' && baseRole !== 'manager') {
     return NextResponse.json({ message: 'Forbidden' }, { status: 403 });

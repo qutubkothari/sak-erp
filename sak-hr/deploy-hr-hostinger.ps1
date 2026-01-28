@@ -1,4 +1,4 @@
-param(
+aram(
     [string]$Message = "Deploy SAK HR"
 )
 

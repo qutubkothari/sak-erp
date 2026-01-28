@@ -23,7 +23,7 @@ export async function GET() {
   }
 
   const rawRole = (session.user.role || 'employee').toString().toLowerCase();
-  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const baseRole = ['hr', 'admin'].includes(rawRole) ? 'admin' : rawRole;
   const employeeId = session.user.employeeId || undefined;
 
   console.log('[Appraisal Letters API] Computed role:', {
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
   }
 
   const rawRole = (session.user.role || 'employee').toString().toLowerCase();
-  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const baseRole = ['hr', 'admin'].includes(rawRole) ? 'admin' : rawRole;
   if (baseRole !== 'admin') {
     return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
   }

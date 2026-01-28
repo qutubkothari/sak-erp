@@ -97,7 +97,7 @@ export async function GET(_request: Request, context: RouteContext) {
   const { id } = await context.params;
 
   const rawRole = (session.user.role || 'employee').toString().toLowerCase();
-  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const baseRole = ['hr', 'admin'].includes(rawRole) ? 'admin' : rawRole;
   const sessionEmployeeId = session.user.employeeId || undefined;
 
   if (baseRole !== 'admin') {

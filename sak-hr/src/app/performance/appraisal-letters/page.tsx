@@ -39,7 +39,7 @@ export default function AppraisalLettersPage() {
   const [form, setForm] = useState({ evaluationId: '', subject: '', summary: '', rating: '', adjustment: '' });
   const [search, setSearch] = useState('');
   const rawRole = (session?.user?.role || 'employee').toString().toLowerCase();
-  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const baseRole = ['hr', 'admin'].includes(rawRole) ? 'admin' : rawRole;
   const canCreate = baseRole === 'admin';
   const canApprove = baseRole === 'manager';
 

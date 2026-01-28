@@ -100,7 +100,7 @@ export default function ManagerReviewPage() {
   const [evidenceDraft, setEvidenceDraft] = useState({ title: '', url: '', notes: '' });
 
   const rawRole = (session?.user?.role || 'employee').toString().toLowerCase();
-  const baseRole = rawRole === 'hr' ? 'admin' : rawRole;
+  const baseRole = ['hr', 'admin'].includes(rawRole) ? 'admin' : rawRole;
   const [hasDirectReports, setHasDirectReports] = useState(false);
   const [checkingReports, setCheckingReports] = useState(baseRole === 'manager');
   const canAccess = baseRole === 'admin' || (baseRole === 'manager' && hasDirectReports);
