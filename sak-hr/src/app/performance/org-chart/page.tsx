@@ -18,10 +18,23 @@ type Employee = {
     id: string;
     title: string;
   } | null;
-  reports?: Employee[];
 };
 
-type TreeNode = Employee & {
+type TreeNode = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  code: string;
+  managerId: string | null;
+  department: {
+    id: string;
+    name: string;
+  } | null;
+  role: {
+    id: string;
+    title: string;
+  } | null;
   reports: TreeNode[];
 };
 
