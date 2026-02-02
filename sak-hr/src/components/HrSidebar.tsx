@@ -45,6 +45,7 @@ const sections = [
     items: [
       { label: 'Cycles', href: '/performance/cycles', icon: CalendarClock, roles: ['admin', 'manager'] },
       { label: 'Evaluations', href: '/performance/evaluations', icon: TrendingUp, roles: ['admin', 'manager'] },
+      { label: 'Calibration', href: '/performance/calibration', icon: LineChart, roles: ['admin', 'manager'] },
       { label: 'Appraisal Letters', href: '/performance/appraisal-letters', icon: FileText, roles: ['admin', 'manager', 'employee'] },
       { label: 'Reports', href: '/performance/reports', icon: Layers, roles: ['admin', 'manager'] },
     ],
