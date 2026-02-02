@@ -21,6 +21,8 @@ import {
   Settings,
   Layers,
   Building2,
+  Bell,
+  Network,
 } from 'lucide-react';
 
 const sections = [
@@ -35,6 +37,8 @@ const sections = [
     items: [
       { label: 'Goals', href: '/performance/goals', icon: Target, roles: ['admin', 'manager', 'employee'] },
       { label: 'Self Assessment', href: '/performance/self-assessment', icon: ClipboardCheck, roles: ['admin', 'manager', 'employee'] },
+      { label: 'Performance History', href: '/performance/history', icon: TrendingUp, roles: ['admin', 'manager', 'employee'] },
+      { label: 'Notifications', href: '/performance/notifications', icon: Bell, roles: ['admin', 'manager', 'employee'] },
       { label: 'Manager Review', href: '/performance/manager-review', icon: UserCheck, roles: ['admin', 'manager'] },
       { label: 'Manager Dashboard', href: '/performance/manager-dashboard', icon: Users, roles: ['admin', 'manager'] },
       { label: 'Analytics', href: '/performance/analytics', icon: BarChart3, roles: ['admin', 'manager'] },
@@ -54,6 +58,7 @@ const sections = [
     title: 'Administration',
     items: [
       { label: 'Employees', href: '/performance/employees', icon: Users, roles: ['admin'] },
+      { label: 'Org Hierarchy', href: '/performance/org-chart', icon: Network, roles: ['admin', 'manager'] },
       { label: 'Roles', href: '/performance/roles', icon: Users, roles: ['admin'] },
       { label: 'Departments', href: '/performance/departments', icon: Building2, roles: ['admin'] },
       { label: 'Criteria', href: '/performance/criteria', icon: ShieldCheck, roles: ['admin'] },
