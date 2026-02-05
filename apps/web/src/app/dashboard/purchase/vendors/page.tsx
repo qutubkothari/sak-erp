@@ -41,6 +41,7 @@ export default function VendorsPage() {
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('ALL');
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -232,7 +233,29 @@ export default function VendorsPage() {
             <h1 className="text-4xl font-bold text-amber-900">Vendor Management</h1>
             <p className="text-amber-700">Manage supplier and vendor information</p>
           </div>
-          <div className="flex gap-4">
+          <div className="flex gap-3">
+            <div className="flex rounded-lg overflow-hidden border border-gray-300 bg-white">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  viewMode === 'table'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                📊 Table
+              </button>
+              <button
+                onClick={() => setViewMode('cards')}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  viewMode === 'cards'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                🃏 Cards
+              </button>
+            </div>
             {selection.hasSelections && (
               <button
                 onClick={handleDeleteAll}
@@ -398,7 +421,130 @@ export default function VendorsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {viewMode === 'table' ? (
+                // TABLE VIEW
+                <div className="bg-white rounded-lg shadow overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-amber-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left">
+                          <input
+                            type="checkbox"
+                            checked={selection.isAllSelected}
+                            onChange={selection.toggleSelectAll}
+                            className="w-4 h-4"
+                          />
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                          Code
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                          Name
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                          Category
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                          Contact
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                          Email
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                          Phone
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                          Location
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                          Rating
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {paginatedVendors.map((vendor) => (
+                        <tr 
+                          key={vendor.id} 
+                          className={`hover:bg-amber-50 transition-colors ${selection.isSelected(vendor.id) ? 'bg-amber-50' : ''}`}
+                        >
+                          <td className="px-6 py-4">
+                            <input
+                              type="checkbox"
+                              checked={selection.isSelected(vendor.id)}
+                              onChange={() => selection.toggleSelection(vendor.id)}
+                              className="w-4 h-4"
+                            />
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {vendor.code}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">{vendor.name}</div>
+                            {vendor.legal_name && vendor.legal_name !== vendor.name && (
+                              <div className="text-xs text-gray-500">{vendor.legal_name}</div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {vendor.category}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {vendor.contact_person || '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {vendor.email || '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {vendor.phone || '-'}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-700">
+                            {[vendor.city, vendor.state].filter(Boolean).join(', ') || '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            {vendor.rating > 0 ? (
+                              <span className="text-yellow-500">★ {vendor.rating.toFixed(1)}</span>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span
+                              className={`px-2 py-1 text-xs rounded-full ${
+                                vendor.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                              }`}
+                            >
+                              {vendor.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleEdit(vendor)}
+                                className="text-amber-600 hover:text-amber-800 font-medium"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDelete(vendor.id)}
+                                className="text-red-600 hover:text-red-800 font-medium"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                // CARDS VIEW
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {paginatedVendors.map((vendor) => (
                   <div key={vendor.id} className={`bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow ${selection.isSelected(vendor.id) ? 'ring-2 ring-amber-500' : ''}`}>
                     <div className="flex justify-between items-start mb-4">
@@ -488,6 +634,7 @@ export default function VendorsPage() {
                   </div>
                 ))}
               </div>
+              )}
 
               {/* Pagination Controls */}
               {totalPages > 1 && (
