@@ -81,6 +81,7 @@ export default function VendorsPage() {
   });
 
   useEffect(() => {
+    console.log('🔵 VENDORS PAGE MOUNTED - Fetching vendors');
     fetchVendors();
   }, [filterCategory]);
 
@@ -92,14 +93,23 @@ export default function VendorsPage() {
   const fetchVendors = async () => {
     try {
       setLoading(true);
+      console.log('🔵 [VENDORS] Fetching with filter:', filterCategory, 'search:', searchTerm);
+      
       const params = new URLSearchParams();
       if (filterCategory !== 'ALL') params.append('category', filterCategory);
       if (searchTerm) params.append('search', searchTerm);
 
       const data = await apiClient.get<Vendor[]>(`/purchase/vendors?${params}`);
+      console.log('🔵 [VENDORS] Received:', Array.isArray(data) ? data.length : 0, 'vendors');
+      
+      if (data && Array.isArray(data) && data.length > 0) {
+        console.log('🔵 [VENDORS] First vendor:', data[0].name);
+      }
+      
       setVendors(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error fetching vendors:', error);
+      console.error('🔴 Error fetching vendors:', error);
+      setVendors([]);
     } finally {
       setLoading(false);
     }
