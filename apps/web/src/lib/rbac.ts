@@ -199,6 +199,9 @@ export function hasModulePermission(
     return false;
   }
 
+  // Admin / Super Admin / Owner gets all permissions by default
+  if (isAdminLike(user)) return true;
+
   const merged = getMergedPermissionsByModule(user);
   const perm = merged.get(moduleName);
   return !!perm?.[action];
