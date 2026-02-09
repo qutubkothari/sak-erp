@@ -168,6 +168,14 @@ function PurchaseOrdersContent() {
     fetchOrders();
   }, [filterStatus, searchTerm]);
 
+  // Load PR data if prId is in URL (convert PR to PO)
+  useEffect(() => {
+    if (prId && !showModal) {
+      setShowModal(true);
+      loadPRData(prId);
+    }
+  }, [prId]);
+
   // Backfill missing itemId (and itemName) from itemCode once items master data loads.
   // Some PO payloads provide only item_code/item_name; SearchableSelect needs itemId.
   useEffect(() => {
