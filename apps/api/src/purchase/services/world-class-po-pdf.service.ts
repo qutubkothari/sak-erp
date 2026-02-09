@@ -980,7 +980,8 @@ export class WorldClassPoPdfService {
 
   private formatCurrency(amount: number, currency: string = 'INR'): string {
     const symbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : 'Rs. ';
-    return `${symbol}${amount.toFixed(2)}`;
+    const value = amount ?? 0; // Handle null/undefined
+    return `${symbol}${value.toFixed(2)}`;
   }
 
   private truncate(text: string, maxLength: number): string {
