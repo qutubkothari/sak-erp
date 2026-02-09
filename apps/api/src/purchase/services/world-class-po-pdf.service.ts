@@ -114,14 +114,14 @@ interface POPdfData {
 @Injectable()
 export class WorldClassPoPdfService {
   private readonly COLORS = {
-    primary: rgb(0.435, 0.306, 0.216), // #6F4E37 (Brown)
-    secondary: rgb(0.573, 0.251, 0.024), // Amber-900
-    accent: rgb(0.851, 0.647, 0.125), // Gold
+    primary: rgb(0.118, 0.251, 0.686), // #1e40af (Professional Blue)
+    secondary: rgb(0.145, 0.388, 0.922), // #2563eb (Royal Blue)
+    accent: rgb(0.219, 0.569, 0.980), // #3891FA (Sky Blue)
     gray: rgb(0.4, 0.4, 0.4),
     lightGray: rgb(0.9, 0.9, 0.9),
     white: rgb(1, 1, 1),
     black: rgb(0, 0, 0),
-    success: rgb(0.133, 0.545, 0.133),
+    success: rgb(0.118, 0.251, 0.686),
     border: rgb(0.8, 0.8, 0.8),
   };
 
@@ -168,15 +168,18 @@ export class WorldClassPoPdfService {
     // Draw Items Table
     yPosition = await this.drawItemsTable(page, pdfDoc, data, font, fontBold, yPosition, width, height);
 
-    // Draw Financial Summary
-    yPosition = this.drawFinancialSummary(page, data, font, fontBold, yPosition, width);
-
-    // Draw Terms and Conditions
-    if (yPosition < 300) {
+    // Draw Financial Summary and Terms side by side
+    const summaryStartY = yPosition - 10;
+    if (summaryStartY < 300) {
       page = pdfDoc.addPage([595, 842]);
       yPosition = height - 50;
     }
-    yPosition = this.drawTermsAndConditions(page, data, font, fontBold, fontItalic, yPosition, width);
+    
+    // Draw Financial Summary on the right
+    this.drawFinancialSummary(page, data, font, fontBold, yPosition - 10, width);
+    
+    // Draw Terms and Conditions on the left at the same vertical position
+    yPosition = this.drawTermsAndConditions(page, data, font, fontBold, fontItalic, yPosition - 10, width);
 
     // Draw Signature Section
     if (yPosition < 200) {
@@ -755,6 +758,9 @@ export class WorldClassPoPdfService {
     yPosition: number,
     width: number,
   ): number {
+    // Terms section stays on the left side only (max width: 300 to avoid financial summary)
+    const maxTextWidth = 290;
+    
     page.drawText('TERMS & CONDITIONS', {
       x: 50,
       y: yPosition,
@@ -773,7 +779,7 @@ export class WorldClassPoPdfService {
     yPosition -= 20;
 
     const terms = [
-      { label: 'Payment Terms', value: data.paymentTerms || data.terms?.payment_terms || '30 days from invoice date' },
+      { label: 'Payment Terms', value: data.paymentTerms || data.terms?.payment_terms || 'NET 30' },
       { label: 'Delivery Terms', value: data.terms?.delivery_terms || 'As per delivery schedule' },
       { label: 'Freight', value: data.terms?.freight_terms || 'FOB Destination' },
       { label: 'Insurance', value: data.terms?.insurance_terms || 'As applicable' },
@@ -787,14 +793,16 @@ export class WorldClassPoPdfService {
       page.drawText(`${term.label}:`, {
         x: 50,
         y: yPosition,
-        size: 9,
+        size: 8,
         font: fontBold,
       });
 
-      page.drawText(term.value, {
-        x: 160,
+      // Truncate value to fit in left column
+      const truncatedValue = this.truncate(term.value, 50);
+      page.drawText(truncatedValue, {
+        x: 140,
         y: yPosition,
-        size: 9,
+        size: 8,
         font,
       });
 
@@ -812,13 +820,13 @@ export class WorldClassPoPdfService {
 
     yPosition -= 15;
     const standardTerms = [
-      '1. Supplier must comply with all applicable laws and regulations.',
-      '2. Material supplied must strictly conform to our specifications.',
-      '3. Supplier must provide test certificates and compliance documents.',
-      '4. Any deviation from specifications must be pre-approved in writing.',
-      '5. Buyer reserves the right to reject non-conforming material.',
-      '6. Late delivery may result in penalty or cancellation.',
-      '7. All disputes subject to [City] jurisdiction only.',
+      '1. Supplier must comply with all applicable laws.',
+      '2. Material must conform to our specifications.',
+      '3. Supplier must provide test certificates.',
+      '4. Deviations must be pre-approved in writing.',
+      '5. Buyer reserves right to reject material.',
+      '6. Late delivery may result in penalty.',
+      '7. Disputes subject to [City] jurisdiction.',
     ];
 
     standardTerms.forEach((term) => {
