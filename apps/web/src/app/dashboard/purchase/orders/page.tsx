@@ -165,9 +165,7 @@ function PurchaseOrdersContent() {
 
   // Fetch vendors on component mount
   useEffect(() => {
-    if (vendorspermission) {
-      fetchVendors();
-    }
+    fetchVendors();
   }, []);
 
   // Fetch orders on mount and when filters change
