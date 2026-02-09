@@ -163,12 +163,12 @@ function PurchaseOrdersContent() {
     fetchItems();
   }, [showModal, items.length]);
 
-  // Fetch vendors when modal opens
+  // Fetch vendors on component mount
   useEffect(() => {
-    if (!showModal) return;
-    if (vendors.length > 0) return;
-    fetchVendors();
-  }, [showModal, vendors.length]);
+    if (vendorspermission) {
+      fetchVendors();
+    }
+  }, []);
 
   // Fetch orders on mount and when filters change
   useEffect(() => {
@@ -260,11 +260,13 @@ function PurchaseOrdersContent() {
 
   const fetchVendors = async () => {
     try {
+      console.log('[PO] Fetching vendors...');
       const token = localStorage.getItem('accessToken');
       const response = await fetch('/api/v1/purchase/vendors', {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
+      console.log('[PO] Vendors fetched:', data?.length || 0, 'vendors');
       setVendors(data || []);
     } catch (error) {
       console.error('Error fetching vendors:', error);
