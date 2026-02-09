@@ -1414,8 +1414,25 @@ function PurchaseOrdersContent() {
   const handleViewPDF = async (poId: string) => {
     try {
       const token = localStorage.getItem('accessToken');
-      const url = `/api/v1/purchase/orders/${poId}/pdf/world-class?token=${encodeURIComponent(token || '')}`;
+      const response = await fetch(`/api/v1/purchase/orders/${poId}/pdf/world-class`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to load PDF: ${response.status} ${response.statusText}`);
+      }
+
+      // Create blob from response
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      
+      // Open in new window
       window.open(url, '_blank');
+      
+      // Clean up after a delay
+      setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (error: any) {
       console.error('Error viewing PDF:', error);
       setAlertMessage({
