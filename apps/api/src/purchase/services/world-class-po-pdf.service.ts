@@ -114,14 +114,14 @@ interface POPdfData {
 @Injectable()
 export class WorldClassPoPdfService {
   private readonly COLORS = {
-    primary: rgb(0.118, 0.251, 0.686), // #1e40af (Professional Blue)
-    secondary: rgb(0.145, 0.388, 0.922), // #2563eb (Royal Blue)
-    accent: rgb(0.219, 0.569, 0.980), // #3891FA (Sky Blue)
+    primary: rgb(0.0, 0.45, 0.90), // #0073E6 (Bright Blue - matches logo)
+    secondary: rgb(0.0, 0.33, 0.80), // #0054CC (Deep Ocean Blue)
+    accent: rgb(0.22, 0.58, 1.0), // #3895FF (Light Sky Blue)
     gray: rgb(0.4, 0.4, 0.4),
     lightGray: rgb(0.9, 0.9, 0.9),
     white: rgb(1, 1, 1),
     black: rgb(0, 0, 0),
-    success: rgb(0.118, 0.251, 0.686),
+    success: rgb(0.0, 0.45, 0.90),
     border: rgb(0.8, 0.8, 0.8),
   };
 
@@ -735,18 +735,10 @@ export class WorldClassPoPdfService {
       color: this.COLORS.white,
     });
 
-    // Amount in words
-    yPosition -= 25;
-    const amountInWords = this.numberToWords(data.grandTotal);
-    page.drawText(`Amount in Words: ${amountInWords}`, {
-      x: 50,
-      y: yPosition,
-      size: 9,
-      font: fontBold,
-      color: this.COLORS.primary,
-    });
+    // Amount in words - removed to avoid overlap with terms section
+    // Will be shown in footer or special instructions if needed
 
-    return yPosition - 20;
+    return yPosition - 15;
   }
 
   private drawTermsAndConditions(
@@ -836,6 +828,7 @@ export class WorldClassPoPdfService {
         y: yPosition,
         size: 7,
         font,
+        maxWidth: 280, // Constrain to left column width
         color: this.COLORS.gray,
       });
       yPosition -= 11;
@@ -854,7 +847,8 @@ export class WorldClassPoPdfService {
       const instructions = (data.specialInstructions || data.remarks || '').split('\n');
       instructions.forEach((line) => {
         if (yPosition < 100) return;
-        page.drawText(line.substring(0, 100), {
+        const truncatedLine = this.truncate(line, 60); // Limit to left column
+        page.drawText(truncatedLine, {
           x: 55,
           y: yPosition,
           size: 8,
