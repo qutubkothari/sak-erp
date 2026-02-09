@@ -980,11 +980,11 @@ function PurchaseOrdersContent() {
   };
 
   const handleUpdateItem = async (index: number, field: string, value: any) => {
-    const updatedItems = [...formData.items];
+    const updatedItems = [...(formData.items || [])];
     
     // Check for duplicate items when changing itemId
     if (field === 'itemId' && value) {
-      const isDuplicate = formData.items.some((item, i) => 
+      const isDuplicate = (formData.items || []).some((item, i) => 
         i !== index && item.itemId === value
       );
       if (isDuplicate) {
