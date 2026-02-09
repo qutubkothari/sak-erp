@@ -163,6 +163,13 @@ function PurchaseOrdersContent() {
     fetchItems();
   }, [showModal, items.length]);
 
+  // Fetch vendors when modal opens
+  useEffect(() => {
+    if (!showModal) return;
+    if (vendors.length > 0) return;
+    fetchVendors();
+  }, [showModal, vendors.length]);
+
   // Fetch orders on mount and when filters change
   useEffect(() => {
     fetchOrders();
