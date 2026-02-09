@@ -11,6 +11,7 @@ import { GrnService } from './services/grn.service';
 import { DebitNoteService } from './services/debit-note.service';
 import { RfqExcelService } from './services/rfq-excel.service';
 import { PoPdfService } from './services/po-pdf.service';
+import { WorldClassPoPdfService } from './services/world-class-po-pdf.service';
 import { UidModule } from '../uid/uid.module';
 import { EmailModule } from '../email/email.module';
 import { PoTrackingReminderJob } from './jobs/po-tracking-reminder.job';
@@ -32,6 +33,7 @@ import { PoTrackingReminderJob } from './jobs/po-tracking-reminder.job';
     DebitNoteService,
     RfqExcelService,
     PoPdfService,
+    WorldClassPoPdfService,
     PoTrackingReminderJob,
   ],
   exports: [
@@ -42,6 +44,7 @@ import { PoTrackingReminderJob } from './jobs/po-tracking-reminder.job';
     DebitNoteService,
     RfqExcelService,
     PoPdfService,
+    WorldClassPoPdfService,
   ],
 })
 export class PurchaseModule {}

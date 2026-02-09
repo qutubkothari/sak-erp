@@ -115,6 +115,7 @@ Run "Create artifact archive ($archive)" {
     'apps/web/next.config.js',
     'apps/api/dist',
     'apps/api/package.json',
+    'apps/api/assets',
     'packages/database/package.json',
     'packages/database/prisma',
     'packages/hr-module/dist',

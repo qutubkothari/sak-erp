@@ -9,8 +9,11 @@ import {
   Query,
   UseGuards,
   Request,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { PurchaseOrdersService } from '../services/purchase-orders.service';
+import { WorldClassPoPdfService } from '../services/world-class-po-pdf.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 
@@ -19,6 +22,7 @@ import { DuplicateDetectionService } from '../../common/services/duplicate-detec
 export class PurchaseOrdersController {
   constructor(
     private readonly poService: PurchaseOrdersService,
+    private readonly worldClassPoPdfService: WorldClassPoPdfService,
     private readonly duplicateDetectionService: DuplicateDetectionService,
   ) {}
 
@@ -130,6 +134,112 @@ export class PurchaseOrdersController {
   @Post(':id/send-tracking-reminder')
   async sendTrackingReminder(@Request() req: any, @Param('id') id: string) {
     return this.poService.sendTrackingReminder(req.user.tenantId, id);
+  }
+
+  @Get(':id/pdf/world-class')
+  async generateWorldClassPdf(@Request() req: any, @Param('id') id: string, @Res() res: Response) {
+    try {
+      // Fetch PO with all details
+      const po = await this.poService.findOne(req.user.tenantId, id);
+
+      if (!po) {
+        return res.status(404).json({ message: 'Purchase Order not found' });
+      }
+
+      // Map PO data to PDF data structure
+      const pdfData = {
+        // Header
+        poNumber: po.po_number,
+        poDate: po.po_date || po.order_date,
+        quotationRef: po.quotation_ref,
+        prNumber: po.pr_number,
+
+        // Vendor Details
+        vendorName: po.vendor?.name || po.vendor_name || 'N/A',
+        vendorCode: po.vendor?.code || po.vendor_code,
+        vendorAddress: po.vendor?.address,
+        vendorCity: po.vendor?.city,
+        vendorState: po.vendor?.state,
+        vendorPincode: po.vendor?.pincode,
+        vendorGSTIN: po.vendor?.gstin,
+        vendorPAN: po.vendor?.pan,
+        vendorEmail: po.vendor?.email,
+        vendorPhone: po.vendor?.phone,
+        vendorContactPerson: po.vendor?.contact_person,
+
+        // Company Details - You should fetch from config or tenant settings
+        companyName: 'SAK AUTOMATIONS',
+        companyAddress: 'Your Company Address',
+        companyCity: 'Chennai',
+        companyState: 'Tamil Nadu',
+        companyPincode: '600001',
+        companyGSTIN: 'YOUR_GSTIN',
+        companyEmail: 'info@sakautomations.com',
+        companyPhone: '+91 XXX XXX XXXX',
+
+        // Items
+        items: (po.purchase_order_items || po.items || []).map((item: any, index: number) => ({
+          sl_no: index + 1,
+          item_code: item.item_code || item.code || '',
+          item_name: item.item_name || item.name || '',
+          description: item.description || item.specifications,
+          hsn_code: item.hsn_code || item.hsn,
+          quantity: item.quantity || item.ordered_qty,
+          uom: item.uom || 'Nos',
+          unit_price: item.unit_price || item.price || 0,
+          discount_percent: item.discount_percent || 0,
+          discount_amount: item.discount_amount || 0,
+          taxable_amount: item.taxable_amount || (item.unit_price * item.quantity),
+          cgst_rate: item.cgst_rate || 9,
+          cgst_amount: item.cgst_amount || 0,
+          sgst_rate: item.sgst_rate || 9,
+          sgst_amount: item.sgst_amount || 0,
+          igst_rate: item.igst_rate,
+          igst_amount: item.igst_amount,
+          total_price: item.total_price || item.total,
+          specifications: item.specifications,
+        })),
+
+        // Financial Summary
+        subtotal: po.subtotal || po.total_amount || 0,
+        totalDiscount: po.total_discount || 0,
+        taxableAmount: po.taxable_amount || po.total_amount || 0,
+        cgstTotal: po.cgst_total || 0,
+        sgstTotal: po.sgst_total || 0,
+        igstTotal: po.igst_total || 0,
+        grandTotal: po.grand_total || po.total_amount || 0,
+
+        // Terms
+        paymentTerms: po.payment_terms,
+        deliveryDate: po.expected_delivery || po.delivery_date,
+        terms: {
+          payment_terms: po.payment_terms,
+          delivery_terms: po.delivery_terms,
+        },
+        remarks: po.notes || po.remarks,
+
+        currency: 'INR',
+      };
+
+      // Generate PDF
+      const pdfBuffer = await this.worldClassPoPdfService.generatePOPdf(pdfData);
+      const filename = this.worldClassPoPdfService.generateFilename(po.po_number);
+
+      // Send PDF response
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Length': pdfBuffer.length,
+      });
+
+      return res.send(pdfBuffer);
+    } catch (error) {
+      console.error('Error generating world-class PO PDF:', error);
+      return res.status(500).json({ 
+        message: 'Error generating PDF', 
+        error: error.message 
+      });
+    }
   }
 
   @Delete(':id')

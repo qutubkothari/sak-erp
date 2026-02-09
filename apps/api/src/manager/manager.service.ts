@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-interface PendingApproval {
+export interface PendingApproval {
   id: string;
   number: string;
   type: 'PR' | 'PO' | 'GRN' | 'JO' | 'QC';
