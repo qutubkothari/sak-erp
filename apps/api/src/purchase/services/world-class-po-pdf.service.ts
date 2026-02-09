@@ -979,7 +979,7 @@ export class WorldClassPoPdfService {
   }
 
   private formatCurrency(amount: number, currency: string = 'INR'): string {
-    const symbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₹';
+    const symbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : 'Rs. ';
     return `${symbol}${amount.toFixed(2)}`;
   }
 
