@@ -53,13 +53,17 @@ export class VendorsService {
   }
 
   async findAll(tenantId: string, filters?: any) {
+    console.log('🔵 [API] VendorsService.findAll called');
+    console.log('🔵 [API] Tenant ID:', tenantId);
+    console.log('🔵 [API] Filters:', filters);
+    
     let query = this.supabase
       .from('vendors')
       .select('*')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false });
 
-    if (filters?.category) {
+    if (filters?.category && filters.category !== 'ALL') {
       query = query.eq('category', filters.category);
     }
 
@@ -72,6 +76,12 @@ export class VendorsService {
     }
 
     const { data, error } = await query;
+
+    console.log('🔵 [API] Query result - data count:', data?.length || 0);
+    console.log('🔵 [API] Query error:', error);
+    if (data && data.length > 0) {
+      console.log('🔵 [API] First vendor:', data[0].name);
+    }
 
     if (error) throw new BadRequestException(error.message);
     return data;
