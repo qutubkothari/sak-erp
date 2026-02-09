@@ -165,6 +165,7 @@ function PurchaseOrdersContent() {
 
   // Fetch vendors on component mount
   useEffect(() => {
+    console.log('🔵 PO PAGE MOUNTED - About to fetch vendors');
     fetchVendors();
   }, []);
 
@@ -258,16 +259,26 @@ function PurchaseOrdersContent() {
 
   const fetchVendors = async () => {
     try {
-      console.log('[PO] Fetching vendors...');
+      console.log('🔵 [PO] Fetching vendors...');
       const token = localStorage.getItem('accessToken');
+      console.log('🔵 [PO] Token:', token ? 'Present ✅' : 'MISSING ❌');
+      
       const response = await fetch('/api/v1/purchase/vendors', {
         headers: { Authorization: `Bearer ${token}` },
       });
+      
+      console.log('🔵 [PO] Response status:', response.status, response.statusText);
+      
       const data = await response.json();
-      console.log('[PO] Vendors fetched:', data?.length || 0, 'vendors');
+      console.log('🔵 [PO] Vendors fetched:', data?.length || 0, 'vendors');
+      
+      if (data && data.length > 0) {
+        console.log('🔵 [PO] First vendor:', data[0].name);
+      }
+      
       setVendors(data || []);
     } catch (error) {
-      console.error('Error fetching vendors:', error);
+      console.error('🔴 Error fetching vendors:', error);
     }
   };
 
