@@ -163,6 +163,11 @@ function PurchaseOrdersContent() {
     fetchItems();
   }, [showModal, items.length]);
 
+  // Fetch orders on mount and when filters change
+  useEffect(() => {
+    fetchOrders();
+  }, [filterStatus, searchTerm]);
+
   // Backfill missing itemId (and itemName) from itemCode once items master data loads.
   // Some PO payloads provide only item_code/item_name; SearchableSelect needs itemId.
   useEffect(() => {
