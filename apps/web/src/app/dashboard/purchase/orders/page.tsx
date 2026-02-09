@@ -1343,6 +1343,94 @@ function PurchaseOrdersContent() {
     }
   };
 
+  const handleDownloadPDF = async (poId: string) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`/api/v1/purchase/orders/${poId}/pdf/world-class`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to download PDF');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `PO-${poId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      setAlertMessage({
+        type: 'success',
+        message: 'PDF downloaded successfully',
+      });
+    } catch (error: any) {
+      console.error('Error downloading PDF:', error);
+      setAlertMessage({
+        type: 'error',
+        message: error?.message || 'Failed to download PDF',
+      });
+    }
+  };
+
+  const handleViewPDF = async (poId: string) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const url = `/api/v1/purchase/orders/${poId}/pdf/world-class?token=${encodeURIComponent(token || '')}`;
+      window.open(url, '_blank');
+    } catch (error: any) {
+      console.error('Error viewing PDF:', error);
+      setAlertMessage({
+        type: 'error',
+        message: error?.message || 'Failed to view PDF',
+      });
+    }
+  };
+
+  const handlePrintPDF = async (poId: string) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`/api/v1/purchase/orders/${poId}/pdf/world-class`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to load PDF for printing');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = url;
+      document.body.appendChild(iframe);
+
+      iframe.onload = () => {
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(iframe);
+        }, 1000);
+      };
+    } catch (error: any) {
+      console.error('Error printing PDF:', error);
+      setAlertMessage({
+        type: 'error',
+        message: error?.message || 'Failed to print PDF',
+      });
+    }
+  };
+
   const handleDeleteAll = async () => {
     if (!confirm(`Are you sure you want to delete ${orderSelection.selectedItems.length} purchase orders? This action cannot be undone.`)) return;
 
@@ -2649,6 +2737,24 @@ function PurchaseOrdersContent() {
 
                 {selectedPO.status !== 'DRAFT' && (
                   <>
+                    <button
+                      onClick={() => handleDownloadPDF(selectedPO.id)}
+                      className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    >
+                      Download PDF
+                    </button>
+                    <button
+                      onClick={() => handleViewPDF(selectedPO.id)}
+                      className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                    >
+                      View PDF
+                    </button>
+                    <button
+                      onClick={() => handlePrintPDF(selectedPO.id)}
+                      className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                    >
+                      Print PDF
+                    </button>
                     <button
                       onClick={() => handlePreviewPOEmail(selectedPO.id)}
                       disabled={poEmailPreviewLoading}
