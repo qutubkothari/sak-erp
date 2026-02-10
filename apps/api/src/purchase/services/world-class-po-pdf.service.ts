@@ -114,14 +114,14 @@ interface POPdfData {
 @Injectable()
 export class WorldClassPoPdfService {
   private readonly COLORS = {
-    primary: rgb(0.0, 0.45, 0.90), // #0073E6 (Bright Blue - matches logo)
-    secondary: rgb(0.0, 0.33, 0.80), // #0054CC (Deep Ocean Blue)
-    accent: rgb(0.22, 0.58, 1.0), // #3895FF (Light Sky Blue)
+    primary: rgb(0.0, 0.25, 0.50), // #004080 (Navy Blue - matches Saif Seas logo)
+    secondary: rgb(0.0, 0.30, 0.55), // #004D8C
+    accent: rgb(0.0, 0.40, 0.70), // #0066B3 (matches logo header banner)
     gray: rgb(0.4, 0.4, 0.4),
     lightGray: rgb(0.9, 0.9, 0.9),
     white: rgb(1, 1, 1),
     black: rgb(0, 0, 0),
-    success: rgb(0.0, 0.45, 0.90),
+    success: rgb(0.0, 0.25, 0.50), // Same as primary
     border: rgb(0.8, 0.8, 0.8),
   };
 
@@ -156,7 +156,7 @@ export class WorldClassPoPdfService {
     if (!fs.existsSync(letterheadPath)) {
       yPosition = await this.drawHeader(page, data, font, fontBold, yPosition, width);
     } else {
-      yPosition = height - 150; // Start below letterhead
+      yPosition = height - 115; // Start right below letterhead grey line
     }
 
     // Draw PO Title and Reference Info
@@ -166,11 +166,12 @@ export class WorldClassPoPdfService {
     yPosition = this.drawVendorDeliveryInfo(page, data, font, fontBold, yPosition, width);
 
     // Draw Items Table
-    yPosition = await this.drawItemsTable(page, pdfDoc, data, font, fontBold, yPosition, width, height);
+    const itemsResult = await this.drawItemsTable(page, pdfDoc, data, font, fontBold, yPosition, width, height);
+    page = itemsResult.page; // Update page reference (items may have added new pages)
+    yPosition = itemsResult.yPosition;
 
-    // Draw Financial Summary and Terms side by side
-    const summaryStartY = yPosition - 10;
-    if (summaryStartY < 300) {
+    // Draw Financial Summary and Terms — ensure enough space
+    if (yPosition < 300) {
       page = pdfDoc.addPage([595, 842]);
       yPosition = height - 50;
     }
@@ -188,9 +189,11 @@ export class WorldClassPoPdfService {
     }
     this.drawSignatureSection(page, data, font, fontBold, yPosition, width);
 
-    // Draw Footer on all pages
+    // Draw Footer on pages (skip letterhead page which has its own footer)
     const pages = pdfDoc.getPages();
+    const hasLetterhead = fs.existsSync(letterheadPath);
     pages.forEach((p, index) => {
+      if (hasLetterhead && index === 0) return; // Skip footer on letterhead page
       this.drawFooter(p, font, data, index + 1, pages.length);
     });
 
@@ -415,7 +418,8 @@ export class WorldClassPoPdfService {
 
     vendorDetails.forEach((detail) => {
       const text = detail.label ? `${detail.label} ${detail.value}` : detail.value;
-      page.drawText(text!, {
+      const truncatedText = this.truncate(text!, 45); // Constrain to vendor box width
+      page.drawText(truncatedText, {
         x: leftBox + 5,
         y: vendorY,
         size: detail.bold ? 10 : 9,
@@ -452,21 +456,25 @@ export class WorldClassPoPdfService {
 
     let deliveryY = yPosition - 35;
     const deliveryDetails = [
-      data.companyName,
-      data.deliveryAddress || data.companyAddress,
-      `${data.deliveryCity || data.companyCity || ''}, ${data.deliveryState || data.companyState || ''} - ${data.deliveryPincode || data.companyPincode || ''}`,
-      data.deliveryContactPerson ? `Contact: ${data.deliveryContactPerson}` : null,
-      data.deliveryPhone ? `Phone: ${data.deliveryPhone}` : null,
+      { text: data.companyName, bold: true },
+      { text: data.deliveryAddress || data.companyAddress, bold: false },
+      { text: `${data.deliveryCity || data.companyCity || ''}, ${data.deliveryState || data.companyState || ''} - ${data.deliveryPincode || data.companyPincode || ''}`, bold: false },
+      data.companyGSTIN ? { text: `GSTIN: ${data.companyGSTIN}`, bold: false } : null,
+      data.deliveryContactPerson ? { text: `Contact: ${data.deliveryContactPerson}`, bold: false } : null,
+      data.deliveryPhone ? { text: `Phone: ${data.deliveryPhone}`, bold: false } : null,
     ].filter(Boolean);
 
     deliveryDetails.forEach((detail) => {
-      page.drawText(detail!, {
-        x: rightBox + 5,
-        y: deliveryY,
-        size: 9,
-        font,
+      const wrappedLines = this.wrapText(detail!.text, 45);
+      wrappedLines.forEach((line) => {
+        page.drawText(line, {
+          x: rightBox + 5,
+          y: deliveryY,
+          size: detail!.bold ? 10 : 9,
+          font: detail!.bold ? fontBold : font,
+        });
+        deliveryY -= 11;
       });
-      deliveryY -= 11;
     });
 
     return yPosition - boxHeight - 20;
@@ -481,7 +489,7 @@ export class WorldClassPoPdfService {
     yPosition: number,
     width: number,
     height: number,
-  ): Promise<number> {
+  ): Promise<{ page: PDFPage; yPosition: number }> {
     const margin = 40;
     const tableWidth = width - (margin * 2);
     
@@ -525,8 +533,8 @@ export class WorldClassPoPdfService {
     for (let i = 0; i < data.items.length; i++) {
       const item = data.items[i];
 
-      // Check if we need a new page
-      if (yPosition < 150) {
+      // Check if we need a new page (120 leaves room for letterhead footer)
+      if (yPosition < 120) {
         currentPage = pdfDoc.addPage([595, 842]);
         yPosition = height - 50;
         
@@ -653,7 +661,7 @@ export class WorldClassPoPdfService {
       color: this.COLORS.border,
     });
 
-    return yPosition - 10;
+    return { page: currentPage, yPosition: yPosition - 10 };
   }
 
   private drawFinancialSummary(
@@ -750,8 +758,8 @@ export class WorldClassPoPdfService {
     yPosition: number,
     width: number,
   ): number {
-    // Terms section stays on the left side only (max width: 300 to avoid financial summary)
-    const maxTextWidth = 290;
+    // Terms section starts BELOW the financial summary box (which is ~170px tall)
+    yPosition -= 170;
     
     page.drawText('TERMS & CONDITIONS', {
       x: 50,
@@ -988,6 +996,27 @@ export class WorldClassPoPdfService {
 
   private truncate(text: string, maxLength: number): string {
     return text.length > maxLength ? text.substring(0, maxLength - 2) + '..' : text;
+  }
+
+  private wrapText(text: string, maxLength: number): string[] {
+    if (text.length <= maxLength) return [text];
+    
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let currentLine = '';
+    
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      if (testLine.length <= maxLength) {
+        currentLine = testLine;
+      } else {
+        if (currentLine) lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+    
+    return lines;
   }
 
   private numberToWords(num: number): string {

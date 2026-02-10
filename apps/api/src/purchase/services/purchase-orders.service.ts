@@ -835,8 +835,8 @@ export class PurchaseOrdersService {
       paymentTerms: po.payment_terms,
       deliveryDate: po.delivery_date,
       remarks: po.remarks,
-      companyName: 'SAK Engineering Works', // You can make this configurable
-      companyAddress: 'Your Company Address', // You can make this configurable
+      companyName: 'SAIF AUTOMATIONS SERVICES LLP',
+      companyAddress: '1st Floor, Nasscom CoE-IOT, Sunrise Incubations Hub, Hill 3, Rushikonda, Visakhapatnam-530045',
     });
 
     const pdfFilename = this.poPdfService.generateFilename(po.po_number);

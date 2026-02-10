@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import DrawingManager from '../../../../components/DrawingManager';
@@ -255,7 +255,16 @@ export default function ItemsPage() {
     'BOX', 'SET', 'PACK', 'ROLL', 'SHEET', 'FEET', 'INCH'
   ];
 
-  const productCategoryOptions = ['Batteries', 'Capacitor', 'Resistor'];
+  // Dynamically get unique product categories from items
+  const productCategoryOptions = useMemo(() => {
+    const uniqueCategories = new Set<string>();
+    items.forEach(item => {
+      if (item.product_category && item.product_category.trim()) {
+        uniqueCategories.add(item.product_category);
+      }
+    });
+    return Array.from(uniqueCategories).sort();
+  }, [items]);
 
   useEffect(() => {
     fetchItems();

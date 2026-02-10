@@ -167,15 +167,15 @@ export class PurchaseOrdersController {
         vendorPhone: po.vendor?.phone,
         vendorContactPerson: po.vendor?.contact_person,
 
-        // Company Details - You should fetch from config or tenant settings
-        companyName: 'SAK AUTOMATIONS',
-        companyAddress: 'Your Company Address',
-        companyCity: 'Chennai',
-        companyState: 'Tamil Nadu',
-        companyPincode: '600001',
-        companyGSTIN: 'YOUR_GSTIN',
-        companyEmail: 'info@sakautomations.com',
-        companyPhone: '+91 XXX XXX XXXX',
+        // Company Details (Delivery Address - Works)
+        companyName: 'SAIF AUTOMATIONS SERVICES LLP',
+        companyAddress: '1st Floor, Nasscom CoE-IOT, Sunrise Incubations Hub, Hill 3, Rushikonda',
+        companyCity: 'Visakhapatnam',
+        companyState: 'Andhra Pradesh',
+        companyPincode: '530045',
+        companyGSTIN: '37ADSFS6370G1ZG',
+        companyEmail: 'saif.automations@gmail.com',
+        companyPhone: '0891-6662153',
 
         // Items
         items: (po.purchase_order_items || po.items || []).map((item: any, index: number) => ({

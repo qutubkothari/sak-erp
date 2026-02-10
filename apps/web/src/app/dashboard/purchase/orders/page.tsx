@@ -1395,8 +1395,9 @@ function PurchaseOrdersContent() {
       a.download = `PO-${poId}.pdf`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      // Delay revoke to let browser finish downloading
+      setTimeout(() => window.URL.revokeObjectURL(url), 30000);
 
       setAlertMessage({
         type: 'success',
@@ -1431,8 +1432,8 @@ function PurchaseOrdersContent() {
       // Open in new window
       window.open(url, '_blank');
       
-      // Clean up after a delay
-      setTimeout(() => URL.revokeObjectURL(url), 100);
+      // Don't revoke quickly — user may click download in the PDF viewer tab
+      setTimeout(() => URL.revokeObjectURL(url), 300000);
     } catch (error: any) {
       console.error('Error viewing PDF:', error);
       setAlertMessage({
