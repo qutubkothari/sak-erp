@@ -52,12 +52,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             return null;
           }
 
-          // Return user object
+          // Return user object with normalized role (convert to lowercase)
           return {
             id: user.id,
             email: user.email,
             name: user.employee ? `${user.employee.firstName} ${user.employee.lastName}` : user.email,
-            role: user.role,
+            role: user.role.toLowerCase(), // Normalize role to lowercase  
             employeeId: user.employee?.id,
             department: user.employee?.department?.name,
             jobRole: user.employee?.role?.title,

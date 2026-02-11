@@ -87,7 +87,7 @@ export default function ItemsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
   const [showDrawingManager, setShowDrawingManager] = useState(false);
@@ -918,11 +918,11 @@ export default function ItemsPage() {
     const matchesSearch = 
       item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = !categoryFilter || item.category === categoryFilter;
+    const matchesType = !typeFilter || item.category === typeFilter;
     const matchesProductCategory = !productCategoryFilter || item.product_category === productCategoryFilter;
     // When showDeleted is true, show only inactive items. When false, show only active items.
     const matchesActiveStatus = showDeleted ? !item.is_active : item.is_active;
-    return matchesSearch && matchesCategory && matchesProductCategory && matchesActiveStatus;
+    return matchesSearch && matchesType && matchesProductCategory && matchesActiveStatus;
   });
 
   // Sorting
@@ -1003,7 +1003,7 @@ export default function ItemsPage() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, categoryFilter, productCategoryFilter, showDeleted]);
+  }, [searchTerm, typeFilter, productCategoryFilter, showDeleted]);
 
   const normalizedItemUom = String(formData.uom || '')
     .trim()
@@ -1160,11 +1160,11 @@ export default function ItemsPage() {
           )}
         </div>
         <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
           className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
         >
-          <option value="">All Categories</option>
+          <option value="">All Types</option>
           {categories.map(cat => (
             <option key={cat.id} value={cat.name}>{cat.name.replace(/_/g, ' ')}</option>
           ))}
