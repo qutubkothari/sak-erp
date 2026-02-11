@@ -58,7 +58,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       await prisma.user.update({
         where: { id: existingUser.id },
         data: {
-          password: hashed,
+          passwordHash: hashed,
           email: body.email ?? existingUser.email,
         },
       });
@@ -66,7 +66,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       await prisma.user.create({
         data: {
           email: employee.email,
-          password: hashed,
+          passwordHash: hashed,
           role: 'employee',
           employeeId: employee.id,
         },
