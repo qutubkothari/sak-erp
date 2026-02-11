@@ -60,6 +60,15 @@ enum EvidenceStage {
   HR_REVIEW
 }
 
+enum UserRole {
+  OWNER
+  ADMIN
+  MANAGER
+  SALESMAN
+
+  @@map("Role")
+}
+
 model Department {
   id        String     @id @default(uuid())
   name      String     @unique
@@ -72,7 +81,7 @@ model User {
   tenantId      String?   @map("tenantId")
   email         String    @unique
   passwordHash  String    @map("passwordHash")
-  role          String    @default("employee")
+  role          UserRole  @default(SALESMAN)
   displayName   String?   @map("displayName")
   active        Boolean   @default(true)
   phone         String?
