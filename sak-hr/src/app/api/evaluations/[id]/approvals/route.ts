@@ -45,13 +45,11 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   });
 
   if (evaluation) {
-    const approverUser = body.approverId
-      ? await prisma.user.findFirst({ where: { employeeId: body.approverId }, select: { id: true } })
-      : null;
+    // Note: User-Employee linking is disabled - approverUser tracking removed
     await prisma.evaluationActivity.create({
       data: {
         evaluationId: evaluation.id,
-        actorId: approverUser?.id ?? null,
+        actorId: null,
         action: 'APPROVAL_UPDATED',
         details: {
           stage: body.stage,
@@ -84,80 +82,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   }
 
   if (evaluation) {
-    const managerId = evaluation.employee?.managerId;
-    const users = await prisma.user.findMany({
-      where: {
-        OR: [
-          { employeeId: evaluation.employeeId },
-          { employeeId: managerId ?? '' },
-          { role: { in: ['admin', 'hr'] } },
-        ],
-      },
-      select: { id: true, employeeId: true, role: true },
-    });
-
-    const userByEmployeeId = new Map(users.map((user) => [user.employeeId, user.id]));
-    const hrUserIds = users.filter((user) => ['admin', 'hr'].includes(user.role)).map((user) => user.id);
-
-    const notifications: Prisma.NotificationCreateManyInput[] = [];
-
-    if (body.stage === 'MANAGER' && body.status === 'APPROVED') {
-      hrUserIds.forEach((userId) => {
-        notifications.push({
-          userId,
-          type: 'approval_needed',
-          title: 'HR approval needed',
-          message: `${evaluation.employee?.firstName} ${evaluation.employee?.lastName} is ready for HR approval.`,
-          actionUrl: '/performance/evaluations',
-          metadata: { evaluationId: evaluation.id, cycleId: evaluation.cycleId },
-        });
-      });
-    }
-
-    if (body.stage === 'HR' && body.status === 'APPROVED') {
-      const employeeUserId = userByEmployeeId.get(evaluation.employeeId);
-      if (employeeUserId) {
-        notifications.push({
-          userId: employeeUserId,
-          type: 'rating_published',
-          title: 'Evaluation finalized',
-          message: `Your evaluation for ${evaluation.cycle?.name ?? 'the review cycle'} has been finalized.`,
-          actionUrl: '/performance/evaluations',
-          metadata: { evaluationId: evaluation.id, cycleId: evaluation.cycleId },
-        });
-      }
-    }
-
-    if (body.status === 'REJECTED') {
-      const employeeUserId = userByEmployeeId.get(evaluation.employeeId);
-      if (employeeUserId) {
-        notifications.push({
-          userId: employeeUserId,
-          type: 'review_reminder',
-          title: 'Review needs attention',
-          message: `Your evaluation requires updates after ${body.stage.toLowerCase()} review.`,
-          actionUrl: `/performance/self-assessment?evaluationId=${evaluation.id}`,
-          metadata: { evaluationId: evaluation.id, cycleId: evaluation.cycleId },
-        });
-      }
-      if (managerId) {
-        const managerUserId = userByEmployeeId.get(managerId);
-        if (managerUserId) {
-          notifications.push({
-            userId: managerUserId,
-            type: 'review_reminder',
-            title: 'Review needs attention',
-            message: `The evaluation for ${evaluation.employee?.firstName} ${evaluation.employee?.lastName} was rejected in ${body.stage.toLowerCase()} review.`,
-            actionUrl: '/performance/manager-review',
-            metadata: { evaluationId: evaluation.id, cycleId: evaluation.cycleId },
-          });
-        }
-      }
-    }
-
-    if (notifications.length) {
-      await prisma.notification.createMany({ data: notifications });
-    }
+    // Note: Notification system disabled due to User-Employee unlinking
+    // TODO: Implement notification system based on email or alternative approach
   }
 
   return NextResponse.json({ success: true });

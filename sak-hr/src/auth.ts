@@ -50,9 +50,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             email: user.email,
             name: user.displayName || user.email,
             role: user.role.toLowerCase(), // Normalize role to lowercase  
-            employeeId: null,
-            department: null,
-            jobRole: null,
           };
         } catch (error) {
           console.error('Auth error:', error);

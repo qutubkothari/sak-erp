@@ -61,14 +61,12 @@ export async function POST(request: Request) {
     },
   });
 
-  const managerUser = body.managerId
-    ? await prisma.user.findFirst({ where: { employeeId: body.managerId }, select: { id: true } })
-    : null;
-
+  // Note: User-Employee linking is disabled
+  // TODO: Track activity with email-based user lookup
   await prisma.evaluationActivity.create({
     data: {
       evaluationId: body.evaluationId,
-      actorId: managerUser?.id ?? null,
+      actorId: null,
       action: 'MANAGER_REVIEW_SUBMITTED',
       details: { overallRating: body.overallRating },
     },

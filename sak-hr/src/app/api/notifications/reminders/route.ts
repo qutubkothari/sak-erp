@@ -24,56 +24,8 @@ export async function POST() {
     return NextResponse.json({ overdue: 0, sent: 0 });
   }
 
-  const employeeIds = overdueEvaluations.map((evaluation) => evaluation.employeeId);
-  const managerIds = overdueEvaluations
-    .map((evaluation) => evaluation.employee?.managerId)
-    .filter((id): id is string => Boolean(id));
+  // Note: Notification system disabled due to User-Employee unlinking
+  // TODO: Implement notification system based on email or alternative approach
 
-  const users = await prisma.user.findMany({
-    where: { employeeId: { in: [...employeeIds, ...managerIds] } },
-    select: { id: true, employeeId: true },
-  });
-
-  const userByEmployeeId = new Map(users.map((user) => [user.employeeId, user.id]));
-
-  const notifications = overdueEvaluations.flatMap((evaluation) => {
-    const employeeUserId = userByEmployeeId.get(evaluation.employeeId);
-    const managerUserId = evaluation.employee?.managerId
-      ? userByEmployeeId.get(evaluation.employee.managerId)
-      : undefined;
-
-    const entries: Prisma.NotificationCreateManyInput[] = [];
-
-    if (employeeUserId) {
-      entries.push({
-        userId: employeeUserId,
-        type: 'review_reminder',
-        title: 'Self-assessment overdue',
-        message: `Your self-assessment for ${evaluation.cycle?.name ?? 'the review cycle'} is overdue.`,
-        actionUrl: `/performance/self-assessment?evaluationId=${evaluation.id}`,
-        metadata: { evaluationId: evaluation.id, cycleId: evaluation.cycleId },
-      });
-    }
-
-    if (managerUserId) {
-      entries.push({
-        userId: managerUserId,
-        type: 'review_reminder',
-        title: 'Self-assessment overdue',
-        message: `${evaluation.employee?.firstName} ${evaluation.employee?.lastName} has an overdue self-assessment.`,
-        actionUrl: '/performance/manager-dashboard',
-        metadata: { evaluationId: evaluation.id, employeeId: evaluation.employeeId, cycleId: evaluation.cycleId },
-      });
-    }
-
-    return entries;
-  });
-
-  if (!notifications.length) {
-    return NextResponse.json({ overdue: overdueEvaluations.length, sent: 0 });
-  }
-
-  await prisma.notification.createMany({ data: notifications });
-
-  return NextResponse.json({ overdue: overdueEvaluations.length, sent: notifications.length });
+  return NextResponse.json({ overdue: overdueEvaluations.length, sent: 0 });
 }

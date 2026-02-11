@@ -69,19 +69,14 @@ export async function POST(request: Request) {
     },
   });
 
-  const managerId = evaluation.employee?.managerId;
-  const users = await prisma.user.findMany({
-    where: { employeeId: { in: [evaluation.employeeId, managerId || ''] } },
-    select: { id: true, employeeId: true },
-  });
-  const userByEmployeeId = new Map(users.map((user) => [user.employeeId, user.id]));
-  const employeeUserId = userByEmployeeId.get(evaluation.employeeId);
+  // Note: Notification system disabled due to User-Employee unlinking
+  // TODO: Implement notification system based on email or alternative approach
 
   if (!submit) {
     await prisma.evaluationActivity.create({
       data: {
         evaluationId: evaluation.id,
-        actorId: employeeUserId ?? null,
+        actorId: null,
         action: 'SELF_ASSESSMENT_DRAFT_SAVED',
         details: { evaluationId: evaluation.id, cycleId: evaluation.cycleId },
       },
@@ -107,43 +102,17 @@ export async function POST(request: Request) {
     data: { status: 'MANAGER_REVIEW' },
   });
 
-  const notifications: Prisma.NotificationCreateManyInput[] = [];
-
-  const managerUserId = managerId ? userByEmployeeId.get(managerId) : undefined;
-  if (managerUserId) {
-    notifications.push({
-      userId: managerUserId,
-      type: 'approval_needed',
-      title: 'Self-assessment submitted',
-      message: `${evaluation.employee?.firstName} ${evaluation.employee?.lastName} submitted their self-assessment.`,
-      actionUrl: `/performance/manager-review?evaluationId=${evaluation.id}`,
-      metadata: { evaluationId: evaluation.id, cycleId: evaluation.cycleId },
-    });
-  }
-
-  if (employeeUserId) {
-    notifications.push({
-      userId: employeeUserId,
-      type: 'review_reminder',
-      title: 'Self-assessment submitted',
-      message: `Your self-assessment for ${evaluation.cycle?.name ?? 'the review cycle'} was submitted.`,
-      actionUrl: `/performance/self-assessment?evaluationId=${evaluation.id}`,
-      metadata: { evaluationId: evaluation.id, cycleId: evaluation.cycleId },
-    });
-  }
+  // Note: Notification system disabled due to User-Employee unlinking
+  // TODO: Implement notification system based on email or alternative approach
 
   await prisma.evaluationActivity.create({
     data: {
       evaluationId: evaluation.id,
-      actorId: employeeUserId ?? null,
+      actorId: null,
       action: 'SELF_ASSESSMENT_SUBMITTED',
       details: { evaluationId: evaluation.id, cycleId: evaluation.cycleId },
     },
   });
-
-  if (notifications.length) {
-    await prisma.notification.createMany({ data: notifications });
-  }
 
   return NextResponse.json(assessment, { status: 201 });
 }
