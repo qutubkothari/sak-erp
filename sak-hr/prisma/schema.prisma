@@ -69,9 +69,13 @@ model Department {
 
 model User {
   id            String    @id @default(uuid())
+  tenantId      String?   @map("tenantId")
   email         String    @unique
-  password      String
+  passwordHash  String    @map("passwordHash")
   role          String    @default("employee")
+  displayName   String?   @map("displayName")
+  active        Boolean   @default(true)
+  phone         String?
   employeeId    String?   @unique
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

@@ -193,16 +193,8 @@ export default function LoginPage() {
             </p>
             <div className="space-y-1 text-xs text-[#36454F]">
               <p>
-                <span className="font-medium">Admin:</span> admin@sakhr.com /
-                admin123
-              </p>
-              <p>
-                <span className="font-medium">Manager:</span> manager@sakhr.com
-                / manager123
-              </p>
-              <p>
-                <span className="font-medium">Employee:</span> employee@sakhr.com
-                / employee123
+                <span className="font-medium">Admin:</span> admin@sak.com /
+                demo123
               </p>
             </div>
           </div>

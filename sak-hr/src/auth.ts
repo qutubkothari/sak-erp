@@ -42,12 +42,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             },
           });
 
-          if (!user || !user.password) {
+          if (!user || !user.passwordHash) {
             return null;
           }
 
           // Verify password
-          const isValid = await bcrypt.compare(password, user.password);
+          const isValid = await bcrypt.compare(password, user.passwordHash);
           if (!isValid) {
             return null;
           }
