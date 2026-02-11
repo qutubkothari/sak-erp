@@ -68,17 +68,8 @@ export async function POST(request: Request) {
     },
   });
 
-  if (body.password) {
-    const hashed = await bcrypt.hash(body.password, 10);
-    await prisma.user.create({
-      data: {
-        email: body.email,
-        passwordHash: hashed,
-        role: 'employee',
-        employeeId: employee.id,
-      },
-    });
-  }
+  // Note: User accounts are managed separately and not linked to Employee records
+  // Users can be created through the admin interface with proper credentials
 
   return NextResponse.json(employee, { status: 201 });
 }

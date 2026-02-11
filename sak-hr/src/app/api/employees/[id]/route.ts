@@ -50,29 +50,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     },
   });
 
-  if (body.password) {
-    const hashed = await bcrypt.hash(body.password, 10);
-    const existingUser = await prisma.user.findFirst({ where: { employeeId: id } });
-
-    if (existingUser) {
-      await prisma.user.update({
-        where: { id: existingUser.id },
-        data: {
-          passwordHash: hashed,
-          email: body.email ?? existingUser.email,
-        },
-      });
-    } else if (employee.email) {
-      await prisma.user.create({
-        data: {
-          email: employee.email,
-          passwordHash: hashed,
-          role: 'employee',
-          employeeId: employee.id,
-        },
-      });
-    }
-  }
+  // Note: User accounts are managed separately and not linked to Employee records
+  // Users can be created through the admin interface with proper credentials
 
   return NextResponse.json(employee);
 }

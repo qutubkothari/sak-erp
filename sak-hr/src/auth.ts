@@ -32,14 +32,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           // Find user by email
           const user = await prisma.user.findUnique({
             where: { email },
-            include: {
-              employee: {
-                include: {
-                  department: true,
-                  role: true,
-                },
-              },
-            },
           });
 
           if (!user || !user.passwordHash) {
@@ -56,11 +48,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return {
             id: user.id,
             email: user.email,
-            name: user.employee ? `${user.employee.firstName} ${user.employee.lastName}` : user.email,
+            name: user.displayName || user.email,
             role: user.role.toLowerCase(), // Normalize role to lowercase  
-            employeeId: user.employee?.id,
-            department: user.employee?.department?.name,
-            jobRole: user.employee?.role?.title,
+            employeeId: null,
+            department: null,
+            jobRole: null,
           };
         } catch (error) {
           console.error('Auth error:', error);
@@ -78,41 +70,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.department = user.department;
         token.jobRole = user.jobRole;
       }
-      if (!token.employeeId && token.id) {
-        const dbUser = await prisma.user.findUnique({
-          where: { id: token.id as string },
-          include: {
-            employee: {
-              include: {
-                department: true,
-                role: true,
-              },
-            },
-          },
-        });
-
-        if (dbUser?.employeeId) {
-          token.employeeId = dbUser.employeeId;
-          token.department = dbUser.employee?.department?.name ?? undefined;
-          token.jobRole = dbUser.employee?.role?.title ?? undefined;
-        }
-      }
-
-      const jobRole = (token.jobRole || '').toString().toLowerCase();
-      const managerKeywords = ['manager', 'lead', 'supervisor', 'head'];
-      let inferredManager = managerKeywords.some((keyword) => jobRole.includes(keyword));
-
-      if (!inferredManager && token.employeeId) {
-        const reportCount = await prisma.employee.count({
-          where: { managerId: token.employeeId as string },
-        });
-        inferredManager = reportCount > 0;
-      }
-
-      if (token.role === 'employee' && inferredManager) {
-        token.role = 'manager';
-      }
-
       return token;
     },
     async session({ session, token }) {
