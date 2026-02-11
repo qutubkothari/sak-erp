@@ -122,7 +122,6 @@ model Employee {
   appraisalLettersApproved AppraisalLetter[] @relation("AppraisalLetterApprover")
   improvementPlansApproved ImprovementPlan[] @relation("ImprovementPlanApprover")
   evidenceUploads EvaluationEvidence[] @relation("EvidenceUploadedBy")
-  user User?
   managerReviews ManagerReview[]
   goals Goal[]
 }
