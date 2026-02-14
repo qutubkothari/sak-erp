@@ -91,6 +91,23 @@ interface JobOrder {
   createdAt: string;
 }
 
+interface SalesOrderOption {
+  id: string;
+  soNumber: string;
+  customerName?: string;
+  status: string;
+}
+
+interface SalesOrderItemOption {
+  id: string;
+  itemId: string;
+  itemLabel: string;
+  orderedQty: number;
+  dispatchedQty: number;
+  blockedQty: number;
+  remainingQty: number;
+}
+
 interface JobOrderUID {
   uid: string;
   quality_status?: string;
@@ -164,6 +181,8 @@ function JobOrdersPageContent() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [stockErrorModal, setStockErrorModal] = useState<{show: boolean, shortages: any[]}>({show: false, shortages: []});
   const [itemStockSummaryById, setItemStockSummaryById] = useState<Record<string, ItemStockSummary>>({});
+  const [openSalesOrders, setOpenSalesOrders] = useState<SalesOrderOption[]>([]);
+  const [salesOrderItems, setSalesOrderItems] = useState<SalesOrderItemOption[]>([]);
 
   // QC modal state
   const [showQcModal, setShowQcModal] = useState(false);
@@ -192,6 +211,8 @@ function JobOrdersPageContent() {
   const [formData, setFormData] = useState({
     itemId: '',
     bomId: '',
+    salesOrderId: '',
+    salesOrderItemId: '',
     quantity: 1,
     startDate: new Date().toISOString().split('T')[0],
     endDate: '',
@@ -241,6 +262,7 @@ function JobOrdersPageContent() {
     fetchWorkstations();
     fetchUsers();
     fetchAllBoms();
+    fetchOpenSalesOrders();
     console.log('Initial data fetch triggered');
   }, []);
 
@@ -535,6 +557,75 @@ function JobOrdersPageContent() {
     }
   };
 
+  const fetchOpenSalesOrders = async () => {
+    try {
+      const rows = await apiClient.get('/sales/orders');
+      const openStatuses = new Set(['CONFIRMED', 'IN_PRODUCTION', 'READY_TO_DISPATCH', 'PENDING_APPROVAL', 'APPROVED']);
+      const mapped = (Array.isArray(rows) ? rows : [])
+        .map((row: any) => ({
+          id: String(row?.id || ''),
+          soNumber: String(row?.so_number || row?.soNumber || ''),
+          customerName: String(row?.customer_name || row?.customerName || ''),
+          status: String(row?.status || ''),
+        }))
+        .filter((row) => row.id && openStatuses.has(row.status));
+      setOpenSalesOrders(mapped);
+    } catch (error) {
+      console.error('Error fetching open sales orders:', error);
+      setOpenSalesOrders([]);
+    }
+  };
+
+  const fetchSalesOrderItemsWithBlocked = async (salesOrderId: string) => {
+    if (!salesOrderId) {
+      setSalesOrderItems([]);
+      return;
+    }
+
+    try {
+      const [so, mappedJobOrders] = await Promise.all([
+        apiClient.get(`/sales/orders/${salesOrderId}`),
+        apiClient.get('/job-orders', { salesOrderId }),
+      ]);
+
+      const blockedBySoItemId = new Map<string, number>();
+      (Array.isArray(mappedJobOrders) ? mappedJobOrders : []).forEach((jo: any) => {
+        const status = String(jo?.status || '').toUpperCase();
+        if (status === 'COMPLETED' || status === 'CANCELLED') return;
+        const soItemId = String(jo?.sales_order_item_id || jo?.salesOrderItemId || '').trim();
+        if (!soItemId) return;
+        blockedBySoItemId.set(soItemId, (blockedBySoItemId.get(soItemId) || 0) + (Number(jo?.quantity || 0) || 0));
+      });
+
+      const items = ((so as any)?.sales_order_items || (so as any)?.items || []) as any[];
+      const mappedItems = (Array.isArray(items) ? items : [])
+        .map((row: any) => {
+          const id = String(row?.id || '');
+          const orderedQty = Number(row?.quantity || 0) || 0;
+          const dispatchedQty = Number(row?.dispatched_quantity || 0) || 0;
+          const blockedQty = Number(blockedBySoItemId.get(id) || 0) || 0;
+          const remainingQty = Math.max(0, orderedQty - dispatchedQty - blockedQty);
+          const itemCode = String(row?.item_code || '').trim();
+          const itemDescription = String(row?.item_description || '').trim();
+          return {
+            id,
+            itemId: String(row?.item_id || ''),
+            itemLabel: [itemCode, itemDescription].filter(Boolean).join(' - ') || id,
+            orderedQty,
+            dispatchedQty,
+            blockedQty,
+            remainingQty,
+          };
+        })
+        .filter((row) => row.id && row.itemId);
+
+      setSalesOrderItems(mappedItems);
+    } catch (error) {
+      console.error('Error fetching sales order items for mapping:', error);
+      setSalesOrderItems([]);
+    }
+  };
+
   const fetchWorkstations = async () => {
     try {
       const data = await apiClient.get('/production/work-stations');
@@ -594,6 +685,31 @@ function JobOrdersPageContent() {
     });
     setBoms(filtered);
   }, [bomSearchTerm, allBoms]);
+
+  useEffect(() => {
+    if (!formData.salesOrderId) {
+      setSalesOrderItems([]);
+      if (formData.salesOrderItemId) {
+        setFormData((prev) => ({ ...prev, salesOrderItemId: '' }));
+      }
+      return;
+    }
+    void fetchSalesOrderItemsWithBlocked(formData.salesOrderId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.salesOrderId]);
+
+  useEffect(() => {
+    if (!formData.salesOrderItemId) return;
+    const selected = salesOrderItems.find((row) => row.id === formData.salesOrderItemId);
+    if (!selected) return;
+
+    setFormData((prev) => {
+      const next: any = { ...prev };
+      if (!prev.itemId) next.itemId = selected.itemId;
+      if (!prev.quantity || prev.quantity <= 1) next.quantity = Math.max(1, Math.floor(selected.remainingQty || 1));
+      return next;
+    });
+  }, [formData.salesOrderItemId, salesOrderItems]);
 
   const fetchBOMData = async (bomId: string) => {
     if (!bomId) return;
@@ -839,6 +955,8 @@ function JobOrdersPageContent() {
       const payload: any = {
         itemId: formData.itemId,
         bomId: formData.bomId || undefined,
+        salesOrderId: formData.salesOrderId || undefined,
+        salesOrderItemId: formData.salesOrderItemId || undefined,
         quantity: formData.quantity,
         startDate: formData.startDate,
         priority: formData.priority,
@@ -1046,6 +1164,8 @@ function JobOrdersPageContent() {
     setFormData({
       itemId: '',
       bomId: '',
+      salesOrderId: '',
+      salesOrderItemId: '',
       quantity: 1,
       startDate: new Date().toISOString().split('T')[0],
       endDate: '',
@@ -1739,6 +1859,45 @@ function JobOrdersPageContent() {
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">ℹ️ Item is automatically set when you select a BOM</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Sales Order Mapping (Optional)</label>
+                <select
+                  value={formData.salesOrderId}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      salesOrderId: e.target.value,
+                      salesOrderItemId: '',
+                    })
+                  }
+                  className="w-full border rounded px-3 py-2 text-sm"
+                >
+                  <option value="">-- No Sales Order mapping --</option>
+                  {openSalesOrders.map((so) => (
+                    <option key={so.id} value={so.id}>
+                      {so.soNumber} - {so.customerName || 'Customer'} ({so.status})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Sales Order Item (Optional)</label>
+                <select
+                  value={formData.salesOrderItemId}
+                  onChange={(e) => setFormData({ ...formData, salesOrderItemId: e.target.value })}
+                  className="w-full border rounded px-3 py-2 text-sm"
+                  disabled={!formData.salesOrderId}
+                >
+                  <option value="">-- No specific line item --</option>
+                  {salesOrderItems.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.itemLabel} | Ordered {row.orderedQty} | Dispatched {row.dispatchedQty} | Blocked {row.blockedQty} | Open {row.remainingQty}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

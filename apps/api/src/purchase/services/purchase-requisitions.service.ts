@@ -269,6 +269,32 @@ export class PurchaseRequisitionsService {
       console.warn('PR UOM response backfill failed:', (e as any)?.message || e);
     }
 
+    try {
+      const prData: any = data as any;
+      const approverId = String(prData?.approved_by || '').trim();
+
+      if (approverId) {
+        const { data: approver } = await this.supabase
+          .from('users')
+          .select('id, first_name, last_name, email')
+          .eq('id', approverId)
+          .maybeSingle();
+
+        if (approver) {
+          const firstName = String((approver as any).first_name || '').trim();
+          const lastName = String((approver as any).last_name || '').trim();
+          const email = String((approver as any).email || '').trim();
+
+          prData.approved_by_name =
+            [firstName, lastName].filter(Boolean).join(' ').trim() ||
+            email ||
+            null;
+        }
+      }
+    } catch (e) {
+      console.warn('PR approver name resolution failed:', (e as any)?.message || e);
+    }
+
     return data;
   }
 

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "2b349c0e-a6e1-4f03-85f1-12a304284836",
+    "code": "MAHAVIR STATIONERY WORLD",
+    "name": "MAHAVIR STATIONERY WORLD",
+    "phone": "CREDIT",
+    "payment_terms": "NET_30",
+    "email": null
+  },
+  {
+    "id": "2ce7509f-9709-457f-a122-fef67e1501a6",
+    "code": "KWICKBOX RETAIL PVT LTD",
+    "name": "KWICKBOX RETAIL PVT LTD",
+    "phone": "AGAINST INVOICE",
+    "payment_terms": "NET_30",
+    "email": null
+  },
+  {
+    "id": "3f86ad09-1afa-4717-b675-32a8d1357fe5",
+    "code": "DAZZLE ROBOTICS PVT.LTD.",
+    "name": "DAZZLE ROBOTICS PVT.LTD.",
+    "phone": "AGAINST INVOICE",
+    "payment_terms": "NET_30",
+    "email": "support@robokits.co.in"
+  },
+  {
+    "id": "41d564c7-921b-4134-ab4e-bd324b84909a",
+    "code": "M/s INDUSTRIAL MARINE & HARDWARE",
+    "name": "M/s INDUSTRIAL MARINE & HARDWARE",
+    "phone": "CREDIT",
+    "payment_terms": "NET_30",
+    "email": null
+  },
+  {
+    "id": "420a5da8-255d-430e-a3a0-9e99f769e436",
+    "code": "CALCUTTA ASBESTOS & BELTING CO",
+    "name": "CALCUTTA ASBESTOS & BELTING CO",
+    "phone": "CREDIT",
+    "payment_terms": "NET_30",
+    "email": "cabcocal@yahoo.co.in"
+  },
+  {
+    "id": "44425459-d47b-42a0-b62c-b3d12ec7696a",
+    "code": "ATLANTIS ROBOTICS P LTD",
+    "name": "ATLANTIS ROBOTICS P LTD",
+    "phone": "AGAINST INVOICE",
+    "payment_terms": "NET_30",
+    "email": null
+  },
+  {
+    "id": "785be5b4-3db9-408f-b8a4-41e561b7bbb9",
+    "code": "DHL EXPRESS (INDIA) PVT.LTD.",
+    "name": "DHL EXPRESS (INDIA) PVT.LTD.",
+    "phone": "AGAINST INVOICE",
+    "payment_terms": "NET_30",
+    "email": null
+  },
+  {
+    "id": "87dabb91-7d20-4c6c-90e6-049abcfeeb6d",
+    "code": "RAKESH METAL & TUBES",
+    "name": "RAKESH METAL & TUBES",
+    "phone": "AGAINST INVOICE",
+    "payment_terms": "NET_30",
+    "email": "ams_rakesh@yahoo.co.in"
+  },
+  {
+    "id": "98f2a3f4-7637-43bd-aa15-0569b6f7d74c",
+    "code": "A.K.ENTERPRISES",
+    "name": "A.K.ENTERPRISES",
+    "phone": "AGAINST INVOICE",
+    "payment_terms": "NET_30",
+    "email": "akenterprisesvsp999@gmail.com"
+  },
+  {
+    "id": "a9cf0776-1a72-4b63-acd2-b5e252da705e",
+    "code": "DOLPHIN RUBBER INDUSTRIES",
+    "name": "DOLPHIN RUBBER INDUSTRIES",
+    "phone": "CREDIT",
+    "payment_terms": "NET_30",
+    "email": "dri_rubber@yahoo.com"
+  },
+  {
+    "id": "bba65954-f1e0-4339-8851-47831d5f670d",
+    "code": "SUPREME REXINE HOUSING",
+    "name": "SUPREME REXINE HOUSING",
+    "phone": "AGAINST INVOICE",
+    "payment_terms": "NET_30",
+    "email": "lohia.manish@yahoo.in"
+  },
+  {
+    "id": "c18b655e-b4b5-463f-b357-83b65d232e19",
+    "code": "WESTERN INSRUMENTS",
+    "name": "WESTERN INSRUMENTS",
+    "phone": "AGAINST INVOICE",
+    "payment_terms": "NET_30",
+    "email": "sundeepdoshi@rediffmail.com"
+  },
+  {
+    "id": "c41706d6-8e78-462e-96f8-7f20e4bef835",
+    "code": "THINGBITS",
+    "name": "THINGBITS",
+    "phone": "AGAINST INVOICE",
+    "payment_terms": "NET_30",
+    "email": null
+  },
+  {
+    "id": "c7b63040-0e18-4e32-be9b-97405df89feb",
+    "code": "CRESTA INSTRUMENTS",
+    "name": "CRESTA INSTRUMENTS",
+    "phone": "AGAINST INVOICE",
+    "payment_terms": "NET_30",
+    "email": "sales@crestainstruments.com"
+  },
+  {
+    "id": "d6818d6c-79d7-4fe1-ae6e-2082a6c2d6c6",
+    "code": "NUMAKERS ASIA LLP",
+    "name": "NUMAKERS ASIA LLP",
+    "phone": "AGAINST INVOICE",
+    "payment_terms": "NET_30",
+    "email": "sales@numakers.com"
+  }
+]

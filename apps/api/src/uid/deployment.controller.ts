@@ -1,10 +1,12 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { DeploymentService } from './deployment.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { CreateDeploymentDto, UpdateDeploymentDto, PublicDeploymentUpdateDto } from './dto/deployment.dto';
+import { RequireDelete, RequireCreate, RequireUpdate } from '../auth/decorators/permissions.decorator';
 
 @Controller('uid/deployment')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DeploymentController {
   constructor(private readonly deploymentService: DeploymentService) {}
 
@@ -48,6 +50,7 @@ export class DeploymentController {
   }
 
   @Post()
+  @RequireCreate('uid')
   async create(@Request() req: any, @Body() dto: CreateDeploymentDto) {
     return this.deploymentService.createDeployment(
       req.user.tenantId,
@@ -95,6 +98,7 @@ export class DeploymentController {
   }
 
   @Put(':id')
+  @RequireUpdate('uid')
   async update(
     @Request() req: any,
     @Param('id') id: string,
@@ -117,6 +121,7 @@ export class DeploymentController {
   }
 
   @Delete(':id')
+  @RequireDelete('uid')
   async delete(@Request() req: any, @Param('id') id: string) {
     return this.deploymentService.deleteDeployment(req.user.tenantId, id);
   }

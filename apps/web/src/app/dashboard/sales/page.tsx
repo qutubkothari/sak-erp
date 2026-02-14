@@ -1293,21 +1293,37 @@ export default function SalesPage() {
   const openSmartJOForSO = async (order: SalesOrder) => {
     setSmartJOLoading(true);
     try {
-      const so = await apiClient.get<any>(`/sales/orders/${order.id}`);
+      const [so, mappedJobOrders] = await Promise.all([
+        apiClient.get<any>(`/sales/orders/${order.id}`),
+        apiClient.get<any[]>('/job-orders', { salesOrderId: order.id }),
+      ]);
       const soItems = (so?.sales_order_items || so?.items || []) as any[];
+
+      const blockedBySoItemId = new Map<string, number>();
+      for (const jo of Array.isArray(mappedJobOrders) ? mappedJobOrders : []) {
+        const status = String(jo?.status || '').toUpperCase();
+        if (status === 'COMPLETED' || status === 'CANCELLED') continue;
+        const soItemId = String(jo?.sales_order_item_id || jo?.salesOrderItemId || '').trim();
+        if (!soItemId) continue;
+        blockedBySoItemId.set(soItemId, (blockedBySoItemId.get(soItemId) || 0) + (Number(jo?.quantity || 0) || 0));
+      }
 
       const remaining = (Array.isArray(soItems) ? soItems : [])
         .map((soItem) => {
-          const remainingQty = Number(soItem.quantity) - Number(soItem.dispatched_quantity || 0);
+          const blockedQty = Number(blockedBySoItemId.get(String(soItem.id)) || 0);
+          const remainingQty = Number(soItem.quantity) - Number(soItem.dispatched_quantity || 0) - blockedQty;
           return {
             ...soItem,
+            blockedQty,
             remainingQty,
           };
         })
         .filter((soItem) => soItem.item_id && Number(soItem.remainingQty) > 0);
 
       if (remaining.length === 0) {
-        alert('No remaining quantity found in this sales order.');
+        router.push(
+          `/dashboard/production/job-orders/smart-items?salesOrderId=${encodeURIComponent(order.id)}`,
+        );
         return;
       }
 
@@ -1324,7 +1340,7 @@ export default function SalesPage() {
 
       setSmartJOOrder(order);
       setSmartJOSOItems(remaining);
-      setSmartJOSelectedSOItemId(String(remaining[0]?.id || ''));
+  setSmartJOSelectedSOItemId('');
       setShowSmartJOModal(true);
     } catch (err: any) {
       alert(`Failed to load sales order items: ${err?.message || 'Unknown error'}`);
@@ -2817,12 +2833,13 @@ export default function SalesPage() {
               Sales Order: <span className="font-medium text-gray-900">{smartJOOrder.so_number}</span>
             </p>
 
-            <label className="block text-sm font-medium text-gray-700 mb-2">Select Sales Order Item</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Sales Order Item (Optional)</label>
             <select
               value={smartJOSelectedSOItemId}
               onChange={(e) => setSmartJOSelectedSOItemId(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
             >
+              <option value="">No prefill (choose item in Smart Job Order)</option>
               {smartJOSOItems.map((soItem) => {
                 const item = items.find((i) => i.id === soItem.item_id);
                 const label = `${item?.code || soItem.item_id} - Remaining: ${soItem.remainingQty}`;
@@ -2850,11 +2867,20 @@ export default function SalesPage() {
               <button
                 type="button"
                 onClick={() => {
+                  if (!smartJOSelectedSOItemId) {
+                    router.push(
+                      `/dashboard/production/job-orders/smart-items?salesOrderId=${encodeURIComponent(smartJOOrder.id)}`,
+                    );
+                    setShowSmartJOModal(false);
+                    return;
+                  }
+
                   const soItem = smartJOSOItems.find((x) => String(x.id) === String(smartJOSelectedSOItemId));
                   if (!soItem?.item_id || Number(soItem.remainingQty) <= 0) {
                     alert('Invalid sales order item selected.');
                     return;
                   }
+
                   router.push(
                     `/dashboard/production/job-orders/smart-items?salesOrderId=${encodeURIComponent(smartJOOrder.id)}` +
                       `&salesOrderItemId=${encodeURIComponent(soItem.id)}` +

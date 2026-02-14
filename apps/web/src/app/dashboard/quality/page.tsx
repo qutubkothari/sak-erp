@@ -145,13 +145,25 @@ export default function QualityPage() {
     try {
       // Fetch all UIDs for inspection (with forInspection flag)
       const uidsData = await apiClient.get('/uid?forInspection=true');
-      setUids(uidsData || []);
+      const normalizedUids = Array.isArray(uidsData)
+        ? uidsData
+        : Array.isArray((uidsData as any)?.data)
+          ? (uidsData as any).data
+          : [];
+      setUids(normalizedUids);
       
       // Fetch users (for inspectors)
       const usersData = await apiClient.get('/users');
-      setUsers(usersData);
+      const normalizedUsers = Array.isArray(usersData)
+        ? usersData
+        : Array.isArray((usersData as any)?.data)
+          ? (usersData as any).data
+          : [];
+      setUsers(normalizedUsers);
     } catch (error) {
       console.error('Error fetching form data:', error);
+      setUids([]);
+      setUsers([]);
     }
   };
 
@@ -165,19 +177,52 @@ export default function QualityPage() {
       // Fetch UID details which contains vendor, item, GRN info
       const uidDetails = await apiClient.get(`/uid/details/${uid}`);
       console.log('UID Details:', uidDetails);
+
+      const grnId = uidDetails.grnId || uidDetails.grn_id || null;
+      let grnDetails: any = null;
+
+      if (grnId) {
+        try {
+          grnDetails = await apiClient.get(`/purchase/grn/${grnId}`);
+        } catch (grnError) {
+          console.warn('Failed to fetch GRN details for UID:', grnError);
+        }
+      }
+
+      const vendorName =
+        uidDetails.vendorName ||
+        uidDetails.vendor_name ||
+        grnDetails?.vendor?.name ||
+        grnDetails?.vendor_name ||
+        '';
+      const vendorId =
+        uidDetails.vendorId ||
+        uidDetails.vendor_id ||
+        grnDetails?.vendor_id ||
+        null;
+      const resolvedGrnNumber =
+        uidDetails.grnNumber ||
+        uidDetails.grn_number ||
+        grnDetails?.grn_number ||
+        (grnId ? `GRN-${String(grnId).substring(0, 8)}` : '');
+      const itemId = uidDetails.itemId || uidDetails.item_id || '';
+      const itemName = uidDetails.itemName || uidDetails.item_name || '';
+      const itemCode = uidDetails.itemCode || uidDetails.item_code || '';
+      const batchNumber = uidDetails.batchNumber || uidDetails.batch_number || grnDetails?.batch_number || '';
+      const lotNumber = uidDetails.lotNumber || uidDetails.lot_number || grnDetails?.lot_number || '';
       
       // Create a mock GRN object with vendor and item info from UID for display
       const mockGRN = {
-        id: uidDetails.grnId,
-        grn_number: `GRN-${uidDetails.grnId?.substring(0, 8) || 'UNKNOWN'}`,
-        vendor_id: uidDetails.vendorId,
-        vendor_name: uidDetails.vendorName,
-        batch_number: uidDetails.batchNumber,
-        lot_number: uidDetails.lotNumber,
+        id: grnId,
+        grn_number: resolvedGrnNumber || 'Not linked to GRN',
+        vendor_id: vendorId,
+        vendor_name: vendorName || 'Not linked to vendor',
+        batch_number: batchNumber,
+        lot_number: lotNumber,
         grn_items: [{
-          item_id: uidDetails.itemId,
-          item_name: uidDetails.itemName,
-          item_code: uidDetails.itemCode,
+          item_id: itemId,
+          item_name: itemName,
+          item_code: itemCode,
         }]
       };
       
@@ -188,8 +233,8 @@ export default function QualityPage() {
       setInspectionForm({
         ...inspectionForm,
         uid: uid,
-        reference_id: uidDetails.grnId || '',
-        item_id: uidDetails.itemId || '',
+        reference_id: grnId || '',
+        item_id: itemId || '',
         quantity_inspected: 1, // UID represents 1 unit
       });
     } catch (error) {
@@ -880,7 +925,7 @@ export default function QualityPage() {
                   <option value="">Search and select UID...</option>
                   {uids.map((uid: any) => (
                     <option key={uid.uid} value={uid.uid}>
-                      {uid.uid} - {uid.entityType} ({uid.status})
+                      {uid.uid} - {uid.entityType || uid.entity_type || 'UNKNOWN'} ({uid.status || uid.quality_status || 'UNKNOWN'})
                     </option>
                   ))}
                 </select>
@@ -898,7 +943,7 @@ export default function QualityPage() {
                       <label className="block text-xs text-blue-700 mb-1">Vendor</label>
                       <input
                         type="text"
-                        value={selectedGRN.vendor_name || 'Loading...'}
+                        value={selectedGRN.vendor_name || 'Not linked to vendor'}
                         className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-700"
                         readOnly
                       />
@@ -907,7 +952,7 @@ export default function QualityPage() {
                       <label className="block text-xs text-blue-700 mb-1">Item Code</label>
                       <input
                         type="text"
-                        value={selectedGRN.grn_items?.[0]?.item_code || 'Loading...'}
+                        value={selectedGRN.grn_items?.[0]?.item_code || '-'}
                         className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-700"
                         readOnly
                       />
@@ -916,7 +961,7 @@ export default function QualityPage() {
                       <label className="block text-xs text-blue-700 mb-1">Item Name</label>
                       <input
                         type="text"
-                        value={selectedGRN.grn_items?.[0]?.item_name || 'Loading...'}
+                        value={selectedGRN.grn_items?.[0]?.item_name || '-'}
                         className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-700"
                         readOnly
                       />
@@ -968,7 +1013,7 @@ export default function QualityPage() {
                     <option value="">Select Inspector...</option>
                     {users.map(user => (
                       <option key={user.id} value={user.id}>
-                        {user.full_name || user.email}
+                        {`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.full_name || user.email}
                       </option>
                     ))}
                   </select>

@@ -16,9 +16,11 @@ import { PurchaseOrdersService } from '../services/purchase-orders.service';
 import { WorldClassPoPdfService } from '../services/world-class-po-pdf.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('purchase/orders')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PurchaseOrdersController {
   constructor(
     private readonly poService: PurchaseOrdersService,
@@ -80,6 +82,7 @@ export class PurchaseOrdersController {
   }
 
   @Post()
+  @RequireCreate('purchase_orders')
   async create(@Request() req: any, @Body() body: any) {
     return this.poService.create(req.user.tenantId, req.user.userId, body);
   }
@@ -95,6 +98,7 @@ export class PurchaseOrdersController {
   }
 
   @Put(':id')
+  @RequireUpdate('purchase_orders')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.poService.update(req.user.tenantId, id, body);
   }
@@ -243,6 +247,7 @@ export class PurchaseOrdersController {
   }
 
   @Delete(':id')
+  @RequireDelete('purchase_orders')
   async delete(@Request() req: any, @Param('id') id: string) {
     return this.poService.delete(req.user.tenantId, id);
   }

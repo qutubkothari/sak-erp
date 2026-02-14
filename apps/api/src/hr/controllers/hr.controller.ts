@@ -1,9 +1,11 @@
 import { BadRequestException, Controller, Get, Post, Put, Delete, Body, Param, Query, Request, UseGuards, Logger } from '@nestjs/common';
 import { HrService } from '../services/hr.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('hr')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class HrController {
   private readonly logger = new Logger(HrController.name);
 

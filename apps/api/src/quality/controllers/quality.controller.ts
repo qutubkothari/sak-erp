@@ -1,9 +1,11 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { QualityService } from '../services/quality.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('quality')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class QualityController {
   constructor(private readonly qualityService: QualityService) {}
 

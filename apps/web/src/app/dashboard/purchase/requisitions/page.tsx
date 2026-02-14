@@ -76,6 +76,7 @@ interface PRDetail {
   purpose?: string;
   requested_by: string;
   approved_by?: string;
+  approved_by_name?: string;
   approved_at?: string;
   updated_by?: string;
   edit_count?: number;
@@ -1647,7 +1648,7 @@ function PRContent() {
                     {selectedPR.approved_by && (
                       <div>
                         <p className="text-sm text-gray-600">Approved By</p>
-                        <p className="font-semibold text-xs">{selectedPR.approved_by}</p>
+                        <p className="font-semibold text-xs">{selectedPR.approved_by_name || 'Unknown User'}</p>
                       </div>
                     )}
                     {selectedPR.approved_at && (

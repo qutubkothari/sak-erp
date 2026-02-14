@@ -2,9 +2,11 @@ import { Controller, Get, Post, Put, Delete, Body, Param, Query, Request, UseGua
 import { SalesService } from '../services/sales.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('sales')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SalesController {
   constructor(
     private readonly salesService: SalesService,

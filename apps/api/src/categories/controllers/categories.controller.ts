@@ -1,9 +1,11 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Request, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CategoriesService } from '../services/categories.service';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('categories')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 

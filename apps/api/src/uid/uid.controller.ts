@@ -52,19 +52,19 @@ export class UidController {
     );
   }
 
-  @Get(':uid')
+  @Get(':uid(UID-[A-Za-z0-9-]+)')
   @ApiOperation({ summary: 'Get complete UID details with vendor and item information' })
   async getUidDetails(@Param('uid') uid: string) {
     return this.uidService.getUidDetails(uid);
   }
 
-  @Get(':uid/history')
+  @Get(':uid(UID-[A-Za-z0-9-]+)/history')
   @ApiOperation({ summary: 'Get UID traceability history' })
   async getUidHistory(@Param('uid') uid: string) {
     return this.uidService.getUidHistory(uid);
   }
 
-  @Get(':uid/validate')
+  @Get(':uid(UID-[A-Za-z0-9-]+)/validate')
   @ApiOperation({ summary: 'Validate UID format and checksum' })
   async validateUid(@Param('uid') uid: string) {
     const isValid = this.uidService.validateUid(uid);
@@ -75,7 +75,7 @@ export class UidController {
     };
   }
 
-  @Put(':uid/part-number')
+  @Put(':uid(UID-[A-Za-z0-9-]+)/part-number')
   @ApiOperation({ summary: 'Update client part number for UID' })
   async updatePartNumber(
     @Param('uid') uid: string,

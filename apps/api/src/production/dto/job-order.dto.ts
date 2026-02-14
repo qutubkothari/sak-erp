@@ -86,6 +86,14 @@ export class CreateJobOrderDto {
   endDate?: string;
 
   @IsOptional()
+  @IsUUID()
+  salesOrderId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  salesOrderItemId?: string;
+
+  @IsOptional()
   @IsString()
   priority?: string;
 
@@ -134,6 +142,14 @@ export class UpdateJobOrderDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsUUID()
+  salesOrderId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  salesOrderItemId?: string;
 }
 
 export class UpdateOperationDto {

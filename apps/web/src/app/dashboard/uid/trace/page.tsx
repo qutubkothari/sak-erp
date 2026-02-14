@@ -68,6 +68,31 @@ interface UIDTrace {
   } | null;
 }
 
+interface TraceabilityRow {
+  uid: string;
+  part_code: string;
+  part_name: string;
+  product_category: string;
+  supplier_name: string | null;
+  supplier_code: string | null;
+  supplier_gst: string | null;
+  invoice_number: string | null;
+  invoice_date: string | null;
+  grn_number: string | null;
+  grn_date: string | null;
+  work_order_number: string | null;
+  work_order_status: string | null;
+  work_order_quantity: number | null;
+  work_order_start_date: string | null;
+  work_order_completion_date: string | null;
+  assembly_item_code: string | null;
+  assembly_name: string | null;
+  level: number;
+  usage_type: string;
+  work_order_path: string[] | null;
+  report_generated_at: string;
+}
+
 function TraceProductContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -75,6 +100,7 @@ function TraceProductContent() {
   const [traceData, setTraceData] = useState<UIDTrace | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [traceabilityRows, setTraceabilityRows] = useState<TraceabilityRow[]>([]);
 
   const searchTrace = async () => {
     if (!searchUID.trim()) {
@@ -87,20 +113,69 @@ function TraceProductContent() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/v1/uid/trace/${encodeURIComponent(searchUID)}`, {
+      const response = await fetch(`/api/v1/uid/traceability?uid=${encodeURIComponent(searchUID)}&limit=100&offset=0`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) throw new Error('UID not found');
 
-      const data = await response.json();
-      console.log('[Frontend] Received trace data:', data);
-      console.log('[Frontend] Vendor data:', data.vendor);
-      console.log('[Frontend] Purchase order data:', data.purchase_order);
-      setTraceData(data);
+      const payload = await response.json();
+      const rows: TraceabilityRow[] = payload?.data || [];
+
+      if (!rows.length) {
+        throw new Error('UID not found');
+      }
+
+      const first = rows[0];
+      const lifecycle: LifecycleEvent[] = rows
+        .slice()
+        .sort((a, b) => a.level - b.level)
+        .map((row) => ({
+          stage: row.usage_type,
+          timestamp: row.report_generated_at,
+          location: row.assembly_name || 'Warehouse / Inventory',
+          reference: row.work_order_number || row.grn_number || row.uid,
+          user: 'SYSTEM',
+        }));
+
+      const mapped: UIDTrace = {
+        uid: first.uid,
+        entity_type: 'UID',
+        item: {
+          code: first.part_code,
+          name: first.part_name,
+          category: first.product_category,
+        },
+        status: rows.some((row) => row.level > 0) ? 'CONSUMED' : 'AVAILABLE',
+        location: first.assembly_name || first.grn_number || 'Inventory',
+        batch_number: undefined,
+        lifecycle,
+        components: [],
+        parent_products: [],
+        vendor: first.supplier_name
+          ? {
+              name: first.supplier_name,
+              code: first.supplier_code || '-',
+              contact: first.supplier_gst || '-',
+            }
+          : null,
+        purchase_order: null,
+        grn: first.grn_number
+          ? {
+              grn_number: first.grn_number,
+              grn_date: first.grn_date || first.report_generated_at,
+            }
+          : null,
+        quality_checkpoints: [],
+        customer: null,
+      };
+
+      setTraceabilityRows(rows);
+      setTraceData(mapped);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch trace data');
       setTraceData(null);
+      setTraceabilityRows([]);
     } finally {
       setLoading(false);
     }
@@ -251,6 +326,44 @@ function TraceProductContent() {
                     </div>
                   </div>
                 </div>
+
+                {/* Work Order Hierarchy */}
+                {traceabilityRows.length > 0 && (
+                  <div className="bg-white rounded-lg shadow-lg p-6 mt-6">
+                    <h2 className="text-xl font-bold text-gray-800 mb-4">🧩 Work Order Usage Hierarchy</h2>
+                    <div className="space-y-3">
+                      {traceabilityRows
+                        .slice()
+                        .sort((a, b) => a.level - b.level)
+                        .map((row, index) => (
+                          <div key={`${row.uid}-${row.level}-${index}`} className="border border-gray-200 rounded-lg p-4">
+                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                              <span className="inline-block px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-800">
+                                Level {row.level}
+                              </span>
+                              <span className="text-sm font-semibold text-gray-800">{row.usage_type}</span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <p className="text-gray-500">Work Order</p>
+                                <p className="font-semibold text-gray-800">{row.work_order_number || '-'}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Assembly</p>
+                                <p className="font-semibold text-gray-800">{row.assembly_name || '-'}</p>
+                              </div>
+                              <div className="md:col-span-2">
+                                <p className="text-gray-500">Path</p>
+                                <p className="font-mono text-xs text-gray-700">
+                                  {row.work_order_path?.length ? row.work_order_path.join(' → ') : '-'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Right Column - Additional Info */}

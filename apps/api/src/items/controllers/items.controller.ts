@@ -13,9 +13,11 @@ import {
 import { ItemsService } from '../services/items.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('items')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ItemsController {
   constructor(
     private readonly itemsService: ItemsService,
@@ -58,6 +60,7 @@ export class ItemsController {
   }
 
   @Post()
+  @RequireCreate('items')
   async create(@Request() req: any, @Body() body: any) {
     return this.itemsService.create(req.user.tenantId, body);
   }
@@ -68,11 +71,13 @@ export class ItemsController {
   }
 
   @Put(':id')
+  @RequireUpdate('items')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.itemsService.update(req.user.tenantId, id, body);
   }
 
   @Delete(':id')
+  @RequireDelete('items')
   async delete(@Request() req: any, @Param('id') id: string) {
     return this.itemsService.delete(req.user.tenantId, id);
   }

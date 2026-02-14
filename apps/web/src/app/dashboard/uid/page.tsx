@@ -259,6 +259,33 @@ export default function UIDTrackingPage() {
     });
   };
 
+  const isUuid = (value?: string) => {
+    if (!value) return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+  };
+
+  const getDisplayGrn = (record: UIDRecord) => {
+    const directGrn = record.grnNumber || record.grn?.grn_number;
+    if (directGrn) return directGrn;
+
+    const lifecycleEvents = Array.isArray(record.lifecycle) ? record.lifecycle : [];
+    const lifecycleGrn = lifecycleEvents
+      .map((event) => String(event?.reference || '').trim())
+      .map((reference) => {
+        const explicitGrn = reference.match(/GRN-[A-Z0-9-]+/i);
+        if (explicitGrn?.[0]) return explicitGrn[0];
+        if (/^GRN\b/i.test(reference)) return reference;
+        return '';
+      })
+      .find(Boolean);
+    if (lifecycleGrn) return lifecycleGrn;
+
+    if (record.grn_id && !isUuid(record.grn_id)) return record.grn_id;
+    return '';
+  };
+
+  const selectedGrnDisplay = selectedUID ? getDisplayGrn(selectedUID) : '';
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -791,9 +818,9 @@ export default function UIDTrackingPage() {
                     PO: {selectedUID.purchase_order?.po_number || selectedUID.purchase_order_id}
                   </p>
                 )}
-                {selectedUID.grn_id && (
+                {selectedGrnDisplay && (
                   <p className="text-sm">
-                    GRN: {selectedUID.grnNumber || selectedUID.grn_id}
+                    GRN: {selectedGrnDisplay}
                   </p>
                 )}
                 {selectedUID.batch_number && (

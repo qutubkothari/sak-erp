@@ -2,9 +2,11 @@ import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Requ
 import { JobOrderService } from '../services/job-order.service';
 import { CreateJobOrderDto, UpdateJobOrderDto, UpdateOperationDto } from '../dto/job-order.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('job-orders')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class JobOrderController {
   constructor(private readonly jobOrderService: JobOrderService) {}
 
@@ -84,6 +86,7 @@ export class JobOrderController {
   }
 
   @Post()
+  @RequireCreate('job_orders')
   async create(@Request() req: any, @Body() dto: CreateJobOrderDto) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id;
@@ -120,6 +123,7 @@ export class JobOrderController {
   }
 
   @Put(':id')
+  @RequireUpdate('job_orders')
   async update(@Request() req: any, @Param('id') id: string, @Body() dto: UpdateJobOrderDto) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     return this.jobOrderService.update(tenantId, id, dto);
@@ -217,6 +221,7 @@ export class JobOrderController {
   }
 
   @Delete(':id')
+  @RequireDelete('job_orders')
   async delete(@Request() req: any, @Param('id') id: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     return this.jobOrderService.delete(tenantId, id);

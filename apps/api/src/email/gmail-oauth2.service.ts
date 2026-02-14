@@ -14,6 +14,47 @@ export class GmailOAuth2Service {
     this.initializeOAuth2();
   }
 
+  private isSmtpAuthError(error: unknown): boolean {
+    const message = String((error as any)?.message || '').toLowerCase();
+    return (
+      message.includes('535') ||
+      message.includes('invalid login') ||
+      message.includes('badcredentials') ||
+      message.includes('username and password not accepted')
+    );
+  }
+
+  private async sendViaGmailApi(mailOptions: nodemailer.SendMailOptions) {
+    if (!this.gmail) {
+      throw new Error('Gmail API not initialized');
+    }
+
+    const streamTransport = nodemailer.createTransport({
+      streamTransport: true,
+      buffer: true,
+      newline: 'unix',
+    });
+
+    const compiled = await streamTransport.sendMail(mailOptions);
+    const messageBuffer = compiled.message as Buffer;
+    const raw = messageBuffer
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+
+    const response = await this.gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw },
+    });
+
+    return {
+      messageId: response.data.id,
+      threadId: response.data.threadId,
+      provider: 'gmail-api',
+    };
+  }
+
   private initializeOAuth2() {
     const clientId = this.configService.get('GMAIL_CLIENT_ID');
     const clientSecret = this.configService.get('GMAIL_CLIENT_SECRET');
@@ -159,17 +200,36 @@ export class GmailOAuth2Service {
    * Send email using OAuth2
    */
   async sendEmail(mailOptions: nodemailer.SendMailOptions) {
-    if (!this.transporter) {
-      throw new Error('Gmail transporter not initialized');
+    if (!this.transporter && !this.gmail) {
+      throw new Error('Gmail OAuth2 not initialized');
     }
 
     try {
       // Refresh transporter if needed (access token might have expired)
       await this.initializeTransporter();
-      
-      const info = await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Email sent: ${info.messageId}`);
-      return info;
+
+      if (this.transporter) {
+        try {
+          const info = await this.transporter.sendMail(mailOptions);
+          this.logger.log(`Email sent (SMTP OAuth2): ${info.messageId}`);
+          return info;
+        } catch (smtpError) {
+          if (!this.isSmtpAuthError(smtpError)) {
+            throw smtpError;
+          }
+
+          this.logger.warn(
+            'SMTP OAuth2 send failed with auth error, falling back to Gmail API send',
+          );
+          const apiResult = await this.sendViaGmailApi(mailOptions);
+          this.logger.log(`Email sent (Gmail API fallback): ${apiResult.messageId}`);
+          return apiResult;
+        }
+      }
+
+      const apiResult = await this.sendViaGmailApi(mailOptions);
+      this.logger.log(`Email sent (Gmail API): ${apiResult.messageId}`);
+      return apiResult;
     } catch (error) {
       this.logger.error('Failed to send email:', error);
       throw error;

@@ -4,9 +4,11 @@ import { WorkStationService } from '../services/work-station.service';
 import { RoutingService } from '../services/routing.service';
 import { StationCompletionService } from '../services/station-completion.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('production')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ProductionController {
   constructor(
     private readonly productionService: ProductionService,

@@ -118,7 +118,7 @@ export class EmailController {
   /**
    * Get single email by ID
    */
-  @Get(':id')
+  @Get(':id(\\d+)')
   async getEmail(@Param('id', ParseIntPipe) id: number) {
     const result = await this.databaseService.executeQuery(
       `SELECT * FROM email_inbox WHERE id = $1`,
@@ -240,7 +240,7 @@ export class EmailController {
   /**
    * Get email attachments
    */
-  @Get(':id/attachments')
+  @Get(':id(\\d+)/attachments')
   async getAttachments(@Param('id', ParseIntPipe) id: number) {
     const attachments = await this.attachmentService.getEmailAttachments(id);
     return { data: attachments };

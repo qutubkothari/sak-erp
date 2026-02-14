@@ -1384,6 +1384,8 @@ export class JobOrderService {
         quantity: dto.quantity,
         start_date: dto.startDate,
         end_date: dto.endDate || null,
+        sales_order_id: dto.salesOrderId || null,
+        sales_order_item_id: dto.salesOrderItemId || null,
         priority: dto.priority || 'NORMAL',
         notes: dto.notes || null,
         created_by: userId,
@@ -1493,6 +1495,14 @@ export class JobOrderService {
 
     if (filters?.itemId) {
       query = query.eq('item_id', filters.itemId);
+    }
+
+    if (filters?.salesOrderId) {
+      query = query.eq('sales_order_id', filters.salesOrderId);
+    }
+
+    if (filters?.salesOrderItemId) {
+      query = query.eq('sales_order_item_id', filters.salesOrderItemId);
     }
 
     if (filters?.search) {
@@ -1772,6 +1782,8 @@ export class JobOrderService {
       startDate: string;
       priority?: string;
       notes?: string;
+      salesOrderId?: string;
+      salesOrderItemId?: string;
       variantSelections?: Record<string, string>;
       itemSelections?: Record<string, string>;
     },
@@ -1863,6 +1875,8 @@ export class JobOrderService {
       bomId: args.bomId,
       quantity: args.quantity,
       startDate: args.startDate,
+      salesOrderId: args.salesOrderId,
+      salesOrderItemId: args.salesOrderItemId,
       priority: args.priority || 'NORMAL',
       notes: args.notes,
       operations,
@@ -1951,15 +1965,25 @@ export class JobOrderService {
     userId?: string,
     options?: { allowPartialConsumption?: boolean; autoBuildMissingSubAssemblies?: boolean },
   ) {
-    // Get job order with materials
-    const { data: jobOrder } = await this.supabase
+    // Get job order header first (avoid masking embed/join errors as NotFound)
+    const { data: jobOrder, error: jobOrderError } = await this.supabase
       .from('production_job_orders')
-      .select('*, job_order_materials(*)')
+      .select('*')
       .eq('tenant_id', tenantId)
       .eq('id', jobOrderId)
       .single();
 
+    if (jobOrderError) throw new BadRequestException(jobOrderError.message);
     if (!jobOrder) throw new NotFoundException('Job order not found');
+
+    const { data: materialsRaw, error: materialsError } = await this.supabase
+      .from('job_order_materials')
+      .select('*')
+      .eq('job_order_id', jobOrderId);
+
+    if (materialsError) throw new BadRequestException(materialsError.message);
+    jobOrder.job_order_materials = Array.isArray(materialsRaw) ? materialsRaw : [];
+
     if (jobOrder.status !== 'IN_PROGRESS') {
       throw new BadRequestException('Job order must be IN_PROGRESS to complete');
     }
@@ -2071,14 +2095,22 @@ export class JobOrderService {
       }
 
       // Re-load materials after auto-build (issued quantities / ids may have changed)
-      const { data: refreshed } = await this.supabase
+      const { data: refreshed, error: refreshedError } = await this.supabase
         .from('production_job_orders')
-        .select('*, job_order_materials(*)')
+        .select('*')
         .eq('tenant_id', tenantId)
         .eq('id', jobOrderId)
         .single();
-      if (refreshed?.job_order_materials) {
-        jobOrder.job_order_materials = refreshed.job_order_materials;
+
+      if (refreshedError) throw new BadRequestException(refreshedError.message);
+      if (refreshed) {
+        const { data: refreshedMaterials, error: refreshedMaterialsError } = await this.supabase
+          .from('job_order_materials')
+          .select('*')
+          .eq('job_order_id', jobOrderId);
+
+        if (refreshedMaterialsError) throw new BadRequestException(refreshedMaterialsError.message);
+        jobOrder.job_order_materials = Array.isArray(refreshedMaterials) ? refreshedMaterials : [];
       }
     }
 
@@ -3338,6 +3370,31 @@ export class JobOrderService {
       }
     }
 
+    const requestedQuantity = Number(req.quantity) || 0;
+    const itemNodes = (nodes || []).filter((n: any) => n?.componentType === 'ITEM');
+    let maxProducibleQuantity = requestedQuantity;
+    for (const node of itemNodes) {
+      const requiredForRequested = Number((node as any)?.requiredQuantity || 0);
+      if (requiredForRequested <= 0 || requestedQuantity <= 0) continue;
+
+      const perUnitNeed = requiredForRequested / requestedQuantity;
+      if (perUnitNeed <= 0) continue;
+
+      const availableNow = Number((node as any)?.availableQuantity || 0);
+      const possibleForThisItem = availableNow / perUnitNeed;
+      if (Number.isFinite(possibleForThisItem)) {
+        maxProducibleQuantity = Math.min(maxProducibleQuantity, Math.max(0, possibleForThisItem));
+      }
+    }
+
+    if (!Number.isFinite(maxProducibleQuantity) || maxProducibleQuantity < 0) {
+      maxProducibleQuantity = 0;
+    }
+
+    // For finished goods we plan in pieces, so floor to whole units.
+    const makeNowQuantity = Math.max(0, Math.floor(maxProducibleQuantity));
+    const shortageToTargetQuantity = Math.max(0, Math.floor(requestedQuantity - makeNowQuantity));
+
     return {
       finishedItem,
       quantity: Number(req.quantity),
@@ -3348,6 +3405,8 @@ export class JobOrderService {
       },
       nodes,
       subAssembliesToMake: Array.from(planMap.values()).sort((a, b) => b.toMakeQuantity - a.toMakeQuantity),
+      makeNowQuantity,
+      shortageToTargetQuantity,
       source: {
         salesOrderId: req.salesOrderId || null,
         salesOrderItemId: req.salesOrderItemId || null,
@@ -3590,6 +3649,8 @@ export class JobOrderService {
       bomId: preview.topBom.id,
       quantity: preview.quantity,
       startDate,
+      salesOrderId: preview.source?.salesOrderId || undefined,
+      salesOrderItemId: preview.source?.salesOrderItemId || undefined,
       priority: 'NORMAL',
       notes: mainNotesParts.join(' | '),
       variantSelections: req.variantSelections,

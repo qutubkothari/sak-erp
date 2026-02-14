@@ -8,6 +8,246 @@ export class UidSupabaseService {
     process.env.SUPABASE_KEY!,
   );
 
+  get client() {
+    return this.supabase;
+  }
+
+  private normalizeUidList(value: any): string[] {
+    if (Array.isArray(value)) {
+      return value.filter((entry) => typeof entry === 'string' && entry.trim().length > 0);
+    }
+
+    if (typeof value === 'string' && value.trim().length > 0) {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((entry) => typeof entry === 'string' && entry.trim().length > 0);
+        }
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
+  }
+
+  private async resolveVendorFromLineage(tenantId: string, uidRecord: any): Promise<{
+    supplierId: string | null;
+    grnId: string | null;
+    vendorData: { id?: string; name?: string; code?: string } | null;
+  } | null> {
+    const maxDepth = 6;
+    const visited = new Set<string>();
+    let currentLevelUids = this.normalizeUidList(uidRecord?.parent_uids);
+
+    for (let depth = 0; depth < maxDepth && currentLevelUids.length > 0; depth++) {
+      const pendingUids = currentLevelUids.filter((parentUid) => !visited.has(parentUid));
+      pendingUids.forEach((parentUid) => visited.add(parentUid));
+
+      if (pendingUids.length === 0) {
+        break;
+      }
+
+      const { data: parentRecords } = await this.supabase
+        .from('uid_registry')
+        .select('uid, supplier_id, grn_id, parent_uids')
+        .eq('tenant_id', tenantId)
+        .in('uid', pendingUids);
+
+      if (!parentRecords || parentRecords.length === 0) {
+        break;
+      }
+
+      for (const parentRecord of parentRecords) {
+        if (parentRecord.supplier_id) {
+          const { data: vendor } = await this.supabase
+            .from('vendors')
+            .select('id, name, code')
+            .eq('id', parentRecord.supplier_id)
+            .maybeSingle();
+
+          if (vendor) {
+            return {
+              supplierId: parentRecord.supplier_id,
+              grnId: parentRecord.grn_id || null,
+              vendorData: vendor,
+            };
+          }
+        }
+
+        if (parentRecord.grn_id) {
+          const { data: parentGrn } = await this.supabase
+            .from('grn')
+            .select('id, vendor_id, vendor_name')
+            .eq('id', parentRecord.grn_id)
+            .maybeSingle();
+
+          if (parentGrn?.vendor_id) {
+            const { data: vendor } = await this.supabase
+              .from('vendors')
+              .select('id, name, code')
+              .eq('id', parentGrn.vendor_id)
+              .maybeSingle();
+
+            if (vendor) {
+              return {
+                supplierId: parentGrn.vendor_id,
+                grnId: parentRecord.grn_id,
+                vendorData: vendor,
+              };
+            }
+          }
+
+          if (parentGrn?.vendor_name) {
+            return {
+              supplierId: parentGrn.vendor_id || null,
+              grnId: parentRecord.grn_id,
+              vendorData: {
+                id: parentGrn.vendor_id || undefined,
+                name: parentGrn.vendor_name,
+                code: '',
+              },
+            };
+          }
+        }
+      }
+
+      currentLevelUids = parentRecords.flatMap((parentRecord) => this.normalizeUidList(parentRecord.parent_uids));
+    }
+
+    return null;
+  }
+
+  private async resolvePreferredVendorForItem(itemId: string | null): Promise<{
+    supplierId: string | null;
+    vendorData: { id?: string; name?: string; code?: string } | null;
+  } | null> {
+    if (!itemId) {
+      return null;
+    }
+
+    try {
+      const { data } = await this.supabase.rpc('get_preferred_vendor', {
+        p_item_id: itemId,
+      });
+
+      const preferred = Array.isArray(data) ? data[0] : null;
+      if (!preferred) {
+        return null;
+      }
+
+      const preferredVendorId = preferred.vendor_id || preferred.id || null;
+      const preferredVendorName = preferred.vendor_name || preferred.name || null;
+      const preferredVendorCode = preferred.vendor_code || preferred.code || '';
+
+      if (preferredVendorId) {
+        const { data: vendor } = await this.supabase
+          .from('vendors')
+          .select('id, name, code')
+          .eq('id', preferredVendorId)
+          .maybeSingle();
+
+        if (vendor) {
+          return {
+            supplierId: vendor.id,
+            vendorData: vendor,
+          };
+        }
+      }
+
+      if (preferredVendorName) {
+        return {
+          supplierId: preferredVendorId,
+          vendorData: {
+            id: preferredVendorId || undefined,
+            name: preferredVendorName,
+            code: preferredVendorCode,
+          },
+        };
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async resolveVendorFromRecentGrn(tenantId: string, itemId: string | null): Promise<{
+    supplierId: string | null;
+    grnId: string | null;
+    vendorData: { id?: string; name?: string; code?: string } | null;
+  } | null> {
+    if (!itemId) {
+      return null;
+    }
+
+    try {
+      const { data: grnItemRows } = await this.supabase
+        .from('grn_items')
+        .select('grn_id, created_at')
+        .eq('item_id', itemId)
+        .order('created_at', { ascending: false })
+        .limit(25);
+
+      const grnIds = Array.from(
+        new Set((grnItemRows || []).map((row: any) => row.grn_id).filter((id: any) => typeof id === 'string' && id.length > 0)),
+      );
+
+      if (grnIds.length === 0) {
+        return null;
+      }
+
+      const { data: grns } = await this.supabase
+        .from('grn')
+        .select('id, vendor_id, vendor_name, received_date, grn_date, created_at')
+        .eq('tenant_id', tenantId)
+        .in('id', grnIds)
+        .order('received_date', { ascending: false })
+        .limit(25);
+
+      if (!grns || grns.length === 0) {
+        return null;
+      }
+
+      const latestGrn = grns.find((grn) => !!grn.vendor_id || !!grn.vendor_name) || grns[0];
+      if (!latestGrn) {
+        return null;
+      }
+
+      if (latestGrn.vendor_id) {
+        const { data: vendor } = await this.supabase
+          .from('vendors')
+          .select('id, name, code')
+          .eq('id', latestGrn.vendor_id)
+          .maybeSingle();
+
+        if (vendor) {
+          return {
+            supplierId: vendor.id,
+            grnId: latestGrn.id,
+            vendorData: vendor,
+          };
+        }
+      }
+
+      if (latestGrn.vendor_name) {
+        return {
+          supplierId: latestGrn.vendor_id || null,
+          grnId: latestGrn.id,
+          vendorData: {
+            id: latestGrn.vendor_id || undefined,
+            name: latestGrn.vendor_name,
+            code: '',
+          },
+        };
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Generate UID with format: UID-{TENANT}-{PLANT}-{TYPE}-{SEQUENCE}-{CHECKSUM}
    * Uses database function for atomic sequence generation to prevent race conditions
@@ -1063,7 +1303,7 @@ export class UidSupabaseService {
     if (uidRecord.entity_id) {
       const { data: item } = await this.supabase
         .from('items')
-        .select('id, name, code, description')
+        .select('id, name, code, description, metadata')
         .eq('id', uidRecord.entity_id)
         .maybeSingle();
       itemData = item;
@@ -1080,17 +1320,51 @@ export class UidSupabaseService {
       vendorData = vendor;
     }
 
+    let resolvedSupplierId = uidRecord.supplier_id || null;
+    let resolvedGrnId = uidRecord.grn_id || null;
+
+    if (!vendorData) {
+      const lineageVendor = await this.resolveVendorFromLineage(tenantId, uidRecord);
+      if (lineageVendor?.vendorData) {
+        vendorData = lineageVendor.vendorData;
+        resolvedSupplierId = lineageVendor.supplierId || resolvedSupplierId;
+        resolvedGrnId = resolvedGrnId || lineageVendor.grnId;
+      }
+    }
+
+    if (!vendorData) {
+      const preferredVendor = await this.resolvePreferredVendorForItem(uidRecord.entity_id || null);
+      if (preferredVendor?.vendorData) {
+        vendorData = preferredVendor.vendorData;
+        resolvedSupplierId = preferredVendor.supplierId || resolvedSupplierId;
+      }
+    }
+
+    if (!vendorData) {
+      const recentGrnVendor = await this.resolveVendorFromRecentGrn(tenantId, uidRecord.entity_id || null);
+      if (recentGrnVendor?.vendorData) {
+        vendorData = recentGrnVendor.vendorData;
+        resolvedSupplierId = recentGrnVendor.supplierId || resolvedSupplierId;
+        resolvedGrnId = resolvedGrnId || recentGrnVendor.grnId;
+      }
+    }
+
+    const metadataSupplier =
+      typeof itemData?.metadata === 'object' && itemData?.metadata
+        ? itemData.metadata.supplier || itemData.metadata.vendor || null
+        : null;
+
     console.log(`[getUIDDetails] Item data:`, itemData);
     console.log(`[getUIDDetails] Vendor data:`, vendorData);
 
     const result = {
       uid: uidRecord.uid,
-      grnId: uidRecord.grn_id,
+      grnId: resolvedGrnId,
       itemId: uidRecord.entity_id,
       itemName: itemData?.name || '',
       itemCode: itemData?.code || '',
-      vendorId: uidRecord.supplier_id,
-      vendorName: vendorData?.name || '',
+      vendorId: resolvedSupplierId,
+      vendorName: vendorData?.name || metadataSupplier || '',
       vendorCode: vendorData?.code || '',
       batchNumber: uidRecord.batch_number || '',
       lotNumber: '', // Add if you have lot_number field

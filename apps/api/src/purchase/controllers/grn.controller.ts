@@ -21,6 +21,8 @@ import { mkdirSync } from 'fs';
 import { extname, resolve, join } from 'path';
 import { randomUUID } from 'crypto';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 function getUploadsRoot(): string {
   return (
@@ -82,7 +84,7 @@ function buildGrnUploadStorage(kind: 'invoice' | 'qc') {
 }
 
 @Controller('purchase/grn')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class GrnController {
   constructor(
     private readonly grnService: GrnService,
@@ -161,6 +163,7 @@ export class GrnController {
   }
 
   @Post()
+  @RequireCreate('grns')
   async create(@Request() req: any, @Body() body: any) {
     return this.grnService.create(req.user.tenantId, req.user.userId, body);
   }
@@ -176,6 +179,7 @@ export class GrnController {
   }
 
   @Put(':id')
+  @RequireUpdate('grns')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.grnService.update(req.user.tenantId, id, body);
   }
@@ -191,6 +195,7 @@ export class GrnController {
   }
 
   @Delete(':id')
+  @RequireDelete('grns')
   async delete(@Request() req: any, @Param('id') id: string) {
     return this.grnService.delete(req.user.tenantId, id);
   }

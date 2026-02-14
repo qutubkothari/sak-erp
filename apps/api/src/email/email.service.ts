@@ -82,6 +82,22 @@ export class EmailService {
     return names;
   }
 
+  private hasSmtpCredentials(): boolean {
+    const smtpUser = (this.configService.get('SMTP_USER') || '').trim();
+    const smtpPass = (this.configService.get('SMTP_PASS') || '').trim();
+    return Boolean(smtpUser && smtpPass);
+  }
+
+  private isAuthError(error: unknown): boolean {
+    const message = String((error as any)?.message || '').toLowerCase();
+    return (
+      message.includes('535') ||
+      message.includes('invalid login') ||
+      message.includes('badcredentials') ||
+      message.includes('username and password not accepted')
+    );
+  }
+
   public async applyFromAndReplyTo(
     mailOptions: nodemailer.SendMailOptions,
     fromType: 'admin' | 'sales' | 'support' | 'technical' | 'purchase' | 'hr' | 'noreply' = 'noreply',
@@ -230,26 +246,54 @@ export class EmailService {
   }
 
   private async sendMail(mailOptions: nodemailer.SendMailOptions) {
-    try {
-      if (this.gmailOAuth2Service?.isConfigured()) {
+    const oauthEnabled = Boolean(this.gmailOAuth2Service?.isConfigured());
+    const smtpEnabled = this.hasSmtpCredentials();
+
+    if (!oauthEnabled && !smtpEnabled) {
+      throw new Error(
+        'No outbound email transport configured. Configure Gmail OAuth2 (GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN) or SMTP (SMTP_USER/SMTP_PASS).',
+      );
+    }
+
+    const errors: string[] = [];
+
+    if (oauthEnabled) {
+      try {
         const info = await this.gmailOAuth2Service.sendEmail(mailOptions);
         console.log('Email sent (OAuth2):', info.messageId);
         return { success: true, messageId: info.messageId };
+      } catch (error) {
+        const msg = String((error as any)?.message || error);
+        console.error('Email send error (OAuth2):', error);
+        errors.push(`OAuth2: ${msg}`);
       }
-
-      const smtpUser = this.configService.get('SMTP_USER');
-      const smtpPass = this.configService.get('SMTP_PASS');
-      if (!smtpUser || !smtpPass) {
-        throw new Error('SMTP not configured (set SMTP_USER and SMTP_PASS)');
-      }
-
-      const info = await this.transporter.sendMail(mailOptions);
-      console.log('Email sent (SMTP):', info.messageId);
-      return { success: true, messageId: info.messageId };
-    } catch (error) {
-      console.error('Email send error:', error);
-      throw new Error(`Failed to send email: ${error.message}`);
     }
+
+    if (smtpEnabled) {
+      try {
+        const info = await this.transporter.sendMail(mailOptions);
+        console.log('Email sent (SMTP):', info.messageId);
+        return { success: true, messageId: info.messageId };
+      } catch (error) {
+        const msg = String((error as any)?.message || error);
+        console.error('Email send error (SMTP):', error);
+        errors.push(`SMTP: ${msg}`);
+
+        if (this.isAuthError(error) && oauthEnabled) {
+          try {
+            const info = await this.gmailOAuth2Service.sendEmail(mailOptions);
+            console.log('Email sent (OAuth2 fallback after SMTP auth error):', info.messageId);
+            return { success: true, messageId: info.messageId };
+          } catch (oauthFallbackError) {
+            const oauthMsg = String((oauthFallbackError as any)?.message || oauthFallbackError);
+            console.error('Email send error (OAuth2 fallback):', oauthFallbackError);
+            errors.push(`OAuth2 fallback: ${oauthMsg}`);
+          }
+        }
+      }
+    }
+
+    throw new Error(`Failed to send email via all configured transports. ${errors.join(' | ')}`);
   }
 
   private generateRFQTemplate(rfqData: any): string {

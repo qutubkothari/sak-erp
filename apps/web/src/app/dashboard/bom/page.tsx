@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import ItemSearch from '../../../components/ItemSearch';
 import DrawingManager from '../../../components/DrawingManager';
+import { getUserRoleNames, readStoredUser } from '../../../../lib/rbac';
 
 const fileToDataUrl = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -50,6 +51,21 @@ const openDrawingUrlInNewTab = (url: string) => {
     console.error('Error opening drawing:', error);
     alert('Failed to open drawing');
   }
+};
+
+const normalizeUomLabel = (uom?: string | null): string => {
+  const value = String(uom || '').trim().toLowerCase();
+  if (!value) return 'Nos';
+
+  if (['no', 'nos', 'number', 'numbers', 'unit', 'units', 'piece', 'pieces', 'pc', 'pcs'].includes(value)) {
+    return 'Nos';
+  }
+
+  if (['set', 'sets'].includes(value)) {
+    return 'Set';
+  }
+
+  return uom!.trim();
 };
 
 interface BOM {
@@ -130,10 +146,6 @@ export default function BOMPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingBomId, setEditingBomId] = useState<string | null>(null);
   const [selectedBom, setSelectedBom] = useState<BOM | null>(null);
-  const [showPRModal, setShowPRModal] = useState(false);
-  const [prBomId, setPrBomId] = useState<string>('');
-  const [prQuantity, setPrQuantity] = useState<number>(1);
-  const [prStockStatus, setPrStockStatus] = useState<any[]>([]);
   const [showTrailModal, setShowTrailModal] = useState(false);
   const [purchaseTrail, setPurchaseTrail] = useState<PurchaseTrail | null>(null);
   const [loadingTrail, setLoadingTrail] = useState(false);
@@ -167,6 +179,18 @@ export default function BOMPage() {
     }>,
   });
   const [availableBOMs, setAvailableBOMs] = useState<BOM[]>([]);
+
+  const canEditBom = useMemo(() => {
+    const normalize = (value: string) =>
+      String(value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, '_')
+        .replace(/[^A-Z0-9_]/g, '');
+
+    const roles = getUserRoleNames(readStoredUser()).map(normalize);
+    return roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
+  }, []);
 
   const isEditMode = Boolean(editingBomId);
 
@@ -307,6 +331,11 @@ export default function BOMPage() {
   };
 
   const openEditModal = (bom: BOM) => {
+    if (!canEditBom) {
+      alert('Only Admin and Super Admin can edit BOM.');
+      return;
+    }
+
     const toDateOnly = (value?: string) => {
       if (!value) return '';
       const date = new Date(value);
@@ -356,52 +385,6 @@ export default function BOMPage() {
     });
 
     setShowModal(true);
-  };
-
-  const handleGeneratePR = async (bomId: string) => {
-    console.log('[BOM] Opening PR modal for BOM:', bomId);
-    setPrBomId(bomId);
-    setPrQuantity(1);
-    setShowPRModal(true);
-  };
-
-  const handleConfirmGeneratePR = async () => {
-    console.log('[BOM] Generating PR - BOM:', prBomId, 'Quantity:', prQuantity);
-    
-    if (!prQuantity || prQuantity <= 0) {
-      alert('Please enter a valid quantity greater than 0');
-      return;
-    }
-
-    try {
-      const data = await apiClient.post(`/bom/${prBomId}/generate-pr`, { 
-        quantity: Number(prQuantity) 
-      });
-      console.log('[BOM] PR response data:', data);
-      
-      // Store stock status for display
-      if (data.stockStatus && data.stockStatus.length > 0) {
-        setPrStockStatus(data.stockStatus);
-      }
-      
-      if (data.itemsToOrder && data.itemsToOrder.length > 0) {
-        // Show success with stock details - don't close modal yet
-        alert(
-          `✅ Purchase Requisition ${data.prNumber} generated!\n\n` +
-          `Items to order (${data.itemsToOrder.length}):\n${data.itemsToOrder.map((item: any) => 
-            `  • ${item.itemCode} - ${item.itemName}: ${item.quantity} units`
-          ).join('\n')}\n\n` +
-          `Check the detailed stock status below.`
-          );
-          // Keep modal open to show stock status
-        } else {
-          alert('✅ All items are in stock! No PR needed.\n\nCheck the detailed stock status below.');
-          // Keep modal open to show stock status
-        }
-    } catch (error) {
-      console.error('[BOM] Error generating PR:', error);
-      alert('❌ Failed to generate PR. Please try again.');
-    }
   };
 
   const handleDeleteBOM = async (bomId: string) => {
@@ -574,7 +557,7 @@ export default function BOMPage() {
               ← Back to Dashboard
             </button>
             <h1 className="text-4xl font-bold text-amber-900">Bill of Materials (BOM)</h1>
-            <p className="text-amber-700">Define product structure and generate purchase requisitions</p>
+            <p className="text-amber-700">Define and manage product structure</p>
           </div>
           <div className="flex gap-3">
             <div className="flex rounded-lg overflow-hidden border border-gray-300 bg-white">
@@ -860,26 +843,21 @@ export default function BOMPage() {
                               >
                                 👁️
                               </button>
-                              <button
-                                onClick={() => openEditModal(bom)}
-                                className="text-blue-600 hover:text-blue-900"
-                                title="Edit"
-                              >
-                                ✏️
-                              </button>
+                              {canEditBom && (
+                                <button
+                                  onClick={() => openEditModal(bom)}
+                                  className="text-blue-600 hover:text-blue-900"
+                                  title="Edit"
+                                >
+                                  ✏️
+                                </button>
+                              )}
                               <button
                                 onClick={() => router.push(`/dashboard/bom/${bom.id}/routing`)}
                                 className="text-indigo-600 hover:text-indigo-900"
                                 title="Routing"
                               >
                                 🔄
-                              </button>
-                              <button
-                                onClick={() => handleGeneratePR(bom.id)}
-                                className="text-green-600 hover:text-green-900"
-                                title="Generate PR"
-                              >
-                                📋
                               </button>
                             </div>
                           </td>
@@ -1072,8 +1050,8 @@ export default function BOMPage() {
                                 ? `${item.child_bom?.item?.name || 'Unknown'} (v${item.child_bom?.version ?? '?'})`
                                 : item.item?.name || 'Unknown';
                               const componentUom = isChildBom
-                                ? item.child_bom?.item?.uom || 'set'
-                                : item.item?.uom || 'units';
+                                ? normalizeUomLabel(item.child_bom?.item?.uom || 'set')
+                                : normalizeUomLabel(item.item?.uom || 'units');
 
                               return (
                                 <div key={item.id} className="flex justify-between text-sm">
@@ -1107,28 +1085,21 @@ export default function BOMPage() {
                           >
                             View Details
                           </button>
-                          <button
-                            onClick={() => {
-                              openEditModal(bom);
-                            }}
-                            className="flex-1 bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 text-sm"
-                          >
-                            Edit
-                          </button>
+                          {canEditBom && (
+                            <button
+                              onClick={() => {
+                                openEditModal(bom);
+                              }}
+                              className="flex-1 bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 text-sm"
+                            >
+                              Edit
+                            </button>
+                          )}
                           <button
                             onClick={() => router.push(`/dashboard/bom/${bom.id}/routing`)}
                             className="flex-1 bg-blue-100 text-blue-700 px-4 py-2 rounded hover:bg-blue-200 text-sm"
                           >
                             Routing
-                          </button>
-                          <button
-                            onClick={() => {
-                              console.log('[BOM] Generate PR clicked:', bom.id);
-                              handleGeneratePR(bom.id);
-                            }}
-                            className="flex-1 bg-green-100 text-green-700 px-4 py-2 rounded hover:bg-green-200 text-sm"
-                          >
-                            Generate PR
                           </button>
                         </div>
                       </div>
@@ -1778,7 +1749,7 @@ export default function BOMPage() {
                                 : item.item?.name || 'Unknown'}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                              {item.quantity} {item.component_type === 'ITEM' ? item.item?.uom || 'units' : 'units'}
+                              {item.quantity} {normalizeUomLabel(item.component_type === 'ITEM' ? item.item?.uom : 'units')}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 text-right">
                               {item.scrap_percentage || 0}%
@@ -1836,145 +1807,24 @@ export default function BOMPage() {
                 Delete BOM
               </button>
               <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    openEditModal(selectedBom);
-                    setSelectedBom(null);
-                  }}
-                  className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
-                >
-                  Edit BOM
-                </button>
+                {canEditBom && (
+                  <button
+                    onClick={() => {
+                      openEditModal(selectedBom);
+                      setSelectedBom(null);
+                    }}
+                    className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                  >
+                    Edit BOM
+                  </button>
+                )}
                 <button
                   onClick={() => setSelectedBom(null)}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   Close
                 </button>
-                <button
-                  onClick={() => {
-                    handleGeneratePR(selectedBom.id);
-                    setSelectedBom(null);
-                  }}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                >
-                  Generate PR
-                </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Generate PR Modal */}
-      {showPRModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto my-8">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900">Generate Purchase Requisition</h2>
-              <p className="text-gray-600 text-sm mt-1">Enter production quantity to calculate material requirements</p>
-            </div>
-
-            <div className="p-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Production Quantity *
-              </label>
-              <input
-                type="number"
-                value={prQuantity}
-                onChange={(e) => {
-                  setPrQuantity(Number(e.target.value));
-                  setPrStockStatus([]); // Clear previous status when quantity changes
-                }}
-                min="1"
-                step="1"
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-lg focus:ring-2 focus:ring-green-500"
-                placeholder="Enter quantity"
-                autoFocus
-              />
-              <p className="text-xs text-gray-500 mt-2">
-                Number of finished goods you want to produce
-              </p>
-            </div>
-
-            {/* Stock Status Table */}
-            {prStockStatus.length > 0 && (
-              <div className="px-6 pb-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Material Stock Status</h3>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 border">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Required</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Available</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Reserved</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Usable</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Shortfall</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">PR Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {prStockStatus.map((item: any, index: number) => (
-                        <tr key={index} className={item.needsPR ? 'bg-red-50' : 'bg-green-50'}>
-                          <td className="px-4 py-3 text-sm">
-                            <div className="font-medium text-gray-900">{item.itemCode}</div>
-                            <div className="text-gray-500 text-xs">{item.itemName}</div>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right font-medium">{item.required}</td>
-                          <td className="px-4 py-3 text-sm text-right">{item.availableStock}</td>
-                          <td className="px-4 py-3 text-sm text-right text-yellow-600">{item.reservedStock}</td>
-                          <td className="px-4 py-3 text-sm text-right font-medium">{item.usableStock}</td>
-                          <td className="px-4 py-3 text-sm text-right">
-                            {item.shortfall > 0 ? (
-                              <span className="text-red-600 font-semibold">{item.shortfall}</span>
-                            ) : (
-                              <span className="text-green-600">-</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {item.needsPR ? (
-                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                                PR Created
-                              </span>
-                            ) : (
-                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                                In Stock
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                  <p className="text-sm text-blue-800">
-                    <strong>Note:</strong> Usable Stock = Available Stock - Reorder Level (safety stock). 
-                    PR will be generated only for items with shortfall.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowPRModal(false);
-                  setPrStockStatus([]);
-                }}
-                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Close
-              </button>
-              {prStockStatus.length === 0 && (
-                <button
-                  onClick={handleConfirmGeneratePR}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                >
-                  Generate PR
-                </button>
-              )}
             </div>
           </div>
         </div>

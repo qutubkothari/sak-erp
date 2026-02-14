@@ -13,9 +13,11 @@ import {
 import { PurchaseRequisitionsService } from '../services/purchase-requisitions.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('purchase/requisitions')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PurchaseRequisitionsController {
   constructor(
     private readonly prService: PurchaseRequisitionsService,
@@ -63,6 +65,7 @@ export class PurchaseRequisitionsController {
   }
 
   @Post()
+  @RequireCreate('purchase_requisitions')
   async create(@Request() req: any, @Body() body: any) {
     return this.prService.create(req.user.tenantId, req.user.userId, body);
   }
@@ -83,6 +86,7 @@ export class PurchaseRequisitionsController {
   }
 
   @Put(':id')
+  @RequireUpdate('purchase_requisitions')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.prService.update(req.user.tenantId, id, body);
   }
@@ -121,6 +125,7 @@ export class PurchaseRequisitionsController {
   }
 
   @Delete(':id')
+  @RequireDelete('purchase_requisitions')
   async delete(@Request() req: any, @Param('id') id: string) {
     return this.prService.delete(req.user.tenantId, id);
   }

@@ -2,9 +2,11 @@ import { Controller, Get, Post, Put, Delete, Body, Param, Query, Request, UseGua
 import { InventoryService } from '../services/inventory.service';
 import { ItemsService } from '../../items/services/items.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('inventory')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class InventoryController {
   constructor(
     private readonly inventoryService: InventoryService,

@@ -1,0 +1,132 @@
+SAK ERP – Local Installation & Deployment Checklists
+
+Document Purpose
+This document provides two separate checklists:
+1) Provider Checklist (our team) – tasks we must perform for installation and deployment.
+2) Client Checklist (their team) – prerequisites and preparations required from client side.
+
+====================================================================
+PORTION 1: PROVIDER CHECKLIST (OUR TEAM)
+====================================================================
+
+A. Project Readiness
+[ ] Freeze release version/branch to deploy.
+[ ] Verify latest production-tested build is stable.
+[ ] Confirm environment variable matrix for API and Web is complete.
+[ ] Confirm migration scripts order and rollback notes are ready.
+[ ] Prepare client-specific configuration values (domain/IP, tenant setup, branding if any).
+
+B. Infrastructure Validation (Before Touching Client Server)
+[ ] Validate target OS compatibility (Windows Server 2019/2022 confirmed).
+[ ] Confirm minimum sizing: 4 vCPU, 8 GB RAM, 80+ GB SSD.
+[ ] Confirm network model (internet-facing vs LAN/VPN only).
+[ ] Confirm required ports and firewall approach.
+[ ] Confirm backup path and restore strategy before first migration.
+
+C. Installation Tasks (Execution)
+[ ] Install runtime stack: Node.js 20.x, pnpm 9.x, PM2.
+[ ] Install system utilities: git, curl, 7zip/tar, build tools.
+[ ] Install and configure reverse proxy (IIS + URL Rewrite + ARR, or Nginx for Windows).
+[ ] Configure API and Web process definitions in PM2.
+[ ] Configure startup on reboot and persistence (PM2 startup task/service on Windows).
+
+D. Application Deployment
+[ ] Pull/upload application artifacts/source.
+[ ] Install dependencies with lockfile (`pnpm install --frozen-lockfile`).
+[ ] Build API and Web.
+[ ] Apply DB migrations/SQL in approved sequence.
+[ ] Start/restart services and verify process health.
+
+E. Security Hardening
+[ ] Enforce HTTPS and redirect HTTP to HTTPS.
+[ ] Add secure headers at reverse proxy level.
+[ ] Close direct access to internal app ports (3000/4000) from public network.
+[ ] Create least-privilege OS user for app runtime.
+[ ] Store secrets in protected env files / secret store.
+
+F. Functional Validation (Post-Deploy)
+[ ] Login and role/permission validation.
+[ ] Core flows validation: PR, PO/GRN, Smart Job Order, QC, UID traceability.
+[ ] Email/notification path validation.
+[ ] File upload/download validation.
+[ ] Confirm no blocking errors in application logs.
+
+G. Handover & Documentation
+[ ] Provide runbook with start/stop/restart commands.
+[ ] Provide environment variable reference (masked values).
+[ ] Provide backup and restore SOP.
+[ ] Provide update/patch process and rollback process.
+[ ] Obtain sign-off from client technical owner.
+
+H. Hypercare (After Go-Live)
+[ ] Monitor logs and performance for agreed stabilization period.
+[ ] Resolve priority incidents within SLA.
+[ ] Deliver final deployment report with open issues (if any).
+
+
+====================================================================
+PORTION 2: CLIENT CHECKLIST (THEIR TEAM)
+====================================================================
+
+A. Server & Network Preparation
+[ ] Provision server (Windows Server 2019/2022).
+[ ] Ensure minimum resources: 4 vCPU, 8 GB RAM, 80+ GB SSD.
+[ ] Share static IP/hostname details.
+[ ] Open required ports: 3389 (RDP), 80, 443 (and internal routing plan for app ports).
+[ ] Confirm DNS readiness (if domain-based access required).
+
+B. Access & Credentials
+[ ] Provide RDP + local administrator access to designated technical contacts.
+[ ] Ensure installer account has local admin rights for installation window.
+[ ] Share security policy constraints (password rotation, SSH policy, endpoint restrictions).
+[ ] Share approved maintenance window and rollback decision owner.
+
+C. Data & Integration Inputs
+[ ] Confirm database hosting model (managed vs self-hosted).
+[ ] Provide DB credentials/connection details (if client-managed DB).
+[ ] Provide email configuration (SMTP/OAuth sender account) if client-managed.
+[ ] Provide storage details (S3/Supabase/local policy) if client-managed.
+[ ] Provide required master data templates (items, vendors, users, etc.) if part of onboarding.
+
+D. Security & Compliance Inputs
+[ ] Provide SSL certificate preference (IIS certificate / organization certificate / Let’s Encrypt if applicable).
+[ ] Provide IP allowlist requirements (if any).
+[ ] Provide audit/log retention policy.
+[ ] Provide backup retention policy and RPO/RTO targets.
+[ ] Confirm compliance requirements (if any) affecting deployment.
+
+E. Operational Readiness
+[ ] Nominate application owner and IT owner.
+[ ] Nominate key business UAT users.
+[ ] Prepare user list and role mapping for initial access.
+[ ] Confirm escalation matrix for go-live support.
+[ ] Confirm who approves production cutover.
+
+F. Go-Live Readiness
+[ ] Complete UAT sign-off.
+[ ] Validate business process checklist with provider team.
+[ ] Confirm final cutover date/time.
+[ ] Confirm communication to end users.
+[ ] Keep rollback window reserved in case of issues.
+
+G. Post-Go-Live Commitments
+[ ] Ensure server monitoring ownership (CPU, RAM, disk, uptime).
+[ ] Ensure backup jobs are running and tested.
+[ ] Ensure periodic Windows Update/security patching process exists.
+[ ] Ensure incident reporting channel to provider is active.
+
+
+====================================================================
+Quick Acceptance Criteria
+====================================================================
+Deployment is considered complete when:
+[ ] Application is reachable on approved URL/IP.
+[ ] Admin and standard users can login and perform assigned flows.
+[ ] No blocker errors in logs for core workflows.
+[ ] Backup and restart procedures are verified.
+[ ] Both provider and client sign-off is captured.
+
+
+Prepared For: Client Local Server Installation
+Prepared By: SAK ERP Provider Team
+Date: 14-Feb-2026
