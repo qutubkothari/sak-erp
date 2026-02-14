@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import ItemSearch from '../../../components/ItemSearch';
 import DrawingManager from '../../../components/DrawingManager';
-import { getUserRoleNames, readStoredUser } from '../../../../lib/rbac';
+import { getUserRoleNames, readStoredUser } from '../../../lib/rbac';
 
 const fileToDataUrl = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
