@@ -193,6 +193,20 @@ function SmartJobOrdersItemsPageContent() {
   // LocalStorage key for caching
   const CACHE_KEY = 'smart_job_order_cache';
 
+  const [shouldAutoLoadFromCache] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return Boolean(parsed.previewLoaded);
+      }
+    } catch (e) {
+      console.error('Failed to load cached previewLoaded flag:', e);
+    }
+    return false;
+  });
+
   // Initialize state from localStorage if available
   const [itemId, setItemId] = useState<string>(() => {
     if (prefillItemId) return prefillItemId;
@@ -895,6 +909,7 @@ function SmartJobOrdersItemsPageContent() {
       const cacheData = {
         itemId,
         quantity,
+        previewLoaded: Boolean(preview),
         selectedItemByNodeKey,
         selectedCategoryByNodeKey,
         stockByItemId,
@@ -911,9 +926,9 @@ function SmartJobOrdersItemsPageContent() {
     fetchItems();
     loadOpenSalesOrders();
 
-    // Fetch preview on mount when params are available OR when restored from cache.
-    // This rebuilds the tree after refresh so cached selections remain visible.
-    if (!preview && itemId && Number(quantity) > 0) {
+    // Fetch preview on mount only if explicitly prefilling from URL
+    // or if user had already loaded a preview before refresh.
+    if (!preview && itemId && Number(quantity) > 0 && (Boolean(prefillItemId) || shouldAutoLoadFromCache)) {
       fetchPreview();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
