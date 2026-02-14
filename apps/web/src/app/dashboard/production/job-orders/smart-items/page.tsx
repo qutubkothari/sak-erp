@@ -911,8 +911,9 @@ function SmartJobOrdersItemsPageContent() {
     fetchItems();
     loadOpenSalesOrders();
 
-    // Only fetch preview if coming from prefill params (not from cache)
-    if (prefillItemId && !preview) {
+    // Fetch preview on mount when params are available OR when restored from cache.
+    // This rebuilds the tree after refresh so cached selections remain visible.
+    if (!preview && itemId && Number(quantity) > 0) {
       fetchPreview();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
