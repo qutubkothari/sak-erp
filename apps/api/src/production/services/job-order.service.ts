@@ -3178,17 +3178,15 @@ export class JobOrderService {
           sequence: typeof (bi as any).sequence === 'number' ? (bi as any).sequence : Number((bi as any).sequence || 0) || undefined,
         });
 
-        if (toMakeQuantity > 0) {
-          subAssemblies.push({
-            bomId: childBomId,
-            itemId: subItemId,
-            itemCode: subItem.code,
-            itemName: subItem.name,
-            requiredQuantity,
-            availableQuantity: available,
-            toMakeQuantity,
-          });
-        }
+        subAssemblies.push({
+          bomId: childBomId,
+          itemId: subItemId,
+          itemCode: subItem.code,
+          itemName: subItem.name,
+          requiredQuantity,
+          availableQuantity: available,
+          toMakeQuantity,
+        });
 
         // Always explode full required quantity (not just shortage) to include all raw materials
         // This ensures consistent shortage reporting across quantity changes

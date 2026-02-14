@@ -1186,12 +1186,13 @@ function SmartJobOrdersItemsPageContent() {
   const getReadySubAssemblies = () => {
     if (!preview?.subAssembliesToMake?.length) return [];
     return preview.subAssembliesToMake.filter(
-      (sa) => Number(sa.toMakeQuantity || 0) > 0 && isSubAssemblyReady(sa.bomId),
+      (sa) => isSubAssemblyReady(sa.bomId),
     );
   };
 
   /** Open quantity prompt for a single sub-assembly */
   const openSingleSAPrompt = (sa: SmartSubAssemblyPlan) => {
+    const defaultQty = sa.toMakeQuantity || sa.requiredQuantity || 1;
     setSubAssemblyQtyModal({
       open: true,
       mode: 'single',
@@ -1200,8 +1201,8 @@ function SmartJobOrdersItemsPageContent() {
         itemId: sa.itemId,
         itemCode: sa.itemCode,
         itemName: sa.itemName,
-        defaultQty: sa.toMakeQuantity,
-        qty: sa.toMakeQuantity,
+        defaultQty,
+        qty: defaultQty,
       }],
     });
   };
@@ -1216,14 +1217,17 @@ function SmartJobOrdersItemsPageContent() {
     setSubAssemblyQtyModal({
       open: true,
       mode: 'batch',
-      items: ready.map((sa) => ({
-        bomId: sa.bomId,
-        itemId: sa.itemId,
-        itemCode: sa.itemCode,
-        itemName: sa.itemName,
-        defaultQty: sa.toMakeQuantity,
-        qty: sa.toMakeQuantity,
-      })),
+      items: ready.map((sa) => {
+        const defaultQty = sa.toMakeQuantity || sa.requiredQuantity || 1;
+        return {
+          bomId: sa.bomId,
+          itemId: sa.itemId,
+          itemCode: sa.itemCode,
+          itemName: sa.itemName,
+          defaultQty,
+          qty: defaultQty,
+        };
+      }),
     });
   };
 
@@ -1441,9 +1445,9 @@ function SmartJobOrdersItemsPageContent() {
                 </span>
               ) : null}
               {bom.itemCode} - {bom.itemName}
-              {lvl > 0 && (
+              {id !== rootBomId && (
                 <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
-                  Level {lvl} Sub-BOM
+                  Level {lvl || 1} Sub-BOM
                 </span>
               )}
             </span>
@@ -1457,7 +1461,7 @@ function SmartJobOrdersItemsPageContent() {
                   Shortage
                 </span>
               )}
-              {lvl > 0 && (
+              {id !== rootBomId && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -2194,7 +2198,6 @@ function SmartJobOrdersItemsPageContent() {
                       <tbody className="divide-y divide-gray-200">
                         {preview.subAssembliesToMake.map((sa, idx) => {
                           const ready = isSubAssemblyReady(sa.bomId);
-                          const hasMakeQty = Number(sa.toMakeQuantity || 0) > 0;
                           return (
                             <tr key={`${sa.bomId}:${sa.itemId}`} className={ready ? 'bg-green-50' : ''}>
                               <td className="px-4 py-2 text-sm text-gray-600">{idx + 1}</td>
@@ -2216,7 +2219,7 @@ function SmartJobOrdersItemsPageContent() {
                                 )}
                               </td>
                               <td className="px-4 py-2 text-center">
-                                {ready && hasMakeQty ? (
+                                {ready ? (
                                   <button
                                     onClick={() => openSingleSAPrompt(sa)}
                                     disabled={creatingSAJobs}
