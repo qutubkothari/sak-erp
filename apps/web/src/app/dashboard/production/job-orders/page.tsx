@@ -1805,14 +1805,10 @@ function JobOrdersPageContent() {
                     value={formData.bomId}
                     onChange={(e) => {
                       const bomId = e.target.value;
-                      setFormData({...formData, bomId});
-                      if (bomId) {
-                        fetchBOMData(bomId);
-                      } else {
-                        setFormData({...formData, itemId: ''});
-                        setMaterials([]);
-                        setOperations([]);
-                      }
+                      setFormData((prev) => ({ ...prev, bomId, itemId: '' }));
+                      setBaseMaterialQuantities({});
+                      setMaterials([]);
+                      setOperations([]);
                     }}
                     className="w-full border rounded px-3 py-2 text-sm"
                     size={Math.min(boms.length + 1, 8)}
@@ -1837,6 +1833,29 @@ function JobOrdersPageContent() {
                   {!bomSearchTerm && allBoms.length === 0 && (
                     <p className="text-xs text-red-600">⚠ No BOMs found in system. Create a BOM first.</p>
                   )}
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => formData.bomId && fetchBOMData(formData.bomId)}
+                      disabled={!formData.bomId}
+                      className="px-3 py-1.5 rounded border border-[#E8DCC4] text-[#6F4E37] hover:bg-[#E8DCC4] disabled:opacity-50"
+                    >
+                      Manual Load BOM
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBaseMaterialQuantities({});
+                        setMaterials([]);
+                        setOperations([]);
+                        setFormData((prev) => ({ ...prev, itemId: '' }));
+                      }}
+                      className="px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-100"
+                      title="Clear loaded BOM data"
+                    >
+                      Clear Cache
+                    </button>
+                  </div>
                 </div>
               </div>
 
