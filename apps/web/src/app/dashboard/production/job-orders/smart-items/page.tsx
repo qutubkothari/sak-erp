@@ -1457,6 +1457,31 @@ function SmartJobOrdersItemsPageContent() {
                   Shortage
                 </span>
               )}
+              {lvl > 0 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openSingleSAPrompt({
+                      bomId: bom.bomId,
+                      itemId: bom.itemId,
+                      itemCode: bom.itemCode,
+                      itemName: bom.itemName,
+                      requiredQuantity: bom.requiredQuantity,
+                      availableQuantity: bom.availableQuantity,
+                      toMakeQuantity: Math.max(0, bom.requiredQuantity - bom.availableQuantity) || bom.requiredQuantity || 1,
+                    });
+                  }}
+                  disabled={creatingSAJobs}
+                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                    hasShortage
+                      ? 'bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50'
+                      : 'bg-green-600 text-white hover:bg-green-700 disabled:opacity-50'
+                  }`}
+                  title={`Create JO for ${bom.itemCode}`}
+                >
+                  Create JO
+                </button>
+              )}
             </span>
           </div>
 
