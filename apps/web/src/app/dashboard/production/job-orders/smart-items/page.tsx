@@ -232,19 +232,7 @@ function SmartJobOrdersItemsPageContent() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState('');
-  const [preview, setPreview] = useState<SmartPreview | null>(() => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const cached = localStorage.getItem(CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        return parsed.preview || null;
-      }
-    } catch (e) {
-      console.error('Failed to load cached preview:', e);
-    }
-    return null;
-  });
+  const [preview, setPreview] = useState<SmartPreview | null>(null);
   const [previewError, setPreviewError] = useState<string>('');
 
   const [selectedCategoryByNodeKey, setSelectedCategoryByNodeKey] = useState<Record<string, string>>(() => {
@@ -896,7 +884,6 @@ function SmartJobOrdersItemsPageContent() {
       const cacheData = {
         itemId,
         quantity,
-        preview,
         selectedItemByNodeKey,
         selectedCategoryByNodeKey,
         stockByItemId,
@@ -1844,29 +1831,29 @@ function SmartJobOrdersItemsPageContent() {
           </div>
 
           <div className="flex gap-3">
-            {preview && (
-              <button
-                onClick={() => {
-                  if (confirm('Clear all cached data? You will need to reload the BOM.')) {
-                    try {
-                      localStorage.removeItem(CACHE_KEY);
-                      setPreview(null);
-                      setSelectedItemByNodeKey({});
-                      setStockByItemId({});
-                      setExpandedBoms(new Set());
-                      setItemId('');
-                      setQuantity(1);
-                    } catch (e) {
-                      console.error('Failed to clear cache:', e);
-                    }
+            <button
+              onClick={() => {
+                if (confirm('Clear all cached data? You will need to reload the BOM.')) {
+                  try {
+                    localStorage.removeItem(CACHE_KEY);
+                    setPreview(null);
+                    setSelectedItemByNodeKey({});
+                    setSelectedCategoryByNodeKey({});
+                    setStockByItemId({});
+                    setExpandedBoms(new Set());
+                    setItemId('');
+                    setQuantity(1);
+                    setPreviewError('');
+                  } catch (e) {
+                    console.error('Failed to clear cache:', e);
                   }
-                }}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100"
-                title="Clear cached data"
-              >
-                Clear Cache
-              </button>
-            )}
+                }
+              }}
+              className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100"
+              title="Clear cached data"
+            >
+              Clear Cache
+            </button>
             <button
               onClick={fetchPreview}
               disabled={!canPreview || loadingPreview}
