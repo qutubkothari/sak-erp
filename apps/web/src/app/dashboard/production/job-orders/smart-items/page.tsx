@@ -315,6 +315,7 @@ function SmartJobOrdersItemsPageContent() {
     items: Array<{ bomId: string; itemId: string; itemCode: string; itemName: string; defaultQty: number; qty: number }>;
   }>({ open: false, mode: 'single', items: [] });
   const [creatingSAJobs, setCreatingSAJobs] = useState(false);
+  const [selectedSABatchKeys, setSelectedSABatchKeys] = useState<Set<string>>(new Set());
   const [saJobResults, setSaJobResults] = useState<Array<{ itemCode: string; success: boolean; joNumber?: string; error?: string }>>([]);
   const [showSAJobResults, setShowSAJobResults] = useState(false);
 
@@ -1190,6 +1191,28 @@ function SmartJobOrdersItemsPageContent() {
     );
   };
 
+  const getSAKey = (sa: Pick<SmartSubAssemblyPlan, 'bomId' | 'itemId'>) => `${sa.bomId}:${sa.itemId}`;
+
+  const toggleSASelection = (sa: SmartSubAssemblyPlan) => {
+    const key = getSAKey(sa);
+    setSelectedSABatchKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleSelectAllReadySAs = () => {
+    const ready = getReadySubAssemblies();
+    const readyKeys = new Set(ready.map((sa) => getSAKey(sa)));
+    setSelectedSABatchKeys((prev) => {
+      const allReadySelected = ready.length > 0 && ready.every((sa) => prev.has(getSAKey(sa)));
+      if (allReadySelected) return new Set();
+      return readyKeys;
+    });
+  };
+
   /** Open quantity prompt for a single sub-assembly */
   const openSingleSAPrompt = (sa: SmartSubAssemblyPlan) => {
     const defaultQty = sa.toMakeQuantity || sa.requiredQuantity || 1;
@@ -1231,6 +1254,34 @@ function SmartJobOrdersItemsPageContent() {
     });
   };
 
+  /** Open quantity prompt for selected sub-assemblies */
+  const openSelectedSAPrompt = () => {
+    if (!preview?.subAssembliesToMake?.length) return;
+    const selected = preview.subAssembliesToMake.filter((sa) => selectedSABatchKeys.has(getSAKey(sa)));
+    const selectedReady = selected.filter((sa) => isSubAssemblyReady(sa.bomId));
+
+    if (!selectedReady.length) {
+      alert('Select at least one ready sub-assembly to create JO.');
+      return;
+    }
+
+    setSubAssemblyQtyModal({
+      open: true,
+      mode: 'batch',
+      items: selectedReady.map((sa) => {
+        const defaultQty = sa.toMakeQuantity || sa.requiredQuantity || 1;
+        return {
+          bomId: sa.bomId,
+          itemId: sa.itemId,
+          itemCode: sa.itemCode,
+          itemName: sa.itemName,
+          defaultQty,
+          qty: defaultQty,
+        };
+      }),
+    });
+  };
+
   /** Create JOs for the items in the modal */
   const processSubAssemblyJOs = async () => {
     const items = subAssemblyQtyModal.items.filter((i) => Number(i.qty) > 0);
@@ -1258,6 +1309,7 @@ function SmartJobOrdersItemsPageContent() {
     setSubAssemblyQtyModal({ open: false, mode: 'single', items: [] });
     setSaJobResults(results);
     setShowSAJobResults(true);
+    setSelectedSABatchKeys(new Set());
 
     const successCount = results.filter((r) => r.success).length;
     if (successCount > 0 && results.every((r) => r.success)) {
@@ -2170,22 +2222,38 @@ function SmartJobOrdersItemsPageContent() {
                     <h3 className="text-lg font-semibold text-gray-900">Sub-assemblies to Auto-Make</h3>
                     {(() => {
                       const readyCount = getReadySubAssemblies().length;
-                      return readyCount > 0 ? (
-                        <button
-                          onClick={openBatchSAPrompt}
-                          disabled={creatingSAJobs}
-                          className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                          Process {readyCount} Ready Sub-Assembl{readyCount > 1 ? 'ies' : 'y'}
-                        </button>
-                      ) : null;
+                      const selectedCount = preview.subAssembliesToMake.filter((sa) => selectedSABatchKeys.has(getSAKey(sa))).length;
+                      const allReadySelected = readyCount > 0 && getReadySubAssemblies().every((sa) => selectedSABatchKeys.has(getSAKey(sa)));
+                      return (
+                        <div className="flex items-center gap-3">
+                          {readyCount > 0 ? (
+                            <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={allReadySelected}
+                                onChange={toggleSelectAllReadySAs}
+                                className="h-4 w-4"
+                              />
+                              Select All Ready ({readyCount})
+                            </label>
+                          ) : null}
+                          <button
+                            onClick={openSelectedSAPrompt}
+                            disabled={creatingSAJobs || selectedCount === 0}
+                            className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                            Create JO for Selected ({selectedCount})
+                          </button>
+                        </div>
+                      );
                     })()}
                   </div>
                   <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
+                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase w-16">Sel</th>
                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-20">S.No</th>
                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Required</th>
@@ -2198,8 +2266,18 @@ function SmartJobOrdersItemsPageContent() {
                       <tbody className="divide-y divide-gray-200">
                         {preview.subAssembliesToMake.map((sa, idx) => {
                           const ready = isSubAssemblyReady(sa.bomId);
+                          const selected = selectedSABatchKeys.has(getSAKey(sa));
                           return (
                             <tr key={`${sa.bomId}:${sa.itemId}`} className={ready ? 'bg-green-50' : ''}>
+                              <td className="px-4 py-2 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={selected}
+                                  onChange={() => toggleSASelection(sa)}
+                                  disabled={!ready || creatingSAJobs}
+                                  className="h-4 w-4"
+                                />
+                              </td>
                               <td className="px-4 py-2 text-sm text-gray-600">{idx + 1}</td>
                               <td className="px-4 py-2 text-sm text-gray-900">
                                 {sa.itemCode} - {sa.itemName}
