@@ -161,12 +161,18 @@ Run "Deploy on Hostinger (extract, install prod deps, restart PM2)" {
      'rm -rf apps/web/.next apps/api/dist packages/hr-module/dist 2>/dev/null || true; ' +
      'tar -xzf "$ARCHIVE" -C "$DEPLOY_DIR"; ' +
      'rm -f "$ARCHIVE"; ' +
-     'pnpm install --prod --frozen-lockfile; ' +
+    'pnpm install --frozen-lockfile; ' +
     'cd packages/database; pnpm exec prisma generate --schema prisma/schema.prisma; cd "$DEPLOY_DIR"; ' +
     'pm2 delete ' + $PM2_API_NAME + ' 2>/dev/null || true; ' +
     'cd apps/api; pm2 start npm --name ' + $PM2_API_NAME + ' -- run start:prod; cd "$DEPLOY_DIR"; ' +
-     'pm2 delete ' + $PM2_WEB_NAME + ' 2>/dev/null || true; ' +
-     'cd apps/web; test -f .next/BUILD_ID; pm2 start node_modules/next/dist/bin/next --name ' + $PM2_WEB_NAME + ' -- start -p 3000; cd "$DEPLOY_DIR"; ' +
+    'pm2 delete ' + $PM2_WEB_NAME + ' 2>/dev/null || true; ' +
+    'cd apps/web; ' +
+    'if [ -f .next/BUILD_ID ]; then ' +
+    '  pm2 start node_modules/next/dist/bin/next --name ' + $PM2_WEB_NAME + ' -- start -p 3000; ' +
+    'else ' +
+    '  pm2 start npm --name ' + $PM2_WEB_NAME + ' -- run dev -- -p 3000; ' +
+    'fi; ' +
+    'cd "$DEPLOY_DIR"; ' +
     'pm2 save; ' +
     'WEB_OK=0; for i in 1 2 3 4 5 6 7 8 9 10; do if curl -fs http://127.0.0.1:3000/ >/dev/null 2>&1; then WEB_OK=1; break; fi; sleep 1; done; if [ "$WEB_OK" -eq 1 ]; then echo WEB_OK; else echo WEB_FAIL; fi; ' +
     'API_CODE=000; for i in 1 2 3 4 5 6 7 8 9 10; do API_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/api/v1 2>/dev/null || true); if [ "$API_CODE" != "000" ]; then break; fi; sleep 1; done; if [ "$API_CODE" != "000" ]; then echo API_OK_$API_CODE; else echo API_FAIL; fi; ' +
