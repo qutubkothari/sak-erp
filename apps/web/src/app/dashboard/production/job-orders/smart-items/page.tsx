@@ -308,6 +308,16 @@ function SmartJobOrdersItemsPageContent() {
   const [createJobStatus, setCreateJobStatus] = useState<SmartCreateAsyncStatus | null>(null);
   const [showCreateProgress, setShowCreateProgress] = useState(false);
 
+  // Sub-assembly individual/batch JO creation
+  const [subAssemblyQtyModal, setSubAssemblyQtyModal] = useState<{
+    open: boolean;
+    mode: 'single' | 'batch';
+    items: Array<{ bomId: string; itemId: string; itemCode: string; itemName: string; defaultQty: number; qty: number }>;
+  }>({ open: false, mode: 'single', items: [] });
+  const [creatingSAJobs, setCreatingSAJobs] = useState(false);
+  const [saJobResults, setSaJobResults] = useState<Array<{ itemCode: string; success: boolean; joNumber?: string; error?: string }>>([]);
+  const [showSAJobResults, setShowSAJobResults] = useState(false);
+
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     if (showCreateSummary) document.body.style.overflow = 'hidden';
@@ -1149,6 +1159,108 @@ function SmartJobOrdersItemsPageContent() {
       }
       // creating stays true while async job runs; polling will reset it.
       if (!startedAsync) setCreating(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Sub-assembly individual / batch JO creation
+  // ---------------------------------------------------------------------------
+
+  /** Check if a sub-assembly BOM has all its direct child materials in stock */
+  const isSubAssemblyReady = (bomId: string): boolean => {
+    if (!preview) return false;
+    const directItems = preview.nodes.filter(
+      (n) => n.componentType === 'ITEM' && n.bomId === bomId,
+    );
+    for (const item of directItems) {
+      const key = nodeKey(item);
+      const selectedItemId = selectedItemByNodeKey[key] || item.itemId;
+      const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+      const available = stockState?.available ?? item.availableQuantity;
+      if (Number(item.requiredQuantity || 0) > Number(available || 0)) return false;
+    }
+    return true;
+  };
+
+  /** Get all sub-assemblies that are ready (all materials in stock) */
+  const getReadySubAssemblies = () => {
+    if (!preview?.subAssembliesToMake?.length) return [];
+    return preview.subAssembliesToMake.filter(
+      (sa) => Number(sa.toMakeQuantity || 0) > 0 && isSubAssemblyReady(sa.bomId),
+    );
+  };
+
+  /** Open quantity prompt for a single sub-assembly */
+  const openSingleSAPrompt = (sa: SmartSubAssemblyPlan) => {
+    setSubAssemblyQtyModal({
+      open: true,
+      mode: 'single',
+      items: [{
+        bomId: sa.bomId,
+        itemId: sa.itemId,
+        itemCode: sa.itemCode,
+        itemName: sa.itemName,
+        defaultQty: sa.toMakeQuantity,
+        qty: sa.toMakeQuantity,
+      }],
+    });
+  };
+
+  /** Open quantity prompt for all ready sub-assemblies */
+  const openBatchSAPrompt = () => {
+    const ready = getReadySubAssemblies();
+    if (!ready.length) {
+      alert('No sub-assemblies are ready (all materials in stock).');
+      return;
+    }
+    setSubAssemblyQtyModal({
+      open: true,
+      mode: 'batch',
+      items: ready.map((sa) => ({
+        bomId: sa.bomId,
+        itemId: sa.itemId,
+        itemCode: sa.itemCode,
+        itemName: sa.itemName,
+        defaultQty: sa.toMakeQuantity,
+        qty: sa.toMakeQuantity,
+      })),
+    });
+  };
+
+  /** Create JOs for the items in the modal */
+  const processSubAssemblyJOs = async () => {
+    const items = subAssemblyQtyModal.items.filter((i) => Number(i.qty) > 0);
+    if (!items.length) return;
+
+    setCreatingSAJobs(true);
+    const results: Array<{ itemCode: string; success: boolean; joNumber?: string; error?: string }> = [];
+
+    for (const item of items) {
+      try {
+        const result = await apiClient.post('/job-orders/from-bom', {
+          itemId: item.itemId,
+          bomId: item.bomId,
+          quantity: Number(item.qty),
+          startDate: new Date().toISOString().slice(0, 10),
+        });
+        const joNumber = result?.job_order_number || result?.jobOrderNumber || result?.id || 'Created';
+        results.push({ itemCode: item.itemCode, success: true, joNumber: String(joNumber) });
+      } catch (err: any) {
+        results.push({ itemCode: item.itemCode, success: false, error: err?.message || 'Failed' });
+      }
+    }
+
+    setCreatingSAJobs(false);
+    setSubAssemblyQtyModal({ open: false, mode: 'single', items: [] });
+    setSaJobResults(results);
+    setShowSAJobResults(true);
+
+    const successCount = results.filter((r) => r.success).length;
+    if (successCount > 0 && results.every((r) => r.success)) {
+      // All succeeded — navigate after brief delay
+      setTimeout(() => {
+        router.push('/dashboard/production/job-orders');
+      }, 2000);
     }
   };
 
@@ -2025,7 +2137,22 @@ function SmartJobOrdersItemsPageContent() {
 
               {preview.subAssembliesToMake?.length ? (
                 <div className="mt-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Sub-assemblies to Auto-Make</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-lg font-semibold text-gray-900">Sub-assemblies to Auto-Make</h3>
+                    {(() => {
+                      const readyCount = getReadySubAssemblies().length;
+                      return readyCount > 0 ? (
+                        <button
+                          onClick={openBatchSAPrompt}
+                          disabled={creatingSAJobs}
+                          className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                          Process {readyCount} Ready Sub-Assembl{readyCount > 1 ? 'ies' : 'y'}
+                        </button>
+                      ) : null;
+                    })()}
+                  </div>
                   <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
@@ -2035,20 +2162,51 @@ function SmartJobOrdersItemsPageContent() {
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Required</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">In Stock</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">To Make</th>
+                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase w-20">Status</th>
+                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase w-32">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {preview.subAssembliesToMake.map((sa, idx) => (
-                          <tr key={`${sa.bomId}:${sa.itemId}`}>
-                            <td className="px-4 py-2 text-sm text-gray-600">{idx + 1}</td>
-                            <td className="px-4 py-2 text-sm text-gray-900">
-                              {sa.itemCode} - {sa.itemName}
-                            </td>
-                            <td className="px-4 py-2 text-sm text-right text-gray-900">{sa.requiredQuantity}</td>
-                            <td className="px-4 py-2 text-sm text-right text-gray-900">{sa.availableQuantity}</td>
-                            <td className="px-4 py-2 text-sm text-right font-semibold text-amber-700">{sa.toMakeQuantity}</td>
-                          </tr>
-                        ))}
+                        {preview.subAssembliesToMake.map((sa, idx) => {
+                          const ready = isSubAssemblyReady(sa.bomId);
+                          const hasMakeQty = Number(sa.toMakeQuantity || 0) > 0;
+                          return (
+                            <tr key={`${sa.bomId}:${sa.itemId}`} className={ready ? 'bg-green-50' : ''}>
+                              <td className="px-4 py-2 text-sm text-gray-600">{idx + 1}</td>
+                              <td className="px-4 py-2 text-sm text-gray-900">
+                                {sa.itemCode} - {sa.itemName}
+                              </td>
+                              <td className="px-4 py-2 text-sm text-right text-gray-900">{sa.requiredQuantity}</td>
+                              <td className="px-4 py-2 text-sm text-right text-gray-900">{sa.availableQuantity}</td>
+                              <td className="px-4 py-2 text-sm text-right font-semibold text-amber-700">{sa.toMakeQuantity}</td>
+                              <td className="px-4 py-2 text-center">
+                                {ready ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    ✓ Ready
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                                    Shortage
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-2 text-center">
+                                {ready && hasMakeQty ? (
+                                  <button
+                                    onClick={() => openSingleSAPrompt(sa)}
+                                    disabled={creatingSAJobs}
+                                    className="px-3 py-1 rounded bg-green-600 text-white text-xs font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title={`Create JO for ${sa.itemCode}`}
+                                  >
+                                    Create JO
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-gray-400">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -2488,6 +2646,156 @@ function SmartJobOrdersItemsPageContent() {
                 </div>
               );
             })()}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Sub-Assembly Quantity Prompt Modal */}
+      {subAssemblyQtyModal.open ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-xl shadow-xl border border-green-200 overflow-hidden">
+            <div className="px-6 py-4 bg-green-50 border-b border-green-200 flex items-center justify-between">
+              <div>
+                <div className="text-lg font-semibold text-green-900">
+                  {subAssemblyQtyModal.mode === 'batch'
+                    ? `Create ${subAssemblyQtyModal.items.length} Sub-Assembly Job Order${subAssemblyQtyModal.items.length > 1 ? 's' : ''}`
+                    : 'Create Sub-Assembly Job Order'}
+                </div>
+                <div className="text-sm text-green-800">Set quantity for each sub-assembly</div>
+              </div>
+              <button
+                onClick={() => setSubAssemblyQtyModal({ open: false, mode: 'single', items: [] })}
+                className="px-3 py-1.5 rounded-md border border-green-300 text-green-800 hover:bg-green-100"
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-32">Quantity</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {subAssemblyQtyModal.items.map((item, idx) => (
+                    <tr key={`${item.bomId}:${item.itemId}`} className="hover:bg-gray-50">
+                      <td className="px-3 py-2">
+                        <div className="font-medium text-gray-900">{item.itemCode}</div>
+                        <div className="text-xs text-gray-600">{item.itemName}</div>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <input
+                          type="number"
+                          min={1}
+                          value={item.qty}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0;
+                            setSubAssemblyQtyModal((prev) => ({
+                              ...prev,
+                              items: prev.items.map((it, i) =>
+                                i === idx ? { ...it, qty: val } : it,
+                              ),
+                            }));
+                          }}
+                          className="w-24 border border-gray-300 rounded px-2 py-1 text-right text-sm"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t flex items-center justify-end gap-3">
+              <button
+                onClick={() => setSubAssemblyQtyModal({ open: false, mode: 'single', items: [] })}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={processSubAssemblyJOs}
+                disabled={creatingSAJobs || subAssemblyQtyModal.items.every((i) => Number(i.qty) <= 0)}
+                className="px-4 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {creatingSAJobs ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    Creating...
+                  </>
+                ) : (
+                  `Create ${subAssemblyQtyModal.items.filter((i) => Number(i.qty) > 0).length} Job Order${subAssemblyQtyModal.items.filter((i) => Number(i.qty) > 0).length > 1 ? 's' : ''}`
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Sub-Assembly JO Results Modal */}
+      {showSAJobResults ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-xl shadow-xl border border-green-200 overflow-hidden">
+            <div className="px-6 py-4 bg-green-50 border-b border-green-200 flex items-center justify-between">
+              <div className="text-lg font-semibold text-green-900">
+                Sub-Assembly Job Orders — Results
+              </div>
+              <button
+                onClick={() => {
+                  setShowSAJobResults(false);
+                  const allSuccess = saJobResults.every((r) => r.success);
+                  if (allSuccess && saJobResults.length > 0) {
+                    router.push('/dashboard/production/job-orders');
+                  }
+                }}
+                className="px-3 py-1.5 rounded-md border border-green-300 text-green-800 hover:bg-green-100"
+              >
+                Close
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="space-y-2">
+                {saJobResults.map((r, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex items-center justify-between px-4 py-3 rounded-lg border ${
+                      r.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {r.success ? (
+                        <span className="text-green-600 font-bold">✓</span>
+                      ) : (
+                        <span className="text-red-600 font-bold">✗</span>
+                      )}
+                      <span className="text-sm font-medium text-gray-900">{r.itemCode}</span>
+                    </div>
+                    <div className="text-sm">
+                      {r.success ? (
+                        <span className="text-green-700 font-semibold">{r.joNumber}</span>
+                      ) : (
+                        <span className="text-red-700">{r.error}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowSAJobResults(false);
+                    router.push('/dashboard/production/job-orders');
+                  }}
+                  className="px-4 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700"
+                >
+                  Go to Job Orders
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
