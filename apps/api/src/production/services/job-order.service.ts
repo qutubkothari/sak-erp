@@ -241,6 +241,27 @@ export class JobOrderService {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
   }
 
+  /** Generate a unique movement_number for stock_movements inserts (ISS-000001, PRD-000001, etc.) */
+  private async generateMovementNumber(tenantId: string, movementType: string): Promise<string> {
+    const prefixes: Record<string, string> = {
+      GRN_RECEIPT: 'RCP-',
+      PRODUCTION_ISSUE: 'ISS-',
+      PRODUCTION_RETURN: 'RET-',
+      PRODUCTION_RECEIPT: 'PRD-',
+      SALES_ISSUE: 'SAL-',
+      TRANSFER: 'TRN-',
+      ADJUSTMENT: 'ADJ-',
+      SCRAP: 'SCR-',
+    };
+    const prefix = prefixes[movementType] || 'MOV-';
+    const { count } = await this.supabase
+      .from('stock_movements')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .like('movement_number', `${prefix}%`);
+    return `${prefix}${String((count || 0) + 1).padStart(6, '0')}`;
+  }
+
   private resolveUidEntityTypeFromItemCategory(category: unknown): string {
     const c = String(category || '').toUpperCase();
     if (c.includes('COMPONENT')) return 'CP';
@@ -998,10 +1019,12 @@ export class JobOrderService {
         const movedBy = String(movedByUserId || '').trim();
         if (movedBy && this.isUuid(movedBy)) {
           const warehouseId = String((entry as any)?.warehouse_id || '').trim();
+          const movementNumber = await this.generateMovementNumber(tenantId, 'PRODUCTION_ISSUE');
           const { error: auditError } = await this.supabase
             .from('stock_movements')
             .insert({
               tenant_id: tenantId,
+              movement_number: movementNumber,
               movement_type: 'PRODUCTION_ISSUE',
               item_id: itemIdToConsume,
               from_warehouse_id: warehouseId && this.isUuid(warehouseId) ? warehouseId : null,
@@ -3209,10 +3232,12 @@ export class JobOrderService {
       if (!requiresUidMapping) {
         const movedBy = String(userId || '').trim();
         if (movedBy && this.isUuid(movedBy)) {
+          const movementNumber = await this.generateMovementNumber(tenantId, 'PRODUCTION_ISSUE');
           const { error: auditError } = await this.supabase
             .from('stock_movements')
             .insert({
               tenant_id: tenantId,
+              movement_number: movementNumber,
               movement_type: 'PRODUCTION_ISSUE',
               item_id: itemIdToConsume,
               from_warehouse_id: warehouseId && this.isUuid(warehouseId) ? warehouseId : null,
@@ -3255,8 +3280,13 @@ export class JobOrderService {
           qtyPerUid > 0 ? Math.floor(issuedNow / qtyPerUid + 1e-9) : normalizedUids.length,
         );
         const uidsToRecord = normalizedUids.slice(0, uidsToConsumeCount);
-        const rows = uidsToRecord.map((uid) => ({
+        const uidMovementNumbers: string[] = [];
+        for (let i = 0; i < uidsToRecord.length; i++) {
+          uidMovementNumbers.push(await this.generateMovementNumber(tenantId, 'PRODUCTION_ISSUE'));
+        }
+        const rows = uidsToRecord.map((uid, idx) => ({
           tenant_id: tenantId,
+          movement_number: uidMovementNumbers[idx],
           movement_type: 'PRODUCTION_ISSUE',
           item_id: itemIdToConsume,
           uid,
