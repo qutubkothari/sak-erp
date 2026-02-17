@@ -1603,31 +1603,6 @@ function SmartJobOrdersItemsPageContent() {
                   Shortage
                 </span>
               )}
-              {id !== rootBomId && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openSingleSAPrompt({
-                      bomId: bom.bomId,
-                      itemId: bom.itemId,
-                      itemCode: bom.itemCode,
-                      itemName: bom.itemName,
-                      requiredQuantity: bom.requiredQuantity,
-                      availableQuantity: bom.availableQuantity,
-                      toMakeQuantity: Math.max(0, bom.requiredQuantity - bom.availableQuantity) || bom.requiredQuantity || 1,
-                    });
-                  }}
-                  disabled={creatingSAJobs}
-                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                    hasShortage
-                      ? 'bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50'
-                      : 'bg-green-600 text-white hover:bg-green-700 disabled:opacity-50'
-                  }`}
-                  title={`Create JO for ${bom.itemCode}`}
-                >
-                  Create JO
-                </button>
-              )}
             </span>
           </div>
 
@@ -2350,7 +2325,6 @@ function SmartJobOrdersItemsPageContent() {
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">In Stock</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">To Make</th>
                           <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase w-20">Status</th>
-                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase w-24">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -2384,20 +2358,6 @@ function SmartJobOrdersItemsPageContent() {
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
                                     Shortage
                                   </span>
-                                )}
-                              </td>
-                              <td className="px-4 py-2 text-center">
-                                {ready ? (
-                                  <button
-                                    onClick={() => openSingleSAPrompt(sa)}
-                                    disabled={creatingSAJobs}
-                                    className="px-3 py-1 rounded bg-green-600 text-white text-xs font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title={`Create JO for ${sa.itemCode}`}
-                                  >
-                                    Create JO
-                                  </button>
-                                ) : (
-                                  <span className="text-xs text-gray-400">—</span>
                                 )}
                               </td>
                             </tr>
