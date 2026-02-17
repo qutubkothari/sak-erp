@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
+import { getTodayDateInputValue } from '@/lib/date';
 
 interface VendorPayable {
   vendor_id: string;
@@ -26,6 +27,7 @@ interface GRNPayable {
 }
 
 export default function AccountsPayablePage() {
+  const todayDate = getTodayDateInputValue();
   const [vendorPayables, setVendorPayables] = useState<VendorPayable[]>([]);
   const [selectedVendor, setSelectedVendor] = useState<VendorPayable | null>(null);
   const [vendorGRNs, setVendorGRNs] = useState<GRNPayable[]>([]);
@@ -37,7 +39,7 @@ export default function AccountsPayablePage() {
     amount: '',
     payment_method: 'NEFT',
     payment_reference: '',
-    payment_date: new Date().toISOString().split('T')[0],
+    payment_date: getTodayDateInputValue(),
     payment_notes: '',
   });
 
@@ -117,7 +119,7 @@ export default function AccountsPayablePage() {
         amount: '',
         payment_method: 'NEFT',
         payment_reference: '',
-        payment_date: new Date().toISOString().split('T')[0],
+        payment_date: getTodayDateInputValue(),
         payment_notes: '',
       });
     } catch (error: any) {
@@ -435,6 +437,7 @@ export default function AccountsPayablePage() {
                 </label>
                 <input
                   type="date"
+                  max={todayDate}
                   value={paymentForm.payment_date}
                   onChange={(e) => setPaymentForm({ ...paymentForm, payment_date: e.target.value })}
                   className="w-full px-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-orange-500"

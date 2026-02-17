@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../components/ui/ListTable';
+import { getTodayDateInputValue } from '@/lib/date';
 
 interface Inspection {
   id: string;
@@ -64,6 +65,7 @@ interface QualityDashboard {
 
 export default function QualityPage() {
   const router = useRouter();
+  const todayDate = getTodayDateInputValue();
   const [activeTab, setActiveTab] = useState<'inspections' | 'ncr' | 'vendors' | 'dashboard'>('inspections');
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [ncrs, setNcrs] = useState<NCR[]>([]);
@@ -90,7 +92,7 @@ export default function QualityPage() {
     uid: '',
     quantity_inspected: 0,
     inspector_id: '',
-    inspection_date: new Date().toISOString().split('T')[0],
+    inspection_date: getTodayDateInputValue(),
     remarks: ''
   });
 
@@ -312,7 +314,7 @@ export default function QualityPage() {
         uid: '',
         quantity_inspected: 0,
         inspector_id: '',
-        inspection_date: new Date().toISOString().split('T')[0],
+        inspection_date: getTodayDateInputValue(),
         remarks: ''
       });
       setSelectedGRN(null);
@@ -380,7 +382,7 @@ export default function QualityPage() {
       uid: inspection.uid || '',
       quantity_inspected: inspection.quantity_inspected || 0,
       inspector_id: inspection.inspector_id || '',
-      inspection_date: inspection.inspection_date ? new Date(inspection.inspection_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      inspection_date: inspection.inspection_date ? String(inspection.inspection_date).split('T')[0] : getTodayDateInputValue(),
       remarks: inspection.remarks || ''
     });
     setShowInspectionForm(true);
@@ -436,7 +438,7 @@ export default function QualityPage() {
         uid: '',
         quantity_inspected: 0,
         inspector_id: '',
-        inspection_date: new Date().toISOString().split('T')[0],
+        inspection_date: getTodayDateInputValue(),
         remarks: ''
       });
       setSelectedGRN(null);
@@ -903,6 +905,7 @@ export default function QualityPage() {
                   <label className="block text-sm font-medium mb-1">Inspection Date</label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={inspectionForm.inspection_date}
                     onChange={(e) => setInspectionForm({ ...inspectionForm, inspection_date: e.target.value })}
                     className="w-full border rounded px-3 py-2"
@@ -1045,7 +1048,7 @@ export default function QualityPage() {
                       uid: '',
                       quantity_inspected: 0,
                       inspector_id: '',
-                      inspection_date: new Date().toISOString().split('T')[0],
+                      inspection_date: getTodayDateInputValue(),
                       remarks: ''
                     });
                     setSelectedGRN(null);

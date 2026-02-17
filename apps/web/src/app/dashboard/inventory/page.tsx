@@ -290,7 +290,7 @@ function InventoryPageContent() {
             onClick={() => router.push('/dashboard/inventory/items')}
             className="py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-amber-600 hover:border-amber-300"
           >
-            Items Master
+            Stock Master
           </button>
           <button
             onClick={() => setActiveTab('movements')}

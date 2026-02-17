@@ -5,6 +5,7 @@ export const fetchCache = 'force-no-store';
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
+import { getTodayDateInputValue } from '@/lib/date';
 
 // Import HR module utilities
 import {
@@ -315,6 +316,7 @@ export default function HrPage() {
 function HrPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const todayDate = getTodayDateInputValue();
   const [activeSection, setActiveSection] = useState<'management' | 'employees'>('management');
   const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
   const [myEmployee, setMyEmployee] = useState<Employee | null>(null);
@@ -401,7 +403,7 @@ function HrPageContent() {
     employee_name: '',
     designation: '',
     department: '',
-    date_of_joining: new Date().toISOString().split('T')[0],
+    date_of_joining: getTodayDateInputValue(),
     date_of_birth: '',
     contact_number: '',
     email: '',
@@ -426,7 +428,7 @@ function HrPageContent() {
     title: '',
     description: '',
     points: '',
-    event_date: new Date().toISOString().split('T')[0]
+    event_date: getTodayDateInputValue()
   });
 
   // Master Config State
@@ -464,7 +466,7 @@ function HrPageContent() {
   const [showAttendanceForm, setShowAttendanceForm] = useState(false);
   const [attendanceForm, setAttendanceForm] = useState({
     employee_id: '',
-    attendance_date: new Date().toISOString().split('T')[0],
+    attendance_date: getTodayDateInputValue(),
     check_in_time: '',
     check_out_time: '',
     status: 'PRESENT',
@@ -476,8 +478,8 @@ function HrPageContent() {
   const [leaveForm, setLeaveForm] = useState({
     employee_id: '',
     leave_type: 'CASUAL',
-    start_date: new Date().toISOString().split('T')[0],
-    end_date: new Date().toISOString().split('T')[0],
+    start_date: getTodayDateInputValue(),
+    end_date: getTodayDateInputValue(),
     total_days: 1,
     reason: ''
   });
@@ -867,7 +869,7 @@ function HrPageContent() {
         employee_name: '',
         designation: '',
         department: '',
-        date_of_joining: new Date().toISOString().split('T')[0],
+        date_of_joining: getTodayDateInputValue(),
         date_of_birth: '',
         contact_number: '',
         email: '',
@@ -889,7 +891,7 @@ function HrPageContent() {
       setShowAttendanceForm(false);
       setAttendanceForm({
         employee_id: '',
-        attendance_date: new Date().toISOString().split('T')[0],
+        attendance_date: getTodayDateInputValue(),
         check_in_time: '',
         check_out_time: '',
         status: 'PRESENT',
@@ -911,8 +913,8 @@ function HrPageContent() {
       setLeaveForm({
         employee_id: '',
         leave_type: 'CASUAL',
-        start_date: new Date().toISOString().split('T')[0],
-        end_date: new Date().toISOString().split('T')[0],
+        start_date: getTodayDateInputValue(),
+        end_date: getTodayDateInputValue(),
         total_days: 1,
         reason: ''
       });
@@ -1384,7 +1386,7 @@ function HrPageContent() {
           title: 'Excellent Attendance',
           description: `Attendance rate: ${metrics.attendance_rate}% for ${month}`,
           points: 10,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       } else if (metrics.attendance_rate < 85) {
         records.push({
@@ -1393,7 +1395,7 @@ function HrPageContent() {
           title: 'Poor Attendance',
           description: `Attendance rate: ${metrics.attendance_rate}% for ${month}`,
           points: -5,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       }
       
@@ -1405,7 +1407,7 @@ function HrPageContent() {
           title: 'Excellent Punctuality',
           description: `Punctuality score: ${metrics.punctuality_score}% (only ${metrics.late_count} late days) for ${month}`,
           points: 8,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       } else if (metrics.late_count >= 5) {
         records.push({
@@ -1414,7 +1416,7 @@ function HrPageContent() {
           title: 'Frequent Late Arrivals',
           description: `Late ${metrics.late_count} times in ${month}`,
           points: -3,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       }
       
@@ -1426,7 +1428,7 @@ function HrPageContent() {
           title: 'Excessive Absences',
           description: `${metrics.absent_count} unplanned absences in ${month}`,
           points: -5,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       }
       
@@ -1438,7 +1440,7 @@ function HrPageContent() {
           title: 'Responsible Leave Management',
           description: `Only ${metrics.leave_utilization} day(s) leave taken in ${month}`,
           points: 5,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       }
       
@@ -1450,7 +1452,7 @@ function HrPageContent() {
           title: 'Outstanding Quality of Work',
           description: `Quality score: ${metrics.quality_of_work}/100 for ${month}`,
           points: 15,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       } else if (metrics.quality_of_work && metrics.quality_of_work < 60) {
         records.push({
@@ -1459,7 +1461,7 @@ function HrPageContent() {
           title: 'Poor Quality of Work',
           description: `Quality score: ${metrics.quality_of_work}/100 for ${month}`,
           points: -10,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       }
       
@@ -1470,7 +1472,7 @@ function HrPageContent() {
           title: 'Excellent Productivity',
           description: `Productivity score: ${metrics.productivity_score}/100 for ${month}`,
           points: 12,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       } else if (metrics.productivity_score && metrics.productivity_score < 60) {
         records.push({
@@ -1479,7 +1481,7 @@ function HrPageContent() {
           title: 'Low Productivity',
           description: `Productivity score: ${metrics.productivity_score}/100 for ${month}`,
           points: -8,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       }
       
@@ -1490,7 +1492,7 @@ function HrPageContent() {
           title: 'Great Team Player',
           description: `Teamwork rating: ${metrics.teamwork_rating}/100 for ${month}`,
           points: 10,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       }
       
@@ -1501,7 +1503,7 @@ function HrPageContent() {
           title: 'Excellent Customer Satisfaction',
           description: `Customer rating: ${metrics.customer_satisfaction}/100 for ${month}`,
           points: 12,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       }
       
@@ -1512,7 +1514,7 @@ function HrPageContent() {
           title: 'Outstanding Project Delivery',
           description: `Completion rate: ${metrics.project_completion_rate}% for ${month}`,
           points: 15,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       }
       
@@ -1523,7 +1525,7 @@ function HrPageContent() {
           title: 'Innovation & Initiative',
           description: `Innovation score: ${metrics.initiative_innovation}/100 for ${month}`,
           points: 10,
-          event_date: new Date().toISOString().split('T')[0]
+          event_date: todayDate
         });
       }
       
@@ -2531,7 +2533,7 @@ function HrPageContent() {
         title: '',
         description: '',
         points: '',
-        event_date: new Date().toISOString().split('T')[0]
+        event_date: getTodayDateInputValue()
       });
     } catch (err: any) {
       alert(err?.message || 'Failed to add record');
@@ -3372,6 +3374,7 @@ function HrPageContent() {
                   <label className="block text-sm font-medium mb-1">Date of Joining</label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={employeeForm.date_of_joining}
                     onChange={(e) => setEmployeeForm({ ...employeeForm, date_of_joining: e.target.value })}
                     className="w-full border rounded px-3 py-2"
@@ -3381,6 +3384,7 @@ function HrPageContent() {
                   <label className="block text-sm font-medium mb-1">Date of Birth</label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={employeeForm.date_of_birth}
                     onChange={(e) => setEmployeeForm({ ...employeeForm, date_of_birth: e.target.value })}
                     className="w-full border rounded px-3 py-2"
@@ -3474,6 +3478,7 @@ function HrPageContent() {
                 <label className="block text-sm font-medium mb-1">Date</label>
                 <input
                   type="date"
+                  max={todayDate}
                   value={attendanceForm.attendance_date}
                   onChange={(e) => setAttendanceForm({ ...attendanceForm, attendance_date: e.target.value })}
                   className="w-full border rounded px-3 py-2"
@@ -3594,6 +3599,7 @@ function HrPageContent() {
                   <label className="block text-sm font-medium mb-1">Start Date</label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={leaveForm.start_date}
                     onChange={(e) => {
                       const newStartDate = e.target.value;
@@ -3616,6 +3622,7 @@ function HrPageContent() {
                   <label className="block text-sm font-medium mb-1">End Date</label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={leaveForm.end_date}
                     onChange={(e) => {
                       const newEndDate = e.target.value;
@@ -3835,7 +3842,7 @@ function HrPageContent() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Event Date</label>
-                  <input type="date" value={meritDemeritForm.event_date} onChange={(e) => setMeritDemeritForm({ ...meritDemeritForm, event_date: e.target.value })} className="w-full border rounded px-3 py-2" />
+                  <input type="date" max={todayDate} value={meritDemeritForm.event_date} onChange={(e) => setMeritDemeritForm({ ...meritDemeritForm, event_date: e.target.value })} className="w-full border rounded px-3 py-2" />
                 </div>
                 <div className="col-span-2">
                   <label className="block text-sm font-medium mb-1">Title</label>
@@ -3905,7 +3912,7 @@ function HrPageContent() {
           <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
             <h3 className="text-lg font-semibold mb-4">Edit Attendance</h3>
             <form onSubmit={async (e) => { e.preventDefault(); setLoading(true); try { await apiClient.put(`/hr/attendance/${selectedAttendance.id}`, attendanceForm); setShowEditAttendance(false); fetchData(); alert('Attendance updated successfully'); } catch (err: any) { alert('Failed to update attendance'); } finally { setLoading(false); } }} className="space-y-4">
-              <div><label className="block text-sm font-medium mb-1">Date</label><input type="date" value={attendanceForm.attendance_date} onChange={(e) => setAttendanceForm({ ...attendanceForm, attendance_date: e.target.value })} className="w-full border rounded px-3 py-2" required /></div>
+              <div><label className="block text-sm font-medium mb-1">Date</label><input type="date" max={todayDate} value={attendanceForm.attendance_date} onChange={(e) => setAttendanceForm({ ...attendanceForm, attendance_date: e.target.value })} className="w-full border rounded px-3 py-2" required /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Check In</label><input type="time" value={attendanceForm.check_in_time} onChange={(e) => setAttendanceForm({ ...attendanceForm, check_in_time: e.target.value })} className="w-full border rounded px-3 py-2" /></div>
                 <div><label className="block text-sm font-medium mb-1">Check Out</label><input type="time" value={attendanceForm.check_out_time} onChange={(e) => setAttendanceForm({ ...attendanceForm, check_out_time: e.target.value })} className="w-full border rounded px-3 py-2" /></div>
@@ -3972,8 +3979,8 @@ function HrPageContent() {
             <form onSubmit={async (e) => { e.preventDefault(); setLoading(true); try { await apiClient.put(`/hr/leaves/${selectedLeave.id}`, leaveForm); setShowEditLeave(false); fetchData(); alert('Leave updated successfully'); } catch (err: any) { alert('Failed to update leave'); } finally { setLoading(false); } }} className="space-y-4">
               <div><label className="block text-sm font-medium mb-1">Leave Type</label><select value={leaveForm.leave_type} onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })} className="w-full border rounded px-3 py-2" required><option value="CASUAL">Casual Leave</option><option value="SICK">Sick Leave</option><option value="EARNED">Earned Leave</option><option value="UNPAID">Unpaid Leave</option><option value="MATERNITY">Maternity Leave</option><option value="PATERNITY">Paternity Leave</option><option value="COMP_OFF">Compensatory Off</option></select></div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Start Date</label><input type="date" value={leaveForm.start_date} onChange={(e) => { const newStartDate = e.target.value; const updatedForm = { ...leaveForm, start_date: newStartDate }; if (newStartDate && leaveForm.end_date) { const start = new Date(newStartDate); const end = new Date(leaveForm.end_date); const diffTime = Math.abs(end.getTime() - start.getTime()); const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; updatedForm.total_days = diffDays; } setLeaveForm(updatedForm); }} className="w-full border rounded px-3 py-2" required /></div>
-                <div><label className="block text-sm font-medium mb-1">End Date</label><input type="date" value={leaveForm.end_date} onChange={(e) => { const newEndDate = e.target.value; const updatedForm = { ...leaveForm, end_date: newEndDate }; if (leaveForm.start_date && newEndDate) { const start = new Date(leaveForm.start_date); const end = new Date(newEndDate); const diffTime = Math.abs(end.getTime() - start.getTime()); const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; updatedForm.total_days = diffDays; } setLeaveForm(updatedForm); }} className="w-full border rounded px-3 py-2" required /></div>
+                <div><label className="block text-sm font-medium mb-1">Start Date</label><input type="date" max={todayDate} value={leaveForm.start_date} onChange={(e) => { const newStartDate = e.target.value; const updatedForm = { ...leaveForm, start_date: newStartDate }; if (newStartDate && leaveForm.end_date) { const start = new Date(newStartDate); const end = new Date(leaveForm.end_date); const diffTime = Math.abs(end.getTime() - start.getTime()); const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; updatedForm.total_days = diffDays; } setLeaveForm(updatedForm); }} className="w-full border rounded px-3 py-2" required /></div>
+                <div><label className="block text-sm font-medium mb-1">End Date</label><input type="date" max={todayDate} value={leaveForm.end_date} onChange={(e) => { const newEndDate = e.target.value; const updatedForm = { ...leaveForm, end_date: newEndDate }; if (leaveForm.start_date && newEndDate) { const start = new Date(leaveForm.start_date); const end = new Date(newEndDate); const diffTime = Math.abs(end.getTime() - start.getTime()); const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; updatedForm.total_days = diffDays; } setLeaveForm(updatedForm); }} className="w-full border rounded px-3 py-2" required /></div>
               </div>
               <div><label className="block text-sm font-medium mb-1">Total Days</label><input type="number" value={leaveForm.total_days} onChange={(e) => setLeaveForm({ ...leaveForm, total_days: parseInt(e.target.value) })} className="w-full border rounded px-3 py-2" min="1" required /></div>
               <div><label className="block text-sm font-medium mb-1">Reason</label><textarea value={leaveForm.reason} onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })} className="w-full border rounded px-3 py-2" rows={3} required /></div>

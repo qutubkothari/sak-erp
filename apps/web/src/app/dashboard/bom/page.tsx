@@ -6,6 +6,7 @@ import { apiClient } from '../../../../lib/api-client';
 import ItemSearch from '../../../components/ItemSearch';
 import DrawingManager from '../../../components/DrawingManager';
 import { getUserRoleNames, readStoredUser } from '../../../lib/rbac';
+import { getTodayDateInputValue } from '../../../lib/date';
 
 const fileToDataUrl = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -140,6 +141,7 @@ interface PurchaseTrail {
 
 export default function BOMPage() {
   const router = useRouter();
+  const todayDate = getTodayDateInputValue();
   const [boms, setBoms] = useState<BOM[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1288,6 +1290,7 @@ export default function BOMPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Effective From</label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={formData.effectiveFrom}
                     onChange={(e) => setFormData({ ...formData, effectiveFrom: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"

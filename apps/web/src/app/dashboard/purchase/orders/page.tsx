@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { getTodayDateInputValue } from '@/lib/date';
 import DrawingManager from '../../../../components/DrawingManager';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { useSelection } from '../../../../hooks/useSelection';
@@ -24,6 +25,8 @@ interface PurchaseOrder {
   };
   po_date: string;
   delivery_date: string;
+  payment_terms?: string;
+  delivery_terms?: string;
   status: string;
   total_amount: number;
   remarks?: string;
@@ -35,12 +38,29 @@ interface PurchaseOrder {
   edit_count?: number;
   last_edited_at?: string;
   is_partial_po?: boolean;
+  receipt_status?: 'OPEN' | 'PARTIALLY_RECEIVED' | 'FULLY_RECEIVED' | string;
+  receipt_progress?: {
+    ordered_qty?: number;
+    received_qty?: number;
+    remaining_qty?: number;
+    received_percent?: number;
+  };
   purchase_order_items: Array<{
+    id?: string;
+    item_id?: string;
+    item_code?: string;
+    item_name?: string;
     item: { name: string; code?: string; uom?: string };
     quantity: number;
+    ordered_qty?: number;
+    received_qty?: number;
+    remaining_qty?: number;
+    rate?: number;
     uom?: string;
     serial_no?: number;
     pr_item_id?: string;
+    payment_terms?: string | null;
+    delivery_terms?: string | null;
   }>;
 }
 
@@ -82,6 +102,7 @@ type PurchaseOrderFormData = {
 function PurchaseOrdersContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const todayDate = getTodayDateInputValue();
   const prId = searchParams?.get('prId');
   const currentUser = readStoredUser();
   const canApprovePO = hasModulePermission(currentUser, 'Purchase Management', 'approve');
@@ -139,7 +160,7 @@ function PurchaseOrdersContent() {
   // Form state
   const [formData, setFormData] = useState<PurchaseOrderFormData>({
     vendorId: '',
-    orderDate: new Date().toISOString().split('T')[0],
+    orderDate: getTodayDateInputValue(),
     expectedDelivery: '',
     paymentTerms: 'NET_30',
     paymentStatus: 'UNPAID',
@@ -1132,7 +1153,7 @@ function PurchaseOrdersContent() {
   const resetForm = () => {
     setFormData({
       vendorId: '',
-      orderDate: new Date().toISOString().split('T')[0],
+      orderDate: getTodayDateInputValue(),
       expectedDelivery: '',
       paymentTerms: 'NET_30',
       paymentStatus: 'UNPAID',
@@ -1269,7 +1290,7 @@ function PurchaseOrdersContent() {
       
       setFormData({
         vendorId: resolvedVendorId,
-        orderDate: data.po_date || new Date().toISOString().split('T')[0],
+        orderDate: data.po_date || getTodayDateInputValue(),
         expectedDelivery: data.delivery_date || '',
         paymentTerms: data.payment_terms || 'NET_30',
         paymentStatus: data.payment_status || 'UNPAID',
@@ -1549,6 +1570,14 @@ function PurchaseOrdersContent() {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
+  const getReceiptStatusColor = (receiptStatus: string) => {
+    const key = String(receiptStatus || '').toUpperCase();
+    if (key === 'FULLY_RECEIVED') return 'bg-green-100 text-green-800';
+    if (key === 'PARTIALLY_RECEIVED') return 'bg-yellow-100 text-yellow-800';
+    if (key === 'OPEN') return 'bg-gray-100 text-gray-800';
+    return 'bg-gray-100 text-gray-800';
+  };
+
   const ordersTableColumns: Array<ListTableColumn<PurchaseOrder>> = [
     {
       id: 'select',
@@ -1628,6 +1657,18 @@ function PurchaseOrdersContent() {
       ),
     },
     {
+      id: 'payment_terms',
+      label: 'Payment Terms',
+      accessor: (o) => (o as any)?.payment_terms || (o as any)?.paymentTerms || '-',
+      cell: (o) => <span className="text-sm text-gray-700">{(o as any)?.payment_terms || (o as any)?.paymentTerms || '-'}</span>,
+    },
+    {
+      id: 'delivery_terms',
+      label: 'Delivery Terms',
+      accessor: (o) => (o as any)?.delivery_terms || (o as any)?.deliveryTerms || '-',
+      cell: (o) => <span className="text-sm text-gray-700">{(o as any)?.delivery_terms || (o as any)?.deliveryTerms || '-'}</span>,
+    },
+    {
       id: 'items_count',
       label: 'Items',
       accessor: (o) => o.purchase_order_items?.length || 0,
@@ -1662,6 +1703,38 @@ function PurchaseOrdersContent() {
           {o.payment_status === 'CHEQUE_ISSUED' ? 'CHEQUE' : o.payment_status || 'UNPAID'}
         </span>
       ),
+      align: 'center',
+    },
+    {
+      id: 'receipt',
+      label: 'Receipt',
+      accessor: (o) => (o as any).receipt_status || 'OPEN',
+      cell: (o) => {
+        const receiptStatus = String((o as any).receipt_status || 'OPEN');
+        const progress = (o as any).receipt_progress || {};
+        const orderedQty = Number(progress.ordered_qty ?? 0) || 0;
+        const receivedQty = Number(progress.received_qty ?? 0) || 0;
+        const receivedPercent = Number(
+          progress.received_percent ?? (orderedQty > 0 ? (receivedQty / orderedQty) * 100 : 0),
+        );
+
+        const pctText = Number.isFinite(receivedPercent)
+          ? `${receivedPercent % 1 === 0 ? receivedPercent.toFixed(0) : receivedPercent.toFixed(1)}%`
+          : '';
+
+        return (
+          <div className="text-center">
+            <span
+              className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getReceiptStatusColor(receiptStatus)}`}
+            >
+              {receiptStatus}
+            </span>
+            <div className="mt-1 text-xs text-gray-500 whitespace-nowrap">
+              {receivedQty}/{orderedQty}{orderedQty > 0 ? ` (${pctText})` : ''}
+            </div>
+          </div>
+        );
+      },
       align: 'center',
     },
     {
@@ -1906,6 +1979,7 @@ function PurchaseOrdersContent() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Order Date</label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={formData.orderDate}
                     onChange={(e) => setFormData({ ...formData, orderDate: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
@@ -1915,6 +1989,7 @@ function PurchaseOrdersContent() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Expected Delivery</label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={formData.expectedDelivery}
                     onChange={(e) => setFormData({ ...formData, expectedDelivery: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
@@ -1976,6 +2051,7 @@ function PurchaseOrdersContent() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Shipped Date</label>
                       <input
                         type="date"
+                        max={todayDate}
                         value={formData.shippedDate}
                         onChange={(e) => setFormData({ ...formData, shippedDate: e.target.value })}
                         className="w-full border border-gray-300 rounded-lg px-4 py-2"
@@ -1985,6 +2061,7 @@ function PurchaseOrdersContent() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Estimated Delivery Date</label>
                       <input
                         type="date"
+                        max={todayDate}
                         value={formData.estimatedDeliveryDate}
                         onChange={(e) => setFormData({ ...formData, estimatedDeliveryDate: e.target.value })}
                         className="w-full border border-gray-300 rounded-lg px-4 py-2"
@@ -2533,6 +2610,14 @@ function PurchaseOrdersContent() {
                   <p className="font-semibold">{selectedPO.delivery_date ? new Date(selectedPO.delivery_date).toLocaleDateString() : '-'}</p>
                 </div>
                 <div>
+                  <p className="text-sm text-gray-600">Payment Terms</p>
+                  <p className="font-semibold">{(selectedPO as any)?.payment_terms || (selectedPO as any)?.paymentTerms || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Delivery Terms</p>
+                  <p className="font-semibold">{(selectedPO as any)?.delivery_terms || (selectedPO as any)?.deliveryTerms || '-'}</p>
+                </div>
+                <div>
                   <p className="text-sm text-gray-600">Total Amount</p>
                   <p className="font-semibold text-lg">₹{selectedPO.total_amount?.toLocaleString() || 0}</p>
                 </div>
@@ -2551,6 +2636,8 @@ function PurchaseOrdersContent() {
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Quantity</th>
                         <th className="px-4 py-2 text-center text-xs font-medium text-gray-700">UOM</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Rate</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Payment Terms</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Delivery Terms</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Amount</th>
                       </tr>
                     </thead>
@@ -2628,12 +2715,14 @@ function PurchaseOrdersContent() {
                                 );
                               })()}
                             </td>
+                            <td className="px-4 py-2 text-sm text-gray-700">{item.payment_terms || (item as any).paymentTerms || '-'}</td>
+                            <td className="px-4 py-2 text-sm text-gray-700">{item.delivery_terms || (item as any).deliveryTerms || '-'}</td>
                             <td className="px-4 py-2 text-right font-medium">₹{(item.amount || 0).toLocaleString()}</td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-gray-500">No items found</td>
+                          <td colSpan={9} className="px-4 py-8 text-center text-gray-500">No items found</td>
                         </tr>
                       )}
                     </tbody>

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import SearchableSelect from '../../../components/SearchableSelect';
+import { getTodayDateInputValue } from '@/lib/date';
 
 type TabType = 'tickets' | 'technicians' | 'warranty-check' | 'reports';
 
@@ -105,6 +106,7 @@ function getAttachmentKind(url: string): 'image' | 'video' | 'other' {
 }
 
 export default function ServicePage() {
+  const todayDate = getTodayDateInputValue();
   const [activeTab, setActiveTab] = useState<TabType>('tickets');
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -1391,6 +1393,7 @@ export default function ServicePage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Expected Completion Date</label>
                       <input
                         type="date"
+                        max={todayDate}
                         value={editTicketForm.expected_completion_date}
                         onChange={(e) =>
                           setEditTicketForm({

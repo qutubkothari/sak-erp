@@ -27,6 +27,45 @@ function getApiBaseUrl(): string {
   return normalizeBaseUrl(DEFAULT_SERVER_API_BASE_URL);
 }
 
+function buildHttpErrorMessage(status: number, statusText: string, data: any): string {
+  const fallback = `HTTP ${status}: ${statusText}`;
+
+  if (data === null || data === undefined) return fallback;
+
+  if (typeof data === 'string') {
+    const t = data.trim();
+    return t.length > 0 ? t : fallback;
+  }
+
+  if (typeof data === 'object') {
+    const message = (data as any)?.message;
+    if (Array.isArray(message)) {
+      const joined = message.map((m) => String(m || '').trim()).filter(Boolean).join('\n');
+      if (joined) return joined;
+    }
+    if (typeof message === 'string' && message.trim()) {
+      return message.trim();
+    }
+
+    // Some APIs use { error: 'Bad Request', statusCode: 400 } without a message.
+    const errorText = typeof (data as any)?.error === 'string' ? String((data as any).error).trim() : '';
+    const detailText = typeof (data as any)?.detail === 'string' ? String((data as any).detail).trim() : '';
+    const hintText = typeof (data as any)?.hint === 'string' ? String((data as any).hint).trim() : '';
+
+    const parts = [errorText, detailText, hintText].filter(Boolean);
+    if (parts.length > 0) return parts.join(' - ');
+
+    try {
+      const json = JSON.stringify(data);
+      if (json && json !== '{}' && json !== 'null') return json;
+    } catch {
+      // ignore
+    }
+  }
+
+  return fallback;
+}
+
 interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
@@ -177,7 +216,7 @@ class ApiClient {
       if (!response.ok) {
         return {
           success: false,
-          error: (data as any)?.message || `HTTP ${response.status}: ${response.statusText}`,
+          error: buildHttpErrorMessage(response.status, response.statusText, data),
         };
       }
 

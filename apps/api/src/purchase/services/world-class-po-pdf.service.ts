@@ -676,28 +676,37 @@ export class WorldClassPoPdfService {
     const labelX = summaryX + 10;
     const valueX = summaryX + 150;
 
-    // Summary Box
-    page.drawRectangle({
-      x: summaryX,
-      y: yPosition - 150,
-      width: 210,
-      height: 155,
-      borderColor: this.COLORS.border,
-      borderWidth: 1.5,
-    });
-
-    yPosition -= 15;
+    const taxTotal = (data.cgstTotal || 0) + (data.sgstTotal || 0) + (data.igstTotal || 0);
 
     const summaryItems = [
       { label: 'Subtotal:', value: data.subtotal },
       data.totalDiscount ? { label: 'Discount:', value: -data.totalDiscount } : null,
       { label: 'Taxable Amount:', value: data.taxableAmount },
+      taxTotal ? { label: 'Tax Amount:', value: taxTotal } : null,
       data.cgstTotal ? { label: `CGST:`, value: data.cgstTotal } : null,
       data.sgstTotal ? { label: `SGST:`, value: data.sgstTotal } : null,
       data.igstTotal ? { label: `IGST:`, value: data.igstTotal } : null,
       data.tcsAmount ? { label: 'TCS:', value: data.tcsAmount } : null,
       data.roundOff ? { label: 'Round Off:', value: data.roundOff } : null,
     ].filter(Boolean);
+
+    // Summary Box (auto height)
+    const lineHeight = 14;
+    const topPadding = 15;
+    const bottomPadding = 10;
+    const grandTotalBlockHeight = 30;
+    const boxHeight = topPadding + (summaryItems.length * lineHeight) + bottomPadding + grandTotalBlockHeight;
+
+    page.drawRectangle({
+      x: summaryX,
+      y: yPosition - boxHeight,
+      width: 210,
+      height: boxHeight,
+      borderColor: this.COLORS.border,
+      borderWidth: 1.5,
+    });
+
+    yPosition -= topPadding;
 
     summaryItems.forEach((item) => {
       page.drawText(item!.label, {
@@ -778,9 +787,33 @@ export class WorldClassPoPdfService {
 
     yPosition -= 20;
 
-    const terms = [
-      { label: 'Payment Terms', value: data.paymentTerms || data.terms?.payment_terms || 'NET 30' },
-      { label: 'Delivery Terms', value: data.terms?.delivery_terms || 'As per delivery schedule' },
+    // Requested layout: show Payment Terms and Delivery Terms as separate headers/blocks
+    const paymentTermsValue = data.paymentTerms || data.terms?.payment_terms || 'NET 30';
+    const deliveryTermsValue = data.terms?.delivery_terms || 'As per delivery schedule';
+
+    const drawTermBlock = (title: string, value: string) => {
+      page.drawText(title.toUpperCase(), {
+        x: 50,
+        y: yPosition,
+        size: 9,
+        font: fontBold,
+        color: this.COLORS.primary,
+      });
+      yPosition -= 12;
+      page.drawText(this.truncate(value, 78), {
+        x: 50,
+        y: yPosition,
+        size: 8,
+        font,
+        color: this.COLORS.black,
+      });
+      yPosition -= 16;
+    };
+
+    drawTermBlock('Payment Terms', paymentTermsValue);
+    drawTermBlock('Delivery Terms', deliveryTermsValue);
+
+    const otherTerms = [
       { label: 'Freight', value: data.terms?.freight_terms || 'FOB Destination' },
       { label: 'Insurance', value: data.terms?.insurance_terms || 'As applicable' },
       { label: 'Warranty', value: data.terms?.warranty_terms || 'As per manufacturer warranty' },
@@ -789,7 +822,7 @@ export class WorldClassPoPdfService {
       { label: 'Validity', value: data.terms?.validity_days ? `${data.terms.validity_days} days` : '30 days' },
     ];
 
-    terms.forEach((term) => {
+    otherTerms.forEach((term) => {
       page.drawText(`${term.label}:`, {
         x: 50,
         y: yPosition,
@@ -797,9 +830,7 @@ export class WorldClassPoPdfService {
         font: fontBold,
       });
 
-      // Truncate value to fit in left column
-      const truncatedValue = this.truncate(term.value, 50);
-      page.drawText(truncatedValue, {
+      page.drawText(this.truncate(term.value, 50), {
         x: 140,
         y: yPosition,
         size: 8,

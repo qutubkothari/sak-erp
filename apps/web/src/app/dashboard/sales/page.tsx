@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import SearchableSelect from '../../../components/SearchableSelect';
 import DuplicateWarning, { useDuplicateDetection } from '../../../components/DuplicateWarning';
+import { getTodayDateInputValue } from '@/lib/date';
 
 type TabType = 'customers' | 'quotations' | 'orders' | 'dispatch' | 'warranties';
 
@@ -119,6 +120,7 @@ interface UIDRecord {
 }
 
 export default function SalesPage() {
+  const todayDate = getTodayDateInputValue();
   const [activeTab, setActiveTab] = useState<TabType>('customers');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotations, setQuotations] = useState<Quotation[]>([]);
@@ -223,8 +225,8 @@ export default function SalesPage() {
     items: QuotationItem[];
   } => ({
     customer_id: '',
-    quotation_date: new Date().toISOString().split('T')[0],
-    valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    quotation_date: getTodayDateInputValue(),
+    valid_until: getTodayDateInputValue(),
     payment_terms: '',
     delivery_terms: '',
     notes: '',
@@ -241,11 +243,11 @@ export default function SalesPage() {
   const [salesOrderItems, setSalesOrderItems] = useState<any[]>([]);
   const [dispatchForm, setDispatchForm] = useState({
     sales_order_id: '',
-    dispatch_date: new Date().toISOString().split('T')[0],
+    dispatch_date: getTodayDateInputValue(),
     transporter_name: '',
     vehicle_number: '',
     lr_number: '',
-    lr_date: new Date().toISOString().split('T')[0],
+    lr_date: getTodayDateInputValue(),
     delivery_address: '',
     notes: '',
     items: [] as { sales_order_item_id: string; item_id: string; uid: string[]; quantity: number; batch_number?: string }[],
@@ -281,7 +283,7 @@ export default function SalesPage() {
   const [showDirectSOForm, setShowDirectSOForm] = useState(false);
   const [directSOForm, setDirectSOForm] = useState({
     customer_id: '',
-    order_date: new Date().toISOString().split('T')[0],
+    order_date: getTodayDateInputValue(),
     expected_delivery_date: '',
     payment_terms: '',
     project: '',
@@ -952,11 +954,11 @@ export default function SalesPage() {
       setAvailableUIDs({});
       setDispatchForm({
         sales_order_id: '',
-        dispatch_date: new Date().toISOString().split('T')[0],
+        dispatch_date: getTodayDateInputValue(),
         transporter_name: '',
         vehicle_number: '',
         lr_number: '',
-        lr_date: new Date().toISOString().split('T')[0],
+        lr_date: getTodayDateInputValue(),
         delivery_address: '',
         notes: '',
         items: [],
@@ -1204,7 +1206,7 @@ export default function SalesPage() {
       setShowDirectSOForm(false);
       setDirectSOForm({
         customer_id: '',
-        order_date: new Date().toISOString().split('T')[0],
+        order_date: getTodayDateInputValue(),
         expected_delivery_date: '',
         payment_terms: '',
         project: '',
@@ -2062,6 +2064,7 @@ export default function SalesPage() {
                         <label className="block text-sm font-medium text-gray-700 mb-1">Expected Delivery Date *</label>
                         <input
                           type="date"
+                          max={todayDate}
                           required
                           value={soConversionForm.expected_delivery_date}
                           onChange={(e) => setSOConversionForm({ ...soConversionForm, expected_delivery_date: e.target.value })}
@@ -2254,6 +2257,7 @@ export default function SalesPage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Quotation Date *</label>
                       <input
                         type="date"
+                        max={todayDate}
                         required
                         value={quotationForm.quotation_date}
                         onChange={(e) => setQuotationForm({ ...quotationForm, quotation_date: e.target.value })}
@@ -2264,6 +2268,7 @@ export default function SalesPage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Valid Until *</label>
                       <input
                         type="date"
+                        max={todayDate}
                         required
                         value={quotationForm.valid_until}
                         onChange={(e) => setQuotationForm({ ...quotationForm, valid_until: e.target.value })}
@@ -2558,6 +2563,7 @@ export default function SalesPage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Expected Delivery Date</label>
                       <input
                         type="date"
+                        max={todayDate}
                         value={orderEditForm.expected_delivery_date}
                         onChange={(e) =>
                           setOrderEditForm({ ...orderEditForm, expected_delivery_date: e.target.value })
@@ -2645,6 +2651,7 @@ export default function SalesPage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Dispatch Date *</label>
                       <input
                         type="date"
+                        max={todayDate}
                         required
                         value={dispatchForm.dispatch_date}
                         onChange={(e) => setDispatchForm({ ...dispatchForm, dispatch_date: e.target.value })}
@@ -2974,6 +2981,7 @@ export default function SalesPage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Dispatch Date *</label>
                       <input
                         type="date"
+                        max={todayDate}
                         required
                         value={dispatchEditForm.dispatch_date}
                         onChange={(e) => setDispatchEditForm({ ...dispatchEditForm, dispatch_date: e.target.value })}
@@ -3013,6 +3021,7 @@ export default function SalesPage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">LR Date</label>
                       <input
                         type="date"
+                        max={todayDate}
                         value={dispatchEditForm.lr_date}
                         onChange={(e) => setDispatchEditForm({ ...dispatchEditForm, lr_date: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg"
@@ -3394,6 +3403,7 @@ export default function SalesPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Order Date *</label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={directSOForm.order_date}
                     onChange={(e) => setDirectSOForm({ ...directSOForm, order_date: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
@@ -3404,6 +3414,7 @@ export default function SalesPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Expected Delivery Date</label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={directSOForm.expected_delivery_date}
                     onChange={(e) => setDirectSOForm({ ...directSOForm, expected_delivery_date: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
@@ -3574,7 +3585,7 @@ export default function SalesPage() {
                     setShowDirectSOForm(false);
                     setDirectSOForm({
                       customer_id: '',
-                      order_date: new Date().toISOString().split('T')[0],
+                      order_date: getTodayDateInputValue(),
                       expected_delivery_date: '',
                       payment_terms: '',
                       project: '',

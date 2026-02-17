@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request, BadRequestException } from '@nestjs/common';
 import { JobOrderService } from '../services/job-order.service';
-import { CreateJobOrderDto, UpdateJobOrderDto, UpdateOperationDto } from '../dto/job-order.dto';
+import { CreateJobOrderDto, PartialCompleteJobOrderDto, UpdateJobOrderDto, UpdateOperationDto } from '../dto/job-order.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
@@ -96,7 +96,15 @@ export class JobOrderController {
   @Post('from-bom')
   async createFromBOM(
     @Request() req: any,
-    @Body() body: { itemId: string; bomId: string; quantity: number; startDate: string }
+    @Body()
+    body: {
+      itemId: string;
+      bomId: string;
+      quantity: number;
+      startDate: string;
+      autoIssueMaterials?: boolean;
+      autoRepair?: boolean;
+    },
   ) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id;
@@ -106,7 +114,11 @@ export class JobOrderController {
       body.itemId,
       body.bomId,
       body.quantity,
-      body.startDate
+      body.startDate,
+      {
+        autoIssueMaterials: body.autoIssueMaterials,
+        autoRepair: body.autoRepair,
+      },
     );
   }
 
@@ -153,10 +165,23 @@ export class JobOrderController {
   @Post(':id/complete')
   async completeJobOrder(@Request() req: any, @Param('id') id: string, @Body() body?: { allowPartialConsumption?: boolean; autoBuildMissingSubAssemblies?: boolean }) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
-    const userId = req.user?.id || req.user?.sub;
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
     return this.jobOrderService.completeJobOrder(tenantId, id, userId, {
       allowPartialConsumption: body?.allowPartialConsumption ?? false,
       autoBuildMissingSubAssemblies: body?.autoBuildMissingSubAssemblies ?? true,
+    });
+  }
+
+  @Post(':id/complete-partial')
+  async completeJobOrderPartial(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: PartialCompleteJobOrderDto,
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
+    return this.jobOrderService.completeJobOrderPartial(tenantId, id, userId, {
+      producedQuantity: body?.producedQuantity,
     });
   }
 
@@ -167,7 +192,7 @@ export class JobOrderController {
     @Body() body: { autoRepair?: boolean } = {},
   ) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
-    const userId = req.user?.id || req.user?.sub;
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
     return this.jobOrderService.issueMaterialsForJobOrder(tenantId, id, {
       userId,
       autoRepair: body?.autoRepair,
@@ -177,7 +202,7 @@ export class JobOrderController {
   @Post(':id/smart/repair-issue')
   async repairSmartAndIssue(@Request() req: any, @Param('id') id: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
-    const userId = req.user?.id || req.user?.sub;
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
     return this.jobOrderService.repairSmartJobOrderAndIssueMaterials(tenantId, userId, id);
   }
 
@@ -188,10 +213,160 @@ export class JobOrderController {
     @Body() body: { approvedUids: string[]; rejectedUids: string[] }
   ) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
-    const userId = req.user?.id || req.user?.sub;
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
     const { approvedUids = [], rejectedUids = [] } = body;
     
     return this.jobOrderService.approveQC(tenantId, id, approvedUids, rejectedUids, userId);
+  }
+
+  @Get('store/material-requisitions/open')
+  async getOpenMaterialRequisitions(@Request() req: any) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.jobOrderService.getOpenMaterialRequisitions(tenantId);
+  }
+
+  @Get('store/material-requisitions/history')
+  async getStoreIssueVoucherHistory(@Request() req: any) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.jobOrderService.getStoreIssueVoucherHistory(tenantId);
+  }
+
+  @Post('store/material-requisitions/:id/issue')
+  async issueMaterialRequisition(@Request() req: any, @Param('id') id: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
+    return this.jobOrderService.issueMaterialRequisition(tenantId, id, userId);
+  }
+
+  @Post('store/material-requisitions/:id/issue-line')
+  async issueMaterialRequisitionLine(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { materialId: string; issueQuantity: number; uids?: string[] },
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
+
+    try {
+      return await this.jobOrderService.issueMaterialRequisitionLine(
+        tenantId,
+        id,
+        body?.materialId,
+        body?.issueQuantity,
+        Array.isArray(body?.uids) ? body.uids : undefined,
+        userId,
+      );
+    } catch (error: any) {
+      // Enhanced error logging and response (version 2026-02-17-v5)
+      const errorContext = {
+        endpoint: 'issue-line',
+        tenantId,
+        jobOrderId: id,
+        materialId: body?.materialId,
+        issueQuantity: body?.issueQuantity,
+        uidsCount: Array.isArray(body?.uids) ? body.uids.length : 0,
+        errorType: error?.constructor?.name || 'Unknown',
+        errorMessage: error?.message || 'No error message',
+        errorResponse: error?.response,
+        errorStack: error?.stack?.split('\n').slice(0, 3).join('\n'),
+        timestamp: new Date().toISOString(),
+      };
+
+      console.error('[SIV ISSUE-LINE ERROR v2026-02-17-v5]', JSON.stringify(errorContext, null, 2));
+
+      // Re-throw with enhanced message - ALWAYS include details
+      if (error?.message && error.message !== 'Bad Request') {
+        throw error; // Already has a good message
+      }
+
+      // Generic error - add context (NEVER let empty message through)
+      throw new BadRequestException(
+        `Failed to issue material (v5): ${error?.message || 'Unknown error'}. Context: jobOrder=${id}, material=${body?.materialId}, qty=${body?.issueQuantity}. Raw: ${JSON.stringify(error?.response || 'no-response-data')}`,
+      );
+    }
+  }
+
+  @Put('store/material-requisitions/history/:movementId')
+  async updateStoreIssueVoucherHistoryRow(
+    @Request() req: any,
+    @Param('movementId') movementId: string,
+    @Body() body: { notes?: string },
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
+    return this.jobOrderService.updateStoreIssueVoucherHistoryRow(tenantId, movementId, {
+      notes: body?.notes,
+      userId,
+    });
+  }
+
+  @Put('store/material-requisitions/history/:movementId/approve')
+  async approveStoreIssueVoucherHistoryRow(@Request() req: any, @Param('movementId') movementId: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
+    return this.jobOrderService.approveStoreIssueVoucherHistoryRow(tenantId, movementId, userId);
+  }
+
+  @Delete('store/material-requisitions/history/:movementId')
+  async deleteStoreIssueVoucherHistoryRow(@Request() req: any, @Param('movementId') movementId: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
+    return this.jobOrderService.deleteStoreIssueVoucherHistoryRow(tenantId, movementId, userId);
+  }
+
+  @Get('store/receipt-vouchers/open')
+  async getOpenStoreReceiptVouchers(@Request() req: any) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.jobOrderService.getOpenStoreReceiptVouchers(tenantId);
+  }
+
+  @Get('store/receipt-vouchers/history')
+  async getStoreReceiptVoucherHistory(@Request() req: any) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.jobOrderService.getStoreReceiptVoucherHistory(tenantId);
+  }
+
+  @Put('store/receipt-vouchers/history/:entryId')
+  async updateStoreReceiptVoucherHistoryRow(
+    @Request() req: any,
+    @Param('entryId') entryId: string,
+    @Body() body: { receiverName?: string; receiverPhone?: string },
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.updateStoreReceiptVoucherHistoryRow(tenantId, entryId, {
+      receiverName: body?.receiverName,
+      receiverPhone: body?.receiverPhone,
+      userId,
+    });
+  }
+
+  @Put('store/receipt-vouchers/history/:entryId/approve')
+  async approveStoreReceiptVoucherHistoryRow(@Request() req: any, @Param('entryId') entryId: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.approveStoreReceiptVoucherHistoryRow(tenantId, entryId, userId);
+  }
+
+  @Delete('store/receipt-vouchers/history/:entryId')
+  async deleteStoreReceiptVoucherHistoryRow(@Request() req: any, @Param('entryId') entryId: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.deleteStoreReceiptVoucherHistoryRow(tenantId, entryId, userId);
+  }
+
+  @Post('store/receipt-vouchers/:id/receive')
+  async receiveStoreReceiptVoucher(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { receiverName?: string; receiverPhone?: string },
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.receiveStoreReceiptVoucher(tenantId, id, userId, {
+      receiverName: body?.receiverName,
+      receiverPhone: body?.receiverPhone,
+    });
   }
 
   @Get(':id/qc-summary')

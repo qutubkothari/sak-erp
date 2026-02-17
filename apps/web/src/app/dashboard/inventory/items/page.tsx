@@ -1034,7 +1034,7 @@ export default function ItemsPage() {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Items Master</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Stock Master</h1>
         <div className="flex gap-3">
           <button
             onClick={() => setShowCategoryManager(true)}

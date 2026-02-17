@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { getTodayDateInputValue } from '@/lib/date';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 
@@ -157,6 +158,7 @@ export default function JobOrdersPage() {
 function JobOrdersPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const todayDate = getTodayDateInputValue();
   const legacy = searchParams.get('legacy') === '1';
   const currentUser = readStoredUser();
   const canApproveQC = hasModulePermission(currentUser, 'Quality Control', 'approve');
@@ -214,7 +216,7 @@ function JobOrdersPageContent() {
     salesOrderId: '',
     salesOrderItemId: '',
     quantity: 1,
-    startDate: new Date().toISOString().split('T')[0],
+    startDate: getTodayDateInputValue(),
     endDate: '',
     priority: 'NORMAL',
     notes: '',
@@ -1033,13 +1035,34 @@ function JobOrdersPageContent() {
   };
 
   const handleUpdateStatus = async (id: string, status: string) => {
+    setLoading(true);
     try {
       await apiClient.put(`/job-orders/${id}/status`, { status });
       fetchJobOrders();
       alert(`Job Order status updated to ${status}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating status:', error);
-      alert('Failed to update status');
+
+      const errorMsg = String(error?.response?.data?.message || error?.message || 'Failed to update status');
+      const lower = errorMsg.toLowerCase();
+      const blockedByStoreIssue =
+        lower.includes('store issue pending') ||
+        lower.includes('siv pending') ||
+        lower.includes('material issue pending');
+
+      if (blockedByStoreIssue) {
+        const goToStore = window.confirm(
+          'Cannot start this Job Order yet because SIV (material issue) is pending.\n\nOpen Inventory SIV / SRV screen now?',
+        );
+        if (goToStore) {
+          router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(id)}`);
+        }
+        return;
+      }
+
+      alert(errorMsg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1079,6 +1102,47 @@ function JobOrdersPageContent() {
     } catch (error: any) {
       console.error('Error completing job order:', error);
       const errorMsg = error.response?.data?.message || error.message || 'Failed to complete job order';
+      alert(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePartialCompleteJobOrder = async (jo: JobOrder) => {
+    const planned = Number(jo.quantity || 0);
+    const already = Number(jo.completedQuantity || 0);
+    const remaining = Math.max(0, planned - already);
+
+    const raw = window.prompt(
+      `Enter produced quantity to add for ${jo.jobOrderNumber} (remaining ${remaining} of ${planned}):`,
+      remaining > 0 ? String(remaining) : '0',
+    );
+    if (raw === null) return;
+
+    const producedQuantity = Number(String(raw).trim());
+    if (!Number.isFinite(producedQuantity) || producedQuantity <= 0) {
+      alert('Produced quantity must be a number > 0');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await apiClient.post(`/job-orders/${jo.id}/complete-partial`, {
+        producedQuantity,
+      });
+      fetchJobOrders();
+
+      const nextCompleted = Number((result as any)?.completedQuantity ?? already + producedQuantity);
+      alert(
+        `✅ Partial completion recorded\n\n` +
+          `Job Order: ${jo.jobOrderNumber}\n` +
+          `Produced now: ${producedQuantity}\n` +
+          `Total produced: ${nextCompleted} / ${planned}\n\n` +
+          `You can now receive SRV for the produced UIDs in Inventory → SRV.`,
+      );
+    } catch (error: any) {
+      console.error('Error recording partial completion:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to record partial completion';
       alert(errorMsg);
     } finally {
       setLoading(false);
@@ -1167,7 +1231,7 @@ function JobOrdersPageContent() {
       salesOrderId: '',
       salesOrderItemId: '',
       quantity: 1,
-      startDate: new Date().toISOString().split('T')[0],
+      startDate: getTodayDateInputValue(),
       endDate: '',
       priority: 'NORMAL',
       notes: '',
@@ -1706,7 +1770,8 @@ function JobOrdersPageContent() {
             <button
               type="button"
               onClick={() => handleUpdateStatus(jo.id, 'SCHEDULED')}
-              className="text-green-600 hover:text-green-800 mr-3"
+              className="text-green-600 hover:text-green-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={loading}
             >
               Schedule
             </button>
@@ -1715,20 +1780,31 @@ function JobOrdersPageContent() {
             <button
               type="button"
               onClick={() => handleUpdateStatus(jo.id, 'IN_PROGRESS')}
-              className="text-yellow-600 hover:text-yellow-800 mr-3"
+              className="text-yellow-600 hover:text-yellow-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={loading}
             >
               Start
             </button>
           )}
           {jo.status === 'IN_PROGRESS' && (
-            <button
-              type="button"
-              onClick={() => handleCompleteJobOrder(jo.id)}
-              className="text-green-600 hover:text-green-800"
-              disabled={loading}
-            >
-              Complete
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => handlePartialCompleteJobOrder(jo)}
+                className="text-yellow-600 hover:text-yellow-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                disabled={loading}
+              >
+                Partial
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCompleteJobOrder(jo.id)}
+                className="text-green-600 hover:text-green-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                disabled={loading}
+              >
+                Complete
+              </button>
+            </>
           )}
         </div>
       ),
@@ -1948,6 +2024,7 @@ function JobOrdersPageContent() {
                 <label className="block text-sm font-medium mb-1">Start Date *</label>
                 <input
                   type="date"
+                  max={todayDate}
                   value={formData.startDate}
                   onChange={(e) => setFormData({...formData, startDate: e.target.value})}
                   className="w-full border rounded px-3 py-2"
@@ -1959,6 +2036,7 @@ function JobOrdersPageContent() {
                 <label className="block text-sm font-medium mb-1">End Date</label>
                 <input
                   type="date"
+                  max={todayDate}
                   value={formData.endDate}
                   onChange={(e) => setFormData({...formData, endDate: e.target.value})}
                   className="w-full border rounded px-3 py-2"
@@ -2247,6 +2325,26 @@ function JobOrdersPageContent() {
                 })()}
               </div>
 
+              <div>
+                <strong>Material Requisition:</strong>{' '}
+                {(() => {
+                  const mats = Array.isArray(selectedJobOrder.materials) ? selectedJobOrder.materials : [];
+                  const pendingCount = mats.filter((m) => {
+                    const required = Number(m.requiredQuantity || 0);
+                    const issued = Number(m.issuedQuantity || 0);
+                    return required - issued > 1e-9;
+                  }).length;
+
+                  const status = pendingCount > 0 ? 'Pending' : 'Completed';
+                  return (
+                    <span className={`px-2 py-1 text-xs rounded ${getStatusColor(status)}`}>
+                      {status}
+                      {pendingCount > 0 ? ` (${pendingCount} line${pendingCount === 1 ? '' : 's'})` : ''}
+                    </span>
+                  );
+                })()}
+              </div>
+
               {(() => {
                 const qcLocked = Boolean(qcSummary?.isQcApplied) &&
                   (qcSummary?.pendingUidsCount ?? 0) === 0 &&
@@ -2308,19 +2406,27 @@ function JobOrdersPageContent() {
                       const rejected = Number(qcSummary?.rejectedUidsCount || 0);
                       const pending = Number(qcSummary?.pendingUidsCount || 0);
 
+                      const mats = Array.isArray(selectedJobOrder.materials) ? selectedJobOrder.materials : [];
+                      const mrPending = mats.some((m) => Number(m.requiredQuantity || 0) - Number(m.issuedQuantity || 0) > 1e-9);
+                      const mrStatus = mrPending ? 'Pending' : 'Completed';
+
                       const confirmCompleteStatus = hasCompleted ? (qcApplied ? 'Completed' : 'Awaiting QC') : 'In-Progress';
                       const qcFailStatus = !qcApplied ? 'Pending' : rejected > 0 ? 'QC Failed' : '—';
                       const qcPassStatus = !qcApplied ? 'Pending' : rejected === 0 && pending === 0 ? 'QC Completed' : 'Pending';
 
                       const rows: Array<{ action: string; status: string }> = [
                         { action: 'Job Created Successfully', status: 'In-Progress' },
+                        { action: 'Material Requisition (SIV)', status: mrStatus },
                         { action: 'Preview- Confirm & Complete', status: confirmCompleteStatus },
                         { action: 'Complete QC - Fail', status: qcFailStatus },
                         { action: 'Complete QC - Pass', status: qcPassStatus },
                       ];
 
                       return rows.map((r) => (
-                        <tr key={r.action}>
+                        <tr
+                          key={r.action}
+                          className={r.action === 'Material Requisition (SIV)' && r.status === 'Pending' ? 'bg-amber-50' : ''}
+                        >
                           <td className="border px-3 py-2 text-sm">{r.action}</td>
                           <td className="border px-3 py-2 text-sm">
                             <span className={`px-2 py-1 text-xs rounded ${getStatusColor(r.status)}`}>{r.status}</span>
@@ -2524,6 +2630,7 @@ function JobOrdersPageContent() {
                     </label>
                     <input
                       type="date"
+                      max={todayDate}
                       value={qcMetadata.qcDate}
                       onChange={(e) => setQcMetadata({ ...qcMetadata, qcDate: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { getTodayDateInputValue } from '@/lib/date';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 
@@ -105,6 +106,7 @@ const resolveUomFromItem = (item: any): string => {
 function PRContent() {
   const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
+  const todayDate = getTodayDateInputValue();
   const currentUser = readStoredUser();
   const canApprovePR = hasModulePermission(currentUser, 'Purchase Management', 'approve');
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -1141,6 +1143,7 @@ function PRContent() {
                     </label>
                     <input
                       type="date"
+                      max={todayDate}
                       value={formData.requiredDate}
                       onChange={(e) => setFormData({ ...formData, requiredDate: e.target.value })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
@@ -1689,6 +1692,8 @@ function PRContent() {
                             <th className="px-4 py-2 text-center text-sm font-semibold">Status</th>
                             <th className="px-4 py-2 text-right text-sm font-semibold">Est. Rate</th>
                             <th className="px-4 py-2 text-right text-sm font-semibold">Total</th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold">Payment Terms</th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold">Delivery Terms</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Remarks</th>
                           </tr>
                         </thead>
@@ -1740,12 +1745,14 @@ function PRContent() {
                                 </td>
                                 <td className="px-4 py-2 text-sm text-right">₹{(item.estimated_rate || 0).toFixed(2)}</td>
                                 <td className="px-4 py-2 text-sm text-right font-semibold">₹{((item.requested_qty || 0) * (item.estimated_rate || 0)).toFixed(2)}</td>
+                                <td className="px-4 py-2 text-sm text-gray-700">{item.payment_terms || '-'}</td>
+                                <td className="px-4 py-2 text-sm text-gray-700">{item.delivery_terms || '-'}</td>
                                 <td className="px-4 py-2 text-sm text-gray-600">{item.remarks || '-'}</td>
                               </tr>
                             ))
                           ) : (
                             <tr>
-                              <td colSpan={rfqPanelOpen ? 12 : 11} className="px-4 py-8 text-center text-gray-500">
+                              <td colSpan={rfqPanelOpen ? 14 : 13} className="px-4 py-8 text-center text-gray-500">
                                 No items found in this requisition
                               </td>
                             </tr>
@@ -1754,7 +1761,7 @@ function PRContent() {
                         {selectedPR.purchase_requisition_items && selectedPR.purchase_requisition_items.length > 0 && (
                           <tfoot className="bg-gray-50 border-t-2">
                             <tr>
-                              <td colSpan={rfqPanelOpen ? 10 : 9} className="px-4 py-3 text-right font-bold">Total Amount:</td>
+                              <td colSpan={rfqPanelOpen ? 12 : 11} className="px-4 py-3 text-right font-bold">Total Amount:</td>
                               <td className="px-4 py-3 text-right font-bold text-lg">
                                 ₹{selectedPR.purchase_requisition_items.reduce((sum, item) => sum + ((item.requested_qty || 0) * (item.estimated_rate || 0)), 0).toFixed(2)}
                               </td>
@@ -1858,6 +1865,7 @@ function PRContent() {
                           <label className="block text-xs font-semibold text-gray-700 mb-1">Expected Response Date (optional)</label>
                           <input
                             type="date"
+                            max={todayDate}
                             value={rfqResponseDate}
                             onChange={(e) => setRfqResponseDate(e.target.value)}
                             className="w-full px-3 py-2 border rounded-lg text-sm"

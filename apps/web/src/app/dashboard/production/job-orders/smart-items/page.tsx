@@ -192,20 +192,81 @@ function SmartJobOrdersItemsPageContent() {
 
   // LocalStorage key for caching
   const CACHE_KEY = 'smart_job_order_cache';
+  const RELOAD_MARKER_KEY = 'smart_job_order_last_unload';
 
   const [shouldAutoLoadFromCache] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     try {
+      const navEntry = performance.getEntriesByType('navigation')?.[0] as PerformanceNavigationTiming | undefined;
+      const navType = String(navEntry?.type || '').toLowerCase();
+      const navName = String(navEntry?.name || '');
+      const navLooksLikeSmartItems =
+        navName.includes('/dashboard/production/job-orders/smart-items') ||
+        navName.includes('/smart-items');
+
+      // Fallback marker: written on beforeunload only when this page is active.
+      // This remains reliable even when NavigationTiming values are inconsistent.
+      let markerLooksLikeReloadThisPage = false;
+      try {
+        const markerRaw = sessionStorage.getItem(RELOAD_MARKER_KEY);
+        if (markerRaw) {
+          const marker = JSON.parse(markerRaw) as { path?: string; at?: number };
+          const path = String(marker?.path || '');
+          const at = Number(marker?.at || 0);
+          const ageMs = Date.now() - at;
+          markerLooksLikeReloadThisPage =
+            path === window.location.pathname &&
+            Number.isFinite(ageMs) &&
+            ageMs >= 0 &&
+            ageMs <= 15000;
+        }
+      } catch {
+        markerLooksLikeReloadThisPage = false;
+      } finally {
+        // consume once to avoid stale marker impacting later navigations
+        sessionStorage.removeItem(RELOAD_MARKER_KEY);
+      }
+
+      // Must be an actual page reload for THIS page, or a strong unload/reload marker match.
+      // This prevents auto-load when user refreshes /job-orders then client-navigates here.
+      const reloadedThisPage =
+        (navType === 'reload' && navLooksLikeSmartItems) || markerLooksLikeReloadThisPage;
+      if (!reloadedThisPage) return false;
+
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        return Boolean(parsed.previewLoaded);
+        const hasPreviewNodes = Array.isArray(parsed?.preview?.nodes) && parsed.preview.nodes.length > 0;
+        return Boolean(parsed.previewLoaded || hasPreviewNodes);
       }
     } catch (e) {
       console.error('Failed to load cached previewLoaded flag:', e);
     }
     return false;
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onBeforeUnload = () => {
+      try {
+        sessionStorage.setItem(
+          RELOAD_MARKER_KEY,
+          JSON.stringify({
+            path: window.location.pathname,
+            at: Date.now(),
+          }),
+        );
+      } catch {
+        // no-op
+      }
+    };
+
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, []);
 
   // Initialize state from localStorage if available
   const [itemId, setItemId] = useState<string>(() => {
@@ -246,7 +307,21 @@ function SmartJobOrdersItemsPageContent() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState('');
-  const [preview, setPreview] = useState<SmartPreview | null>(null);
+  const [preview, setPreview] = useState<SmartPreview | null>(() => {
+    if (typeof window === 'undefined') return null;
+    if (!shouldAutoLoadFromCache) return null;
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (!cached) return null;
+      const parsed = JSON.parse(cached);
+      if (parsed?.preview && Array.isArray(parsed.preview?.nodes)) {
+        return parsed.preview as SmartPreview;
+      }
+    } catch (e) {
+      console.error('Failed to load cached preview:', e);
+    }
+    return null;
+  });
   const [previewError, setPreviewError] = useState<string>('');
 
   const [selectedCategoryByNodeKey, setSelectedCategoryByNodeKey] = useState<Record<string, string>>(() => {
@@ -910,6 +985,7 @@ function SmartJobOrdersItemsPageContent() {
         itemId,
         quantity,
         previewLoaded: Boolean(preview),
+        preview,
         selectedItemByNodeKey,
         selectedCategoryByNodeKey,
         stockByItemId,
@@ -1074,23 +1150,25 @@ function SmartJobOrdersItemsPageContent() {
     const autoMakeItemIds = new Set((preview?.subAssembliesToMake || []).map((sa) => String(sa.itemId)));
     const groupedShortages = groupShortagesByItem(preview?.nodes || [], autoMakeItemIds);
 
-    const canMakeNow = Math.max(0, Number(preview?.makeNowQuantity || 0));
     const hasShortages = groupedShortages.length > 0;
     const requestedQty = Number(quantity) || 0;
 
-    if (hasShortages && canMakeNow <= 0) {
+    if (hasShortages) {
       const shortageList = groupedShortages
         .map((row) => {
           return `${row.itemCode} - ${row.itemName}: Need ${formatQuantity(row.requiredQuantity)}, Have ${formatQuantity(row.availableQuantity)}, Short ${formatQuantity(row.shortageQuantity)}`;
         })
         .join('\n');
 
-      alert(`❌ Cannot create Job Order - Raw materials out of stock:\n\n${shortageList}\n\nPlease create PR first.`);
+      alert(
+        `❌ Cannot create Job Order before material issue.\n\n` +
+        `Please issue required materials first from Inventory → SIV / SRV.\n\n` +
+        `Shortage details:\n${shortageList}`,
+      );
       return;
     }
 
-    const effectiveQuantity = hasShortages ? canMakeNow : requestedQty;
-    const isPartial = hasShortages && effectiveQuantity < requestedQty;
+    const effectiveQuantity = requestedQty;
 
     setCreating(true);
     setCreateJobStatus(null);
@@ -1168,12 +1246,6 @@ function SmartJobOrdersItemsPageContent() {
         alert(`❌ Failed to create Smart Job Order: ${msg}`);
       }
     } finally {
-      if (createdSuccessfully && isPartial && groupedShortages.length > 0) {
-        const pr = await createPurchaseRequisitionForShortages(groupedShortages, `Balance for target ${formatQuantity(requestedQty)}`);
-        if (pr?.prId) {
-          window.open(`/dashboard/purchase/requisitions?prId=${pr.prId}`, '_blank');
-        }
-      }
       // creating stays true while async job runs; polling will reset it.
       if (!startedAsync) setCreating(false);
     }
@@ -1313,6 +1385,8 @@ function SmartJobOrdersItemsPageContent() {
           bomId: item.bomId,
           quantity: Number(item.qty),
           startDate: new Date().toISOString().slice(0, 10),
+          autoIssueMaterials: false,
+          autoRepair: false,
         });
         const joNumber = result?.job_order_number || result?.jobOrderNumber || result?.id || 'Created';
         results.push({ itemCode: item.itemCode, success: true, joNumber: String(joNumber) });
@@ -1528,31 +1602,6 @@ function SmartJobOrdersItemsPageContent() {
                 <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
                   Shortage
                 </span>
-              )}
-              {id !== rootBomId && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openSingleSAPrompt({
-                      bomId: bom.bomId,
-                      itemId: bom.itemId,
-                      itemCode: bom.itemCode,
-                      itemName: bom.itemName,
-                      requiredQuantity: bom.requiredQuantity,
-                      availableQuantity: bom.availableQuantity,
-                      toMakeQuantity: Math.max(0, bom.requiredQuantity - bom.availableQuantity) || bom.requiredQuantity || 1,
-                    });
-                  }}
-                  disabled={creatingSAJobs}
-                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                    hasShortage
-                      ? 'bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50'
-                      : 'bg-green-600 text-white hover:bg-green-700 disabled:opacity-50'
-                  }`}
-                  title={`Create JO for ${bom.itemCode}`}
-                >
-                  Create JO
-                </button>
               )}
             </span>
           </div>
@@ -2276,7 +2325,6 @@ function SmartJobOrdersItemsPageContent() {
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">In Stock</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">To Make</th>
                           <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase w-20">Status</th>
-                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase w-32">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -2310,20 +2358,6 @@ function SmartJobOrdersItemsPageContent() {
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
                                     Shortage
                                   </span>
-                                )}
-                              </td>
-                              <td className="px-4 py-2 text-center">
-                                {ready ? (
-                                  <button
-                                    onClick={() => openSingleSAPrompt(sa)}
-                                    disabled={creatingSAJobs}
-                                    className="px-3 py-1 rounded bg-green-600 text-white text-xs font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title={`Create JO for ${sa.itemCode}`}
-                                  >
-                                    Create JO
-                                  </button>
-                                ) : (
-                                  <span className="text-xs text-gray-400">—</span>
                                 )}
                               </td>
                             </tr>

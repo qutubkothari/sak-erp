@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { getTodayDateInputValue } from '@/lib/date';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 
 function getApiV1BaseUrl(): string | null {
@@ -165,6 +166,7 @@ type PurchaseTrail = {
 function GRNContent() {
   // const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
+  const todayDate = getTodayDateInputValue();
   const currentUser = readStoredUser();
   const canApproveGRN = hasModulePermission(currentUser, 'Purchase Management', 'approve');
   const [grns, setGrns] = useState<GRN[]>([]);
@@ -215,7 +217,7 @@ function GRNContent() {
     qcBy: string;
   }>({
     invoiceNumber: '',
-    qcDate: new Date().toISOString().split('T')[0],
+    qcDate: getTodayDateInputValue(),
     qcBy: '',
   });
   const [editMode, setEditMode] = useState(false);
@@ -259,7 +261,7 @@ function GRNContent() {
   const [formData, setFormData] = useState({
     poId: '',
     vendorId: '',
-    receiptDate: new Date().toISOString().split('T')[0],
+    receiptDate: getTodayDateInputValue(),
     invoiceNumber: '',
     invoiceDate: '',
     invoiceFileUrl: '',
@@ -275,6 +277,7 @@ function GRNContent() {
       poItemId: string;
       uom?: string;
       orderedQuantity: number;
+      previousReceivedQuantity: number;
       receivedQuantity: number;
       acceptedQuantity: number;
       rejectedQuantity: number;
@@ -781,6 +784,7 @@ function GRNContent() {
               String(itemMasterByCode[String(item.item_code || '')]?.uom || '').trim() ||
               '',
             orderedQuantity: orderedQty,
+            previousReceivedQuantity: Math.max(0, receivedQty),
             receivedQuantity: remainingQty, // Default to remaining quantity
             // QC must be explicitly recorded via QC Accept.
             acceptedQuantity: 0,
@@ -1125,6 +1129,7 @@ function GRNContent() {
           itemId: '',
           poItemId: '',
           orderedQuantity: 0,
+          previousReceivedQuantity: 0,
           receivedQuantity: 0,
           acceptedQuantity: 0,
           rejectedQuantity: 0,
@@ -1150,12 +1155,14 @@ function GRNContent() {
     // Auto-calculate accepted/rejected based on received
     if (field === 'receivedQuantity') {
       const ordered = Math.max(0, toNum(updatedItems[index].orderedQuantity));
+      const prevReceived = Math.max(0, toNum(updatedItems[index].previousReceivedQuantity));
+      const maxReceivable = Math.max(0, ordered - prevReceived);
       let receivedInput = Math.max(0, toNum(value));
       
-      // Validate: Received cannot exceed Ordered
-      if (receivedInput > ordered) {
-        alert(`Received quantity (${receivedInput}) cannot exceed ordered quantity (${ordered})`);
-        receivedInput = ordered; // Cap at ordered quantity
+      // Validate: Receiving now cannot exceed remaining quantity for this PO line
+      if (receivedInput > maxReceivable) {
+        alert(`Receiving now (${receivedInput}) cannot exceed remaining quantity (${maxReceivable})`);
+        receivedInput = maxReceivable; // Cap at remaining
       }
       
       const received = receivedInput;
@@ -1169,12 +1176,14 @@ function GRNContent() {
       if (field === 'acceptedQuantity') {
         let received = Math.max(0, toNum(item.receivedQuantity));
         const ordered = Math.max(0, toNum(item.orderedQuantity));
+        const prevReceived = Math.max(0, toNum(item.previousReceivedQuantity));
+        const maxReceivable = Math.max(0, ordered - prevReceived);
         const acceptedRaw = Math.max(0, toNum(value));
 
         // UX: if user edits Accepted and hasn't explicitly adjusted Received,
-        // assume full receipt (Received = Ordered) so Rejected auto-fills.
-        if (ordered > 0 && (received === 0 || (received === acceptedRaw && ordered > received))) {
-          received = ordered;
+        // assume full remaining receipt (Received = Remaining) so Rejected auto-fills.
+        if (maxReceivable > 0 && (received === 0 || (received === acceptedRaw && maxReceivable > received))) {
+          received = maxReceivable;
           item.receivedQuantity = received;
         }
 
@@ -1204,7 +1213,7 @@ function GRNContent() {
     setFormData({
       poId: '',
       vendorId: '',
-      receiptDate: new Date().toISOString().split('T')[0],
+      receiptDate: getTodayDateInputValue(),
       invoiceNumber: '',
       invoiceDate: '',
       invoiceFileUrl: '',
@@ -1567,6 +1576,7 @@ function GRNContent() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Receipt Date</label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={formData.receiptDate}
                     onChange={(e) => setFormData({ ...formData, receiptDate: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
@@ -1607,6 +1617,7 @@ function GRNContent() {
                   </label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={formData.invoiceDate}
                     onChange={(e) => setFormData({ ...formData, invoiceDate: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
@@ -1721,15 +1732,10 @@ function GRNContent() {
                             <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">Prev. Received</label>
                             <input
                               type="number"
-                              value={(() => {
-                                const ordered = parseFloat(String(item.orderedQuantity || 0));
-                                const remaining = parseFloat(String(item.receivedQuantity || 0));
-                                const prevReceived = ordered - remaining;
-                                return prevReceived > 0 ? prevReceived : 0;
-                              })()}
+                              value={Math.max(0, Number(item.previousReceivedQuantity || 0))}
                               readOnly
                               className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-blue-50 text-blue-700 font-medium"
-                              title="Previously received in other GRNs"
+                              title="Quantity already received against this PO line (from earlier GRNs)"
                             />
                           </div>
                           <div>
@@ -1921,6 +1927,7 @@ function GRNContent() {
                   {editMode ? (
                     <input
                       type="date"
+                      max={todayDate}
                       value={editFormData.invoiceDate}
                       onChange={(e) => setEditFormData({ ...editFormData, invoiceDate: e.target.value })}
                       className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
@@ -2195,7 +2202,7 @@ function GRNContent() {
                         // Initialize QC metadata
                         setQcMetadata({
                           invoiceNumber: selectedGRN.invoice_number || '',
-                          qcDate: new Date().toISOString().split('T')[0],
+                          qcDate: getTodayDateInputValue(),
                           qcBy: '',
                         });
                         setShowQCModal(true);
@@ -2528,6 +2535,7 @@ function GRNContent() {
                     </label>
                     <input
                       type="date"
+                      max={todayDate}
                       value={qcMetadata.qcDate}
                       onChange={(e) => setQcMetadata({ ...qcMetadata, qcDate: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"

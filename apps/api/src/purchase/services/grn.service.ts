@@ -24,6 +24,66 @@ export class GrnService {
     );
   }
 
+  private toNumber(value: any): number {
+    const n = typeof value === 'number' ? value : Number.parseFloat(String(value ?? '0'));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private async getPoItemQtyMap(poItemIds: string[]) {
+    const ids = Array.from(new Set(poItemIds.filter((id) => typeof id === 'string' && id.trim().length > 0)));
+    if (ids.length === 0) return new Map<string, { orderedQty: number; receivedQty: number }>();
+
+    const { data, error } = await this.supabase
+      .from('purchase_order_items')
+      .select('id, ordered_qty, received_qty')
+      .in('id', ids);
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    const map = new Map<string, { orderedQty: number; receivedQty: number }>();
+    for (const row of data ?? []) {
+      map.set(String((row as any).id), {
+        orderedQty: this.toNumber((row as any).ordered_qty),
+        receivedQty: this.toNumber((row as any).received_qty),
+      });
+    }
+    return map;
+  }
+
+  private async validateReceiptsDoNotExceedRemaining(params: {
+    poItemQtyMap: Map<string, { orderedQty: number; receivedQty: number }>;
+    receivedByPoItemId: Map<string, number>;
+    oldReceivedByPoItemId?: Map<string, number>;
+  }) {
+    const { poItemQtyMap, receivedByPoItemId, oldReceivedByPoItemId } = params;
+
+    for (const [poItemId, receiveNow] of receivedByPoItemId.entries()) {
+      const po = poItemQtyMap.get(poItemId);
+      if (!po) {
+        throw new BadRequestException(`Invalid PO item reference: ${poItemId}`);
+      }
+
+      const orderedQty = this.toNumber(po.orderedQty);
+      const currentReceived = this.toNumber(po.receivedQty);
+      const oldForThisGrn = this.toNumber(oldReceivedByPoItemId?.get(poItemId) ?? 0);
+      const baseReceived = Math.max(0, currentReceived - oldForThisGrn);
+      const remaining = orderedQty - baseReceived;
+
+      if (receiveNow < 0) {
+        throw new BadRequestException('Received quantity cannot be negative');
+      }
+
+      // Tiny epsilon to avoid float issues
+      if (receiveNow - remaining > 1e-9) {
+        throw new BadRequestException(
+          `Cannot receive ${receiveNow} for PO item ${poItemId}. Remaining quantity is ${Math.max(0, remaining)}.`,
+        );
+      }
+    }
+  }
+
   async uploadInvoice(tenantId: string, userId: string, file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('No file uploaded');
@@ -230,6 +290,24 @@ export class GrnService {
 
     // Insert GRN items
     if (data.items && data.items.length > 0) {
+      // Enforce partial receipt rules server-side (do not rely on UI caps)
+      const receivedByPoItemId = new Map<string, number>();
+      const poItemIds: string[] = [];
+      for (const item of data.items) {
+        const poItemId = String(item.poItemId || '').trim();
+        if (!poItemId) continue;
+        const receiveNow = this.toNumber(item.receivedQty);
+        if (receiveNow <= 0) continue;
+        poItemIds.push(poItemId);
+        receivedByPoItemId.set(poItemId, (receivedByPoItemId.get(poItemId) ?? 0) + receiveNow);
+      }
+
+      const poItemQtyMap = await this.getPoItemQtyMap(poItemIds);
+      await this.validateReceiptsDoNotExceedRemaining({
+        poItemQtyMap,
+        receivedByPoItemId,
+      });
+
       const items = data.items.map((item: any) => ({
         grn_id: grn.id,
         po_item_id: item.poItemId,
@@ -363,6 +441,49 @@ export class GrnService {
   }
 
   async update(tenantId: string, id: string, data: any) {
+    // Fetch existing GRN items to keep PO received_qty consistent
+    const { data: existingItems, error: existingItemsError } = await this.supabase
+      .from('grn_items')
+      .select('po_item_id, received_qty, received_quantity')
+      .eq('grn_id', id);
+
+    if (existingItemsError) {
+      throw new BadRequestException(existingItemsError.message);
+    }
+
+    const oldReceivedByPoItemId = new Map<string, number>();
+    for (const row of existingItems ?? []) {
+      const poItemId = String((row as any).po_item_id || '').trim();
+      if (!poItemId) continue;
+      const oldQty = this.toNumber((row as any).received_qty ?? (row as any).received_quantity);
+      if (oldQty <= 0) continue;
+      oldReceivedByPoItemId.set(poItemId, (oldReceivedByPoItemId.get(poItemId) ?? 0) + oldQty);
+    }
+
+    // Compute incoming received quantities by PO item
+    const receivedByPoItemId = new Map<string, number>();
+    if (Array.isArray(data.items)) {
+      for (const item of data.items) {
+        const poItemId = String(item.poItemId || '').trim();
+        if (!poItemId) continue;
+        const receiveNow = this.toNumber(item.receivedQuantity ?? item.receivedQty);
+        if (receiveNow <= 0) continue;
+        receivedByPoItemId.set(poItemId, (receivedByPoItemId.get(poItemId) ?? 0) + receiveNow);
+      }
+    }
+
+    const affectedPoItemIds = Array.from(
+      new Set([...Array.from(oldReceivedByPoItemId.keys()), ...Array.from(receivedByPoItemId.keys())]),
+    );
+    const poItemQtyMap = await this.getPoItemQtyMap(affectedPoItemIds);
+
+    // Validate partial receiving with old GRN quantities excluded
+    await this.validateReceiptsDoNotExceedRemaining({
+      poItemQtyMap,
+      receivedByPoItemId,
+      oldReceivedByPoItemId,
+    });
+
     const { error } = await this.supabase
       .from('grns')
       .update({
@@ -407,6 +528,22 @@ export class GrnService {
         await this.supabase
           .from('grn_items')
           .insert(items);
+      }
+
+      // Update PO received_qty based on delta (old GRN quantities removed, new added)
+      for (const poItemId of affectedPoItemIds) {
+        const po = poItemQtyMap.get(poItemId);
+        if (!po) continue;
+        const currentReceived = this.toNumber(po.receivedQty);
+        const oldQty = this.toNumber(oldReceivedByPoItemId.get(poItemId) ?? 0);
+        const baseReceived = Math.max(0, currentReceived - oldQty);
+        const newQty = this.toNumber(receivedByPoItemId.get(poItemId) ?? 0);
+        const finalReceived = baseReceived + newQty;
+
+        await this.supabase
+          .from('purchase_order_items')
+          .update({ received_qty: finalReceived })
+          .eq('id', poItemId);
       }
     }
 
@@ -813,6 +950,43 @@ export class GrnService {
   }
 
   async delete(tenantId: string, id: string) {
+    // Roll back PO received quantities before deleting
+    const { data: grnItems, error: grnItemsError } = await this.supabase
+      .from('grn_items')
+      .select('po_item_id, received_qty, received_quantity')
+      .eq('grn_id', id);
+
+    if (grnItemsError) {
+      throw new BadRequestException(grnItemsError.message);
+    }
+
+    const rollbackByPoItemId = new Map<string, number>();
+    for (const row of grnItems ?? []) {
+      const poItemId = String((row as any).po_item_id || '').trim();
+      if (!poItemId) continue;
+      const qty = this.toNumber((row as any).received_qty ?? (row as any).received_quantity);
+      if (qty <= 0) continue;
+      rollbackByPoItemId.set(poItemId, (rollbackByPoItemId.get(poItemId) ?? 0) + qty);
+    }
+
+    const poItemQtyMap = await this.getPoItemQtyMap(Array.from(rollbackByPoItemId.keys()));
+    for (const [poItemId, rollbackQty] of rollbackByPoItemId.entries()) {
+      const po = poItemQtyMap.get(poItemId);
+      const currentReceived = this.toNumber(po?.receivedQty ?? 0);
+      const nextReceived = Math.max(0, currentReceived - rollbackQty);
+      await this.supabase
+        .from('purchase_order_items')
+        .update({ received_qty: nextReceived })
+        .eq('id', poItemId);
+    }
+
+    // Delete child items first (safer across FK setups)
+    const { error: delItemsError } = await this.supabase
+      .from('grn_items')
+      .delete()
+      .eq('grn_id', id);
+    if (delItemsError) throw new BadRequestException(delItemsError.message);
+
     const { error } = await this.supabase
       .from('grns')
       .delete()

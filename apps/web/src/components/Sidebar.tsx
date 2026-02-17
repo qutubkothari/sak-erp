@@ -56,7 +56,9 @@ const navigation = [
     icon: Package,
     children: [
       { name: 'Stock Overview', href: '/dashboard/inventory' },
-      { name: 'Items Master', href: '/dashboard/inventory/items' },
+      { name: 'Stock Master', href: '/dashboard/inventory/items' },
+      { name: 'SIV', href: '/dashboard/inventory/siv' },
+      { name: 'SRV', href: '/dashboard/inventory/srv' },
       { name: 'Import Items', href: '/dashboard/inventory/items/import' },
     ],
   },

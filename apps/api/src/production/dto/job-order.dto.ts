@@ -189,3 +189,9 @@ export class UpdateOperationDto {
   @IsString()
   notes?: string;
 }
+
+export class PartialCompleteJobOrderDto {
+  @IsNotEmpty()
+  @IsNumber()
+  producedQuantity: number;
+}

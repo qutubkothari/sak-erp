@@ -12,8 +12,10 @@ type JobOrderIssueMaterialsFailure = {
   step:
     | 'RESOLVE_ITEM_ID'
     | 'FETCH_ITEM'
+    | 'UID_REQUIRED'
     | 'FETCH_STOCK'
     | 'UPDATE_STOCK_ENTRY'
+    | 'AUDIT_SIV'
     | 'UPDATE_MATERIAL'
     | 'UPDATE_JOB_ORDER';
   message: string;
@@ -397,20 +399,163 @@ export class JobOrderService {
     };
   }
 
-  private async issueJobOrderMaterials(tenantId: string, jobOrderId: string): Promise<JobOrderIssueMaterialsSummary> {
-    const startedAt = Date.now();
+  async completeJobOrderPartial(
+    tenantId: string,
+    jobOrderId: string,
+    userId?: string,
+    details?: { producedQuantity: number },
+  ) {
+    const producedQuantity = Number(details?.producedQuantity);
+    if (!Number.isFinite(producedQuantity) || producedQuantity <= 0) {
+      throw new BadRequestException('producedQuantity must be > 0');
+    }
 
-    this.logger.log('[SmartJO] issueJobOrderMaterials called');
-    this.logger.log(JSON.stringify({ tenantId, jobOrderId }));
-    
-    const { data: jobOrder } = await this.supabase
+    const { data: jobOrder, error: jobOrderError } = await this.supabase
       .from('production_job_orders')
-      .select('*, job_order_materials(*)')
+      .select('id, tenant_id, job_order_number, status, item_id, quantity, completed_quantity')
       .eq('tenant_id', tenantId)
       .eq('id', jobOrderId)
       .single();
 
+    if (jobOrderError) throw new BadRequestException(jobOrderError.message);
     if (!jobOrder) throw new NotFoundException('Job order not found');
+
+    if (String(jobOrder.status || '').toUpperCase() !== 'IN_PROGRESS') {
+      throw new BadRequestException('Job order must be IN_PROGRESS to record partial completion');
+    }
+
+    const planned = Math.max(0, Number(jobOrder.quantity) || 0);
+    if (planned <= 0) {
+      throw new BadRequestException('Invalid job order quantity');
+    }
+
+    const { count: existingCount, error: countError } = await this.supabase
+      .from('uid_registry')
+      .select('uid', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .eq('job_order_id', jobOrderId);
+
+    if (countError) throw new BadRequestException(countError.message);
+
+    const haveUids = Math.max(0, Number(existingCount) || 0);
+    const alreadyCompleted = Math.max(
+      0,
+      Number(jobOrder.completed_quantity) || 0,
+      haveUids,
+    );
+
+    if (alreadyCompleted > planned) {
+      throw new BadRequestException(
+        `Job order has inconsistent quantities (planned ${planned}, completed ${alreadyCompleted}). Please contact admin.`,
+      );
+    }
+
+    const nextCompleted = Math.min(planned, alreadyCompleted + producedQuantity);
+    const producedNow = Math.max(0, nextCompleted - alreadyCompleted);
+
+    if (producedNow <= 0) {
+      return {
+        jobOrderId,
+        jobOrderNumber: jobOrder.job_order_number,
+        plannedQuantity: planned,
+        completedQuantity: alreadyCompleted,
+        producedNow: 0,
+        message: 'No remaining quantity to record (already at planned quantity)',
+      };
+    }
+
+    const { error: updateError } = await this.supabase
+      .from('production_job_orders')
+      .update({ completed_quantity: nextCompleted })
+      .eq('tenant_id', tenantId)
+      .eq('id', jobOrderId);
+
+    if (updateError) throw new BadRequestException(updateError.message);
+
+    const ensureResult = await this.ensureUidsForJobOrder(tenantId, jobOrderId, userId);
+
+    return {
+      jobOrderId,
+      jobOrderNumber: jobOrder.job_order_number,
+      plannedQuantity: planned,
+      completedQuantity: nextCompleted,
+      producedNow,
+      uids: ensureResult,
+      message:
+        nextCompleted >= planned
+          ? 'Partial completion recorded. Planned quantity reached; use Complete to finish the job order.'
+          : 'Partial completion recorded. UIDs generated and pending SRV receipt.',
+    };
+  }
+
+  private async resolveJobOrderIdentity(
+    tenantId: string,
+    jobOrderIdOrNumber: string,
+  ): Promise<{ id: string; job_order_number?: string; status?: string }> {
+    const raw = String(jobOrderIdOrNumber || '').trim();
+    if (!raw) throw new BadRequestException('jobOrderId is required');
+
+    if (this.isUuid(raw)) {
+      const { data: byId, error: byIdError } = await this.supabase
+        .from('production_job_orders')
+        .select('id, job_order_number, status')
+        .eq('tenant_id', tenantId)
+        .eq('id', raw)
+        .maybeSingle();
+
+      if (byIdError) throw new BadRequestException(byIdError.message);
+      if (byId?.id) {
+        return {
+          id: String(byId.id),
+          job_order_number: String((byId as any).job_order_number || ''),
+          status: String((byId as any).status || ''),
+        };
+      }
+    }
+
+    const { data: byNumber, error: byNumberError } = await this.supabase
+      .from('production_job_orders')
+      .select('id, job_order_number, status')
+      .eq('tenant_id', tenantId)
+      .eq('job_order_number', raw)
+      .maybeSingle();
+
+    if (byNumberError) throw new BadRequestException(byNumberError.message);
+    if (!byNumber?.id) throw new NotFoundException('Job order not found');
+
+    return {
+      id: String(byNumber.id),
+      job_order_number: String((byNumber as any).job_order_number || ''),
+      status: String((byNumber as any).status || ''),
+    };
+  }
+
+  private async issueJobOrderMaterials(tenantId: string, jobOrderId: string, movedByUserId?: string): Promise<JobOrderIssueMaterialsSummary> {
+    const startedAt = Date.now();
+
+    const resolvedJobOrder = await this.resolveJobOrderIdentity(tenantId, jobOrderId);
+    const targetJobOrderId = resolvedJobOrder.id;
+
+    this.logger.log('[SmartJO] issueJobOrderMaterials called');
+    this.logger.log(JSON.stringify({ tenantId, jobOrderId, targetJobOrderId }));
+
+    const { data: jobOrder, error: jobOrderError } = await this.supabase
+      .from('production_job_orders')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('id', targetJobOrderId)
+      .single();
+
+    if (jobOrderError) throw new BadRequestException(jobOrderError.message);
+    if (!jobOrder) throw new NotFoundException('Job order not found');
+
+    const { data: materialsRaw, error: materialsError } = await this.supabase
+      .from('job_order_materials')
+      .select('*')
+      .eq('job_order_id', targetJobOrderId);
+
+    if (materialsError) throw new BadRequestException(materialsError.message);
+    jobOrder.job_order_materials = Array.isArray(materialsRaw) ? materialsRaw : [];
 
     const status = String(jobOrder.status || '');
     if (status === 'COMPLETED' || status === 'CANCELLED') {
@@ -683,6 +828,36 @@ export class JobOrderService {
         continue;
       }
 
+      // If item is UID-tracked (has ACTIVE UIDs), require scanned UID issuing via issue-line.
+      // Prevent bypassing the UID mapping requirement through the bulk issue endpoint.
+      try {
+        const { count: activeUidCount, error: uidCountErr } = await this.supabase
+          .from('uid_registry')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .eq('entity_id', itemIdToConsume)
+          .eq('status', 'ACTIVE');
+
+        if (uidCountErr) throw uidCountErr;
+
+        if ((activeUidCount || 0) > 0) {
+          failures.push({
+            materialId: String(material.id),
+            itemCode: material.item_code,
+            itemId: String(itemIdToConsume || ''),
+            step: 'UID_REQUIRED',
+            message: 'UID_MAPPING_REQUIRED',
+          });
+          this.logger.warn('[SmartJO] Skipping bulk issue for UID-tracked item; requires scanned UID issue-line');
+          this.logger.warn(JSON.stringify({ tenantId, jobOrderId, materialId: material.id, itemIdToConsume, activeUidCount }));
+          continue;
+        }
+      } catch (e: any) {
+        // If UID check fails, don't block bulk issuing for non-UID items; log and continue.
+        this.logger.warn('[SmartJO] UID check failed; proceeding without UID enforcement for bulk issuing');
+        this.logger.warn(String(e?.message || e));
+      }
+
       const { data: stockEntries, error: stockErr } = await this.supabase
         .from('stock_entries')
         .select('*')
@@ -818,6 +993,49 @@ export class JobOrderService {
         }
 
         remainingToConsume -= toConsumeFromEntry;
+
+        // Audit trail: record SIV (store issue voucher) movement when user is known.
+        const movedBy = String(movedByUserId || '').trim();
+        if (movedBy && this.isUuid(movedBy)) {
+          const warehouseId = String((entry as any)?.warehouse_id || '').trim();
+          const { error: auditError } = await this.supabase
+            .from('stock_movements')
+            .insert({
+              tenant_id: tenantId,
+              movement_type: 'PRODUCTION_ISSUE',
+              item_id: itemIdToConsume,
+              from_warehouse_id: warehouseId && this.isUuid(warehouseId) ? warehouseId : null,
+              quantity: toConsumeFromEntry,
+              reference_type: 'SIV',
+              reference_id: targetJobOrderId,
+              reference_number: String((jobOrder as any)?.job_order_number || ''),
+              notes: `SIV: Issued material ${String(material?.item_code || '').trim()} (${String(material?.item_name || '').trim()}) for ${String((jobOrder as any)?.job_order_number || '').trim()} (material_id=${String(material?.id || '').trim()})`,
+              moved_by: movedBy,
+              movement_date: new Date().toISOString(),
+            } as any);
+
+          if (auditError) {
+            failures.push({
+              materialId: String(material.id),
+              itemCode: material.item_code,
+              itemId: String(itemIdToConsume || ''),
+              step: 'AUDIT_SIV',
+              message: `STOCK_MOVEMENTS_INSERT_FAILED: ${auditError.message}`,
+            });
+            this.logger.error('[SmartJO] Failed inserting SIV stock_movements audit row');
+            this.logger.error(
+              JSON.stringify({
+                tenantId,
+                jobOrderId: targetJobOrderId,
+                materialId: material.id,
+                itemIdToConsume,
+                consumed: toConsumeFromEntry,
+                movedBy,
+                error: auditError,
+              }),
+            );
+          }
+        }
       }
 
       const actuallyConsumed = Math.max(0, issueNow - remainingToConsume);
@@ -878,7 +1096,7 @@ export class JobOrderService {
         .from('production_job_orders')
         .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
         .eq('tenant_id', tenantId)
-        .eq('id', jobOrderId);
+        .eq('id', targetJobOrderId);
 
       if (joUpdateErr) {
         failures.push({
@@ -893,7 +1111,7 @@ export class JobOrderService {
 
     const durationMs = Date.now() - startedAt;
     const summary: JobOrderIssueMaterialsSummary = {
-      jobOrderId,
+      jobOrderId: targetJobOrderId,
       totalMaterials,
       materialsNeedingIssue: materialsNeedingIssue.length,
       attempted,
@@ -921,7 +1139,7 @@ export class JobOrderService {
     const autoRepairRequested = options.autoRepair !== false;
     const userId = String(options.userId || '').trim();
 
-    const first = await this.issueJobOrderMaterials(tenantId, jobOrderId);
+    const first = await this.issueJobOrderMaterials(tenantId, jobOrderId, userId || undefined);
     first.autoRepair = {
       requested: autoRepairRequested,
       attempted: false,
@@ -945,7 +1163,7 @@ export class JobOrderService {
       .from('production_job_orders')
       .select('id, job_order_number, notes')
       .eq('tenant_id', tenantId)
-      .eq('id', jobOrderId)
+      .eq('id', first.jobOrderId)
       .single();
 
     if (joErr) {
@@ -975,13 +1193,13 @@ export class JobOrderService {
 
     this.logger.log('[SmartJO][AutoRepair] Triggering smart repair+issue from issue-materials endpoint');
     this.logger.log(
-      JSON.stringify({ tenantId, jobOrderId, jobOrderNumber: (joRow as any)?.job_order_number || null, noStockFailures: noStockFailures.length }),
+      JSON.stringify({ tenantId, jobOrderId: first.jobOrderId, jobOrderNumber: (joRow as any)?.job_order_number || null, noStockFailures: noStockFailures.length }),
     );
 
     first.autoRepair.attempted = true;
 
     try {
-      const repaired = await this.repairSmartJobOrderAndIssueMaterials(tenantId, userId, jobOrderId);
+      const repaired = await this.repairSmartJobOrderAndIssueMaterials(tenantId, userId, first.jobOrderId);
       const finalSummary = repaired.issueMaterialsSummary;
       finalSummary.autoRepair = {
         requested: true,
@@ -1019,11 +1237,13 @@ export class JobOrderService {
     if (!userId) throw new BadRequestException('userId is required');
     if (!jobOrderId) throw new BadRequestException('jobOrderId is required');
 
+    const resolvedJobOrder = await this.resolveJobOrderIdentity(tenantId, jobOrderId);
+
     const { data: jobOrder, error: jobOrderError } = await this.supabase
       .from('production_job_orders')
       .select('id, tenant_id, item_id, job_order_number, quantity, start_date, status')
       .eq('tenant_id', tenantId)
-      .eq('id', jobOrderId)
+      .eq('id', resolvedJobOrder.id)
       .single();
 
     if (jobOrderError) throw new BadRequestException(jobOrderError.message);
@@ -1103,6 +1323,8 @@ export class JobOrderService {
         );
       }
 
+      // SRV-first workflow: create SRV (SYSTEM) before QC release.
+      await this.receiveStoreReceiptVoucher(tenantId, created.id, userId, { receiverName: 'SYSTEM' });
       await this.approveQC(tenantId, created.id, uids, [], userId);
       qcApprovedSubJobOrders += 1;
     };
@@ -1154,7 +1376,7 @@ export class JobOrderService {
     const { data: joMaterials, error: joMaterialsErr } = await this.supabase
       .from('job_order_materials')
       .select('id, item_id, item_code, required_quantity, issued_quantity, status')
-      .eq('job_order_id', jobOrderId);
+      .eq('job_order_id', resolvedJobOrder.id);
 
     if (joMaterialsErr) throw new BadRequestException(joMaterialsErr.message);
     const materialsRows = Array.isArray(joMaterials) ? joMaterials : [];
@@ -1212,7 +1434,7 @@ export class JobOrderService {
     this.logger.log(
       JSON.stringify({
         tenantId,
-        jobOrderId,
+        jobOrderId: resolvedJobOrder.id,
         jobOrderNumber: jobOrder.job_order_number,
         pendingMaterialItems: targeted.length,
       }),
@@ -1255,10 +1477,10 @@ export class JobOrderService {
     }
 
     // Finally, re-issue materials for the existing main job order.
-    const issueMaterialsSummary = await this.issueJobOrderMaterials(tenantId, jobOrderId);
+    const issueMaterialsSummary = await this.issueJobOrderMaterials(tenantId, resolvedJobOrder.id);
 
     return {
-      jobOrderId,
+      jobOrderId: resolvedJobOrder.id,
       jobOrderNumber: String(jobOrder.job_order_number || ''),
       preview,
       plannedSubAssembliesToMake: subAssembliesToMake.length,
@@ -1631,6 +1853,25 @@ export class JobOrderService {
     const updates: any = { status };
 
     if (status === 'IN_PROGRESS') {
+      const { data: materialRows, error: materialError } = await this.supabase
+        .from('job_order_materials')
+        .select('required_quantity, issued_quantity')
+        .eq('job_order_id', id);
+
+      if (materialError) throw new BadRequestException(materialError.message);
+
+      const hasPendingMaterials = (materialRows || []).some((m: any) => {
+        const required = Number(m?.required_quantity || 0);
+        const issued = Number(m?.issued_quantity || 0);
+        return issued + 1e-9 < required;
+      });
+
+      if (hasPendingMaterials) {
+        throw new BadRequestException(
+          'SIV pending: materials are not fully assigned yet. Complete SIV (Store Issue Voucher) first from Inventory.',
+        );
+      }
+
       updates.actual_start_date = new Date().toISOString();
     } else if (status === 'COMPLETED') {
       updates.actual_end_date = new Date().toISOString();
@@ -1681,7 +1922,15 @@ export class JobOrderService {
     return { message: 'Job order deleted successfully' };
   }
 
-  async createFromBOM(tenantId: string, userId: string, itemId: string, bomId: string, quantity: number, startDate: string) {
+  async createFromBOM(
+    tenantId: string,
+    userId: string,
+    itemId: string,
+    bomId: string,
+    quantity: number,
+    startDate: string,
+    options?: { autoIssueMaterials?: boolean; autoRepair?: boolean },
+  ) {
     // Get BOM details (avoid PostgREST ambiguous embed between bom_headers and bom_items)
     const bom = await this.getBomWithItemsAndRoutingForJobOrder(tenantId, bomId);
     if (!bom) throw new NotFoundException('BOM not found');
@@ -1762,7 +2011,7 @@ export class JobOrderService {
       requiredQuantity,
     }));
 
-    return this.create(tenantId, userId, {
+    const created = await this.create(tenantId, userId, {
       itemId,
       bomId,
       quantity,
@@ -1770,6 +2019,20 @@ export class JobOrderService {
       operations,
       materials,
     });
+
+    if (options?.autoIssueMaterials !== true) {
+      return created;
+    }
+
+    const issueMaterialsSummary = await this.issueMaterialsForJobOrder(tenantId, created.id, {
+      userId,
+      autoRepair: options?.autoRepair,
+    });
+
+    return {
+      ...created,
+      issueMaterialsSummary,
+    };
   }
 
   private async createFromBOMWithVariantSelections(
@@ -2269,21 +2532,39 @@ export class JobOrderService {
         throw new BadRequestException('Finished item not found');
       }
 
-      // 3. Generate UIDs for finished goods
+      // 3. Generate UIDs for finished goods (idempotent)
       // NOTE: Stock will NOT be added until QC approval
       const quantityProduced = Math.max(0, Number(jobOrder.quantity) || 0);
-      const uidsCreated = await this.generateJobOrderUids(
-        tenantId,
-        userId,
-        jobOrder,
-        finishedItem,
-        quantityProduced,
-        'COMPLETE',
-      );
+      const { count: existingUidCount, error: uidCountError } = await this.supabase
+        .from('uid_registry')
+        .select('uid', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('job_order_id', jobOrderId);
 
-      if (uidsCreated.length !== quantityProduced) {
+      if (uidCountError) throw new BadRequestException(uidCountError.message);
+
+      const have = Math.max(0, Number(existingUidCount) || 0);
+      if (have > quantityProduced) {
         throw new BadRequestException(
-          `Failed to generate UIDs for this job order. Needed ${quantityProduced}, created ${uidsCreated.length}.`,
+          `Job order already has ${have} UID(s), which exceeds planned quantity ${quantityProduced}.`,
+        );
+      }
+
+      const missing = Math.max(0, quantityProduced - have);
+      const uidsCreated = missing > 0
+        ? await this.generateJobOrderUids(
+            tenantId,
+            userId,
+            jobOrder,
+            finishedItem,
+            missing,
+            'COMPLETE',
+          )
+        : [];
+
+      if (uidsCreated.length !== missing) {
+        throw new BadRequestException(
+          `Failed to generate UIDs for this job order. Needed ${missing}, created ${uidsCreated.length}.`,
         );
       }
 
@@ -2332,15 +2613,14 @@ export class JobOrderService {
     }
 
     // Get all UIDs for this job order
-    const { data: allUids } = await this.supabase
+    const { data: allUids, error: allUidsError } = await this.supabase
       .from('uid_registry')
-      .select('uid, status')
+      .select('uid, lifecycle, metadata')
       .eq('tenant_id', tenantId)
       .eq('job_order_id', jobOrderId);
 
-    if (!allUids || allUids.length === 0) {
-      throw new BadRequestException('No UIDs found for this job order');
-    }
+    if (allUidsError) throw new BadRequestException(allUidsError.message);
+    if (!allUids || allUids.length === 0) throw new BadRequestException('No UIDs found for this job order');
 
     const totalUids = allUids.length;
     const providedCount = approvedUids.length + rejectedUids.length;
@@ -2352,31 +2632,43 @@ export class JobOrderService {
     }
 
     try {
-      // 0. Idempotency: avoid adding stock multiple times if QC is submitted again
-      const { data: existingQcStockEntries, error: existingQcStockError } = await this.supabase
+      // SRV must be completed before QC (GRN-like flow)
+      const { data: existingReceipts, error: receiptError } = await this.supabase
         .from('stock_entries')
-        .select('id, metadata')
+        .select('id, quantity, available_quantity, warehouse_id, metadata')
         .eq('tenant_id', tenantId)
-        .eq('item_id', jobOrder.item_id)
-        .eq('metadata->>created_from', 'QC_APPROVAL')
-        .eq('metadata->>job_order_id', jobOrderId);
+        .eq('metadata->>created_from', 'STORE_RECEIPT')
+        .eq('metadata->>job_order_id', jobOrderId)
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-      if (existingQcStockError) {
-        throw new BadRequestException(existingQcStockError.message);
+      if (receiptError) throw new BadRequestException(receiptError.message);
+      const receiptEntry = Array.isArray(existingReceipts) ? existingReceipts[0] : null;
+      if (!receiptEntry) {
+        throw new BadRequestException('SRV pending: please complete SRV (Store Receipt Voucher) before QC.');
+      }
+
+      const receivedUids = Array.isArray((receiptEntry as any)?.metadata?.received_uids)
+        ? ((receiptEntry as any).metadata.received_uids as any[]).map((u) => String(u || '').trim()).filter(Boolean)
+        : [];
+
+      // Enforce full receipt for the job order before QC.
+      if (receivedUids.length !== totalUids) {
+        throw new BadRequestException(
+          `SRV pending: ${Math.max(0, totalUids - receivedUids.length)} unit(s) not received in SRV yet. Complete SRV first, then QC.`,
+        );
       }
 
       const alreadyApprovedUidSet = new Set<string>();
-      for (const entry of existingQcStockEntries || []) {
-        const approvedList = (entry as any)?.metadata?.approved_uids;
-        if (Array.isArray(approvedList)) {
-          for (const u of approvedList) {
-            const s = String(u || '').trim();
-            if (s) alreadyApprovedUidSet.add(s);
-          }
+      const approvedList = (receiptEntry as any)?.metadata?.approved_uids;
+      if (Array.isArray(approvedList)) {
+        for (const u of approvedList) {
+          const s = String(u || '').trim();
+          if (s) alreadyApprovedUidSet.add(s);
         }
       }
 
-      const newlyApprovedUids = (approvedUids || []).filter((u) => !alreadyApprovedUidSet.has(u));
+      const newlyApprovedUids = (approvedUids || []).filter((u) => !alreadyApprovedUidSet.has(String(u || '').trim()));
 
       // 1. Update approved UIDs
       if (approvedUids.length > 0) {
@@ -2456,20 +2748,41 @@ export class JobOrderService {
         }
       }
 
-      // 3. Add stock ONLY for approved UIDs
-      if (newlyApprovedUids.length > 0) {
-        // Get warehouse
-        const { data: warehouses } = await this.supabase
-          .from('warehouses')
-          .select('id')
-          .eq('tenant_id', tenantId)
-          .limit(1);
+      // 3. Release approved quantity to stock from the STORE_RECEIPT entry
+      const existingAvailable = Number((receiptEntry as any)?.available_quantity) || 0;
+      const receiptQty = Number((receiptEntry as any)?.quantity) || 0;
+      const deltaToRelease = newlyApprovedUids.length;
+      const nextAvailable = Math.min(receiptQty, existingAvailable + deltaToRelease);
 
-        if (!warehouses || warehouses.length === 0) {
-          throw new BadRequestException('No warehouse configured');
+      const mergedApproved = Array.from(
+        new Set([
+          ...Array.from(alreadyApprovedUidSet),
+          ...newlyApprovedUids.map((u) => String(u || '').trim()).filter(Boolean),
+        ]),
+      );
+
+      const { error: receiptUpdateErr } = await this.supabase
+        .from('stock_entries')
+        .update({
+          available_quantity: nextAvailable,
+          metadata: {
+            ...(receiptEntry as any)?.metadata,
+            approved_uids: mergedApproved,
+            qc_released_at: new Date().toISOString(),
+            qc_released_by: userId || null,
+          },
+        })
+        .eq('tenant_id', tenantId)
+        .eq('id', (receiptEntry as any)?.id);
+
+      if (receiptUpdateErr) throw new BadRequestException(receiptUpdateErr.message);
+
+      // Sync inventory_stock only for newly released (approved) units
+      if (deltaToRelease > 0) {
+        const warehouseId = String((receiptEntry as any)?.warehouse_id || '').trim();
+        if (!warehouseId || !this.isUuid(warehouseId)) {
+          throw new BadRequestException('Warehouse not set on SRV entry');
         }
-
-        const warehouseId = warehouses[0].id;
 
         const { data: itemRow, error: itemErr } = await this.supabase
           .from('items')
@@ -2478,65 +2791,22 @@ export class JobOrderService {
           .eq('id', jobOrder.item_id)
           .single();
 
-        if (itemErr) {
-          throw new BadRequestException(itemErr.message);
-        }
+        if (itemErr) throw new BadRequestException(itemErr.message);
 
-        // Add stock entry for approved quantity
-        const { error: addError } = await this.supabase
-          .from('stock_entries')
-          .insert({
-            tenant_id: tenantId,
-            item_id: jobOrder.item_id,
-            warehouse_id: warehouseId,
-            quantity: newlyApprovedUids.length,
-            available_quantity: newlyApprovedUids.length,
-            allocated_quantity: 0,
-            metadata: {
-              created_from: 'QC_APPROVAL',
-              job_order_id: jobOrderId,
-              job_order_number: jobOrder.job_order_number,
-              total_produced: totalUids,
-              qc_approved: approvedUids.length,
-              qc_rejected: rejectedUids.length,
-              approved_uids: newlyApprovedUids,
-            },
-          });
-
-        if (addError) {
-          console.error('Error adding approved stock:', addError);
-          throw new BadRequestException(`Failed to add stock: ${addError.message}`);
-        }
-
-        // Keep inventory_stock in sync (used by Smart JO preview + other modules)
         const { error: invError } = await this.supabase.rpc('adjust_inventory_stock', {
           p_tenant_id: tenantId,
           p_item_id: jobOrder.item_id,
           p_warehouse_id: warehouseId,
           p_location_id: null,
-          p_quantity_change: newlyApprovedUids.length,
-          p_category: normalizeInventoryCategory(itemRow?.category, 'WIP'),
+          p_quantity_change: deltaToRelease,
+          p_category: normalizeInventoryCategory(itemRow?.category, 'FINISHED_GOODS'),
         });
 
-        if (invError) {
-          console.error('Error syncing inventory_stock after QC approval:', invError);
-          throw new BadRequestException(`Failed to sync inventory stock: ${invError.message}`);
-        }
+        if (invError) throw new BadRequestException(invError.message);
       }
 
-      const { data: stockRows } = await this.supabase
-        .from('stock_entries')
-        .select('available_quantity')
-        .eq('tenant_id', tenantId)
-        .eq('item_id', jobOrder.item_id);
-
-      const stockAvailable = (stockRows || []).reduce((sum: number, row: any) => {
-        const qty = Number(row?.available_quantity || 0);
-        return sum + (Number.isFinite(qty) ? qty : 0);
-      }, 0);
-
       console.log(`[QC Approval] Job Order ${jobOrder.job_order_number}: ${approvedUids.length} approved, ${rejectedUids.length} rejected`);
-      console.log(`[QC Approval] Added ${newlyApprovedUids.length} new units to stock (idempotent). Available now: ${stockAvailable}`);
+      console.log(`[QC Approval] Released ${newlyApprovedUids.length} newly approved unit(s) to stock from SRV receipt`);
 
       return {
         jobOrderId,
@@ -2548,16 +2818,1475 @@ export class JobOrderService {
         qcApproved: approvedUids.length,
         qcRejected: rejectedUids.length,
         stockAdded: newlyApprovedUids.length,
-        stockAvailable,
+        pendingStoreReceipt: 0,
+        newlyApproved: newlyApprovedUids.length,
         message:
-          newlyApprovedUids.length === 0
-            ? `QC already applied: no new approved UIDs to add to stock.`
-            : `QC Complete: ${newlyApprovedUids.length} approved units added to stock, ${rejectedUids.length} rejected`,
+          newlyApprovedUids.length > 0
+            ? `QC Complete: ${newlyApprovedUids.length} unit(s) released to stock.`
+            : `QC already applied: no new units to release.`,
       };
     } catch (error) {
       console.error('Error during QC approval:', error);
       throw error;
     }
+  }
+
+  async getOpenMaterialRequisitions(tenantId: string) {
+    const { data: jobOrders, error: jobOrderError } = await this.supabase
+      .from('production_job_orders')
+      .select('id, job_order_number, item_id, item_code, item_name, quantity, status, start_date, created_at')
+      .eq('tenant_id', tenantId)
+      .neq('status', 'COMPLETED')
+      .neq('status', 'CANCELLED')
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (jobOrderError) throw new BadRequestException(jobOrderError.message);
+
+    const ids = (jobOrders || []).map((j: any) => String(j.id)).filter(Boolean);
+    if (ids.length === 0) return [];
+
+    const { data: materials, error: materialsError } = await this.supabase
+      .from('job_order_materials')
+      .select('id, job_order_id, item_id, item_code, item_name, required_quantity, issued_quantity, status')
+      .in('job_order_id', ids);
+
+    if (materialsError) throw new BadRequestException(materialsError.message);
+
+    const byJob = new Map<string, any[]>();
+    for (const row of materials || []) {
+      const key = String((row as any)?.job_order_id || '').trim();
+      if (!key) continue;
+      if (!byJob.has(key)) byJob.set(key, []);
+      byJob.get(key)!.push(row);
+    }
+
+    return (jobOrders || [])
+      .map((jo: any) => {
+        const rows = byJob.get(String(jo.id)) || [];
+        const requiredQuantity = rows.reduce((sum, r: any) => sum + (Number(r?.required_quantity) || 0), 0);
+        const issuedQuantity = rows.reduce((sum, r: any) => sum + (Number(r?.issued_quantity) || 0), 0);
+        const pendingLines = rows.filter((r: any) => (Number(r?.issued_quantity) || 0) + 1e-9 < (Number(r?.required_quantity) || 0)).length;
+        return {
+          ...jo,
+          requisitionStatus: pendingLines > 0 ? 'OPEN' : 'ISSUED',
+          requiredQuantity,
+          issuedQuantity,
+          pendingQuantity: Math.max(0, requiredQuantity - issuedQuantity),
+          pendingLines,
+          materialLines: rows.map((line: any) => {
+            const required = Number(line?.required_quantity) || 0;
+            const issued = Number(line?.issued_quantity) || 0;
+            return {
+              ...line,
+              pending_quantity: Math.max(0, required - issued),
+            };
+          }),
+        };
+      })
+      .filter((row) => row.pendingLines > 0);
+  }
+
+  async issueMaterialRequisition(tenantId: string, jobOrderId: string, userId?: string) {
+    const summary = await this.issueMaterialsForJobOrder(tenantId, jobOrderId, {
+      userId,
+      autoRepair: true,
+    });
+
+    const updated = await this.findOne(tenantId, jobOrderId);
+    return {
+      jobOrder: updated,
+      summary,
+    };
+  }
+
+  async issueMaterialRequisitionLine(
+    tenantId: string,
+    jobOrderId: string,
+    materialId: string,
+    issueQuantity: number,
+    uids?: string[],
+    userId?: string,
+  ) {
+    // Master try-catch for detailed error reporting (v2026-02-17-v5)
+    try {
+      const formatSupabaseError = (err: any, location: string) => {
+        const message = String(err?.message || '').trim();
+        const details = String(err?.details || '').trim();
+        const hint = String(err?.hint || '').trim();
+        const code = String(err?.code || '').trim();
+        const parts = [message, details, hint].filter(Boolean);
+        const joined = parts.join(' | ');
+        const base = code ? `${joined}${joined ? ` (code=${code})` : `code=${code}`}` : joined;
+        // CRITICAL: Never return empty string - NestJS treats falsy as generic "Bad Request"
+        return base || `Supabase error at ${location} (raw: ${JSON.stringify(err)})`;
+      };
+
+      if (!tenantId) throw new BadRequestException('tenantId is required');
+    if (!jobOrderId) throw new BadRequestException('jobOrderId is required');
+    if (!materialId) throw new BadRequestException('materialId is required');
+
+    const requestedIssueQty = Number(issueQuantity);
+    if (!Number.isFinite(requestedIssueQty) || requestedIssueQty <= 0) {
+      throw new BadRequestException('issueQuantity must be greater than 0');
+    }
+
+    const normalizedUids = Array.from(
+      new Set(
+        (Array.isArray(uids) ? uids : [])
+          .map((u) => String(u || '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    const resolvedJobOrder = await this.resolveJobOrderIdentity(tenantId, jobOrderId);
+    const targetJobOrderId = resolvedJobOrder.id;
+
+    const { data: jobOrder, error: jobError } = await this.supabase
+      .from('production_job_orders')
+      .select('id, tenant_id, status, job_order_number')
+      .eq('tenant_id', tenantId)
+      .eq('id', targetJobOrderId)
+      .single();
+
+    this.logger.log(`[SIV v5] STEP-1: Fetched job order for tenant=${tenantId}, jobOrderId=${targetJobOrderId}, error=${!!jobError}`);
+    if (jobError) throw new BadRequestException(formatSupabaseError(jobError, 'STEP-1:job_order_lookup'));
+    if (!jobOrder) throw new NotFoundException('Job order not found');
+
+    const status = String((jobOrder as any)?.status || '');
+    if (status === 'COMPLETED' || status === 'CANCELLED') {
+      throw new BadRequestException('Cannot issue materials for a completed/cancelled job order');
+    }
+
+    const { data: material, error: materialError } = await this.supabase
+      .from('job_order_materials')
+      .select('id, job_order_id, item_id, selected_variant_id, item_code, item_name, required_quantity, issued_quantity, status')
+      .eq('id', materialId)
+      .eq('job_order_id', targetJobOrderId)
+      .maybeSingle();
+
+    this.logger.log(`[SIV v5] STEP-2: Fetched material for materialId=${materialId}, jobOrderId=${targetJobOrderId}, error=${!!materialError}, found=${!!material}`);
+    if (materialError) throw new BadRequestException(formatSupabaseError(materialError, 'STEP-2:material_lookup'));
+    if (!material) throw new NotFoundException('Material line not found for this job order');
+
+    const requiredQty = Number((material as any)?.required_quantity) || 0;
+    const alreadyIssued = Number((material as any)?.issued_quantity) || 0;
+    const pendingQty = Math.max(0, requiredQty - alreadyIssued);
+
+    if (pendingQty <= 0) {
+      return {
+        jobOrderId: targetJobOrderId,
+        jobOrderNumber: (jobOrder as any)?.job_order_number,
+        materialId,
+        requestedIssueQty,
+        issuedNow: 0,
+        totalIssued: alreadyIssued,
+        pendingQuantity: 0,
+        materialStatus: 'ISSUED',
+        message: 'This material line is already fully issued',
+      };
+    }
+
+    let itemIdToConsume =
+      String((material as any)?.selected_variant_id || '').trim() ||
+      String((material as any)?.item_id || '').trim();
+
+    if (!this.isUuid(itemIdToConsume)) {
+      const code = String((material as any)?.item_code || '').trim();
+      if (code) {
+        const { data: itemByCode, error: itemByCodeError } = await this.supabase
+          .from('items')
+          .select('id, code')
+          .eq('tenant_id', tenantId)
+          .ilike('code', code)
+          .limit(1);
+
+        if (itemByCodeError) throw new BadRequestException(formatSupabaseError(itemByCodeError, 'STEP-3a:item_code_lookup'));
+        const row = Array.isArray(itemByCode) ? itemByCode[0] : null;
+        if (row?.id) {
+          itemIdToConsume = String(row.id);
+          await this.supabase
+            .from('job_order_materials')
+            .update({ item_id: itemIdToConsume })
+            .eq('id', materialId);
+        }
+      }
+    }
+
+    if (!this.isUuid(itemIdToConsume)) {
+      throw new BadRequestException('Material line has invalid item mapping; cannot issue quantity');
+    }
+
+    this.logger.log(`[SIV v5] STEP-3: Looking up item: itemIdToConsume=${itemIdToConsume}, tenantId=${tenantId}`);
+    const { data: item, error: itemError } = await this.supabase
+      .from('items')
+      .select('code, name, category, uid_tracking, uid_strategy, batch_uom, batch_quantity')
+      .eq('tenant_id', tenantId)
+      .eq('id', itemIdToConsume)
+      .single();
+
+    if (itemError) throw new BadRequestException(formatSupabaseError(itemError, `STEP-3:item_lookup(itemId=${itemIdToConsume})`));
+
+    // Some legacy/manual flows update only inventory_stock (not stock_entries).
+    // Reconcile so FIFO issuing doesn't fail with "No stock available" while stock exists.
+    this.logger.log(`[SIV v5] STEP-4: Reconciling stock entries for item=${itemIdToConsume}`);
+    await this.ensureStockEntriesAtLeastInventoryAvailable(tenantId, String(itemIdToConsume));
+    this.logger.log(`[SIV v5] STEP-4: Reconciliation complete`);
+
+    // UID policy comes from Item Master.
+    const uidTrackingEnabled = (item as any)?.uid_tracking === true && String((item as any)?.uid_strategy || '').toUpperCase() !== 'NONE';
+    const uidStrategy = String((item as any)?.uid_strategy || (uidTrackingEnabled ? 'SERIALIZED' : 'NONE')).toUpperCase();
+    const rawBatchQty = Number((item as any)?.batch_quantity);
+    const qtyPerUid = uidStrategy === 'BATCHED' ? (Number.isFinite(rawBatchQty) && rawBatchQty > 0 ? rawBatchQty : NaN) : 1;
+
+    if (uidTrackingEnabled && uidStrategy === 'BATCHED' && !Number.isFinite(qtyPerUid)) {
+      throw new BadRequestException('Item UID strategy is BATCHED but batch_quantity is missing/invalid in Item Master');
+    }
+
+    // If UID tracking is enabled, UIDs are compulsory for issuing (otherwise traceability breaks).
+    // If UID tracking is disabled, UIDs are optional; if user provided them, we will validate them.
+    const requiresUidMapping = uidTrackingEnabled || normalizedUids.length > 0;
+
+    if (uidTrackingEnabled && normalizedUids.length === 0) {
+      throw new BadRequestException('This item requires UID mapping. Please scan UIDs before issuing.');
+    }
+
+    const issueQtyFromUids = normalizedUids.length > 0 ? normalizedUids.length * qtyPerUid : 0;
+
+    if (normalizedUids.length > 0 && Math.abs(issueQtyFromUids - requestedIssueQty) > 1e-9) {
+      const extra = uidStrategy === 'BATCHED' ? ` (batch_quantity=${qtyPerUid})` : '';
+      throw new BadRequestException(`issueQuantity must match scanned UIDs${extra}`);
+    }
+
+    if (normalizedUids.length > 0 && issueQtyFromUids - pendingQty > 1e-9) {
+      throw new BadRequestException('Scanned UID quantity exceeds pending quantity for this material line');
+    }
+
+    const issueTargetQty = normalizedUids.length > 0 ? issueQtyFromUids : Math.min(requestedIssueQty, pendingQty);
+
+    if (requiresUidMapping) {
+      // Validate scanned UIDs exist, match item, and are ACTIVE
+      const { data: uidRows, error: uidErr } = await this.supabase
+        .from('uid_registry')
+        .select('uid, status, location, entity_id, entity_type, lifecycle, metadata')
+        .eq('tenant_id', tenantId)
+        .in('uid', normalizedUids);
+
+      if (uidErr) throw new BadRequestException(formatSupabaseError(uidErr, 'STEP-5a:uid_registry_select'));
+
+      const byUid = new Map<string, any>();
+      for (const row of uidRows || []) {
+        const uid = String((row as any)?.uid || '').trim();
+        if (uid) byUid.set(uid, row);
+      }
+
+      const missing = normalizedUids.filter((u) => !byUid.has(u));
+      if (missing.length > 0) {
+        throw new BadRequestException(`Unknown UID(s): ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}`);
+      }
+
+      for (const uid of normalizedUids) {
+        const row = byUid.get(uid);
+        const status = String((row as any)?.status || '').trim();
+        const entityId = String((row as any)?.entity_id || '').trim();
+
+        if (status !== 'ACTIVE') {
+          throw new BadRequestException(`UID ${uid} is not ACTIVE (status=${status || 'N/A'})`);
+        }
+        if (entityId !== itemIdToConsume) {
+          throw new BadRequestException(`UID ${uid} does not belong to the selected item`);
+        }
+      }
+    }
+
+    const { data: stockEntries, error: stockError } = await this.supabase
+      .from('stock_entries')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemIdToConsume)
+      .gt('available_quantity', 0)
+      .order('created_at', { ascending: true });
+
+    this.logger.log(`[SIV v5] STEP-6: Stock query for item=${itemIdToConsume}: entries=${Array.isArray(stockEntries) ? stockEntries.length : 'null'}, error=${!!stockError}`);
+    if (stockError) throw new BadRequestException(formatSupabaseError(stockError, 'STEP-6:stock_entries_query'));
+
+    const safeEntries = Array.isArray(stockEntries) ? stockEntries : [];
+    const uidWarehouseId = requiresUidMapping
+      ? String((safeEntries[0] as any)?.warehouse_id || '').trim()
+      : '';
+
+    const relevantEntries = requiresUidMapping && uidWarehouseId
+      ? safeEntries.filter((e: any) => String(e?.warehouse_id || '').trim() === uidWarehouseId)
+      : safeEntries;
+
+    const totalAvailable = relevantEntries.reduce(
+      (sum, entry: any) => sum + (Number(entry?.available_quantity) || 0),
+      0,
+    );
+
+    // If UIDs are involved, do not allow partial issuing; it would consume FIFO but not map all scanned UIDs.
+    if (requiresUidMapping && totalAvailable + 1e-9 < issueTargetQty) {
+      throw new BadRequestException(
+        `Insufficient stock to issue scanned UIDs. Required=${issueTargetQty}, available=${totalAvailable}`,
+      );
+    }
+    const issueNow = Math.max(0, Math.min(issueTargetQty, totalAvailable));
+
+    if (issueNow <= 0) {
+      this.logger.warn(`[SIV v5] STEP-6a: NO STOCK! item=${itemIdToConsume}, totalAvailable=${totalAvailable}, issueTargetQty=${issueTargetQty}, entriesCount=${relevantEntries.length}`);
+      throw new BadRequestException(
+        `No stock available to issue for this material line. Item=${itemIdToConsume}, available=${totalAvailable}, required=${issueTargetQty}, entries=${relevantEntries.length}`,
+      );
+    }
+
+    let remainingToConsume = issueNow;
+    for (const entry of relevantEntries) {
+      if (remainingToConsume <= 0) break;
+
+      const entryAvailable = Number((entry as any)?.available_quantity) || 0;
+      const toConsumeFromEntry = Math.min(entryAvailable, remainingToConsume);
+      if (toConsumeFromEntry <= 0) continue;
+
+      const newAvailable = entryAvailable - toConsumeFromEntry;
+
+      const { error: updateError } = await this.supabase
+        .from('stock_entries')
+        .update({
+          available_quantity: newAvailable,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', (entry as any)?.id);
+
+      if (updateError) throw new BadRequestException(formatSupabaseError(updateError, `STEP-7:stock_entry_update(entryId=${(entry as any)?.id})`));
+
+      const warehouseId = String((entry as any)?.warehouse_id || '').trim();
+      
+      // Enhanced diagnostic logging for warehouse validation (v2026-02-16-v3)
+      this.logger.log(`[SIV DEBUG v2026-02-16-v3] Processing stock entry: entryId=${(entry as any)?.id}, warehouseId="${warehouseId}", isValidUuid=${this.isUuid(warehouseId)}, itemId=${itemIdToConsume}, qty=${toConsumeFromEntry}`);
+      
+      if (!warehouseId) {
+        throw new BadRequestException(`Stock entry ${(entry as any)?.id} has no warehouse_id. Cannot adjust inventory. Entry data: ${JSON.stringify(entry)}`);
+      }
+      
+      if (!this.isUuid(warehouseId)) {
+        throw new BadRequestException(`Stock entry ${(entry as any)?.id} has invalid warehouse_id: "${warehouseId}". Must be a valid UUID.`);
+      }
+      
+      if (warehouseId && this.isUuid(warehouseId)) {
+        try {
+          await this.adjustInventoryStockWithFallback({
+            tenantId,
+            itemId: itemIdToConsume,
+            warehouseId,
+            locationId: null,
+            quantityChange: -toConsumeFromEntry,
+            category: normalizeInventoryCategory((item as any)?.category, 'RAW_MATERIAL'),
+            context: {
+              source: 'SIV_ISSUE_LINE',
+              jobOrderId: targetJobOrderId,
+              jobOrderNumber: String((jobOrder as any)?.job_order_number || '').trim(),
+              materialId,
+              stockEntryId: String((entry as any)?.id || '').trim(),
+            },
+          });
+        } catch (err: any) {
+          // Enhanced error context (v2026-02-16-v3)
+          this.logger.error(`[SIV ERROR v2026-02-16-v3] adjust_inventory_stock failed: ${err?.message}. Entry: ${(entry as any)?.id}, Warehouse: ${warehouseId}, Item: ${itemIdToConsume}`);
+          
+          // Roll back stock_entries update so we don't partially consume FIFO without updating inventory_stock.
+          await this.supabase
+            .from('stock_entries')
+            .update({
+              available_quantity: entryAvailable,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', (entry as any)?.id);
+          throw err;
+        }
+      }
+
+      // Audit trail handled below (one-per-uid if UID mapped; otherwise per chunk).
+      if (!requiresUidMapping) {
+        const movedBy = String(userId || '').trim();
+        if (movedBy && this.isUuid(movedBy)) {
+          const { error: auditError } = await this.supabase
+            .from('stock_movements')
+            .insert({
+              tenant_id: tenantId,
+              movement_type: 'PRODUCTION_ISSUE',
+              item_id: itemIdToConsume,
+              from_warehouse_id: warehouseId && this.isUuid(warehouseId) ? warehouseId : null,
+              quantity: toConsumeFromEntry,
+              reference_type: 'SIV',
+              reference_id: targetJobOrderId,
+              reference_number: String((jobOrder as any)?.job_order_number || ''),
+              notes: `SIV: Issued ${toConsumeFromEntry} of ${String((material as any)?.item_code || '').trim()} (${String((material as any)?.item_name || '').trim()}) for ${String((jobOrder as any)?.job_order_number || '').trim()} (material_id=${materialId})`,
+              moved_by: movedBy,
+              movement_date: new Date().toISOString(),
+            } as any);
+
+          if (auditError) {
+            this.logger.error('[SIV] Failed inserting stock_movements audit row (issueMaterialRequisitionLine)');
+            this.logger.error(
+              JSON.stringify({
+                tenantId,
+                jobOrderId: targetJobOrderId,
+                materialId,
+                itemIdToConsume,
+                consumed: toConsumeFromEntry,
+                movedBy,
+                error: auditError,
+              }),
+            );
+          }
+        }
+      }
+
+      remainingToConsume -= toConsumeFromEntry;
+    }
+
+    const issuedNow = Math.max(0, issueNow - remainingToConsume);
+
+    if (requiresUidMapping) {
+      const movedBy = String(userId || '').trim();
+      if (movedBy && this.isUuid(movedBy)) {
+        const uidsToConsumeCount = Math.min(
+          normalizedUids.length,
+          qtyPerUid > 0 ? Math.floor(issuedNow / qtyPerUid + 1e-9) : normalizedUids.length,
+        );
+        const uidsToRecord = normalizedUids.slice(0, uidsToConsumeCount);
+        const rows = uidsToRecord.map((uid) => ({
+          tenant_id: tenantId,
+          movement_type: 'PRODUCTION_ISSUE',
+          item_id: itemIdToConsume,
+          uid,
+          from_warehouse_id: uidWarehouseId && this.isUuid(uidWarehouseId) ? uidWarehouseId : null,
+          quantity: qtyPerUid,
+          reference_type: 'SIV',
+          reference_id: targetJobOrderId,
+          reference_number: String((jobOrder as any)?.job_order_number || ''),
+          notes: `SIV: Issued UID ${uid} for ${String((jobOrder as any)?.job_order_number || '').trim()} (material_id=${materialId})`,
+          moved_by: movedBy,
+          movement_date: new Date().toISOString(),
+        }));
+
+        if (rows.length > 0) {
+          const { error: auditError } = await this.supabase.from('stock_movements').insert(rows as any);
+          if (auditError) throw new BadRequestException(formatSupabaseError(auditError, 'STEP-8:stock_movements_insert'));
+        }
+      }
+
+      // Mark UIDs as consumed for traceability
+      const uidsToConsumeCount = Math.min(
+        normalizedUids.length,
+        qtyPerUid > 0 ? Math.floor(issuedNow / qtyPerUid + 1e-9) : normalizedUids.length,
+      );
+      const { data: uidRows, error: uidErr } = await this.supabase
+        .from('uid_registry')
+        .select('uid, lifecycle, metadata')
+        .eq('tenant_id', tenantId)
+        .in('uid', normalizedUids.slice(0, uidsToConsumeCount));
+
+      if (uidErr) throw new BadRequestException(formatSupabaseError(uidErr, 'STEP-9:uid_registry_consumed'));
+
+      for (const row of uidRows || []) {
+        const uid = String((row as any)?.uid || '').trim();
+        if (!uid) continue;
+
+        const rawLifecycle = (row as any)?.lifecycle;
+        const rawMetadata = (row as any)?.metadata;
+        const currentLifecycle = Array.isArray(rawLifecycle)
+          ? rawLifecycle
+          : rawLifecycle
+            ? JSON.parse(String(rawLifecycle))
+            : [];
+        const currentMetadata = rawMetadata && typeof rawMetadata === 'object'
+          ? rawMetadata
+          : rawMetadata
+            ? JSON.parse(String(rawMetadata))
+            : {};
+
+        await this.supabase
+          .from('uid_registry')
+          .update({
+            status: 'CONSUMED',
+            location: `Issued to ${String((jobOrder as any)?.job_order_number || '').trim()}`,
+            lifecycle: [
+              ...currentLifecycle,
+              {
+                stage: 'SIV_ISSUED',
+                timestamp: new Date().toISOString(),
+                job_order_id: targetJobOrderId,
+                job_order_number: String((jobOrder as any)?.job_order_number || '').trim(),
+                material_id: materialId,
+                user: userId || null,
+              },
+            ],
+            metadata: {
+              ...currentMetadata,
+              siv_issued_at: new Date().toISOString(),
+              siv_issued_by: userId || null,
+              siv_job_order_id: targetJobOrderId,
+              siv_job_order_number: String((jobOrder as any)?.job_order_number || '').trim(),
+              siv_material_id: materialId,
+            },
+          } as any)
+          .eq('tenant_id', tenantId)
+          .eq('uid', uid);
+      }
+    }
+
+    const nextIssued = alreadyIssued + issuedNow;
+    const nextStatus = nextIssued + 1e-9 >= requiredQty ? 'ISSUED' : 'PARTIAL';
+
+    const { error: matUpdateErr } = await this.supabase
+      .from('job_order_materials')
+      .update({
+        issued_quantity: nextIssued,
+        status: nextStatus,
+      })
+      .eq('id', materialId)
+      .eq('job_order_id', targetJobOrderId);
+
+    if (matUpdateErr) throw new BadRequestException(formatSupabaseError(matUpdateErr, 'STEP-10:job_order_materials_update'));
+
+    const newPending = Math.max(0, requiredQty - nextIssued);
+
+    return {
+      jobOrderId: targetJobOrderId,
+      jobOrderNumber: (jobOrder as any)?.job_order_number,
+      materialId,
+      materialItemCode: (material as any)?.item_code,
+      materialItemName: (material as any)?.item_name,
+      requestedIssueQty,
+      issuedNow,
+      totalIssued: nextIssued,
+      pendingQuantity: newPending,
+      materialStatus: nextStatus,
+      issuedBy: userId || null,
+      message:
+        newPending > 0
+          ? `Issued ${issuedNow.toFixed(2)}. Pending ${newPending.toFixed(2)} for this line.`
+          : `Issued ${issuedNow.toFixed(2)}. This line is now fully issued.`,
+    };
+    } catch (error: any) {
+      // Enhanced error context for v2026-02-17-v4
+      const errorDetails = {
+        errorType: error?.constructor?.name || 'UnknownError',
+        errorMessage: error?.message || 'No message',
+        tenantId,
+        jobOrderId,
+        materialId,
+        issueQuantity,
+        uidsProvided: Array.isArray(uids) ? uids.length : 0,
+        timestamp: new Date().toISOString(),
+      };
+
+      this.logger.error('[SIV issueMaterialRequisitionLine FAILED v2026-02-17-v5]');
+      this.logger.error(JSON.stringify(errorDetails, null, 2));
+
+      // Re-throw with enhanced context - NEVER use empty/falsy message
+      const errMsg = error?.message && error.message !== 'Bad Request'
+        ? error.message
+        : `Unknown error (type=${errorDetails.errorType}, raw=${JSON.stringify(error?.response || error?.stack?.split('\n')[0] || 'no-info')})`;
+      throw new BadRequestException(
+        `SIV Issue Failed (v5): ${errMsg}. Details: ${JSON.stringify(errorDetails)}`,
+      );
+    }
+  }
+
+  private supabaseErrorToString(err: any): string {
+    const message = String(err?.message || '').trim();
+    const details = String(err?.details || '').trim();
+    const hint = String(err?.hint || '').trim();
+    const code = String(err?.code || '').trim();
+
+    const parts = [message, details, hint].filter(Boolean);
+    const joined = parts.join(' | ');
+    const base = code ? `${joined}${joined ? ` (code=${code})` : `code=${code}`}` : joined;
+
+    // PostgrestError may not serialize well; include own-property JSON if it helps.
+    let raw = '';
+    try {
+      raw = JSON.stringify(err, Object.getOwnPropertyNames(err));
+    } catch {
+      raw = '';
+    }
+
+    const rawUseful = raw && raw !== '{}' && raw !== 'null' ? raw : '';
+    if (rawUseful && base && rawUseful.includes(base)) return rawUseful;
+    if (rawUseful && base) return `${base} | raw=${rawUseful}`;
+    if (rawUseful) return rawUseful;
+    return base || String(err || '').trim() || 'Unknown error';
+  }
+
+  private async adjustInventoryStockWithFallback(args: {
+    tenantId: string;
+    itemId: string;
+    warehouseId: string;
+    locationId: string | null;
+    quantityChange: number;
+    category: string;
+    context?: Record<string, any>;
+  }): Promise<void> {
+    const { tenantId, itemId, warehouseId, locationId, quantityChange, category, context } = args;
+
+    const { error: invError } = await this.supabase.rpc('adjust_inventory_stock', {
+      p_tenant_id: tenantId,
+      p_item_id: itemId,
+      p_warehouse_id: warehouseId,
+      p_location_id: locationId,
+      p_quantity_change: quantityChange,
+      p_category: category,
+    });
+
+    if (!invError) return;
+
+    const rpcErr = this.supabaseErrorToString(invError);
+    this.logger.error('[Inventory] adjust_inventory_stock RPC failed; attempting fallback update on inventory_stock');
+    this.logger.error(
+      JSON.stringify(
+        {
+          tenantId,
+          itemId,
+          warehouseId,
+          locationId,
+          quantityChange,
+          category,
+          rpcErr,
+          context: context || null,
+        },
+        null,
+        2,
+      ),
+    );
+
+    try {
+      await this.adjustInventoryStockFallbackDirect({
+        tenantId,
+        itemId,
+        warehouseId,
+        quantityChange,
+        category,
+      });
+    } catch (fallbackErr: any) {
+      const fbErr = this.supabaseErrorToString(fallbackErr);
+      throw new BadRequestException(`adjust_inventory_stock failed: ${rpcErr}; fallback failed: ${fbErr}`);
+    }
+  }
+
+  private async adjustInventoryStockFallbackDirect(args: {
+    tenantId: string;
+    itemId: string;
+    warehouseId: string;
+    quantityChange: number;
+    category: string;
+  }): Promise<void> {
+    const { tenantId, itemId, warehouseId, quantityChange } = args;
+    const category = normalizeInventoryCategory(args.category, 'RAW_MATERIAL');
+
+    if (!Number.isFinite(quantityChange) || Math.abs(quantityChange) < 1e-9) return;
+
+    // Prefer consuming/adding from existing rows to avoid creating duplicate NULL-location rows.
+    const { data: rows, error } = await this.supabase
+      .from('inventory_stock')
+      .select('id, quantity, reserved_quantity, available_quantity, location_id')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .eq('warehouse_id', warehouseId)
+      .eq('category', category)
+      .order('available_quantity', { ascending: false });
+
+    if (error) throw error;
+
+    const safeRows = Array.isArray(rows) ? rows : [];
+    if (safeRows.length === 0) {
+      // Last resort: try to insert a row. This may fail if your schema enforces location_id.
+      const { error: insErr } = await this.supabase
+        .from('inventory_stock')
+        .insert({
+          tenant_id: tenantId,
+          item_id: itemId,
+          warehouse_id: warehouseId,
+          location_id: null,
+          category,
+          quantity: quantityChange,
+          reserved_quantity: 0,
+          last_movement_date: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as any);
+      if (insErr) throw insErr;
+      return;
+    }
+
+    let remaining = quantityChange;
+    if (remaining < 0) {
+      // Deduct across rows with the most available first.
+      for (const row of safeRows) {
+        if (remaining >= -1e-9) break;
+        const currentQty = Number((row as any)?.quantity || 0);
+        const reservedQty = Number((row as any)?.reserved_quantity || 0);
+        const maxDeduct = Math.max(0, currentQty - reservedQty);
+        const want = Math.min(maxDeduct, -remaining);
+        if (want <= 0) continue;
+
+        const nextQty = currentQty - want;
+        const { error: upErr } = await this.supabase
+          .from('inventory_stock')
+          .update({
+            quantity: nextQty,
+            last_movement_date: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq('id', (row as any)?.id);
+        if (upErr) throw upErr;
+        remaining += want;
+      }
+
+      if (remaining < -1e-6) {
+        throw new Error(`Fallback inventory_stock deduction short by ${Math.abs(remaining).toFixed(6)}`);
+      }
+      return;
+    }
+
+    // Add to the most available row (simple).
+    const target = safeRows[0];
+    const currentQty = Number((target as any)?.quantity || 0);
+    const nextQty = currentQty + remaining;
+    const { error: upErr } = await this.supabase
+      .from('inventory_stock')
+      .update({
+        quantity: nextQty,
+        last_movement_date: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      } as any)
+      .eq('id', (target as any)?.id);
+    if (upErr) throw upErr;
+  }
+
+  async getOpenStoreReceiptVouchers(tenantId: string) {
+    const { data: completedJobs, error: jobsError } = await this.supabase
+      .from('production_job_orders')
+      .select('id, job_order_number, item_id, item_code, item_name, quantity, completed_quantity, status, actual_end_date, created_at')
+      .eq('tenant_id', tenantId)
+      .in('status', ['COMPLETED', 'IN_PROGRESS'])
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (jobsError) throw new BadRequestException(jobsError.message);
+
+    const ids = (completedJobs || []).map((j: any) => String(j.id)).filter(Boolean);
+    if (ids.length === 0) return [];
+
+    const { data: uidRows, error: uidError } = await this.supabase
+      .from('uid_registry')
+      .select('job_order_id, uid')
+      .eq('tenant_id', tenantId)
+      .in('job_order_id', ids)
+
+    if (uidError) throw new BadRequestException(uidError.message);
+
+    const allByJob = new Map<string, Set<string>>();
+    for (const row of uidRows || []) {
+      const jobId = String((row as any)?.job_order_id || '').trim();
+      const uid = String((row as any)?.uid || '').trim();
+      if (!jobId || !uid) continue;
+      if (!allByJob.has(jobId)) allByJob.set(jobId, new Set<string>());
+      allByJob.get(jobId)!.add(uid);
+    }
+
+    const { data: receiptEntries, error: receiptError } = await this.supabase
+      .from('stock_entries')
+      .select('metadata, quantity')
+      .eq('tenant_id', tenantId)
+      .eq('metadata->>created_from', 'STORE_RECEIPT');
+
+    if (receiptError) throw new BadRequestException(receiptError.message);
+
+    const receivedByJob = new Map<string, Set<string>>();
+    for (const entry of receiptEntries || []) {
+      const jobId = String((entry as any)?.metadata?.job_order_id || '').trim();
+      if (!jobId) continue;
+      const arr = (entry as any)?.metadata?.received_uids;
+      if (!Array.isArray(arr)) continue;
+      if (!receivedByJob.has(jobId)) receivedByJob.set(jobId, new Set<string>());
+      for (const uid of arr) {
+        const normalized = String(uid || '').trim();
+        if (normalized) receivedByJob.get(jobId)!.add(normalized);
+      }
+    }
+
+    return (completedJobs || [])
+      .map((jo: any) => {
+        const received = receivedByJob.get(String(jo.id)) || new Set<string>();
+        const all = allByJob.get(String(jo.id)) || new Set<string>();
+        const pending = Array.from(all).filter((uid) => !received.has(uid));
+        return {
+          ...jo,
+          totalQuantity: all.size,
+          receivedQuantity: received.size,
+          pendingReceiptQuantity: pending.length,
+          pendingUids: pending,
+          receivedUids: Array.from(received),
+        };
+      })
+      .filter((r) => r.pendingReceiptQuantity > 0);
+  }
+
+  async getStoreIssueVoucherHistory(tenantId: string) {
+    const { data: movements, error: mvErr } = await this.supabase
+      .from('stock_movements')
+      .select('id, tenant_id, movement_type, item_id, uid, from_warehouse_id, quantity, reference_type, reference_id, reference_number, movement_date, notes, moved_by, approved_by, approved_at')
+      .eq('tenant_id', tenantId)
+      .eq('reference_type', 'SIV')
+      .order('movement_date', { ascending: false })
+      .limit(500);
+
+    if (mvErr) throw new BadRequestException(mvErr.message);
+
+    const safe = Array.isArray(movements) ? movements : [];
+    const itemIds = Array.from(
+      new Set(safe.map((m: any) => String(m?.item_id || '').trim()).filter(Boolean)),
+    );
+    const jobIds = Array.from(
+      new Set(safe.map((m: any) => String(m?.reference_id || '').trim()).filter(Boolean)),
+    );
+
+    const [itemsResult, jobsResult] = await Promise.all([
+      itemIds.length
+        ? this.supabase
+            .from('items')
+            .select('id, code, name')
+            .eq('tenant_id', tenantId)
+            .in('id', itemIds)
+        : Promise.resolve({ data: [], error: null } as any),
+      jobIds.length
+        ? this.supabase
+            .from('production_job_orders')
+            .select('id, job_order_number, item_code, item_name')
+            .eq('tenant_id', tenantId)
+            .in('id', jobIds)
+        : Promise.resolve({ data: [], error: null } as any),
+    ]);
+
+    if (itemsResult?.error) throw new BadRequestException(itemsResult.error.message);
+    if (jobsResult?.error) throw new BadRequestException(jobsResult.error.message);
+
+    const itemsById = new Map<string, any>();
+    for (const it of (itemsResult?.data || []) as any[]) {
+      const id = String((it as any)?.id || '').trim();
+      if (!id) continue;
+      itemsById.set(id, it);
+    }
+
+    const jobsById = new Map<string, any>();
+    for (const jo of (jobsResult?.data || []) as any[]) {
+      const id = String((jo as any)?.id || '').trim();
+      if (!id) continue;
+      jobsById.set(id, jo);
+    }
+
+    return safe.map((m: any) => {
+      const itemId = String(m?.item_id || '').trim();
+      const jobId = String(m?.reference_id || '').trim();
+      const item = itemId ? itemsById.get(itemId) : null;
+      const job = jobId ? jobsById.get(jobId) : null;
+
+      return {
+        id: String(m?.id || ''),
+        job_order_id: jobId || null,
+        job_order_number: String(job?.job_order_number || m?.reference_number || ''),
+        item_id: itemId || null,
+        item_code: String(job?.item_code || item?.code || ''),
+        item_name: String(job?.item_name || item?.name || ''),
+        uid: String(m?.uid || ''),
+        quantity: Number(m?.quantity || 0),
+        from_warehouse_id: String(m?.from_warehouse_id || ''),
+        movement_date: m?.movement_date || null,
+        moved_by: String(m?.moved_by || ''),
+        approved_by: String(m?.approved_by || ''),
+        approved_at: m?.approved_at || null,
+        notes: String(m?.notes || ''),
+      };
+    });
+  }
+
+  async updateStoreIssueVoucherHistoryRow(
+    tenantId: string,
+    movementId: string,
+    details: { notes?: string; userId?: string },
+  ) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    if (!movementId) throw new BadRequestException('movementId is required');
+
+    const notes = String(details?.notes || '').trim();
+    const { data: row, error } = await this.supabase
+      .from('stock_movements')
+      .select('id, reference_type')
+      .eq('tenant_id', tenantId)
+      .eq('id', movementId)
+      .maybeSingle();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!row) throw new NotFoundException('SIV history row not found');
+    if (String((row as any)?.reference_type || '').trim() !== 'SIV') {
+      throw new BadRequestException('Not a SIV history row');
+    }
+
+    const { error: upErr } = await this.supabase
+      .from('stock_movements')
+      .update({ notes } as any)
+      .eq('tenant_id', tenantId)
+      .eq('id', movementId);
+
+    if (upErr) throw new BadRequestException(upErr.message);
+    return { id: movementId, message: 'Updated' };
+  }
+
+  async approveStoreIssueVoucherHistoryRow(tenantId: string, movementId: string, userId?: string) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    if (!movementId) throw new BadRequestException('movementId is required');
+
+    const approver = String(userId || '').trim();
+    if (!approver || !this.isUuid(approver)) {
+      throw new BadRequestException('Valid userId is required to approve');
+    }
+
+    const { data: row, error } = await this.supabase
+      .from('stock_movements')
+      .select('id, reference_type, approved_at')
+      .eq('tenant_id', tenantId)
+      .eq('id', movementId)
+      .maybeSingle();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!row) throw new NotFoundException('SIV history row not found');
+    if (String((row as any)?.reference_type || '').trim() !== 'SIV') {
+      throw new BadRequestException('Not a SIV history row');
+    }
+    if ((row as any)?.approved_at) {
+      return { id: movementId, message: 'Already approved' };
+    }
+
+    const { error: upErr } = await this.supabase
+      .from('stock_movements')
+      .update({
+        approved_by: approver,
+        approved_at: new Date().toISOString(),
+      } as any)
+      .eq('tenant_id', tenantId)
+      .eq('id', movementId);
+
+    if (upErr) throw new BadRequestException(upErr.message);
+    return { id: movementId, message: 'Approved' };
+  }
+
+  async deleteStoreIssueVoucherHistoryRow(tenantId: string, movementId: string, userId?: string) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    if (!movementId) throw new BadRequestException('movementId is required');
+
+    const { data: mv, error } = await this.supabase
+      .from('stock_movements')
+      .select('id, reference_type, item_id, uid, from_warehouse_id, quantity, reference_id, reference_number, notes, approved_at')
+      .eq('tenant_id', tenantId)
+      .eq('id', movementId)
+      .maybeSingle();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!mv) throw new NotFoundException('SIV history row not found');
+    if (String((mv as any)?.reference_type || '').trim() !== 'SIV') {
+      throw new BadRequestException('Not a SIV history row');
+    }
+    if ((mv as any)?.approved_at) {
+      throw new BadRequestException('Cannot delete an approved SIV row');
+    }
+
+    const itemId = String((mv as any)?.item_id || '').trim();
+    const warehouseId = String((mv as any)?.from_warehouse_id || '').trim();
+    const qty = Number((mv as any)?.quantity || 0);
+    if (!itemId || !this.isUuid(itemId)) throw new BadRequestException('Invalid item_id on movement');
+    if (!warehouseId || !this.isUuid(warehouseId)) throw new BadRequestException('Invalid from_warehouse_id on movement');
+    if (!Number.isFinite(qty) || qty <= 0) throw new BadRequestException('Invalid quantity on movement');
+
+    const { data: item, error: itemErr } = await this.supabase
+      .from('items')
+      .select('id, category')
+      .eq('tenant_id', tenantId)
+      .eq('id', itemId)
+      .single();
+    if (itemErr) throw new BadRequestException(itemErr.message);
+
+    // Restore stock_entries (FIFO pool) and inventory_stock aggregate
+    const { error: addErr } = await this.supabase
+      .from('stock_entries')
+      .insert({
+        tenant_id: tenantId,
+        item_id: itemId,
+        warehouse_id: warehouseId,
+        quantity: qty,
+        available_quantity: qty,
+        allocated_quantity: 0,
+        metadata: {
+          created_from: 'SIV_DELETE_REVERSAL',
+          siv_movement_id: movementId,
+          job_order_id: String((mv as any)?.reference_id || '').trim() || null,
+          job_order_number: String((mv as any)?.reference_number || '').trim() || null,
+          reversed_at: new Date().toISOString(),
+          reversed_by: String(userId || '').trim() || null,
+        },
+      } as any);
+    if (addErr) throw new BadRequestException(addErr.message);
+
+    const { error: invErr } = await this.supabase.rpc('adjust_inventory_stock', {
+      p_tenant_id: tenantId,
+      p_item_id: itemId,
+      p_warehouse_id: warehouseId,
+      p_location_id: null,
+      p_quantity_change: qty,
+      p_category: normalizeInventoryCategory((item as any)?.category, 'RAW_MATERIAL'),
+    });
+    if (invErr) throw new BadRequestException(invErr.message);
+
+    // If UID-based movement, unconsume UID
+    const uid = String((mv as any)?.uid || '').trim();
+    if (uid) {
+      const { data: uidRow, error: uidErr } = await this.supabase
+        .from('uid_registry')
+        .select('uid, lifecycle, metadata')
+        .eq('tenant_id', tenantId)
+        .eq('uid', uid)
+        .maybeSingle();
+      if (uidErr) throw new BadRequestException(uidErr.message);
+
+      if (uidRow) {
+        const rawLifecycle = (uidRow as any)?.lifecycle;
+        const rawMetadata = (uidRow as any)?.metadata;
+        const currentLifecycle = Array.isArray(rawLifecycle)
+          ? rawLifecycle
+          : rawLifecycle
+            ? JSON.parse(String(rawLifecycle))
+            : [];
+        const currentMetadata = rawMetadata && typeof rawMetadata === 'object'
+          ? rawMetadata
+          : rawMetadata
+            ? JSON.parse(String(rawMetadata))
+            : {};
+
+        await this.supabase
+          .from('uid_registry')
+          .update({
+            status: 'ACTIVE',
+            location: 'Warehouse',
+            lifecycle: [
+              ...currentLifecycle,
+              {
+                stage: 'SIV_DELETED',
+                timestamp: new Date().toISOString(),
+                siv_movement_id: movementId,
+                user: String(userId || '').trim() || null,
+              },
+            ],
+            metadata: {
+              ...currentMetadata,
+              siv_deleted_at: new Date().toISOString(),
+              siv_deleted_by: String(userId || '').trim() || null,
+            },
+          } as any)
+          .eq('tenant_id', tenantId)
+          .eq('uid', uid);
+      }
+    }
+
+    // Reduce issued qty on material line (best-effort via parsing notes)
+    const materialMatch = String((mv as any)?.notes || '').match(/material_id=([0-9a-fA-F-]{36})/);
+    const parsedMaterialId = materialMatch?.[1];
+    if (parsedMaterialId && this.isUuid(parsedMaterialId)) {
+      const { data: mat, error: matErr } = await this.supabase
+        .from('job_order_materials')
+        .select('id, required_quantity, issued_quantity')
+        .eq('id', parsedMaterialId)
+        .maybeSingle();
+      if (!matErr && mat) {
+        const required = Number((mat as any)?.required_quantity || 0);
+        const issued = Number((mat as any)?.issued_quantity || 0);
+        const nextIssued = Math.max(0, issued - qty);
+        const nextStatus = nextIssued + 1e-9 >= required ? 'ISSUED' : nextIssued > 0 ? 'PARTIAL' : 'PENDING';
+        await this.supabase
+          .from('job_order_materials')
+          .update({ issued_quantity: nextIssued, status: nextStatus } as any)
+          .eq('id', parsedMaterialId);
+      }
+    }
+
+    const { error: delErr } = await this.supabase
+      .from('stock_movements')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('id', movementId);
+    if (delErr) throw new BadRequestException(delErr.message);
+
+    return { id: movementId, message: 'Deleted and reversed' };
+  }
+
+  async updateStoreReceiptVoucherHistoryRow(
+    tenantId: string,
+    entryId: string,
+    details: { receiverName?: string; receiverPhone?: string; userId?: string },
+  ) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    if (!entryId) throw new BadRequestException('entryId is required');
+
+    const { data: entry, error } = await this.supabase
+      .from('stock_entries')
+      .select('id, metadata')
+      .eq('tenant_id', tenantId)
+      .eq('id', entryId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!entry) throw new NotFoundException('SRV history row not found');
+
+    const meta = (entry as any)?.metadata || {};
+    if (String(meta?.created_from || '').trim() !== 'STORE_RECEIPT') {
+      throw new BadRequestException('Not a SRV history row');
+    }
+
+    const nextMeta = {
+      ...meta,
+      received_by_name: String(details?.receiverName || '').trim() || meta?.received_by_name || null,
+      received_by_phone: String(details?.receiverPhone || '').trim() || meta?.received_by_phone || null,
+      srv_updated_at: new Date().toISOString(),
+      srv_updated_by: String(details?.userId || '').trim() || null,
+    };
+
+    const { error: upErr } = await this.supabase
+      .from('stock_entries')
+      .update({ metadata: nextMeta } as any)
+      .eq('tenant_id', tenantId)
+      .eq('id', entryId);
+    if (upErr) throw new BadRequestException(upErr.message);
+
+    return { id: entryId, message: 'Updated' };
+  }
+
+  async approveStoreReceiptVoucherHistoryRow(tenantId: string, entryId: string, userId?: string) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    if (!entryId) throw new BadRequestException('entryId is required');
+
+    const approver = String(userId || '').trim();
+    if (!approver || !this.isUuid(approver)) {
+      throw new BadRequestException('Valid userId is required to approve');
+    }
+
+    const { data: entry, error } = await this.supabase
+      .from('stock_entries')
+      .select('id, metadata')
+      .eq('tenant_id', tenantId)
+      .eq('id', entryId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!entry) throw new NotFoundException('SRV history row not found');
+
+    const meta = (entry as any)?.metadata || {};
+    if (String(meta?.created_from || '').trim() !== 'STORE_RECEIPT') {
+      throw new BadRequestException('Not a SRV history row');
+    }
+
+    const nextMeta = {
+      ...meta,
+      srv_approved_by: approver,
+      srv_approved_at: new Date().toISOString(),
+    };
+
+    const { error: upErr } = await this.supabase
+      .from('stock_entries')
+      .update({ metadata: nextMeta } as any)
+      .eq('tenant_id', tenantId)
+      .eq('id', entryId);
+    if (upErr) throw new BadRequestException(upErr.message);
+
+    return { id: entryId, message: 'Approved' };
+  }
+
+  async deleteStoreReceiptVoucherHistoryRow(tenantId: string, entryId: string, userId?: string) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    if (!entryId) throw new BadRequestException('entryId is required');
+
+    const { data: entry, error } = await this.supabase
+      .from('stock_entries')
+      .select('id, available_quantity, metadata')
+      .eq('tenant_id', tenantId)
+      .eq('id', entryId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!entry) throw new NotFoundException('SRV history row not found');
+
+    const meta = (entry as any)?.metadata || {};
+    if (String(meta?.created_from || '').trim() !== 'STORE_RECEIPT') {
+      throw new BadRequestException('Not a SRV history row');
+    }
+
+    const approvedUids = Array.isArray(meta?.approved_uids) ? meta.approved_uids : [];
+    if (approvedUids.length > 0 || Number((entry as any)?.available_quantity || 0) > 0) {
+      throw new BadRequestException('Cannot delete SRV after QC release has started');
+    }
+
+    const receivedUids = Array.isArray(meta?.received_uids) ? meta.received_uids : [];
+    const safeUids = receivedUids.map((u: any) => String(u || '').trim()).filter(Boolean);
+
+    // Revert UID location back to Store (best effort)
+    if (safeUids.length > 0) {
+      const { data: uidRows, error: uidErr } = await this.supabase
+        .from('uid_registry')
+        .select('uid, lifecycle, metadata')
+        .eq('tenant_id', tenantId)
+        .in('uid', safeUids);
+      if (uidErr) throw new BadRequestException(uidErr.message);
+
+      for (const row of uidRows || []) {
+        const uid = String((row as any)?.uid || '').trim();
+        if (!uid) continue;
+
+        const rawLifecycle = (row as any)?.lifecycle;
+        const rawMetadata = (row as any)?.metadata;
+        const currentLifecycle = Array.isArray(rawLifecycle)
+          ? rawLifecycle
+          : rawLifecycle
+            ? JSON.parse(String(rawLifecycle))
+            : [];
+        const currentMetadata = rawMetadata && typeof rawMetadata === 'object'
+          ? rawMetadata
+          : rawMetadata
+            ? JSON.parse(String(rawMetadata))
+            : {};
+
+        await this.supabase
+          .from('uid_registry')
+          .update({
+            location: 'Store',
+            lifecycle: [
+              ...currentLifecycle,
+              {
+                stage: 'SRV_DELETED',
+                timestamp: new Date().toISOString(),
+                srv_entry_id: entryId,
+                user: String(userId || '').trim() || null,
+              },
+            ],
+            metadata: {
+              ...currentMetadata,
+              srv_deleted_at: new Date().toISOString(),
+              srv_deleted_by: String(userId || '').trim() || null,
+            },
+          } as any)
+          .eq('tenant_id', tenantId)
+          .eq('uid', uid);
+      }
+    }
+
+    const { error: delErr } = await this.supabase
+      .from('stock_entries')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('id', entryId);
+    if (delErr) throw new BadRequestException(delErr.message);
+
+    return { id: entryId, message: 'Deleted' };
+  }
+
+  async receiveStoreReceiptVoucher(
+    tenantId: string,
+    jobOrderId: string,
+    userId?: string,
+    details?: { receiverName?: string; receiverPhone?: string },
+  ) {
+    const { data: jobOrder, error: jobError } = await this.supabase
+      .from('production_job_orders')
+      .select('id, tenant_id, item_id, item_code, item_name, job_order_number, status')
+      .eq('tenant_id', tenantId)
+      .eq('id', jobOrderId)
+      .single();
+
+    if (jobError) throw new BadRequestException(jobError.message);
+    if (!jobOrder) throw new NotFoundException('Job order not found');
+
+    const status = String(jobOrder.status || '').toUpperCase();
+    if (status !== 'COMPLETED' && status !== 'IN_PROGRESS') {
+      throw new BadRequestException('SRV is allowed only for IN_PROGRESS / COMPLETED job orders');
+    }
+
+    const { data: uidRows, error: uidError } = await this.supabase
+      .from('uid_registry')
+      .select('uid, lifecycle, metadata')
+      .eq('tenant_id', tenantId)
+      .eq('job_order_id', jobOrderId)
+
+    if (uidError) throw new BadRequestException(uidError.message);
+
+    const allUids = (uidRows || []).map((r: any) => String(r?.uid || '').trim()).filter(Boolean);
+    if (allUids.length === 0) throw new BadRequestException('No UIDs found for this job order');
+
+    const { data: existingReceipts, error: existingError } = await this.supabase
+      .from('stock_entries')
+      .select('metadata')
+      .eq('tenant_id', tenantId)
+      .eq('metadata->>created_from', 'STORE_RECEIPT')
+      .eq('metadata->>job_order_id', jobOrderId);
+
+    if (existingError) throw new BadRequestException(existingError.message);
+
+    const receivedSet = new Set<string>();
+    for (const row of existingReceipts || []) {
+      const arr = (row as any)?.metadata?.received_uids;
+      if (!Array.isArray(arr)) continue;
+      for (const uid of arr) {
+        const normalized = String(uid || '').trim();
+        if (normalized) receivedSet.add(normalized);
+      }
+    }
+
+    const pendingUids = allUids.filter((uid) => !receivedSet.has(uid));
+    if (pendingUids.length === 0) {
+      return {
+        jobOrderId,
+        jobOrderNumber: jobOrder.job_order_number,
+        receivedQuantity: 0,
+        pendingReceipt: 0,
+        message: 'No pending SRV quantity for this job order',
+      };
+    }
+
+    const { data: warehouses, error: whError } = await this.supabase
+      .from('warehouses')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .limit(1);
+
+    if (whError) throw new BadRequestException(whError.message);
+    if (!warehouses || warehouses.length === 0) {
+      throw new BadRequestException('No warehouse configured');
+    }
+    const warehouseId = warehouses[0].id;
+
+    const { error: addError } = await this.supabase
+      .from('stock_entries')
+      .insert({
+        tenant_id: tenantId,
+        item_id: jobOrder.item_id,
+        warehouse_id: warehouseId,
+        quantity: pendingUids.length,
+        // SRV is GRN-like receipt into QC-hold: stock becomes AVAILABLE only after QC approval.
+        available_quantity: 0,
+        allocated_quantity: 0,
+        metadata: {
+          created_from: 'STORE_RECEIPT',
+          job_order_id: jobOrderId,
+          job_order_number: jobOrder.job_order_number,
+          received_uids: pendingUids,
+          received_by: userId || null,
+          received_by_name: String(details?.receiverName || '').trim() || null,
+          received_by_phone: String(details?.receiverPhone || '').trim() || null,
+          received_at: new Date().toISOString(),
+          approved_uids: [],
+        },
+      });
+
+    if (addError) {
+      throw new BadRequestException(`Failed to add stock receipt: ${addError.message}`);
+    }
+
+    for (const row of uidRows || []) {
+      const uid = String((row as any)?.uid || '').trim();
+      if (!uid || !pendingUids.includes(uid)) continue;
+
+      const currentLifecycle = (row as any)?.lifecycle ? JSON.parse((row as any).lifecycle) : [];
+      const currentMetadata = (row as any)?.metadata ? JSON.parse((row as any).metadata) : {};
+
+      await this.supabase
+        .from('uid_registry')
+        .update({
+          location: 'QC',
+          lifecycle: JSON.stringify([
+            ...currentLifecycle,
+            {
+              stage: 'STORE_RECEIVED',
+              timestamp: new Date().toISOString(),
+              location: 'Store',
+              reference: `Store receipt voucher for ${jobOrder.job_order_number}`,
+              user: userId,
+            },
+          ]),
+          metadata: JSON.stringify({
+            ...currentMetadata,
+            store_received_at: new Date().toISOString(),
+            store_received_by: userId,
+            store_received_by_name: String(details?.receiverName || '').trim() || null,
+            store_received_by_phone: String(details?.receiverPhone || '').trim() || null,
+          }),
+        })
+        .eq('tenant_id', tenantId)
+        .eq('uid', uid);
+    }
+
+    return {
+      jobOrderId,
+      jobOrderNumber: jobOrder.job_order_number,
+      receivedQuantity: pendingUids.length,
+      pendingReceipt: 0,
+      message: `SRV complete: ${pendingUids.length} unit(s) received to QC (waiting for QC approval)`,
+    };
+  }
+
+  async getStoreReceiptVoucherHistory(tenantId: string) {
+    const { data: entries, error } = await this.supabase
+      .from('stock_entries')
+      .select('id, item_id, quantity, available_quantity, created_at, metadata')
+      .eq('tenant_id', tenantId)
+      .eq('metadata->>created_from', 'STORE_RECEIPT')
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (error) throw new BadRequestException(error.message);
+
+    const safe = Array.isArray(entries) ? entries : [];
+    const itemIds = Array.from(new Set(safe.map((e: any) => String(e?.item_id || '').trim()).filter(Boolean)));
+    const itemById = new Map<string, { code?: string; name?: string }>();
+
+    if (itemIds.length > 0) {
+      const { data: items, error: itemError } = await this.supabase
+        .from('items')
+        .select('id, code, name')
+        .eq('tenant_id', tenantId)
+        .in('id', itemIds);
+      if (itemError) throw new BadRequestException(itemError.message);
+      for (const it of items || []) {
+        itemById.set(String((it as any)?.id), { code: (it as any)?.code, name: (it as any)?.name });
+      }
+    }
+
+    return safe.map((e: any) => {
+      const meta = (e as any)?.metadata || {};
+      const itemInfo = itemById.get(String((e as any)?.item_id || '')) || {};
+      const receivedUids = Array.isArray(meta?.received_uids) ? meta.received_uids : [];
+      const approvedUids = Array.isArray(meta?.approved_uids) ? meta.approved_uids : [];
+      return {
+        id: e.id,
+        job_order_id: meta?.job_order_id || null,
+        job_order_number: meta?.job_order_number || null,
+        item_id: e.item_id,
+        item_code: itemInfo.code || null,
+        item_name: itemInfo.name || null,
+        received_quantity: Number(e.quantity || 0),
+        available_quantity: Number(e.available_quantity || 0),
+        received_at: meta?.received_at || e.created_at || null,
+        received_by: meta?.received_by || null,
+        received_by_name: meta?.received_by_name || null,
+        received_by_phone: meta?.received_by_phone || null,
+        srv_approved_by: meta?.srv_approved_by || null,
+        srv_approved_at: meta?.srv_approved_at || null,
+        received_uids: receivedUids,
+        approved_uids: approvedUids,
+      };
+    });
   }
 
   async getQcSummary(tenantId: string, jobOrderId: string) {
@@ -2576,16 +4305,19 @@ export class JobOrderService {
       .select('id, quantity, available_quantity, metadata, created_at')
       .eq('tenant_id', tenantId)
       .eq('item_id', jobOrder.item_id)
-      .eq('metadata->>created_from', 'QC_APPROVAL')
       .eq('metadata->>job_order_id', jobOrderId);
 
     if (qcStockError) throw new BadRequestException(qcStockError.message);
 
     const entries = Array.isArray(qcStockEntries) ? qcStockEntries : [];
-    const stockAdded = entries.reduce(
-      (sum, e: any) => sum + (Number(e?.quantity) || 0),
-      0,
-    );
+    // With SRV-first flow, STORE_RECEIPT quantity is received-to-QC and does not mean available stock.
+    // Use available_quantity (or approved_uids) to represent released-to-stock.
+    const stockAdded = entries
+      .filter((e: any) => {
+        const from = String((e as any)?.metadata?.created_from || '').toUpperCase();
+        return from === 'STORE_RECEIPT' || from === 'QC_APPROVAL';
+      })
+      .reduce((sum, e: any) => sum + (Number(e?.available_quantity) || 0), 0);
 
     const qcAppliedAt = entries.reduce<string | null>((latest, e: any) => {
       const raw = e?.created_at;
@@ -2602,8 +4334,13 @@ export class JobOrderService {
     const approvedUidSet = new Set<string>();
     for (const e of entries) {
       const approved = (e as any)?.metadata?.approved_uids;
-      if (Array.isArray(approved)) {
-        for (const u of approved) {
+      const received = (e as any)?.metadata?.received_uids;
+      const merged = [
+        ...(Array.isArray(approved) ? approved : []),
+        ...(Array.isArray(received) ? received : []),
+      ];
+      if (merged.length > 0) {
+        for (const u of merged) {
           const s = String(u || '').trim();
           if (s) approvedUidSet.add(s);
         }
@@ -2863,6 +4600,17 @@ export class JobOrderService {
   }
 
   private async ensureStockEntriesAtLeastInventoryAvailable(tenantId: string, itemId: string): Promise<void> {
+    const formatErr = (err: any, location: string) => {
+      const message = String(err?.message || '').trim();
+      const details = String(err?.details || '').trim();
+      const hint = String(err?.hint || '').trim();
+      const code = String(err?.code || '').trim();
+      const parts = [message, details, hint].filter(Boolean);
+      const joined = parts.join(' | ');
+      const base = code ? `${joined}${joined ? ` (code=${code})` : `code=${code}`}` : joined;
+      return base || `Supabase error at ${location} (raw: ${JSON.stringify(err)})`;
+    };
+
     // If inventory_stock indicates stock exists but stock_entries does not, create a synthetic
     // stock_entries row so FIFO consumption can proceed.
     // This is intentionally one-way (we only ever increase stock_entries to match inventory_stock).
@@ -2880,8 +4628,8 @@ export class JobOrderService {
         .gt('available_quantity', 0),
     ]);
 
-    if (invErr) throw new BadRequestException(invErr.message);
-    if (entryErr) throw new BadRequestException(entryErr.message);
+    if (invErr) throw new BadRequestException(formatErr(invErr, 'ensureStock:inventory_stock'));
+    if (entryErr) throw new BadRequestException(formatErr(entryErr, 'ensureStock:stock_entries'));
 
     const invList = Array.isArray(invRows) ? invRows : [];
     const invAvailable = invList.reduce((sum: number, r: any) => sum + (Number(r?.available_quantity) || 0), 0);
@@ -2929,7 +4677,13 @@ export class JobOrderService {
 
     if (insertErr) {
       // Don't block the flow; caller will still rely on stock_entries and may throw a shortage.
-      console.error('[StockReconcile] Failed inserting synthetic stock entry', insertErr);
+      console.error('[StockReconcile] Failed inserting synthetic stock entry', {
+        tenantId,
+        itemId,
+        warehouseId,
+        delta,
+        error: formatErr(insertErr, 'ensureStock:insert'),
+      });
     }
   }
 
@@ -3604,6 +5358,8 @@ export class JobOrderService {
             );
           }
 
+          // SRV-first workflow: create SRV (SYSTEM) before QC release.
+          await this.receiveStoreReceiptVoucher(tenantId, jobOrder.id, userId, { receiverName: 'SYSTEM' });
           await this.approveQC(tenantId, jobOrder.id, uids, [], userId);
 
           entry.completed = true;
@@ -3753,6 +5509,8 @@ export class JobOrderService {
 
           const uids = (uidRows || []).map((r: any) => String(r?.uid || '').trim()).filter(Boolean);
           if (uids.length > 0) {
+            // SRV-first workflow: create SRV (SYSTEM) before QC release.
+            await this.receiveStoreReceiptVoucher(tenantId, created.id, userId, { receiverName: 'SYSTEM' });
             await this.approveQC(tenantId, created.id, uids, [], userId);
           }
 
@@ -3838,6 +5596,8 @@ export class JobOrderService {
     if (!uidErr && uidRows && uidRows.length > 0) {
       const uids = uidRows.map((r: any) => String(r?.uid || '').trim()).filter(Boolean);
       try {
+        // SRV-first workflow: create SRV (SYSTEM) before QC release.
+        await this.receiveStoreReceiptVoucher(tenantId, jobOrderId, userId, { receiverName: 'SYSTEM' });
         await this.approveQC(tenantId, jobOrderId, uids, [], userId);
         this.logger.log('[ForceAutoComplete] QC auto-approved for UIDs:', uids.length);
       } catch (qcErr: any) {

@@ -41,6 +41,54 @@ export class PurchaseOrdersService {
     return data?.id || null;
   }
 
+  private toNumber(value: any): number {
+    const n = typeof value === 'number' ? value : Number.parseFloat(String(value ?? '0'));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private computeReceiptSummary(po: any) {
+    const items: any[] = Array.isArray(po?.purchase_order_items) ? po.purchase_order_items : [];
+    if (items.length === 0) {
+      return {
+        receipt_status: 'OPEN',
+        receipt_progress: { ordered_qty: 0, received_qty: 0, remaining_qty: 0, received_percent: 0 },
+        purchase_order_items: items,
+      };
+    }
+
+    let orderedTotal = 0;
+    let receivedTotal = 0;
+
+    const patchedItems = items.map((it: any) => {
+      const ordered = this.toNumber(it?.ordered_qty);
+      const received = this.toNumber(it?.received_qty);
+      const remaining = Math.max(0, ordered - received);
+      orderedTotal += ordered;
+      receivedTotal += Math.min(received, ordered);
+      return {
+        ...it,
+        remaining_qty: remaining,
+      };
+    });
+
+    const allFullyReceived = patchedItems.every((it: any) => this.toNumber(it.ordered_qty) <= this.toNumber(it.received_qty) + 1e-9);
+    const anyReceived = patchedItems.some((it: any) => this.toNumber(it.received_qty) > 0);
+
+    const receiptStatus = allFullyReceived ? 'FULLY_RECEIVED' : anyReceived ? 'PARTIALLY_RECEIVED' : 'OPEN';
+    const receivedPercent = orderedTotal > 0 ? Math.round((receivedTotal / orderedTotal) * 1000) / 10 : 0;
+
+    return {
+      receipt_status: receiptStatus,
+      receipt_progress: {
+        ordered_qty: orderedTotal,
+        received_qty: receivedTotal,
+        remaining_qty: Math.max(0, orderedTotal - receivedTotal),
+        received_percent: receivedPercent,
+      },
+      purchase_order_items: patchedItems,
+    };
+  }
+
   private async upsertPreferredItemVendors(
     tenantId: string,
     userId: string,
@@ -323,10 +371,14 @@ export class PurchaseOrdersService {
       prById = new Map((prRows || []).map((pr: any) => [pr.id, pr]));
     }
 
-    return rows.map((po: any) => ({
-      ...po,
-      pr: po?.pr_id ? prById.get(po.pr_id) ?? null : null,
-    }));
+    return rows.map((po: any) => {
+      const receipt = this.computeReceiptSummary(po);
+      return {
+        ...po,
+        ...receipt,
+        pr: po?.pr_id ? prById.get(po.pr_id) ?? null : null,
+      };
+    });
   }
 
   async findOne(tenantId: string, id: string) {
@@ -341,7 +393,8 @@ export class PurchaseOrdersService {
       .eq('id', id)
       .single();
 
-    if (error) throw new NotFoundException('Purchase Order not found');
+    if (error) throw new NotFoundException('Purchase order not found');
+    const receipt = this.computeReceiptSummary(data);
 
     // Attach PR (see note in findAll about multiple relationships)
     let pr: any = null;
@@ -352,12 +405,13 @@ export class PurchaseOrdersService {
         .eq('id', (data as any).pr_id)
         .maybeSingle();
 
-      if (prError) throw new BadRequestException(prError.message);
+      if (prError) throw new BadRequestException(prError?.message || 'Failed to load PR');
       pr = prRow ?? null;
     }
 
     return {
       ...(data as any),
+      ...receipt,
       pr,
     };
   }

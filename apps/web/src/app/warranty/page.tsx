@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { getTodayDateInputValue } from '@/lib/date';
 
 interface Customer {
   id: string;
@@ -36,6 +37,7 @@ interface DeploymentHistory {
 
 export default function WarrantyPortalPage() {
   const router = useRouter();
+  const todayDate = getTodayDateInputValue();
   const [activeTab, setActiveTab] = useState<'search' | 'register'>('search');
   const [searchType, setSearchType] = useState<'part_number' | 'access_token'>('part_number');
   const [searchValue, setSearchValue] = useState('');
@@ -737,6 +739,7 @@ export default function WarrantyPortalPage() {
                     </label>
                     <input
                       type="date"
+                      max={todayDate}
                       value={registrationForm.purchase_date}
                       onChange={(e) => setRegistrationForm({ ...registrationForm, purchase_date: e.target.value })}
                       className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none transition-colors"

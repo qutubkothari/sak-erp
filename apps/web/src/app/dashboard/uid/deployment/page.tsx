@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
+import { getTodayDateInputValue } from '@/lib/date';
 
 interface Customer {
   id: string;
@@ -50,6 +51,7 @@ interface PaginatedResponse<T> {
 }
 
 export default function UIDDeploymentPage() {
+  const todayDate = getTodayDateInputValue();
   const [deployments, setDeployments] = useState<UIDDeployment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
@@ -89,7 +91,7 @@ export default function UIDDeploymentPage() {
     deployment_level: 'CUSTOMER',
     organization_name: '',
     location_name: '',
-    deployment_date: new Date().toISOString().split('T')[0],
+    deployment_date: getTodayDateInputValue(),
     contact_person: '',
     contact_email: '',
     contact_phone: '',
@@ -276,7 +278,7 @@ export default function UIDDeploymentPage() {
         deployment_level: 'CUSTOMER',
         organization_name: '',
         location_name: '',
-        deployment_date: new Date().toISOString().split('T')[0],
+        deployment_date: getTodayDateInputValue(),
         contact_person: '',
         contact_email: '',
         contact_phone: '',
@@ -831,6 +833,7 @@ export default function UIDDeploymentPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Deployment Date</label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={newDeployment.deployment_date}
                     onChange={(e) => setNewDeployment({ ...newDeployment, deployment_date: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
@@ -840,6 +843,7 @@ export default function UIDDeploymentPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Warranty Expiry</label>
                   <input
                     type="date"
+                    max={todayDate}
                     value={newDeployment.warranty_expiry_date}
                     onChange={(e) => setNewDeployment({ ...newDeployment, warranty_expiry_date: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"

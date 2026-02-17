@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { apiClient } from '../../../../../lib/api-client';
 
 interface LifecycleEvent {
   stage: string;
@@ -42,7 +43,8 @@ interface UIDTrace {
   vendor: {
     name: string;
     code: string;
-    contact: string;
+    phone: string;
+    gstin: string;
   } | null;
   purchase_order?: {
     po_number: string;
@@ -52,6 +54,8 @@ interface UIDTrace {
   grn?: {
     grn_number: string;
     grn_date: string;
+    invoice_number?: string | null;
+    invoice_date?: string | null;
   } | null;
   quality_checkpoints: Array<{
     stage: string;
@@ -102,6 +106,40 @@ function TraceProductContent() {
   const [error, setError] = useState('');
   const [traceabilityRows, setTraceabilityRows] = useState<TraceabilityRow[]>([]);
 
+  const resolveVendorDetails = async (row: TraceabilityRow) => {
+    const gstin = row.supplier_gst || '-';
+    const fallback = row.supplier_name
+      ? {
+          name: row.supplier_name,
+          code: row.supplier_code || '-',
+          phone: '-',
+          gstin,
+        }
+      : null;
+
+    const search = (row.supplier_code || row.supplier_name || '').trim();
+    if (!search) return fallback;
+
+    try {
+      const vendors = await apiClient.get<any[]>(`/purchase/vendors`, { search });
+      const list = Array.isArray(vendors) ? vendors : [];
+      const exactByCode = row.supplier_code
+        ? list.find((v) => String(v?.code || '').trim() === String(row.supplier_code || '').trim())
+        : null;
+      const best = exactByCode || list[0];
+      if (!best) return fallback;
+
+      return {
+        name: String(best?.name || row.supplier_name || '-'),
+        code: String(best?.code || row.supplier_code || '-'),
+        phone: String(best?.phone || '-'),
+        gstin: String(best?.tax_id || best?.taxId || row.supplier_gst || '-'),
+      };
+    } catch {
+      return fallback;
+    }
+  };
+
   const searchTrace = async () => {
     if (!searchUID.trim()) {
       setError('Please enter a UID');
@@ -138,6 +176,8 @@ function TraceProductContent() {
           user: 'SYSTEM',
         }));
 
+      const vendorDetails = await resolveVendorDetails(first);
+
       const mapped: UIDTrace = {
         uid: first.uid,
         entity_type: 'UID',
@@ -152,18 +192,14 @@ function TraceProductContent() {
         lifecycle,
         components: [],
         parent_products: [],
-        vendor: first.supplier_name
-          ? {
-              name: first.supplier_name,
-              code: first.supplier_code || '-',
-              contact: first.supplier_gst || '-',
-            }
-          : null,
+        vendor: vendorDetails,
         purchase_order: null,
         grn: first.grn_number
           ? {
               grn_number: first.grn_number,
               grn_date: first.grn_date || first.report_generated_at,
+              invoice_number: first.invoice_number,
+              invoice_date: first.invoice_date,
             }
           : null,
         quality_checkpoints: [],
@@ -382,8 +418,12 @@ function TraceProductContent() {
                         <p className="font-bold text-gray-800">{traceData.vendor.name}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-500">Contact</p>
-                        <p className="text-gray-700">{traceData.vendor.contact}</p>
+                        <p className="text-sm text-gray-500">Phone</p>
+                        <p className="text-gray-700">{traceData.vendor.phone}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">GSTIN</p>
+                        <p className="text-gray-700">{traceData.vendor.gstin}</p>
                       </div>
                     </div>
                   </div>
@@ -423,6 +463,15 @@ function TraceProductContent() {
                         <p className="text-sm text-gray-500">Receipt Date</p>
                         <p className="text-gray-700">{new Date(traceData.grn.grn_date).toLocaleDateString('en-IN')}</p>
                       </div>
+                      {(traceData.grn.invoice_number || traceData.grn.invoice_date) && (
+                        <div>
+                          <p className="text-sm text-gray-500">Vendor Invoice</p>
+                          <p className="text-gray-700">
+                            {traceData.grn.invoice_number || '-'}
+                            {traceData.grn.invoice_date ? ` • ${new Date(traceData.grn.invoice_date).toLocaleDateString('en-IN')}` : ''}
+                          </p>
+                        </div>
+                      )}
                       {traceData.batch_number && (
                         <div>
                           <p className="text-sm text-gray-500">Batch Number</p>

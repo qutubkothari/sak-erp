@@ -9,6 +9,7 @@ import { mkdirSync } from 'fs';
 import { resolve } from 'path';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
+import { NoFutureDatesPipe } from './common/pipes/no-future-dates.pipe';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -55,6 +56,7 @@ async function bootstrap() {
         enableImplicitConversion: true,
       },
     }),
+    new NoFutureDatesPipe(),
   );
 
   // API prefix
