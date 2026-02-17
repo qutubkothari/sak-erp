@@ -348,8 +348,22 @@ export class JobOrderController {
     return this.jobOrderService.approveStoreReceiptVoucherHistoryRow(tenantId, entryId, userId);
   }
 
+  @Put('store/receipt-vouchers/:entryId/approve')
+  async approveStoreReceiptVoucher(@Request() req: any, @Param('entryId') entryId: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.approveStoreReceiptVoucherHistoryRow(tenantId, entryId, userId);
+  }
+
   @Delete('store/receipt-vouchers/history/:entryId')
   async deleteStoreReceiptVoucherHistoryRow(@Request() req: any, @Param('entryId') entryId: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.deleteStoreReceiptVoucherHistoryRow(tenantId, entryId, userId);
+  }
+
+  @Delete('store/receipt-vouchers/:entryId')
+  async deleteStoreReceiptVoucher(@Request() req: any, @Param('entryId') entryId: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id || req.user?.sub;
     return this.jobOrderService.deleteStoreReceiptVoucherHistoryRow(tenantId, entryId, userId);
