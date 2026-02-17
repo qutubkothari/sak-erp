@@ -2383,7 +2383,7 @@ function JobOrdersPageContent() {
               })()}
 
               <div className="col-span-2 text-xs text-gray-600">
-                Smart Job Orders issue materials at <strong>creation</strong> (stock reduces immediately). Completion consumes any remaining and adds finished goods.
+                Smart Job Orders create a Material Requisition. Issue materials via <strong>SIV</strong> before completing. Completion consumes any remaining and adds finished goods.
               </div>
             </div>
 

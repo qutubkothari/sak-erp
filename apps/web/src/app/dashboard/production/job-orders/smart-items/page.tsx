@@ -2589,7 +2589,7 @@ function SmartJobOrdersItemsPageContent() {
               <div>
                 <div className="text-lg font-semibold text-amber-900">Smart Job Order Created</div>
                 <div className="text-sm text-amber-800">
-                  Materials below are <span className="font-semibold">issued</span> (stock reduced) at creation.
+                  Materials below will appear in <span className="font-semibold">SIV</span> for manual issue by storekeeper.
                 </div>
               </div>
               <button
@@ -2644,8 +2644,8 @@ function SmartJobOrdersItemsPageContent() {
                       <div className="font-semibold text-gray-900">{joQty}</div>
                     </div>
                     <div className="text-sm">
-                      <div className="text-gray-600">Stock Reduced (Issued)</div>
-                      <div className="font-semibold text-gray-900">{totalIssued}</div>
+                      <div className="text-gray-600">Pending Issue (SIV)</div>
+                      <div className="font-semibold text-amber-700">{totalIssued > 0 ? totalIssued : 'Awaiting SIV'}</div>
                     </div>
                   </div>
 
@@ -2672,8 +2672,8 @@ function SmartJobOrdersItemsPageContent() {
 
                   <div className="mt-5">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="font-medium text-gray-800">Materials Issued</div>
-                      <div className="text-xs text-gray-600">Issued reduces stock immediately.</div>
+                      <div className="font-medium text-gray-800">Materials Required</div>
+                      <div className="text-xs text-gray-600">Issue materials via SIV (Store Issue Voucher).</div>
                     </div>
                     <div className="overflow-x-auto border rounded-lg">
                       <table className="min-w-full text-sm">

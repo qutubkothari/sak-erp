@@ -5411,128 +5411,16 @@ export class JobOrderService {
       itemSelections: req.itemSelections,
     });
 
-    // Issue materials for the main job order (reduce stock for sub-assemblies + raw materials).
-    // At this point, all raw materials should already be in stock (user fulfilled shortages during planning),
-    // and sub-assemblies were just created and QC-approved above.
+    // Do NOT auto-issue materials for the main job order.
+    // Materials will appear as a Material Requisition in the SIV (Store Issue Voucher) screen
+    // so the storekeeper can physically verify and issue inventory.
     console.log('[JobOrderService] Smart job order created:', {
       jobOrderId: main.id,
       jobOrderNumber: main.job_order_number,
-      note: 'Issuing materials (sub-assemblies + raw materials)',
+      note: 'Materials NOT auto-issued — will appear in SIV for manual issue',
     });
 
-    onProgress?.({
-      current: totalSteps,
-      total: totalSteps,
-      phase: 'ISSUE_MATERIALS',
-      message: 'Issuing materials (reducing stock)…',
-    });
-
-    // CRITICAL FIX: Retry issuing with inline repair for nested sub-assemblies.
-    // The preview may only capture ONE level of missing sub-assemblies, but deeper nested
-    // items won't have stock until we recursively build them.
-    const MAX_ISSUE_RETRIES = 5;
-    let issueMaterialsSummary: JobOrderIssueMaterialsSummary | { error: string } | null = null;
-    let retryCount = 0;
-
-    while (retryCount < MAX_ISSUE_RETRIES) {
-      retryCount += 1;
-      try {
-        const summary = await this.issueJobOrderMaterials(tenantId, main.id);
-        issueMaterialsSummary = summary;
-
-        // If all materials are issued (no noStockLines), we're done
-        if (summary.noStockLines === 0) {
-          console.log(`[JobOrderService] All materials issued for ${main.job_order_number} on attempt ${retryCount}`);
-          break;
-        }
-
-        console.log(`[JobOrderService] Issuing attempt ${retryCount}: ${summary.issuedLines} issued, ${summary.noStockLines} no-stock`);
-
-        // Still have no-stock lines - identify which items need sub-assemblies built
-        const noStockItemIds = summary.failures
-          .filter((f) => f.message === 'NO_STOCK_AVAILABLE' && f.itemId)
-          .map((f) => f.itemId!);
-
-        if (noStockItemIds.length === 0) {
-          console.log('[JobOrderService] No recoverable no-stock items, stopping retry loop');
-          break;
-        }
-
-        // For each no-stock item, check if it has a BOM and build it
-        let builtAny = false;
-        for (const itemId of noStockItemIds) {
-          const bom = await this.getActiveBomForItem(tenantId, itemId);
-          if (!bom?.id) continue; // No BOM = raw material, can't auto-build
-
-          // Check current stock
-          const currentStock = await this.getAvailableStock(tenantId, itemId);
-          if (currentStock > 0) continue; // Already have some stock now
-
-          // Find required quantity from pending materials
-          const { data: pendingMat } = await this.supabase
-            .from('job_order_materials')
-            .select('item_id, item_code, required_quantity, issued_quantity')
-            .eq('job_order_id', main.id)
-            .eq('item_id', itemId)
-            .single();
-
-          const needed = Math.max(0, (Number(pendingMat?.required_quantity) || 1) - (Number(pendingMat?.issued_quantity) || 0));
-          if (needed <= 0) continue;
-
-          console.log(`[JobOrderService] Auto-building missing sub-assembly: ${pendingMat?.item_code || itemId} x${needed}`);
-
-          // Create, complete, and QC approve the sub-assembly
-          const created = await this.createFromBOMWithVariantSelections(tenantId, userId, {
-            itemId,
-            bomId: bom.id,
-            quantity: needed,
-            startDate,
-            priority: 'NORMAL',
-            notes: `Auto-created by Smart JO for ${main.job_order_number} (nested dependency)`,
-            variantSelections: req.variantSelections,
-            itemSelections: req.itemSelections,
-          });
-
-          await this.supabase
-            .from('production_job_orders')
-            .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
-            .eq('id', created.id);
-
-          await this.completeJobOrder(tenantId, created.id, userId, { allowPartialConsumption: true, autoBuildMissingSubAssemblies: true });
-          completedSubJobOrders.push(created);
-
-          const { data: uidRows } = await this.supabase
-            .from('uid_registry')
-            .select('uid')
-            .eq('tenant_id', tenantId)
-            .eq('job_order_id', created.id);
-
-          const uids = (uidRows || []).map((r: any) => String(r?.uid || '').trim()).filter(Boolean);
-          if (uids.length > 0) {
-            // SRV-first workflow: create SRV (SYSTEM) before QC release.
-            await this.receiveStoreReceiptVoucher(tenantId, created.id, userId, { receiverName: 'SYSTEM' });
-            await this.approveQC(tenantId, created.id, uids, [], userId);
-          }
-
-          builtAny = true;
-        }
-
-        if (!builtAny) {
-          console.log('[JobOrderService] Could not build any more sub-assemblies, stopping retry loop');
-          break;
-        }
-
-        // Loop will retry issuing with the newly created stock
-      } catch (issueError: any) {
-        console.error(`[JobOrderService] Issue attempt ${retryCount} failed:`, issueError);
-        issueMaterialsSummary = { error: issueError?.message || 'Failed to issue materials' };
-        break;
-      }
-    }
-
-    if (retryCount >= MAX_ISSUE_RETRIES) {
-      console.warn(`[JobOrderService] Reached max retries (${MAX_ISSUE_RETRIES}) for issuing materials`);
-    }
+    const issueMaterialsSummary = null;
 
     const mainWithMaterials = await this.findOne(tenantId, main.id);
     onProgress?.({ current: totalSteps, total: totalSteps, phase: 'DONE', message: 'Done' });
