@@ -210,13 +210,12 @@ export class JobOrderController {
   async approveQC(
     @Request() req: any, 
     @Param('id') id: string,
-    @Body() body: { approvedUids: string[]; rejectedUids: string[] }
+    @Body() body: any
   ) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.userId || req.user?.id || req.user?.sub;
-    const { approvedUids = [], rejectedUids = [] } = body;
-    
-    return this.jobOrderService.approveQC(tenantId, id, approvedUids, rejectedUids, userId);
+
+    return this.jobOrderService.approveQC(tenantId, id, body || {}, userId);
   }
 
   @Get('store/material-requisitions/open')
@@ -373,13 +372,14 @@ export class JobOrderController {
   async receiveStoreReceiptVoucher(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { receiverName?: string; receiverPhone?: string },
+    @Body() body: { receiverName?: string; receiverPhone?: string; receivedQuantity?: number },
   ) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id || req.user?.sub;
     return this.jobOrderService.receiveStoreReceiptVoucher(tenantId, id, userId, {
       receiverName: body?.receiverName,
       receiverPhone: body?.receiverPhone,
+      receivedQuantity: body?.receivedQuantity,
     });
   }
 

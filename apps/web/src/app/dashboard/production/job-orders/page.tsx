@@ -135,6 +135,9 @@ type JobOrderQcSummary = {
   passedUidsCount?: number;
   rejectedUidsCount?: number;
   pendingUidsCount?: number;
+  srvReceivedQuantity?: number;
+  srvApprovedAt?: string | null;
+  srvApprovedBy?: string | null;
 };
 
 export default function JobOrdersPage() {
@@ -204,6 +207,8 @@ function JobOrdersPageContent() {
     qcDate: '',
     qcBy: '',
   });
+  const [qcAcceptedQty, setQcAcceptedQty] = useState<number>(0);
+  const [qcRejectedQty, setQcRejectedQty] = useState<number>(0);
   const [qcCheckedBy, setQcCheckedBy] = useState<Record<string, string>>({});
   const [qcQrModalOpen, setQcQrModalOpen] = useState(false);
   const [qcQrData, setQcQrData] = useState('');
@@ -371,10 +376,17 @@ function JobOrdersPageContent() {
         const summary = await apiClient.get<JobOrderQcSummary>(`/job-orders/${selectedJobOrder.id}/qc-summary`);
         setQcSummary(summary ?? null);
         setQcAlreadyApplied(Boolean(summary?.isQcApplied));
+
+        const receivedQty = Number(summary?.srvReceivedQuantity || 0) || 0;
+        setQcAcceptedQty(receivedQty);
+        setQcRejectedQty(0);
       } catch {
         // Non-blocking: if summary fails, QC can still proceed (API is idempotent).
         setQcAlreadyApplied(false);
         setQcSummary(null);
+
+        setQcAcceptedQty(0);
+        setQcRejectedQty(0);
       }
 
       const response = await apiClient.get<any>(
@@ -1103,7 +1115,12 @@ function JobOrdersPageContent() {
       setCompletionPreview(null);
       setCompletionJobOrderId(null);
       fetchJobOrders();
-      alert('✅ Job Order completed successfully!\n\nUIDs generated and awaiting QC approval.\nStock will be added after QC inspection.');
+      alert(
+        '✅ Job Order completed successfully!\n\n' +
+          'Status changed to STORE ISSUED.\n' +
+          'Stores can now receive the goods in Inventory → SRV.\n' +
+          'UIDs will be generated only after QC is completed.',
+      );
     } catch (error: any) {
       console.error('Error completing job order:', error);
       const errorMsg = error.response?.data?.message || error.message || 'Failed to complete job order';
@@ -1143,7 +1160,8 @@ function JobOrdersPageContent() {
           `Job Order: ${jo.jobOrderNumber}\n` +
           `Produced now: ${producedQuantity}\n` +
           `Total produced: ${nextCompleted} / ${planned}\n\n` +
-          `You can now receive SRV for the produced UIDs in Inventory → SRV.`,
+            `You can now receive SRV for the produced quantity in Inventory → SRV.\n` +
+            `UIDs will be generated after QC is completed.`,
       );
     } catch (error: any) {
       console.error('Error recording partial completion:', error);
@@ -2666,14 +2684,81 @@ function JobOrdersPageContent() {
               <div className="p-6 text-center text-gray-600">Loading UIDs...</div>
             ) : qcUids.length === 0 ? (
               <div className="p-6 text-center text-gray-600">
-                <div>No UIDs found for this job order.</div>
-                <div className="mt-3">
+                <div className="text-lg font-semibold text-gray-800">QC (Quantity Based)</div>
+                <div className="mt-2">
+                  SRV Received Qty:{' '}
+                  <span className="font-semibold">{Number(qcSummary?.srvReceivedQuantity || 0) || 0}</span>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-4 max-w-xl mx-auto text-left">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Accepted Qty *</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={qcAcceptedQty}
+                      onChange={(e) => setQcAcceptedQty(Number(e.target.value || 0))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Rejected Qty</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={qcRejectedQty}
+                      onChange={(e) => setQcRejectedQty(Number(e.target.value || 0))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+                <div className="mt-5">
                   <button
-                    onClick={ensureJobOrderUidsAndReloadQc}
-                    disabled={qcLoading}
-                    className="px-4 py-2 bg-[#8B6F47] text-white rounded hover:bg-[#6F4E37] disabled:opacity-50"
+                    onClick={async () => {
+                      const receivedQty = Number(qcSummary?.srvReceivedQuantity || 0) || 0;
+                      if (receivedQty <= 0) {
+                        alert('SRV is pending (no received quantity). Please complete SRV first.');
+                        return;
+                      }
+                      if (!qcMetadata.qcDate) {
+                        alert('QC Date is required');
+                        return;
+                      }
+                      if (qcAcceptedQty <= 0) {
+                        alert('Accepted Qty must be > 0');
+                        return;
+                      }
+                      if (qcAcceptedQty + qcRejectedQty > receivedQty) {
+                        alert(`Accepted + Rejected cannot exceed SRV received qty (${receivedQty}).`);
+                        return;
+                      }
+                      if (!confirm(`Complete QC now?\n\nAccepted: ${qcAcceptedQty}\nRejected: ${qcRejectedQty}\n\nUIDs will be generated for accepted quantity.`)) {
+                        return;
+                      }
+
+                      setQcSubmitting(true);
+                      try {
+                        const response = await apiClient.post(`/job-orders/${selectedJobOrder.id}/qc-approve`, {
+                          acceptedQuantity: qcAcceptedQty,
+                          rejectedQuantity: qcRejectedQty,
+                          metadata: qcMetadata,
+                        });
+                        const stockAdded = Number((response as any)?.stockAdded ?? 0);
+                        const message = String((response as any)?.message || '').trim();
+                        alert(`✅ QC Completed!\n\n${message || `Stock released: ${stockAdded}`}`);
+                        setShowQcModal(false);
+                        fetchJobOrders();
+                      } catch (error: any) {
+                        console.error('Error completing QC:', error);
+                        const errorMsg = error.response?.data?.message || error.message || 'Failed to complete QC';
+                        alert(errorMsg);
+                      } finally {
+                        setQcSubmitting(false);
+                      }
+                    }}
+                    disabled={qcSubmitting || qcLoading}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                   >
-                    Generate UIDs
+                    {qcSubmitting ? 'Submitting…' : 'Complete QC & Release Stock'}
                   </button>
                 </div>
               </div>

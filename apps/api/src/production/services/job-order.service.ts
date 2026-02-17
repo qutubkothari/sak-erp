@@ -450,19 +450,9 @@ export class JobOrderService {
       throw new BadRequestException('Invalid job order quantity');
     }
 
-    const { count: existingCount, error: countError } = await this.supabase
-      .from('uid_registry')
-      .select('uid', { count: 'exact', head: true })
-      .eq('tenant_id', tenantId)
-      .eq('job_order_id', jobOrderId);
-
-    if (countError) throw new BadRequestException(countError.message);
-
-    const haveUids = Math.max(0, Number(existingCount) || 0);
     const alreadyCompleted = Math.max(
       0,
       Number(jobOrder.completed_quantity) || 0,
-      haveUids,
     );
 
     if (alreadyCompleted > planned) {
@@ -493,19 +483,16 @@ export class JobOrderService {
 
     if (updateError) throw new BadRequestException(updateError.message);
 
-    const ensureResult = await this.ensureUidsForJobOrder(tenantId, jobOrderId, userId);
-
     return {
       jobOrderId,
       jobOrderNumber: jobOrder.job_order_number,
       plannedQuantity: planned,
       completedQuantity: nextCompleted,
       producedNow,
-      uids: ensureResult,
       message:
         nextCompleted >= planned
-          ? 'Partial completion recorded. Planned quantity reached; use Complete to finish the job order.'
-          : 'Partial completion recorded. UIDs generated and pending SRV receipt.',
+          ? 'Partial completion recorded. Planned quantity reached; you can now complete and hand over to Stores for SRV receipt.'
+          : 'Partial completion recorded. Stores can receive SRV for produced quantity; UIDs will be generated after QC.',
     };
   }
 
@@ -1331,24 +1318,20 @@ export class JobOrderService {
       } as any);
       completedSubJobOrders.push(completed);
 
-      // Auto-approve QC to immediately create stock for this sub-assembly.
-      const { data: uidRows, error: uidErr } = await this.supabase
-        .from('uid_registry')
-        .select('uid')
-        .eq('tenant_id', tenantId)
-        .eq('job_order_id', created.id);
-
-      if (uidErr) throw new BadRequestException(uidErr.message);
-      const uids = (uidRows || []).map((r: any) => String(r?.uid || '').trim()).filter(Boolean);
-      if (uids.length === 0) {
-        throw new BadRequestException(
-          `Failed to auto-approve QC during Smart JO repair for ${args.itemCode || args.itemId}: no UIDs found for job order ${created.id}`,
-        );
-      }
-
-      // SRV-first workflow: create SRV (SYSTEM) before QC release.
-      await this.receiveStoreReceiptVoucher(tenantId, created.id, userId, { receiverName: 'SYSTEM' });
-      await this.approveQC(tenantId, created.id, uids, [], userId);
+      // New workflow: SRV receive (SYSTEM) with quantity, then QC completes and generates UIDs.
+      await this.receiveStoreReceiptVoucher(tenantId, created.id, userId, {
+        receiverName: 'SYSTEM',
+        receivedQuantity: args.quantity,
+      });
+      await this.approveQC(
+        tenantId,
+        created.id,
+        {
+          acceptedQuantity: args.quantity,
+          rejectedQuantity: 0,
+        },
+        userId,
+      );
       qcApprovedSubJobOrders += 1;
     };
 
@@ -2365,19 +2348,20 @@ export class JobOrderService {
           autoBuildMissingSubAssemblies: true,
         } as any);
 
-        const { data: uidRows, error: uidErr } = await this.supabase
-          .from('uid_registry')
-          .select('uid')
-          .eq('tenant_id', tenantId)
-          .eq('job_order_id', created.id);
-
-        if (uidErr) throw new BadRequestException(uidErr.message);
-        const uids = (uidRows || []).map((r: any) => String(r?.uid || '').trim()).filter(Boolean);
-        if (uids.length > 0) {
-          await this.approveQC(tenantId, created.id, uids, [], userId);
-        } else {
-          throw new BadRequestException(`Failed to auto-approve QC for sub-assembly ${itemBasic?.code || itemIdToConsume}: no UIDs found`);
-        }
+        // New workflow: SRV receive (SYSTEM) with quantity, then QC completes and generates UIDs.
+        await this.receiveStoreReceiptVoucher(tenantId, created.id, userId, {
+          receiverName: 'SYSTEM',
+          receivedQuantity: shortage,
+        });
+        await this.approveQC(
+          tenantId,
+          created.id,
+          {
+            acceptedQuantity: shortage,
+            rejectedQuantity: 0,
+          },
+          userId,
+        );
       }
 
       // Re-load materials after auto-build (issued quantities / ids may have changed)
@@ -2530,77 +2514,15 @@ export class JobOrderService {
           .eq('id', material.id);
       }
 
-      // 2. Add finished goods to inventory (create new stock entry)
-      // Get a warehouse - try to find default or use first available
-      const { data: warehouses } = await this.supabase
-        .from('warehouses')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .limit(1);
-
-      if (!warehouses || warehouses.length === 0) {
-        throw new BadRequestException('No warehouse configured. Please create a warehouse first.');
-      }
-
-      const warehouseId = warehouses[0].id;
-
-      // Get finished item details for UID generation
-      const { data: finishedItem } = await this.supabase
-        .from('items')
-        .select('id, code, name, category')
-        .eq('id', jobOrder.item_id)
-        .single();
-
-      if (!finishedItem) {
-        throw new BadRequestException('Finished item not found');
-      }
-
-      // 3. Generate UIDs for finished goods (idempotent)
-      // NOTE: Stock will NOT be added until QC approval
-      const quantityProduced = Math.max(0, Number(jobOrder.quantity) || 0);
-      const { count: existingUidCount, error: uidCountError } = await this.supabase
-        .from('uid_registry')
-        .select('uid', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .eq('job_order_id', jobOrderId);
-
-      if (uidCountError) throw new BadRequestException(uidCountError.message);
-
-      const have = Math.max(0, Number(existingUidCount) || 0);
-      if (have > quantityProduced) {
-        throw new BadRequestException(
-          `Job order already has ${have} UID(s), which exceeds planned quantity ${quantityProduced}.`,
-        );
-      }
-
-      const missing = Math.max(0, quantityProduced - have);
-      const uidsCreated = missing > 0
-        ? await this.generateJobOrderUids(
-            tenantId,
-            userId,
-            jobOrder,
-            finishedItem,
-            missing,
-            'COMPLETE',
-          )
-        : [];
-
-      if (uidsCreated.length !== missing) {
-        throw new BadRequestException(
-          `Failed to generate UIDs for this job order. Needed ${missing}, created ${uidsCreated.length}.`,
-        );
-      }
-
-      console.log(`[JobOrder] Generated ${uidsCreated.length} UIDs (status=GENERATED, quality_status=PENDING) for job order ${jobOrder.job_order_number}`);
-      console.log(`[JobOrder] Stock will be added ONLY after QC approval via approveQC endpoint`);
-
-      // DO NOT add stock_entries here - will be added after QC approval
-
-      // 3. Update job order status
+      // 2. Update job order status
+      // New workflow:
+      // - Completion = production finished + handed over to Stores
+      // - SRV receipt is done by Stores (GRN-like popup)
+      // - UIDs + stock release happen only after QC completion
       const { error: updateError } = await this.supabase
         .from('production_job_orders')
         .update({
-          status: 'COMPLETED',
+          status: 'STORE_ISSUED',
           actual_end_date: new Date().toISOString(),
           completed_quantity: jobOrder.quantity,
         })
@@ -2616,24 +2538,174 @@ export class JobOrderService {
   }
 
   async approveQC(
-    tenantId: string, 
-    jobOrderId: string, 
-    approvedUids: string[], 
-    rejectedUids: string[], 
-    userId?: string
+    tenantId: string,
+    jobOrderId: string,
+    payload: {
+      // Legacy UID-based flow
+      approvedUids?: string[];
+      rejectedUids?: string[];
+      // New quantity-based flow (UIDs generated only after QC completion)
+      acceptedQuantity?: number;
+      rejectedQuantity?: number;
+      metadata?: any;
+      checkedBy?: Record<string, string>;
+    },
+    userId?: string,
   ) {
-    // Validate job order exists and is completed
+    const approvedUids = Array.isArray(payload?.approvedUids)
+      ? payload.approvedUids.map((u) => String(u || '').trim()).filter(Boolean)
+      : [];
+    const rejectedUids = Array.isArray(payload?.rejectedUids)
+      ? payload.rejectedUids.map((u) => String(u || '').trim()).filter(Boolean)
+      : [];
+    const useUidListFlow = approvedUids.length + rejectedUids.length > 0;
+
+    // Validate job order exists
     const { data: jobOrder } = await this.supabase
       .from('production_job_orders')
-      .select('*, finished_item:items!production_job_orders_item_id_fkey(id, code, name)')
+      .select('*, finished_item:items!production_job_orders_item_id_fkey(id, code, name, category, uid_tracking, uid_strategy)')
       .eq('tenant_id', tenantId)
       .eq('id', jobOrderId)
       .single();
 
     if (!jobOrder) throw new NotFoundException('Job order not found');
-    if (jobOrder.status !== 'COMPLETED') {
-      throw new BadRequestException('Job order must be COMPLETED before QC approval');
+    const joStatus = String((jobOrder as any)?.status || '').toUpperCase();
+    if (joStatus !== 'COMPLETED' && joStatus !== 'STORE_ISSUED') {
+      throw new BadRequestException('Job order must be STORE_ISSUED / COMPLETED before QC');
     }
+
+    const approver = String(userId || '').trim();
+    if (!approver || !this.isUuid(approver)) {
+      throw new BadRequestException('Valid userId is required to approve QC');
+    }
+
+    // SRV must be completed before QC (GRN-like flow)
+    const { data: existingReceipts, error: receiptError } = await this.supabase
+      .from('stock_entries')
+      .select('id, quantity, available_quantity, warehouse_id, metadata, created_at')
+      .eq('tenant_id', tenantId)
+      .eq('metadata->>created_from', 'STORE_RECEIPT')
+      .eq('metadata->>job_order_id', jobOrderId)
+      .order('created_at', { ascending: true });
+    if (receiptError) throw new BadRequestException(receiptError.message);
+    const receiptEntries = Array.isArray(existingReceipts) ? existingReceipts : [];
+    if (receiptEntries.length === 0) {
+      throw new BadRequestException('SRV pending: please complete SRV (Store Receipt Voucher) before QC.');
+    }
+
+    const totalReceivedQty = receiptEntries.reduce((sum: number, e: any) => sum + (Number(e?.quantity || 0) || 0), 0);
+    if (totalReceivedQty <= 0) {
+      throw new BadRequestException('SRV has zero received quantity; cannot QC');
+    }
+
+    // New flow: quantity-based QC
+    if (!useUidListFlow) {
+      const acceptedQuantity = Number(payload?.acceptedQuantity);
+      const rejectedQuantity = Number(payload?.rejectedQuantity || 0);
+      if (!Number.isFinite(acceptedQuantity) || acceptedQuantity <= 0) {
+        throw new BadRequestException('acceptedQuantity must be > 0');
+      }
+      if (!Number.isFinite(rejectedQuantity) || rejectedQuantity < 0) {
+        throw new BadRequestException('rejectedQuantity must be >= 0');
+      }
+      if (acceptedQuantity + rejectedQuantity - totalReceivedQty > 1e-9) {
+        throw new BadRequestException(
+          `QC quantity exceeds SRV received quantity. Received=${totalReceivedQty}, accepted=${acceptedQuantity}, rejected=${rejectedQuantity}`,
+        );
+      }
+
+      // Generate UIDs ONLY NOW (after QC completion) for accepted quantity.
+      const finishedItem = (jobOrder as any)?.finished_item;
+      const createdUids = await this.generateJobOrderUids(
+        tenantId,
+        approver,
+        jobOrder,
+        finishedItem,
+        acceptedQuantity,
+        'QC_COMPLETE',
+      );
+
+      // Mark generated UIDs as PASSED and ACTIVE immediately (QC already completed here).
+      if (createdUids.length > 0) {
+        for (const uid of createdUids) {
+          await this.supabase
+            .from('uid_registry')
+            .update({
+              quality_status: 'PASSED',
+              status: 'ACTIVE',
+              location: 'STORE',
+            } as any)
+            .eq('tenant_id', tenantId)
+            .eq('uid', uid);
+        }
+      }
+
+      // Release accepted quantity to stock (inventory_stock + stock_entries.available_quantity)
+      // Use SRV warehouse (first entry) as destination.
+      const warehouseId = String((receiptEntries[0] as any)?.warehouse_id || '').trim();
+      if (!warehouseId || !this.isUuid(warehouseId)) {
+        throw new BadRequestException('Invalid SRV warehouse_id; cannot release stock');
+      }
+
+      // Update inventory_stock (+acceptedQuantity)
+      const itemCategory = (finishedItem as any)?.category;
+      const { error: invErr } = await this.supabase.rpc('adjust_inventory_stock', {
+        p_tenant_id: tenantId,
+        p_item_id: (jobOrder as any)?.item_id,
+        p_warehouse_id: warehouseId,
+        p_location_id: null,
+        p_quantity_change: acceptedQuantity,
+        p_category: normalizeInventoryCategory(itemCategory, 'FINISHED_GOOD'),
+      });
+      if (invErr) throw new BadRequestException(invErr.message);
+
+      // Allocate available_quantity across SRV stock_entries in FIFO order.
+      let remainingToRelease = acceptedQuantity;
+      for (const entry of receiptEntries) {
+        if (remainingToRelease <= 0) break;
+        const entryQty = Number((entry as any)?.quantity || 0) || 0;
+        const newAvail = Math.min(entryQty, remainingToRelease);
+        const meta = (entry as any)?.metadata || {};
+        const nextMeta = {
+          ...meta,
+          qc_completed_at: new Date().toISOString(),
+          qc_completed_by: approver,
+          qc_accepted_quantity: acceptedQuantity,
+          qc_rejected_quantity: rejectedQuantity,
+          approved_uids: createdUids,
+        };
+        await this.supabase
+          .from('stock_entries')
+          .update({
+            available_quantity: newAvail,
+            metadata: nextMeta,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq('tenant_id', tenantId)
+          .eq('id', (entry as any)?.id);
+        remainingToRelease -= newAvail;
+      }
+
+      // Mark job order completed after QC release.
+      await this.supabase
+        .from('production_job_orders')
+        .update({ status: 'COMPLETED' } as any)
+        .eq('tenant_id', tenantId)
+        .eq('id', jobOrderId);
+
+      return {
+        jobOrderId,
+        jobOrderNumber: (jobOrder as any)?.job_order_number,
+        itemCode: (finishedItem as any)?.code,
+        itemName: (finishedItem as any)?.name,
+        stockAdded: acceptedQuantity,
+        stockAvailable: acceptedQuantity,
+        generatedUids: createdUids,
+        message: `QC complete: accepted ${acceptedQuantity}, rejected ${rejectedQuantity}. Stock released.`,
+      };
+    }
+
+    // Legacy flow: UID list based QC (kept for backward compatibility)
 
     // Get all UIDs for this job order
     const { data: allUids, error: allUidsError } = await this.supabase
@@ -2650,26 +2722,12 @@ export class JobOrderService {
 
     if (providedCount !== totalUids) {
       throw new BadRequestException(
-        `Total UIDs mismatch. Job order has ${totalUids} UIDs, but ${providedCount} were provided for QC`
+        `Total UIDs mismatch. Job order has ${totalUids} UIDs, but ${providedCount} were provided for QC`,
       );
     }
 
     try {
-      // SRV must be completed before QC (GRN-like flow)
-      const { data: existingReceipts, error: receiptError } = await this.supabase
-        .from('stock_entries')
-        .select('id, quantity, available_quantity, warehouse_id, metadata')
-        .eq('tenant_id', tenantId)
-        .eq('metadata->>created_from', 'STORE_RECEIPT')
-        .eq('metadata->>job_order_id', jobOrderId)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      if (receiptError) throw new BadRequestException(receiptError.message);
-      const receiptEntry = Array.isArray(existingReceipts) ? existingReceipts[0] : null;
-      if (!receiptEntry) {
-        throw new BadRequestException('SRV pending: please complete SRV (Store Receipt Voucher) before QC.');
-      }
+      const receiptEntry = receiptEntries[receiptEntries.length - 1];
 
       const receivedUids = Array.isArray((receiptEntry as any)?.metadata?.received_uids)
         ? ((receiptEntry as any).metadata.received_uids as any[]).map((u) => String(u || '').trim()).filter(Boolean)
@@ -3599,7 +3657,7 @@ export class JobOrderService {
       .from('production_job_orders')
       .select('id, job_order_number, item_id, item_code, item_name, quantity, completed_quantity, status, actual_end_date, created_at')
       .eq('tenant_id', tenantId)
-      .in('status', ['COMPLETED', 'IN_PROGRESS'])
+      .in('status', ['STORE_ISSUED', 'COMPLETED', 'IN_PROGRESS'])
       .order('created_at', { ascending: false })
       .limit(200);
 
@@ -3607,23 +3665,6 @@ export class JobOrderService {
 
     const ids = (completedJobs || []).map((j: any) => String(j.id)).filter(Boolean);
     if (ids.length === 0) return [];
-
-    const { data: uidRows, error: uidError } = await this.supabase
-      .from('uid_registry')
-      .select('job_order_id, uid')
-      .eq('tenant_id', tenantId)
-      .in('job_order_id', ids)
-
-    if (uidError) throw new BadRequestException(uidError.message);
-
-    const allByJob = new Map<string, Set<string>>();
-    for (const row of uidRows || []) {
-      const jobId = String((row as any)?.job_order_id || '').trim();
-      const uid = String((row as any)?.uid || '').trim();
-      if (!jobId || !uid) continue;
-      if (!allByJob.has(jobId)) allByJob.set(jobId, new Set<string>());
-      allByJob.get(jobId)!.add(uid);
-    }
 
     const { data: receiptEntries, error: receiptError } = await this.supabase
       .from('stock_entries')
@@ -3645,12 +3686,15 @@ export class JobOrderService {
       }
     }
 
-    // OPEN SRVs = jobs that have UIDs but either:
-    // - no STORE_RECEIPT stock_entry exists yet, OR
-    // - SRV exists but is not approved.
+    // OPEN SRVs = jobs that have produced quantity pending receipt OR receipt exists but is not approved.
     return (completedJobs || [])
       .map((jo: any) => {
-        const all = allByJob.get(String(jo.id)) || new Set<string>();
+        const producedQty = Math.max(0, Number(jo.completed_quantity ?? jo.quantity ?? 0) || 0);
+        const alreadyReceivedQty = (receiptEntries || [])
+          .filter((e: any) => String((e as any)?.metadata?.job_order_id || '').trim() === String(jo.id))
+          .reduce((sum: number, e: any) => sum + (Number((e as any)?.quantity || 0) || 0), 0);
+        const pendingQty = Math.max(0, producedQty - alreadyReceivedQty);
+
         const receiptEntry = latestReceiptByJob.get(String(jo.id)) || null;
         const meta = receiptEntry?.metadata || {};
         const srvApprovedAt = meta?.srv_approved_at || null;
@@ -3663,7 +3707,7 @@ export class JobOrderService {
           item_code: jo.item_code,
           item_name: jo.item_name,
           uid: null,
-          quantity: all.size || Number(jo.quantity || 0) || 0,
+          quantity: pendingQty,
           to_warehouse_id: null,
           movement_date: meta?.received_at || jo.actual_end_date || jo.created_at || null,
           received_by: meta?.received_by_name || meta?.received_by || null,
@@ -3673,13 +3717,15 @@ export class JobOrderService {
           // internal/debug fields (ignored by UI)
           _srv_stock_entry_id: receiptEntry?.id || null,
           _srv_approved_at: srvApprovedAt,
+          _produced_qty: producedQty,
+          _received_qty: alreadyReceivedQty,
         };
       })
       .filter((row: any) => {
-        // Only show jobs that actually have UIDs (otherwise SRV not applicable)
-        if (Number(row.quantity || 0) <= 0) return false;
-        // Show when not approved
-        return !row._srv_approved_at;
+        const pendingQty = Number(row.quantity || 0) || 0;
+        // show when there is something left to receive OR when receipt exists but is not approved
+        if (pendingQty > 0) return true;
+        return Boolean(row._srv_stock_entry_id) && !row._srv_approved_at;
       });
   }
 
@@ -4182,11 +4228,11 @@ export class JobOrderService {
     tenantId: string,
     jobOrderId: string,
     userId?: string,
-    details?: { receiverName?: string; receiverPhone?: string },
+    details?: { receiverName?: string; receiverPhone?: string; receivedQuantity?: number },
   ) {
     const { data: jobOrder, error: jobError } = await this.supabase
       .from('production_job_orders')
-      .select('id, tenant_id, item_id, item_code, item_name, job_order_number, status')
+      .select('id, tenant_id, item_id, item_code, item_name, job_order_number, status, quantity, completed_quantity')
       .eq('tenant_id', tenantId)
       .eq('id', jobOrderId)
       .single();
@@ -4195,42 +4241,27 @@ export class JobOrderService {
     if (!jobOrder) throw new NotFoundException('Job order not found');
 
     const status = String(jobOrder.status || '').toUpperCase();
-    if (status !== 'COMPLETED' && status !== 'IN_PROGRESS') {
-      throw new BadRequestException('SRV is allowed only for IN_PROGRESS / COMPLETED job orders');
+    if (status !== 'STORE_ISSUED' && status !== 'COMPLETED' && status !== 'IN_PROGRESS') {
+      throw new BadRequestException('SRV is allowed only for IN_PROGRESS / STORE_ISSUED / COMPLETED job orders');
     }
 
-    const { data: uidRows, error: uidError } = await this.supabase
-      .from('uid_registry')
-      .select('uid, lifecycle, metadata')
-      .eq('tenant_id', tenantId)
-      .eq('job_order_id', jobOrderId)
-
-    if (uidError) throw new BadRequestException(uidError.message);
-
-    const allUids = (uidRows || []).map((r: any) => String(r?.uid || '').trim()).filter(Boolean);
-    if (allUids.length === 0) throw new BadRequestException('No UIDs found for this job order');
+    const producedQty = Math.max(0, Number((jobOrder as any)?.completed_quantity ?? (jobOrder as any)?.quantity ?? 0) || 0);
+    if (producedQty <= 0) {
+      throw new BadRequestException('No produced quantity available for SRV receipt');
+    }
 
     const { data: existingReceipts, error: existingError } = await this.supabase
       .from('stock_entries')
-      .select('metadata')
+      .select('id, quantity, metadata, created_at')
       .eq('tenant_id', tenantId)
       .eq('metadata->>created_from', 'STORE_RECEIPT')
       .eq('metadata->>job_order_id', jobOrderId);
 
     if (existingError) throw new BadRequestException(existingError.message);
 
-    const receivedSet = new Set<string>();
-    for (const row of existingReceipts || []) {
-      const arr = (row as any)?.metadata?.received_uids;
-      if (!Array.isArray(arr)) continue;
-      for (const uid of arr) {
-        const normalized = String(uid || '').trim();
-        if (normalized) receivedSet.add(normalized);
-      }
-    }
-
-    const pendingUids = allUids.filter((uid) => !receivedSet.has(uid));
-    if (pendingUids.length === 0) {
+    const alreadyReceivedQty = (existingReceipts || []).reduce((sum: number, e: any) => sum + (Number(e?.quantity || 0) || 0), 0);
+    const pendingQty = Math.max(0, producedQty - alreadyReceivedQty);
+    if (pendingQty <= 0) {
       return {
         jobOrderId,
         jobOrderNumber: jobOrder.job_order_number,
@@ -4238,6 +4269,15 @@ export class JobOrderService {
         pendingReceipt: 0,
         message: 'No pending SRV quantity for this job order',
       };
+    }
+
+    const requestedQty = Number((details as any)?.receivedQuantity);
+    const receiveQty = Number.isFinite(requestedQty) && requestedQty > 0 ? requestedQty : pendingQty;
+    if (receiveQty <= 0) {
+      throw new BadRequestException('receivedQuantity must be > 0');
+    }
+    if (receiveQty - pendingQty > 1e-9) {
+      throw new BadRequestException(`Cannot receive more than pending quantity. Pending=${pendingQty}, requested=${receiveQty}`);
     }
 
     const { data: warehouses, error: whError } = await this.supabase
@@ -4258,7 +4298,7 @@ export class JobOrderService {
         tenant_id: tenantId,
         item_id: jobOrder.item_id,
         warehouse_id: warehouseId,
-        quantity: pendingUids.length,
+        quantity: receiveQty,
         // SRV is GRN-like receipt into QC-hold: stock becomes AVAILABLE only after QC approval.
         available_quantity: 0,
         allocated_quantity: 0,
@@ -4266,7 +4306,7 @@ export class JobOrderService {
           created_from: 'STORE_RECEIPT',
           job_order_id: jobOrderId,
           job_order_number: jobOrder.job_order_number,
-          received_uids: pendingUids,
+          received_uids: [],
           received_by: userId || null,
           received_by_name: String(details?.receiverName || '').trim() || null,
           received_by_phone: String(details?.receiverPhone || '').trim() || null,
@@ -4279,45 +4319,12 @@ export class JobOrderService {
       throw new BadRequestException(`Failed to add stock receipt: ${addError.message}`);
     }
 
-    for (const row of uidRows || []) {
-      const uid = String((row as any)?.uid || '').trim();
-      if (!uid || !pendingUids.includes(uid)) continue;
-
-      const currentLifecycle = (row as any)?.lifecycle ? JSON.parse((row as any).lifecycle) : [];
-      const currentMetadata = (row as any)?.metadata ? JSON.parse((row as any).metadata) : {};
-
-      await this.supabase
-        .from('uid_registry')
-        .update({
-          location: 'QC',
-          lifecycle: JSON.stringify([
-            ...currentLifecycle,
-            {
-              stage: 'STORE_RECEIVED',
-              timestamp: new Date().toISOString(),
-              location: 'Store',
-              reference: `Store receipt voucher for ${jobOrder.job_order_number}`,
-              user: userId,
-            },
-          ]),
-          metadata: JSON.stringify({
-            ...currentMetadata,
-            store_received_at: new Date().toISOString(),
-            store_received_by: userId,
-            store_received_by_name: String(details?.receiverName || '').trim() || null,
-            store_received_by_phone: String(details?.receiverPhone || '').trim() || null,
-          }),
-        })
-        .eq('tenant_id', tenantId)
-        .eq('uid', uid);
-    }
-
     return {
       jobOrderId,
       jobOrderNumber: jobOrder.job_order_number,
-      receivedQuantity: pendingUids.length,
-      pendingReceipt: 0,
-      message: `SRV complete: ${pendingUids.length} unit(s) received to QC (waiting for QC approval)`,
+      receivedQuantity: receiveQty,
+      pendingReceipt: Math.max(0, pendingQty - receiveQty),
+      message: `SRV received: ${receiveQty} unit(s) received to QC-hold (UIDs will be generated after QC)`,
     };
   }
 
@@ -4406,6 +4413,17 @@ export class JobOrderService {
     if (qcStockError) throw new BadRequestException(qcStockError.message);
 
     const entries = Array.isArray(qcStockEntries) ? qcStockEntries : [];
+
+    const srvEntries = entries.filter((e: any) => {
+      const from = String((e as any)?.metadata?.created_from || '').toUpperCase();
+      return from === 'STORE_RECEIPT';
+    });
+    const srvReceivedQuantity = srvEntries.reduce((sum: number, e: any) => sum + (Number(e?.quantity) || 0), 0);
+    const latestSrvMeta = srvEntries
+      .slice()
+      .sort((a: any, b: any) => Date.parse(String(a?.created_at || 0)) - Date.parse(String(b?.created_at || 0)))
+      .map((e: any) => (e as any)?.metadata || {})
+      .pop() || {};
     // With SRV-first flow, STORE_RECEIPT quantity is received-to-QC and does not mean available stock.
     // Use available_quantity (or approved_uids) to represent released-to-stock.
     const stockAdded = entries
@@ -4474,6 +4492,9 @@ export class JobOrderService {
       passedUidsCount,
       rejectedUidsCount,
       pendingUidsCount,
+      srvReceivedQuantity,
+      srvApprovedAt: latestSrvMeta?.srv_approved_at || null,
+      srvApprovedBy: latestSrvMeta?.srv_approved_by || null,
     };
   }
 
@@ -5436,27 +5457,21 @@ export class JobOrderService {
           const completed = await this.completeJobOrder(tenantId, jobOrder.id, userId, { allowPartialConsumption: false });
           completedSubJobOrders.push(completed);
 
-          // Auto-approve QC to create stock immediately
-          const { data: uidRows, error: uidErr } = await this.supabase
-            .from('uid_registry')
-            .select('uid')
-            .eq('tenant_id', tenantId)
-            .eq('job_order_id', jobOrder.id);
-
-          if (uidErr) throw new BadRequestException(uidErr.message);
-          const uids = (uidRows || [])
-            .map((r: any) => String(r?.uid || '').trim())
-            .filter(Boolean);
-
-          if (uids.length === 0) {
-            throw new BadRequestException(
-              `Failed to auto-approve QC for sub-assembly ${sa.itemCode}: no UIDs found for job order ${jobOrder.id}`,
-            );
-          }
-
-          // SRV-first workflow: create SRV (SYSTEM) before QC release.
-          await this.receiveStoreReceiptVoucher(tenantId, jobOrder.id, userId, { receiverName: 'SYSTEM' });
-          await this.approveQC(tenantId, jobOrder.id, uids, [], userId);
+          // New workflow: SRV receive (SYSTEM) with quantity, then QC completes and generates UIDs.
+          const qty = Math.max(0, Number((jobOrder as any)?.quantity || 0) || 0) || Math.max(0, Number((sa as any)?.toMakeQuantity || 0) || 0) || 1;
+          await this.receiveStoreReceiptVoucher(tenantId, jobOrder.id, userId, {
+            receiverName: 'SYSTEM',
+            receivedQuantity: qty,
+          });
+          await this.approveQC(
+            tenantId,
+            jobOrder.id,
+            {
+              acceptedQuantity: qty,
+              rejectedQuantity: 0,
+            },
+            userId,
+          );
 
           entry.completed = true;
           completedInLastPass += 1;
@@ -5570,23 +5585,25 @@ export class JobOrderService {
       autoBuildMissingSubAssemblies: true,
     });
 
-    // Auto-approve QC to immediately create stock
-    const { data: uidRows, error: uidErr } = await this.supabase
-      .from('uid_registry')
-      .select('uid')
-      .eq('tenant_id', tenantId)
-      .eq('job_order_id', jobOrderId);
-
-    if (!uidErr && uidRows && uidRows.length > 0) {
-      const uids = uidRows.map((r: any) => String(r?.uid || '').trim()).filter(Boolean);
-      try {
-        // SRV-first workflow: create SRV (SYSTEM) before QC release.
-        await this.receiveStoreReceiptVoucher(tenantId, jobOrderId, userId, { receiverName: 'SYSTEM' });
-        await this.approveQC(tenantId, jobOrderId, uids, [], userId);
-        this.logger.log('[ForceAutoComplete] QC auto-approved for UIDs:', uids.length);
-      } catch (qcErr: any) {
-        this.logger.warn('[ForceAutoComplete] QC auto-approval failed (non-fatal):', qcErr?.message);
-      }
+    // Auto-complete QC to immediately create stock (SYSTEM)
+    try {
+      const qty = Math.max(0, Number((completed as any)?.quantity || (completed as any)?.completed_quantity || 0) || 0) || 1;
+      await this.receiveStoreReceiptVoucher(tenantId, jobOrderId, userId, {
+        receiverName: 'SYSTEM',
+        receivedQuantity: qty,
+      });
+      await this.approveQC(
+        tenantId,
+        jobOrderId,
+        {
+          acceptedQuantity: qty,
+          rejectedQuantity: 0,
+        },
+        userId,
+      );
+      this.logger.log('[ForceAutoComplete] QC auto-completed (SYSTEM):', qty);
+    } catch (qcErr: any) {
+      this.logger.warn('[ForceAutoComplete] QC auto-completion failed (non-fatal):', qcErr?.message);
     }
 
     this.logger.log('[ForceAutoComplete] Completed successfully');

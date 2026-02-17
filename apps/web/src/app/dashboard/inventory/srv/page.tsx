@@ -28,6 +28,12 @@ export default function SrvPage() {
   const [srvHistory, setSrvHistory] = useState<ReceiptVoucherRow[]>([]);
   const [activeSrvView, setActiveSrvView] = useState<'open' | 'history'>('open');
 
+  const [showReceiveModal, setShowReceiveModal] = useState(false);
+  const [selectedReceiveRow, setSelectedReceiveRow] = useState<ReceiptVoucherRow | null>(null);
+  const [receiverName, setReceiverName] = useState('');
+  const [receiverPhone, setReceiverPhone] = useState('');
+  const [receivedQty, setReceivedQty] = useState<number>(0);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
@@ -51,16 +57,23 @@ export default function SrvPage() {
 
   const approveSrv = useCallback(
     async (movementId: string) => {
-      if (!confirm('Approve this SRV?')) return;
       try {
-        await apiClient.put(`/job-orders/store/receipt-vouchers/${movementId}/approve`, {});
-        await loadAll();
-        alert('SRV approved successfully!');
+        // Approve is handled via the Receive popup (GRN-like)
+        const row = openSrvs.find((r) => r.id === movementId) || null;
+        if (!row) {
+          alert('SRV row not found. Please refresh and try again.');
+          return;
+        }
+        setSelectedReceiveRow(row);
+        setReceiverName('');
+        setReceiverPhone('');
+        setReceivedQty(Number(row.quantity || 0) || 0);
+        setShowReceiveModal(true);
       } catch (err: any) {
         alert('Failed to approve SRV: ' + (err.message || err));
       }
     },
-    [loadAll]
+    [loadAll, openSrvs]
   );
 
   const deleteSrv = useCallback(
@@ -318,7 +331,7 @@ export default function SrvPage() {
                             onClick={() => approveSrv(row.id)}
                             className="text-green-600 hover:text-green-900 font-medium"
                           >
-                            Approve
+                            View / Receive
                           </button>
                           <button
                             onClick={() => deleteSrv(row.id)}
@@ -423,6 +436,118 @@ export default function SrvPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {showReceiveModal && selectedReceiveRow && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-[95vw] max-w-2xl max-h-[92vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-gray-900">Receive SRV</h2>
+                <button
+                  onClick={() => {
+                    setShowReceiveModal(false);
+                    setSelectedReceiveRow(null);
+                  }}
+                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Job Order</label>
+                    <div className="mt-1 text-gray-900 font-semibold">
+                      {selectedReceiveRow.job_order_number || selectedReceiveRow.job_order_id || selectedReceiveRow.id}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Item</label>
+                    <div className="mt-1 text-gray-900">
+                      {selectedReceiveRow.item_code} - {selectedReceiveRow.item_name}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Received Qty *</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={receivedQty}
+                      onChange={(e) => setReceivedQty(Number(e.target.value || 0))}
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Received By (Name)</label>
+                    <input
+                      type="text"
+                      value={receiverName}
+                      onChange={(e) => setReceiverName(e.target.value)}
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Store keeper name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Received By (Phone)</label>
+                    <input
+                      type="text"
+                      value={receiverPhone}
+                      onChange={(e) => setReceiverPhone(e.target.value)}
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Phone"
+                    />
+                  </div>
+                </div>
+
+                <div className="text-sm text-gray-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  UIDs will NOT be generated at SRV receipt. UIDs will be generated only after QC is completed.
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowReceiveModal(false);
+                    setSelectedReceiveRow(null);
+                  }}
+                  className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!selectedReceiveRow) return;
+                    const qty = Number(receivedQty || 0);
+                    if (!Number.isFinite(qty) || qty <= 0) {
+                      alert('Received Qty must be > 0');
+                      return;
+                    }
+                    try {
+                      await apiClient.post(`/job-orders/store/receipt-vouchers/${selectedReceiveRow.id}/receive`, {
+                        receiverName,
+                        receiverPhone,
+                        receivedQuantity: qty,
+                      });
+                      await apiClient.put(`/job-orders/store/receipt-vouchers/${selectedReceiveRow.id}/approve`, {});
+                      await loadAll();
+                      setShowReceiveModal(false);
+                      setSelectedReceiveRow(null);
+                      alert('✅ SRV received and approved successfully!');
+                    } catch (err: any) {
+                      alert('Failed to receive SRV: ' + (err?.response?.data?.message || err.message || err));
+                    }
+                  }}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                >
+                  Receive & Approve
+                </button>
+              </div>
             </div>
           </div>
         )}
