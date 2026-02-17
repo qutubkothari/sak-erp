@@ -3627,40 +3627,92 @@ export class JobOrderService {
 
     const { data: receiptEntries, error: receiptError } = await this.supabase
       .from('stock_entries')
-      .select('metadata, quantity')
+      .select('id, item_id, quantity, available_quantity, created_at, metadata')
       .eq('tenant_id', tenantId)
-      .eq('metadata->>created_from', 'STORE_RECEIPT');
+      .eq('metadata->>created_from', 'STORE_RECEIPT')
+      .order('created_at', { ascending: false })
+      .limit(500);
 
     if (receiptError) throw new BadRequestException(receiptError.message);
 
-    const receivedByJob = new Map<string, Set<string>>();
+    // Latest SRV stock_entry per job order (one SRV entry holds many UIDs).
+    const latestReceiptByJob = new Map<string, any>();
     for (const entry of receiptEntries || []) {
       const jobId = String((entry as any)?.metadata?.job_order_id || '').trim();
       if (!jobId) continue;
-      const arr = (entry as any)?.metadata?.received_uids;
-      if (!Array.isArray(arr)) continue;
-      if (!receivedByJob.has(jobId)) receivedByJob.set(jobId, new Set<string>());
-      for (const uid of arr) {
-        const normalized = String(uid || '').trim();
-        if (normalized) receivedByJob.get(jobId)!.add(normalized);
+      if (!latestReceiptByJob.has(jobId)) {
+        latestReceiptByJob.set(jobId, entry);
       }
     }
 
+    // OPEN SRVs = jobs that have UIDs but either:
+    // - no STORE_RECEIPT stock_entry exists yet, OR
+    // - SRV exists but is not approved.
     return (completedJobs || [])
       .map((jo: any) => {
-        const received = receivedByJob.get(String(jo.id)) || new Set<string>();
         const all = allByJob.get(String(jo.id)) || new Set<string>();
-        const pending = Array.from(all).filter((uid) => !received.has(uid));
+        const receiptEntry = latestReceiptByJob.get(String(jo.id)) || null;
+        const meta = receiptEntry?.metadata || {};
+        const srvApprovedAt = meta?.srv_approved_at || null;
+
         return {
-          ...jo,
-          totalQuantity: all.size,
-          receivedQuantity: received.size,
-          pendingReceiptQuantity: pending.length,
-          pendingUids: pending,
-          receivedUids: Array.from(received),
+          id: String(jo.id),
+          job_order_id: String(jo.id),
+          job_order_number: jo.job_order_number,
+          item_id: jo.item_id,
+          item_code: jo.item_code,
+          item_name: jo.item_name,
+          uid: null,
+          quantity: all.size || Number(jo.quantity || 0) || 0,
+          to_warehouse_id: null,
+          movement_date: meta?.received_at || jo.actual_end_date || jo.created_at || null,
+          received_by: meta?.received_by_name || meta?.received_by || null,
+          approved_by: meta?.srv_approved_by || null,
+          approved_at: meta?.srv_approved_at || null,
+          notes: null,
+          // internal/debug fields (ignored by UI)
+          _srv_stock_entry_id: receiptEntry?.id || null,
+          _srv_approved_at: srvApprovedAt,
         };
       })
-      .filter((r) => r.pendingReceiptQuantity > 0);
+      .filter((row: any) => {
+        // Only show jobs that actually have UIDs (otherwise SRV not applicable)
+        if (Number(row.quantity || 0) <= 0) return false;
+        // Show when not approved
+        return !row._srv_approved_at;
+      });
+  }
+
+  private async resolveStoreReceiptVoucherEntry(
+    tenantId: string,
+    entryIdOrJobOrderId: string,
+  ): Promise<{ id: string; metadata: any } | null> {
+    const id = String(entryIdOrJobOrderId || '').trim();
+    if (!tenantId || !id) return null;
+
+    // 1) Try by stock_entries.id (history row)
+    const { data: byId, error: byIdError } = await this.supabase
+      .from('stock_entries')
+      .select('id, metadata')
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .maybeSingle();
+    if (byIdError) throw new BadRequestException(byIdError.message);
+    if (byId) return { id: String((byId as any).id), metadata: (byId as any).metadata };
+
+    // 2) Try by job_order_id stored in metadata (open SRV UI passes job order id)
+    const { data: rows, error: byJobError } = await this.supabase
+      .from('stock_entries')
+      .select('id, metadata, created_at')
+      .eq('tenant_id', tenantId)
+      .eq('metadata->>created_from', 'STORE_RECEIPT')
+      .eq('metadata->>job_order_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (byJobError) throw new BadRequestException(byJobError.message);
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row?.id) return null;
+    return { id: String((row as any).id), metadata: (row as any).metadata };
   }
 
   async getStoreIssueVoucherHistory(tenantId: string) {
@@ -4007,16 +4059,16 @@ export class JobOrderService {
       throw new BadRequestException('Valid userId is required to approve');
     }
 
-    const { data: entry, error } = await this.supabase
-      .from('stock_entries')
-      .select('id, metadata')
-      .eq('tenant_id', tenantId)
-      .eq('id', entryId)
-      .maybeSingle();
-    if (error) throw new BadRequestException(error.message);
-    if (!entry) throw new NotFoundException('SRV history row not found');
+    // UI may pass either stock_entries.id (history row) OR production_job_orders.id (open tab).
+    let resolved = await this.resolveStoreReceiptVoucherEntry(tenantId, entryId);
+    if (!resolved) {
+      // If no SRV row exists yet, auto-receive to create it, then approve.
+      await this.receiveStoreReceiptVoucher(tenantId, entryId, userId, { receiverName: 'SYSTEM' });
+      resolved = await this.resolveStoreReceiptVoucherEntry(tenantId, entryId);
+    }
+    if (!resolved) throw new NotFoundException('SRV history row not found');
 
-    const meta = (entry as any)?.metadata || {};
+    const meta = resolved.metadata || {};
     if (String(meta?.created_from || '').trim() !== 'STORE_RECEIPT') {
       throw new BadRequestException('Not a SRV history row');
     }
@@ -4031,21 +4083,24 @@ export class JobOrderService {
       .from('stock_entries')
       .update({ metadata: nextMeta } as any)
       .eq('tenant_id', tenantId)
-      .eq('id', entryId);
+      .eq('id', resolved.id);
     if (upErr) throw new BadRequestException(upErr.message);
 
-    return { id: entryId, message: 'Approved' };
+    return { id: resolved.id, message: 'Approved' };
   }
 
   async deleteStoreReceiptVoucherHistoryRow(tenantId: string, entryId: string, userId?: string) {
     if (!tenantId) throw new BadRequestException('tenantId is required');
     if (!entryId) throw new BadRequestException('entryId is required');
 
+    const resolved = await this.resolveStoreReceiptVoucherEntry(tenantId, entryId);
+    if (!resolved) throw new NotFoundException('SRV history row not found');
+
     const { data: entry, error } = await this.supabase
       .from('stock_entries')
       .select('id, available_quantity, metadata')
       .eq('tenant_id', tenantId)
-      .eq('id', entryId)
+      .eq('id', resolved.id)
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
     if (!entry) throw new NotFoundException('SRV history row not found');
@@ -4269,7 +4324,7 @@ export class JobOrderService {
   async getStoreReceiptVoucherHistory(tenantId: string) {
     const { data: entries, error } = await this.supabase
       .from('stock_entries')
-      .select('id, item_id, quantity, available_quantity, created_at, metadata')
+      .select('id, item_id, warehouse_id, quantity, available_quantity, created_at, metadata')
       .eq('tenant_id', tenantId)
       .eq('metadata->>created_from', 'STORE_RECEIPT')
       .order('created_at', { ascending: false })
@@ -4298,6 +4353,8 @@ export class JobOrderService {
       const itemInfo = itemById.get(String((e as any)?.item_id || '')) || {};
       const receivedUids = Array.isArray(meta?.received_uids) ? meta.received_uids : [];
       const approvedUids = Array.isArray(meta?.approved_uids) ? meta.approved_uids : [];
+
+      const singleUid = receivedUids.length === 1 ? String(receivedUids[0] || '').trim() : '';
       return {
         id: e.id,
         job_order_id: meta?.job_order_id || null,
@@ -4305,10 +4362,19 @@ export class JobOrderService {
         item_id: e.item_id,
         item_code: itemInfo.code || null,
         item_name: itemInfo.name || null,
+        uid: singleUid || null,
+        quantity: Number(e.quantity || 0),
+        to_warehouse_id: (e as any)?.warehouse_id || null,
+        movement_date: meta?.received_at || e.created_at || null,
+        received_by: meta?.received_by_name || meta?.received_by || null,
+        approved_by: meta?.srv_approved_by || null,
+        approved_at: meta?.srv_approved_at || null,
+        notes: null,
+
+        // Keep extended fields for other UI consumers (ignored by current SRV page)
         received_quantity: Number(e.quantity || 0),
         available_quantity: Number(e.available_quantity || 0),
         received_at: meta?.received_at || e.created_at || null,
-        received_by: meta?.received_by || null,
         received_by_name: meta?.received_by_name || null,
         received_by_phone: meta?.received_by_phone || null,
         srv_approved_by: meta?.srv_approved_by || null,
