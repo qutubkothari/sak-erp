@@ -239,19 +239,24 @@ function JobOrdersPageContent() {
       ? `${qcByUser.employee_name}${qcByUser.employee_code ? ` (${qcByUser.employee_code})` : ''}`
       : '';
 
+    const assemblyName = selectedJobOrder
+      ? `${selectedJobOrder.itemCode || ''} - ${selectedJobOrder.itemName || ''}`.trim().replace(/^- /, '')
+      : '';
+    const jobOrderNo = selectedJobOrder?.jobOrderNumber || '';
+
     const details: Record<string, string> = { uid };
+    if (assemblyName) details.assemblyName = assemblyName;
+    if (jobOrderNo) details.jobOrderNo = jobOrderNo;
     if (invoiceNumber) details.invoiceNumber = invoiceNumber;
     if (qcDate) details.qcDate = qcDate;
     if (qcByName) details.qcByName = qcByName;
 
-    if (Object.keys(details).length === 1) {
-      return { data: uid, details: null };
-    }
-
     const lines = [
       `UID: ${uid}`,
-      invoiceNumber ? `Invoice: ${invoiceNumber}` : '',
+      assemblyName ? `Assembly: ${assemblyName}` : '',
+      jobOrderNo ? `JO: ${jobOrderNo}` : '',
       qcDate ? `QC Date: ${qcDate}` : '',
+      invoiceNumber ? `Invoice: ${invoiceNumber}` : '',
       qcByName ? `QC By: ${qcByName}` : '',
     ].filter(Boolean);
 
@@ -2992,14 +2997,24 @@ function JobOrdersPageContent() {
               </p>
               {qcQrDetails && (
                 <div className="text-left text-sm text-gray-600 space-y-1 mb-4">
-                  {qcQrDetails.invoiceNumber && (
+                  {qcQrDetails.assemblyName && (
                     <div>
-                      <span className="font-semibold">Invoice:</span> {qcQrDetails.invoiceNumber}
+                      <span className="font-semibold">Assembly:</span> {qcQrDetails.assemblyName}
+                    </div>
+                  )}
+                  {qcQrDetails.jobOrderNo && (
+                    <div>
+                      <span className="font-semibold">Job Order:</span> {qcQrDetails.jobOrderNo}
                     </div>
                   )}
                   {qcQrDetails.qcDate && (
                     <div>
                       <span className="font-semibold">QC Date:</span> {qcQrDetails.qcDate}
+                    </div>
+                  )}
+                  {qcQrDetails.invoiceNumber && (
+                    <div>
+                      <span className="font-semibold">Invoice:</span> {qcQrDetails.invoiceNumber}
                     </div>
                   )}
                   {qcQrDetails.qcByName && (
