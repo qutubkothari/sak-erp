@@ -24,6 +24,8 @@ interface POItem {
   total_price: number;
   specifications?: string;
   delivery_date?: string;
+  payment_terms?: string;
+  delivery_terms?: string;
 }
 
 interface POTerms {
@@ -787,9 +789,16 @@ export class WorldClassPoPdfService {
 
     yPosition -= 20;
 
-    // Requested layout: show Payment Terms and Delivery Terms as separate headers/blocks
-    const paymentTermsValue = data.paymentTerms || data.terms?.payment_terms || 'NET 30';
-    const deliveryTermsValue = data.terms?.delivery_terms || 'As per delivery schedule';
+    // Requested layout: show Payment Terms and Delivery Terms as separate headers/blocks.
+    // Source of truth is line-item terms; fall back to header terms only if line items don't have values.
+    const uniq = (values: any[]) => Array.from(new Set(values.map((v) => String(v || '').trim()).filter(Boolean)));
+    const itemPaymentTerms = uniq((data.items || []).map((it: any) => it?.payment_terms ?? it?.paymentTerms));
+    const itemDeliveryTerms = uniq((data.items || []).map((it: any) => it?.delivery_terms ?? it?.deliveryTerms));
+
+    const paymentTermsValue =
+      (itemPaymentTerms.length > 0 ? itemPaymentTerms.join(', ') : (data.paymentTerms || data.terms?.payment_terms)) || 'NET 30';
+    const deliveryTermsValue =
+      (itemDeliveryTerms.length > 0 ? itemDeliveryTerms.join(', ') : data.terms?.delivery_terms) || 'As per delivery schedule';
 
     const drawTermBlock = (title: string, value: string) => {
       page.drawText(title.toUpperCase(), {

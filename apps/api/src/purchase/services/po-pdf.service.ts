@@ -11,6 +11,8 @@ interface POItem {
   total_price: number;
   tax_amount?: number;
   specifications?: string;
+  payment_terms?: string;
+  delivery_terms?: string;
 }
 
 interface POPdfData {
@@ -25,6 +27,7 @@ interface POPdfData {
   taxTotal: number;
   grandTotal: number;
   paymentTerms?: string;
+  deliveryTerms?: string;
   deliveryDate?: string;
   remarks?: string;
   companyName?: string;
@@ -133,8 +136,8 @@ export class PoPdfService {
       });
     }
 
-    // Delivery & Payment Terms
-    if (data.deliveryDate || data.paymentTerms) {
+    // Delivery & Terms
+    if (data.deliveryDate || data.paymentTerms || data.deliveryTerms) {
       page.drawRectangle({
         x: 320,
         y: yPosition - 70,
@@ -157,6 +160,16 @@ export class PoPdfService {
 
       if (data.paymentTerms) {
         page.drawText(`Payment Terms: ${data.paymentTerms}`, {
+          x: 330,
+          y: termsY,
+          size: 9,
+          font,
+        });
+        termsY -= 15;
+      }
+
+      if (data.deliveryTerms) {
+        page.drawText(`Delivery Terms: ${data.deliveryTerms}`, {
           x: 330,
           y: termsY,
           size: 9,

@@ -241,6 +241,8 @@ export class PurchaseOrdersController {
             igst_amount: igstAmount,
             total_price: totalPrice,
             specifications: row.specifications,
+            payment_terms: (row.payment_terms ?? row.paymentTerms ?? '')?.toString?.() ?? '',
+            delivery_terms: (row.delivery_terms ?? row.deliveryTerms ?? '')?.toString?.() ?? '',
           };
         }),
 
@@ -253,17 +255,39 @@ export class PurchaseOrdersController {
         igstTotal: safeNumber(po.igst_total ?? 0),
         grandTotal: safeNumber(po.grand_total ?? po.total_amount ?? 0),
 
-        // Terms
-        paymentTerms: po.payment_terms,
+        // Terms (derive from line items; header fields are no longer the source of truth)
+        paymentTerms: undefined,
         deliveryDate: po.expected_delivery || po.delivery_date,
         terms: {
-          payment_terms: po.payment_terms,
-          delivery_terms: po.delivery_terms,
+          payment_terms: undefined,
+          delivery_terms: undefined,
         },
         remarks: po.notes || po.remarks,
 
         currency: 'INR',
       };
+
+      // Pull terms from line items (unique values). If multiple values exist, join them.
+      try {
+        const items: any[] = Array.isArray((pdfData as any).items) ? (pdfData as any).items : [];
+        const uniq = (values: any[]) => Array.from(new Set(values.map((v) => String(v || '').trim()).filter(Boolean)));
+
+        const itemPaymentTerms = uniq(items.map((it) => it?.payment_terms ?? it?.paymentTerms));
+        const itemDeliveryTerms = uniq(items.map((it) => it?.delivery_terms ?? it?.deliveryTerms));
+
+        if (itemPaymentTerms.length > 0) {
+          const joined = itemPaymentTerms.join(', ');
+          (pdfData as any).paymentTerms = joined;
+          (pdfData as any).terms = { ...(pdfData as any).terms, payment_terms: joined };
+        }
+
+        if (itemDeliveryTerms.length > 0) {
+          const joined = itemDeliveryTerms.join(', ');
+          (pdfData as any).terms = { ...(pdfData as any).terms, delivery_terms: joined };
+        }
+      } catch {
+        // Ignore term aggregation issues; PDF will fall back to defaults.
+      }
 
       // If PO header does not have tax totals, compute from items so tax is calculated & visible in PDF.
       try {

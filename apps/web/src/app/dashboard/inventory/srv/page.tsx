@@ -3,6 +3,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import { getTodayDateInputValue } from '@/lib/date';
+
+function getApiV1BaseUrl(): string | null {
+  const raw = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+  if (!raw) return null;
+  const normalized = raw.endsWith('/') ? raw.slice(0, -1) : raw;
+  return normalized.endsWith('/api/v1') ? normalized : `${normalized}/api/v1`;
+}
 
 type ReceiptVoucherRow = {
   id: string;
@@ -20,13 +28,23 @@ type ReceiptVoucherRow = {
   approved_at?: string;
   notes?: string;
 };
+type User = {
+  id: string;
+  employee_name: string;
+  employee_code?: string;
+};
 
 export default function SrvPage() {
   const router = useRouter();
+  const todayDate = getTodayDateInputValue();
   const [loading, setLoading] = useState(false);
   const [openSrvs, setOpenSrvs] = useState<ReceiptVoucherRow[]>([]);
   const [srvHistory, setSrvHistory] = useState<ReceiptVoucherRow[]>([]);
   const [activeSrvView, setActiveSrvView] = useState<'open' | 'history'>('open');
+  const [users, setUsers] = useState<User[]>([]);
+
+  const [qcSummary, setQcSummary] = useState<any | null>(null);
+  const [qcSummaryLoading, setQcSummaryLoading] = useState(false);
 
   // View SRV Details (GRN-like)
   const [showViewModal, setShowViewModal] = useState(false);
@@ -37,9 +55,26 @@ export default function SrvPage() {
 
   // QC Accept (GRN-like)
   const [showQcModal, setShowQcModal] = useState(false);
-  const [qcDate, setQcDate] = useState<string>('');
-  const [qcAcceptedQty, setQcAcceptedQty] = useState<number>(0);
-  const [qcRejectedQty, setQcRejectedQty] = useState<number>(0);
+  const [qcFormData, setQcFormData] = useState<Array<{
+    itemId: string;
+    itemCode: string;
+    itemName: string;
+    receivedQty: number;
+    acceptedQty: number;
+    rejectedQty: number;
+    qcNotes: string;
+    rejectionReason: string;
+    qcFileUrl?: string;
+    qcFileName?: string;
+    qcFileType?: string;
+    qcFileSize?: number;
+    checked_by?: string;
+  }>>([]);
+  const [qcMetadata, setQcMetadata] = useState<{ invoiceNumber: string; qcDate: string; qcBy: string }>({
+    invoiceNumber: '',
+    qcDate: getTodayDateInputValue(),
+    qcBy: '',
+  });
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -52,7 +87,7 @@ export default function SrvPage() {
       setSrvHistory(hist || []);
     } catch (err: any) {
       console.error('Failed to load SRV data:', err);
-      alert('Failed to load SRV data: ' + (err.message || err));
+      alert('Failed to load SRV data: ' + (err?.message || err));
     } finally {
       setLoading(false);
     }
@@ -62,6 +97,137 @@ export default function SrvPage() {
     loadAll();
   }, [loadAll]);
 
+  const fetchUsers = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('/api/v1/hr/employees', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        setUsers([]);
+        return;
+      }
+
+      const data = await response.json();
+      setUsers(Array.isArray(data) ? data : []);
+    } catch {
+      setUsers([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const fetchQcSummary = useCallback(async (jobOrderId: string) => {
+    const id = String(jobOrderId || '').trim();
+    if (!id) {
+      setQcSummary(null);
+      return;
+    }
+    setQcSummaryLoading(true);
+    try {
+      const summary = await apiClient.get(`/job-orders/${id}/qc-summary`);
+      setQcSummary(summary || null);
+    } catch {
+      setQcSummary(null);
+    } finally {
+      setQcSummaryLoading(false);
+    }
+  }, []);
+
+  const handleViewInvoice = useCallback((invoiceFileUrl: string, invoiceFileName?: string) => {
+    if (!invoiceFileUrl) return;
+
+    if (invoiceFileUrl.startsWith('data:')) {
+      const base64Data = invoiceFileUrl.split(',')[1];
+      const mimeType = invoiceFileUrl.split(':')[1].split(';')[0];
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const newWindow = window.open(url, '_blank');
+      if (newWindow) {
+        newWindow.onload = () => {
+          URL.revokeObjectURL(url);
+        };
+      }
+      return;
+    }
+
+    window.open(invoiceFileUrl, '_blank');
+  }, []);
+
+  const handleQCFileSelect = useCallback(
+    async (file: File, index: number) => {
+      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
+      if (!validTypes.includes(file.type)) {
+        alert('Please upload PNG, JPG, or PDF files only');
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        alert('File size must be less than 10MB');
+        return;
+      }
+
+      try {
+        const token = localStorage.getItem('accessToken');
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('bucket', 'qc');
+        fd.append('folder', 'srv-qc');
+
+        const apiBase = getApiV1BaseUrl();
+        const uploadUrl = apiBase ? `${apiBase}/upload` : '/api/v1/upload';
+
+        const response = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: fd,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          alert(`QC upload failed: ${errorData.message || response.statusText}`);
+          return;
+        }
+
+        const data = await response.json();
+        const url = String(data?.url || '').trim();
+        if (!url) {
+          alert('QC upload failed: no URL returned');
+          return;
+        }
+
+        setQcFormData((prev) => {
+          const next = [...prev];
+          next[index] = {
+            ...next[index],
+            qcFileUrl: url,
+            qcFileName: String(file.name),
+            qcFileType: String(file.type),
+            qcFileSize: Number(file.size) || 0,
+          };
+          return next;
+        });
+      } catch (e) {
+        console.error('QC upload error:', e);
+        alert('QC upload failed. Please try again.');
+      }
+    },
+    [],
+  );
+
   const openView = useCallback(
     async (row: ReceiptVoucherRow) => {
       setSelectedRow(row);
@@ -69,19 +235,41 @@ export default function SrvPage() {
       const jobOrderId = String(row.job_order_id || row.id || '').trim();
       const latestReceipt = srvHistory.find((h) => String(h.job_order_id || '').trim() === jobOrderId) || null;
 
+      setQcSummary(null);
+      fetchQcSummary(jobOrderId);
+
       const prefillQty = Number(latestReceipt?.quantity ?? row.quantity ?? 0) || 0;
       setReceivedQty(prefillQty);
       setReceiverName(String((latestReceipt as any)?.received_by_name || '') || '');
       setReceiverPhone(String((latestReceipt as any)?.received_by_phone || '') || '');
 
-      const today = new Date().toISOString().slice(0, 10);
-      setQcDate(today);
-      setQcAcceptedQty(prefillQty);
-      setQcRejectedQty(0);
+      // Initialize QC modal state (single-item SRV, but same QC screen as GRN)
+      setQcFormData([
+        {
+          itemId: String(row.item_id || row.id || '').trim() || String(row.id),
+          itemCode: String(row.item_code || '').trim() || '-',
+          itemName: String(row.item_name || '').trim() || '-',
+          receivedQty: prefillQty,
+          acceptedQty: prefillQty,
+          rejectedQty: 0,
+          qcNotes: '',
+          rejectionReason: '',
+          qcFileUrl: '',
+          qcFileName: '',
+          qcFileType: '',
+          qcFileSize: 0,
+          checked_by: '',
+        },
+      ]);
+      setQcMetadata({
+        invoiceNumber: '',
+        qcDate: getTodayDateInputValue(),
+        qcBy: '',
+      });
       setShowQcModal(false);
       setShowViewModal(true);
     },
-    [srvHistory]
+    [srvHistory, fetchQcSummary]
   );
 
   const receiveSrv = useCallback(
@@ -100,17 +288,14 @@ export default function SrvPage() {
   }, []);
 
   const qcAcceptSrv = useCallback(
-    async (jobOrderId: string, acceptedQuantity: number, rejectedQuantity: number) => {
+    async (jobOrderId: string, acceptedQuantity: number, rejectedQuantity: number, extra?: any) => {
       await apiClient.post(`/job-orders/${jobOrderId}/qc-approve`, {
         acceptedQuantity,
         rejectedQuantity,
-        metadata: {
-          qcDate,
-          source: 'SRV',
-        },
+        ...(extra || {}),
       });
     },
-    [qcDate],
+    [],
   );
 
   const deleteSrv = useCallback(
@@ -510,6 +695,13 @@ export default function SrvPage() {
                 const receivedQtyDisplay = Number(latestReceipt?.quantity ?? selectedRow.quantity ?? 0) || 0;
                 const availableQtyDisplay = Number((latestReceipt as any)?.available_quantity ?? 0) || 0;
 
+                const qcCompleted =
+                  Number(qcSummary?.passedUidsCount || 0) > 0 ||
+                  Number(qcSummary?.approvedUidsCount || 0) > 0 ||
+                  Number(qcSummary?.stockAdded || 0) > 0;
+
+                const qcActionsDisabled = qcSummaryLoading || qcCompleted;
+
                 return (
                   <>
                     <div className="p-6 space-y-6">
@@ -631,17 +823,46 @@ export default function SrvPage() {
                               alert('Please Receive SRV first.');
                               return;
                             }
-                            setQcAcceptedQty(receivedQtyDisplay);
-                            setQcRejectedQty(0);
+                            if (qcActionsDisabled) {
+                              alert('QC already completed for this SRV.');
+                              return;
+                            }
+                            setQcFormData([
+                              {
+                                itemId: String(selectedRow?.item_id || selectedRow?.id || '').trim() || String(selectedRow?.id),
+                                itemCode: String(selectedRow?.item_code || '').trim() || '-',
+                                itemName: String(selectedRow?.item_name || '').trim() || '-',
+                                receivedQty: receivedQtyDisplay,
+                                acceptedQty: receivedQtyDisplay,
+                                rejectedQty: 0,
+                                qcNotes: '',
+                                rejectionReason: '',
+                                qcFileUrl: '',
+                                qcFileName: '',
+                                qcFileType: '',
+                                qcFileSize: 0,
+                                checked_by: '',
+                              },
+                            ]);
+                            setQcMetadata({
+                              invoiceNumber: '',
+                              qcDate: getTodayDateInputValue(),
+                              qcBy: '',
+                            });
                             setShowQcModal(true);
                           }}
-                          className={`px-6 py-2 text-white rounded-lg ${latestReceipt ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}
-                          disabled={!latestReceipt}
+                          className={`px-6 py-2 text-white rounded-lg ${latestReceipt && !qcActionsDisabled ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                          disabled={!latestReceipt || qcActionsDisabled}
+                          title={qcSummaryLoading ? 'Checking QC status…' : qcCompleted ? 'QC already completed' : undefined}
                         >
                           🔍 QC Accept
                         </button>
                         <button
                           onClick={async () => {
+                            if (qcActionsDisabled) {
+                              alert('QC already completed. No further approvals needed.');
+                              return;
+                            }
                             const qty = Number(receivedQty || 0);
                             if (!Number.isFinite(qty) || qty <= 0) {
                               alert('Receive Qty must be > 0');
@@ -658,7 +879,9 @@ export default function SrvPage() {
                               alert('Failed to approve SRV: ' + (err?.response?.data?.message || err.message || err));
                             }
                           }}
-                          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                          className={`px-6 py-2 text-white rounded-lg ${qcActionsDisabled ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+                          disabled={qcActionsDisabled}
+                          title={qcSummaryLoading ? 'Checking QC status…' : qcCompleted ? 'Disabled after QC completion' : undefined}
                         >
                           ✓ Approve
                         </button>
@@ -691,94 +914,269 @@ export default function SrvPage() {
 
                     {showQcModal && (
                       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-                        <div className="bg-white rounded-lg w-[95vw] max-w-2xl max-h-[92vh] overflow-y-auto">
-                          <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-                            <h3 className="text-xl font-bold text-gray-900">QC Accept (SRV)</h3>
-                            <button
-                              onClick={() => setShowQcModal(false)}
-                              className="text-gray-500 hover:text-gray-700 text-2xl"
-                            >
-                              ×
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
+                          <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-blue-50">
+                            <h2 className="text-2xl font-bold text-gray-900">🔍 QC Inspection</h2>
+                            <button onClick={() => setShowQcModal(false)} className="text-gray-500 hover:text-gray-700">
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
                             </button>
                           </div>
-                          <div className="p-6 space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700">QC Date *</label>
-                                <input
-                                  type="date"
-                                  value={qcDate}
-                                  onChange={(e) => setQcDate(e.target.value)}
-                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700">Received Qty</label>
-                                <div className="mt-1 px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900">
-                                  {receivedQtyDisplay}
+
+                          <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+                            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                              <h3 className="text-lg font-semibold text-gray-900 mb-4">QC Information</h3>
+                              <div className="grid grid-cols-3 gap-4">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Number</label>
+                                  <input
+                                    type="text"
+                                    value={qcMetadata.invoiceNumber}
+                                    onChange={(e) => setQcMetadata({ ...qcMetadata, invoiceNumber: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Invoice #"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">QC Date *</label>
+                                  <input
+                                    type="date"
+                                    max={todayDate}
+                                    value={qcMetadata.qcDate}
+                                    onChange={(e) => setQcMetadata({ ...qcMetadata, qcDate: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">QC By</label>
+                                  <select
+                                    value={qcMetadata.qcBy}
+                                    onChange={(e) => setQcMetadata({ ...qcMetadata, qcBy: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                  >
+                                    <option value="">Select User</option>
+                                    {users.map((user) => (
+                                      <option key={user.id} value={user.id}>
+                                        {user.employee_name} {user.employee_code ? `(${user.employee_code})` : ''}
+                                      </option>
+                                    ))}
+                                  </select>
                                 </div>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700">Accepted Qty *</label>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={qcAcceptedQty}
-                                  onChange={(e) => setQcAcceptedQty(Number(e.target.value || 0))}
-                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700">Rejected Qty</label>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={qcRejectedQty}
-                                  onChange={(e) => setQcRejectedQty(Number(e.target.value || 0))}
-                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
-                                />
+
+                            <div className="mb-4 flex items-center justify-between p-3 bg-gray-100 rounded-lg">
+                              <div className="flex items-center gap-4">
+                                <label className="font-medium text-gray-700">Select All Checked By:</label>
+                                <select
+                                  onChange={(e) => {
+                                    if (e.target.value) {
+                                      const newData = qcFormData.map((item) => ({ ...item, checked_by: e.target.value }));
+                                      setQcFormData(newData);
+                                    }
+                                  }}
+                                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                >
+                                  <option value="">Select User for All Items</option>
+                                  {users.map((user) => (
+                                    <option key={user.id} value={user.id}>
+                                      {user.employee_name} {user.employee_code ? `(${user.employee_code})` : ''}
+                                    </option>
+                                  ))}
+                                </select>
                               </div>
                             </div>
-                            <div className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                              QC completion will generate UIDs for accepted quantity and release stock.
+
+                            <div className="space-y-4">
+                              {qcFormData.map((item, index) => (
+                                <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                  <div className="flex justify-between items-start mb-3">
+                                    <div>
+                                      <div className="font-semibold text-gray-900">{item.itemName}</div>
+                                      <div className="text-sm text-gray-600">Code: {item.itemCode}</div>
+                                    </div>
+                                    <div className="text-sm text-gray-600">
+                                      Received: <span className="font-semibold">{item.receivedQty}</span>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">Accepted Quantity *</label>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max={item.receivedQty}
+                                        value={item.acceptedQty}
+                                        onChange={(e) => {
+                                          const accepted = parseFloat(e.target.value) || 0;
+                                          const rejected = item.receivedQty - accepted;
+                                          const newData = [...qcFormData];
+                                          newData[index] = {
+                                            ...item,
+                                            acceptedQty: accepted,
+                                            rejectedQty: Math.max(0, rejected),
+                                          };
+                                          setQcFormData(newData);
+                                        }}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">Rejected Quantity</label>
+                                      <input
+                                        type="number"
+                                        value={item.rejectedQty}
+                                        readOnly
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {item.rejectedQty > 0 && (
+                                    <div className="mt-3">
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">Rejection Reason *</label>
+                                      <input
+                                        type="text"
+                                        value={item.rejectionReason}
+                                        onChange={(e) => {
+                                          const newData = [...qcFormData];
+                                          newData[index] = { ...item, rejectionReason: e.target.value };
+                                          setQcFormData(newData);
+                                        }}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Enter reason for rejection"
+                                      />
+                                    </div>
+                                  )}
+
+                                  <div className="mt-3">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">QC Notes</label>
+                                    <textarea
+                                      value={item.qcNotes}
+                                      onChange={(e) => {
+                                        const newData = [...qcFormData];
+                                        newData[index] = { ...item, qcNotes: e.target.value };
+                                        setQcFormData(newData);
+                                      }}
+                                      rows={2}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                      placeholder="Optional inspection notes"
+                                    />
+                                  </div>
+
+                                  <div className="mt-3">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Checked By</label>
+                                    <select
+                                      value={item.checked_by || ''}
+                                      onChange={(e) => {
+                                        const newData = [...qcFormData];
+                                        newData[index] = { ...item, checked_by: e.target.value };
+                                        setQcFormData(newData);
+                                      }}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    >
+                                      <option value="">Select User</option>
+                                      {users.map((user) => (
+                                        <option key={user.id} value={user.id}>
+                                          {user.employee_name} {user.employee_code ? `(${user.employee_code})` : ''}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  <div className="mt-3">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      Upload QC Photo / Report (PNG, JPG, PDF)
+                                    </label>
+                                    <input
+                                      type="file"
+                                      accept="image/png,image/jpeg,image/jpg,application/pdf"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleQCFileSelect(file, index);
+                                      }}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                    />
+                                    {(item.qcFileName || item.qcFileUrl) && (
+                                      <div className="text-xs text-gray-600 mt-1">
+                                        Selected: {item.qcFileName || 'QC Attachment'}
+                                        {item.qcFileUrl && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleViewInvoice(item.qcFileUrl!, item.qcFileName)}
+                                            className="ml-2 text-blue-600 hover:text-blue-800 underline"
+                                          >
+                                            View
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
+
                           <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
                             <button
                               onClick={() => setShowQcModal(false)}
-                              className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
                             >
                               Cancel
                             </button>
                             <button
                               onClick={async () => {
-                                const received = receivedQtyDisplay;
-                                const a = Number(qcAcceptedQty || 0);
-                                const r = Number(qcRejectedQty || 0);
-                                if (!qcDate) {
-                                  alert('QC Date is required');
-                                  return;
-                                }
-                                if (!Number.isFinite(a) || a <= 0) {
-                                  alert('Accepted Qty must be > 0');
-                                  return;
-                                }
-                                if (!Number.isFinite(r) || r < 0) {
-                                  alert('Rejected Qty must be >= 0');
-                                  return;
-                                }
-                                if (a + r > received) {
-                                  alert(`Accepted + Rejected cannot exceed Received (${received}).`);
-                                  return;
-                                }
-                                if (!confirm(`Complete QC now?\n\nAccepted: ${a}\nRejected: ${r}\n\nUIDs will be generated for accepted quantity.`)) {
-                                  return;
-                                }
                                 try {
-                                  await qcAcceptSrv(jobOrderId, a, r);
+                                  const hasRejectedWithoutReason = qcFormData.some(
+                                    (it) => it.rejectedQty > 0 && !it.rejectionReason?.trim(),
+                                  );
+                                  if (hasRejectedWithoutReason) {
+                                    alert('Please provide rejection reason for all rejected items');
+                                    return;
+                                  }
+
+                                  if (!qcMetadata.qcDate) {
+                                    alert('QC Date is required');
+                                    return;
+                                  }
+
+                                  const jobOrderId = String(selectedRow?.job_order_id || selectedRow?.id || '').trim();
+                                  if (!jobOrderId) {
+                                    alert('Missing Job Order ID');
+                                    return;
+                                  }
+
+                                  const accepted = qcFormData.reduce((sum, it) => sum + (Number(it.acceptedQty) || 0), 0);
+                                  const rejected = qcFormData.reduce((sum, it) => sum + (Number(it.rejectedQty) || 0), 0);
+                                  const received = qcFormData.reduce((sum, it) => sum + (Number(it.receivedQty) || 0), 0);
+
+                                  if (!Number.isFinite(accepted) || accepted <= 0) {
+                                    alert('Accepted Qty must be > 0');
+                                    return;
+                                  }
+                                  if (!Number.isFinite(rejected) || rejected < 0) {
+                                    alert('Rejected Qty must be >= 0');
+                                    return;
+                                  }
+                                  if (accepted + rejected > received) {
+                                    alert(`Accepted + Rejected cannot exceed Received (${received}).`);
+                                    return;
+                                  }
+
+                                  await qcAcceptSrv(jobOrderId, accepted, rejected, {
+                                    metadata: { ...qcMetadata, source: 'SRV' },
+                                    items: qcFormData,
+                                    checkedBy: qcFormData.reduce((acc, it) => {
+                                      const key = String(it.itemCode || it.itemId || '').trim();
+                                      if (key) acc[key] = String(it.checked_by || '').trim();
+                                      return acc;
+                                    }, {} as Record<string, string>),
+                                  });
+
                                   await loadAll();
+                                  await fetchQcSummary(jobOrderId);
                                   setShowQcModal(false);
                                   alert('✅ QC completed successfully!');
                                 } catch (err: any) {
@@ -787,7 +1185,7 @@ export default function SrvPage() {
                               }}
                               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                             >
-                              QC Accept
+                              ✓ Complete QC Inspection
                             </button>
                           </div>
                         </div>

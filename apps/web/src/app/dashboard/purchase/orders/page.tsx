@@ -1949,20 +1949,6 @@ function PurchaseOrdersContent() {
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
-                  <select
-                    value={formData.paymentTerms}
-                    onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                  >
-                    <option value="NET_30">Net 30</option>
-                    <option value="NET_60">Net 60</option>
-                    <option value="NET_90">Net 90</option>
-                    <option value="ADVANCE">Advance</option>
-                    <option value="COD">Cash on Delivery</option>
-                  </select>
-                </div>
-                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Payment Status</label>
                   <select
                     value={formData.paymentStatus}
@@ -2608,14 +2594,6 @@ function PurchaseOrdersContent() {
                 <div>
                   <p className="text-sm text-gray-600">Expected Delivery</p>
                   <p className="font-semibold">{selectedPO.delivery_date ? new Date(selectedPO.delivery_date).toLocaleDateString() : '-'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Payment Terms</p>
-                  <p className="font-semibold">{(selectedPO as any)?.payment_terms || (selectedPO as any)?.paymentTerms || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Delivery Terms</p>
-                  <p className="font-semibold">{(selectedPO as any)?.delivery_terms || (selectedPO as any)?.deliveryTerms || '-'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Total Amount</p>

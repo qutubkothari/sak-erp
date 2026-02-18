@@ -386,7 +386,6 @@ export class EmailService {
 
   private generatePOTemplate(poData: any): string {
     const vendorName = this.escapeHtml(poData?.vendor_name || 'Vendor');
-    const paymentTerms = this.escapeHtml(poData?.payment_terms || '-');
     const deliveryAddress = poData?.delivery_address ? this.escapeHtml(poData.delivery_address) : '';
     const remarks = poData?.remarks ? this.escapeHtml(poData.remarks) : '';
     const customMessageHtml = poData?.custom_message
@@ -428,7 +427,6 @@ export class EmailService {
             <div class="info-box">
               <strong>PO Date:</strong> ${this.escapeHtml(poData?.po_date || '-')}<br>
               <strong>Expected Delivery:</strong> ${this.escapeHtml(poData?.delivery_date || '-')}<br>
-              <strong>Payment Terms:</strong> ${paymentTerms}
             </div>
             
             <table class="table">
@@ -439,6 +437,8 @@ export class EmailService {
                   <th>Quantity</th>
                   <th>Unit Price</th>
                   <th>Tax %</th>
+                  <th>Payment Terms</th>
+                  <th>Delivery Terms</th>
                   <th>Amount</th>
                 </tr>
               </thead>
@@ -450,6 +450,8 @@ export class EmailService {
                     <td>${item.quantity}</td>
                     <td>₹${item.unit_price.toFixed(2)}</td>
                     <td>${item.tax_percent}%</td>
+                    <td>${this.escapeHtml(item?.payment_terms || item?.paymentTerms || '-')}</td>
+                    <td>${this.escapeHtml(item?.delivery_terms || item?.deliveryTerms || '-')}</td>
                     <td>₹${item.amount.toFixed(2)}</td>
                   </tr>
                 `).join('')}

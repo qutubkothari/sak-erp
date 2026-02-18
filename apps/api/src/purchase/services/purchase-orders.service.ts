@@ -864,6 +864,12 @@ export class PurchaseOrdersService {
     }
 
     // Generate PO PDF attachment
+    const uniq = (values: any[]) => Array.from(new Set(values.map((v) => String(v || '').trim()).filter(Boolean)));
+    const itemPaymentTerms = uniq(poItems.map((it: any) => it?.payment_terms ?? it?.paymentTerms));
+    const itemDeliveryTerms = uniq(poItems.map((it: any) => it?.delivery_terms ?? it?.deliveryTerms));
+    const aggregatedPaymentTerms = itemPaymentTerms.length > 0 ? itemPaymentTerms.join(', ') : '';
+    const aggregatedDeliveryTerms = itemDeliveryTerms.length > 0 ? itemDeliveryTerms.join(', ') : '';
+
     const poPdfBuffer = await this.poPdfService.generatePOPdf({
       poNumber: po.po_number,
       poDate: po.po_date,
@@ -881,12 +887,15 @@ export class PurchaseOrdersService {
         total_price: item.amount || 0,
         tax_amount: ((item.rate || 0) * (item.ordered_qty || 0) * (item.tax_percent || 0)) / 100,
         specifications: item.specifications || '',
+        payment_terms: (item.payment_terms ?? item.paymentTerms ?? '')?.toString?.() ?? '',
+        delivery_terms: (item.delivery_terms ?? item.deliveryTerms ?? '')?.toString?.() ?? '',
       })),
       subtotal: (po.total_amount || 0) - (po.customs_duty || 0) - (po.other_charges || 0),
       taxTotal: poItems.reduce((sum: number, item: any) => 
         sum + (((item.rate || 0) * (item.ordered_qty || 0) * (item.tax_percent || 0)) / 100), 0),
       grandTotal: po.total_amount || 0,
-      paymentTerms: po.payment_terms,
+      paymentTerms: aggregatedPaymentTerms || undefined,
+      deliveryTerms: aggregatedDeliveryTerms || undefined,
       deliveryDate: po.delivery_date,
       remarks: po.remarks,
       companyName: 'SAIF AUTOMATIONS SERVICES LLP',
@@ -906,7 +915,6 @@ export class PurchaseOrdersService {
       po_number: po.po_number,
       po_date: po.po_date,
       delivery_date: po.delivery_date,
-      payment_terms: po.payment_terms,
       vendor_name: po.vendor.name,
       items: poItems.map((item: any) => ({
         item_name: item.item_name,
@@ -914,6 +922,8 @@ export class PurchaseOrdersService {
         unit_price: item.rate,
         tax_percent: item.tax_percent,
         amount: item.amount,
+        payment_terms: (item.payment_terms ?? item.paymentTerms ?? '')?.toString?.() ?? '',
+        delivery_terms: (item.delivery_terms ?? item.deliveryTerms ?? '')?.toString?.() ?? '',
       })),
       customs_duty: po.customs_duty,
       other_charges: po.other_charges,
