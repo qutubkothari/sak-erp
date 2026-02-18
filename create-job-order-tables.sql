@@ -9,6 +9,7 @@ DO $$ BEGIN
     'DRAFT',
     'SCHEDULED',
     'IN_PROGRESS',
+    'STORE_ISSUED',
     'COMPLETED',
     'CANCELLED',
     'ON_HOLD'

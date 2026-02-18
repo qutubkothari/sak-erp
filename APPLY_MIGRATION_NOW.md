@@ -113,3 +113,22 @@ All purchase management tests should PASS, unblocking:
 The system is non-functional without these tables. Authentication works but all business processes are blocked.
 
 **Status:** ⚠️ BLOCKING - Apply immediately before any further testing
+
+---
+
+# URGENT: Fix SRV error (STORE_ISSUED enum)
+
+## Symptom
+SRV page shows:
+> Failed to load SRV data: invalid input value for enum job_order_status: "STORE_ISSUED"
+
+## Fix (Supabase SQL Editor)
+Run the migration file:
+- `add-store-issued-job-order-status.sql`
+
+Or run this SQL directly:
+```sql
+ALTER TYPE public.job_order_status
+   ADD VALUE IF NOT EXISTS 'STORE_ISSUED';
+```
+
