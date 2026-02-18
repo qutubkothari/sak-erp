@@ -46,7 +46,6 @@ const navigation = [
       { name: 'Vendors', href: '/dashboard/purchase/vendors' },
       { name: 'Requisitions', href: '/dashboard/purchase/requisitions' },
       { name: 'Orders', href: '/dashboard/purchase/orders' },
-      { name: 'GRN', href: '/dashboard/purchase/grn' },
       { name: 'Debit Notes', href: '/dashboard/purchase/debit-notes' },
     ],
   },
@@ -57,6 +56,7 @@ const navigation = [
     children: [
       { name: 'Stock Overview', href: '/dashboard/inventory' },
       { name: 'Stock Master', href: '/dashboard/inventory/items' },
+      { name: 'GRN', href: '/dashboard/purchase/grn' },
       { name: 'SIV', href: '/dashboard/inventory/siv' },
       { name: 'SRV', href: '/dashboard/inventory/srv' },
       { name: 'Import Items', href: '/dashboard/inventory/items/import' },

@@ -729,7 +729,23 @@ function GRNContent() {
       
       const data = await response.json();
       console.log('Warehouses fetched:', data);
-      setWarehouses(Array.isArray(data) ? data : []);
+      const warehousesList = Array.isArray(data) ? data : [];
+      setWarehouses(warehousesList);
+
+      // Default to "Main" warehouse for Create GRN (do not override if user already selected)
+      if (warehousesList.length > 0) {
+        const normalize = (v: any) => String(v || '').trim().toLowerCase();
+        const main =
+          warehousesList.find((w: any) => normalize(w?.code) === 'main') ||
+          warehousesList.find((w: any) => normalize(w?.name).includes('main')) ||
+          warehousesList[0];
+        const mainId = String((main as any)?.id || '').trim();
+
+        if (mainId) {
+          setFormData((prev) => (prev.warehouseId ? prev : { ...prev, warehouseId: mainId }));
+          setEditFormData((prev) => (prev.warehouseId ? prev : { ...prev, warehouseId: mainId }));
+        }
+      }
     } catch (error) {
       console.error('Error fetching warehouses:', error);
       setWarehouses([]);
