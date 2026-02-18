@@ -328,6 +328,8 @@ interface SidebarProps {
 export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
+  // Tracks sections the user explicitly collapsed, so auto-expand doesn't immediately re-open them.
+  const [manuallyCollapsedSections, setManuallyCollapsedSections] = useState<string[]>([]);
   const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
 
   useEffect(() => {
@@ -398,10 +400,13 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       item.children?.some((child) => pathname.startsWith(child.href.split('?')[0])),
     );
     if (!activeSection) return;
+    // Respect manual collapse: don't force-open a section the user just collapsed.
+    if (manuallyCollapsedSections.includes(activeSection.name)) return;
+
     setExpandedSections((prev) =>
       prev.includes(activeSection.name) ? prev : [...prev, activeSection.name],
     );
-  }, [pathname, finalNavigation]);
+  }, [pathname, finalNavigation, manuallyCollapsedSections]);
 
   const isActivePath = (href: string) => {
     const basePath = href.split('?')[0];
@@ -410,9 +415,22 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
   const toggleSection = (name: string) => {
     if (collapsed) return;
-    setExpandedSections(prev =>
-      prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name]
-    );
+    setExpandedSections((prev) => {
+      const isExpanded = prev.includes(name);
+
+      // Update manual-collapse tracker.
+      setManuallyCollapsedSections((collapsedPrev) => {
+        const has = collapsedPrev.includes(name);
+        if (isExpanded) {
+          // User is collapsing
+          return has ? collapsedPrev : [...collapsedPrev, name];
+        }
+        // User is expanding
+        return has ? collapsedPrev.filter((s) => s !== name) : collapsedPrev;
+      });
+
+      return isExpanded ? prev.filter((s) => s !== name) : [...prev, name];
+    });
   };
 
   const getUserInitials = () => {
