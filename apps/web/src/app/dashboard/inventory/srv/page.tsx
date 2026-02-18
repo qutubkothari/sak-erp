@@ -28,11 +28,18 @@ export default function SrvPage() {
   const [srvHistory, setSrvHistory] = useState<ReceiptVoucherRow[]>([]);
   const [activeSrvView, setActiveSrvView] = useState<'open' | 'history'>('open');
 
-  const [showReceiveModal, setShowReceiveModal] = useState(false);
-  const [selectedReceiveRow, setSelectedReceiveRow] = useState<ReceiptVoucherRow | null>(null);
+  // View SRV Details (GRN-like)
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedRow, setSelectedRow] = useState<ReceiptVoucherRow | null>(null);
   const [receiverName, setReceiverName] = useState('');
   const [receiverPhone, setReceiverPhone] = useState('');
   const [receivedQty, setReceivedQty] = useState<number>(0);
+
+  // QC Accept (GRN-like)
+  const [showQcModal, setShowQcModal] = useState(false);
+  const [qcDate, setQcDate] = useState<string>('');
+  const [qcAcceptedQty, setQcAcceptedQty] = useState<number>(0);
+  const [qcRejectedQty, setQcRejectedQty] = useState<number>(0);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -55,25 +62,55 @@ export default function SrvPage() {
     loadAll();
   }, [loadAll]);
 
-  const approveSrv = useCallback(
-    async (movementId: string) => {
-      try {
-        // Approve is handled via the Receive popup (GRN-like)
-        const row = openSrvs.find((r) => r.id === movementId) || null;
-        if (!row) {
-          alert('SRV row not found. Please refresh and try again.');
-          return;
-        }
-        setSelectedReceiveRow(row);
-        setReceiverName('');
-        setReceiverPhone('');
-        setReceivedQty(Number(row.quantity || 0) || 0);
-        setShowReceiveModal(true);
-      } catch (err: any) {
-        alert('Failed to approve SRV: ' + (err.message || err));
-      }
+  const openView = useCallback(
+    async (row: ReceiptVoucherRow) => {
+      setSelectedRow(row);
+
+      const jobOrderId = String(row.job_order_id || row.id || '').trim();
+      const latestReceipt = srvHistory.find((h) => String(h.job_order_id || '').trim() === jobOrderId) || null;
+
+      const prefillQty = Number(latestReceipt?.quantity ?? row.quantity ?? 0) || 0;
+      setReceivedQty(prefillQty);
+      setReceiverName(String((latestReceipt as any)?.received_by_name || '') || '');
+      setReceiverPhone(String((latestReceipt as any)?.received_by_phone || '') || '');
+
+      const today = new Date().toISOString().slice(0, 10);
+      setQcDate(today);
+      setQcAcceptedQty(prefillQty);
+      setQcRejectedQty(0);
+      setShowQcModal(false);
+      setShowViewModal(true);
     },
-    [loadAll, openSrvs]
+    [srvHistory]
+  );
+
+  const receiveSrv = useCallback(
+    async (row: ReceiptVoucherRow, qty: number) => {
+      await apiClient.post(`/job-orders/store/receipt-vouchers/${row.id}/receive`, {
+        receiverName,
+        receiverPhone,
+        receivedQuantity: qty,
+      });
+    },
+    [receiverName, receiverPhone],
+  );
+
+  const approveSrv = useCallback(async (row: ReceiptVoucherRow) => {
+    await apiClient.put(`/job-orders/store/receipt-vouchers/${row.id}/approve`, {});
+  }, []);
+
+  const qcAcceptSrv = useCallback(
+    async (jobOrderId: string, acceptedQuantity: number, rejectedQuantity: number) => {
+      await apiClient.post(`/job-orders/${jobOrderId}/qc-approve`, {
+        acceptedQuantity,
+        rejectedQuantity,
+        metadata: {
+          qcDate,
+          source: 'SRV',
+        },
+      });
+    },
+    [qcDate],
   );
 
   const deleteSrv = useCallback(
@@ -328,10 +365,10 @@ export default function SrvPage() {
                             Print
                           </button>
                           <button
-                            onClick={() => approveSrv(row.id)}
-                            className="text-green-600 hover:text-green-900 font-medium"
+                            onClick={() => openView(row)}
+                            className="text-amber-600 hover:text-amber-900 font-medium"
                           >
-                            View / Receive
+                            View
                           </button>
                           <button
                             onClick={() => deleteSrv(row.id)}
@@ -419,6 +456,12 @@ export default function SrvPage() {
                       <td className="px-6 py-4 text-sm">
                         <div className="flex gap-3">
                           <button
+                            onClick={() => openView(row)}
+                            className="text-amber-600 hover:text-amber-900 font-medium"
+                          >
+                            View
+                          </button>
+                          <button
                             onClick={() => printSrv(row)}
                             className="text-gray-600 hover:text-gray-900 font-medium"
                           >
@@ -440,15 +483,16 @@ export default function SrvPage() {
           </div>
         )}
 
-        {showReceiveModal && selectedReceiveRow && (
+        {showViewModal && selectedRow && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg w-[95vw] max-w-2xl max-h-[92vh] overflow-y-auto">
+            <div className="bg-white rounded-lg w-[95vw] max-w-7xl max-h-[92vh] overflow-y-auto">
               <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-gray-900">Receive SRV</h2>
+                <h2 className="text-2xl font-bold text-gray-900">View SRV Details</h2>
                 <button
                   onClick={() => {
-                    setShowReceiveModal(false);
-                    setSelectedReceiveRow(null);
+                    setShowViewModal(false);
+                    setSelectedRow(null);
+                    setShowQcModal(false);
                   }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
@@ -456,98 +500,302 @@ export default function SrvPage() {
                 </button>
               </div>
 
-              <div className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Job Order</label>
-                    <div className="mt-1 text-gray-900 font-semibold">
-                      {selectedReceiveRow.job_order_number || selectedReceiveRow.job_order_id || selectedReceiveRow.id}
+              {(() => {
+                const jobOrderId = String(selectedRow.job_order_id || selectedRow.id || '').trim();
+                const latestReceipt = srvHistory.find((h) => String(h.job_order_id || '').trim() === jobOrderId) || null;
+                const statusLabel = latestReceipt?.approved_by ? 'APPROVED' : 'DRAFT';
+                const receivedAt = (latestReceipt as any)?.received_at || latestReceipt?.movement_date || null;
+                const approvedAt = latestReceipt?.approved_at || null;
+
+                const receivedQtyDisplay = Number(latestReceipt?.quantity ?? selectedRow.quantity ?? 0) || 0;
+                const availableQtyDisplay = Number((latestReceipt as any)?.available_quantity ?? 0) || 0;
+
+                return (
+                  <>
+                    <div className="p-6 space-y-6">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">Job Order</label>
+                          <p className="mt-1 text-gray-900 font-semibold">
+                            {selectedRow.job_order_number || selectedRow.job_order_id || selectedRow.id}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">Status</label>
+                          <span
+                            className={`inline-block mt-1 px-3 py-1 text-xs font-semibold rounded-full ${
+                              statusLabel === 'APPROVED'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            {statusLabel}
+                          </span>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">Received At</label>
+                          <p className="mt-1 text-gray-900">
+                            {receivedAt ? new Date(receivedAt).toLocaleString() : '-'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">Approved At</label>
+                          <p className="mt-1 text-gray-900">
+                            {approvedAt ? new Date(approvedAt).toLocaleString() : '-'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">Item</label>
+                          <p className="mt-1 text-gray-900">
+                            {selectedRow.item_code} - {selectedRow.item_name}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">Warehouse</label>
+                          <p className="mt-1 text-gray-900">
+                            {latestReceipt?.to_warehouse_id || selectedRow.to_warehouse_id || '-'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <table className="min-w-full">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">S.No</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Item Code</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Item Name</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">UOM</th>
+                              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Received</th>
+                              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Accepted</th>
+                              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">Rejected</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr className="border-t">
+                              <td className="px-4 py-2 text-sm text-gray-700">1</td>
+                              <td className="px-4 py-2 text-sm text-gray-700">{selectedRow.item_code || '-'}</td>
+                              <td className="px-4 py-2 text-sm text-gray-700">{selectedRow.item_name || '-'}</td>
+                              <td className="px-4 py-2 text-sm text-gray-700">-</td>
+                              <td className="px-4 py-2 text-sm text-gray-700 text-center">{receivedQtyDisplay}</td>
+                              <td className="px-4 py-2 text-sm text-green-700 text-center">{availableQtyDisplay}</td>
+                              <td className="px-4 py-2 text-sm text-red-700 text-center">-</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">Receive Qty *</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={receivedQty}
+                            onChange={(e) => setReceivedQty(Number(e.target.value || 0))}
+                            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">Received By (Name)</label>
+                          <input
+                            type="text"
+                            value={receiverName}
+                            onChange={(e) => setReceiverName(e.target.value)}
+                            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                            placeholder="Store keeper name"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">Received By (Phone)</label>
+                          <input
+                            type="text"
+                            value={receiverPhone}
+                            onChange={(e) => setReceiverPhone(e.target.value)}
+                            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                            placeholder="Phone"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="text-sm text-gray-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        UIDs will NOT be generated at SRV receipt. UIDs will be generated only after QC is completed.
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Item</label>
-                    <div className="mt-1 text-gray-900">
-                      {selectedReceiveRow.item_code} - {selectedReceiveRow.item_name}
+
+                    <div className="p-6 border-t border-gray-200 flex justify-between items-center">
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => {
+                            if (!latestReceipt) {
+                              alert('Please Receive SRV first.');
+                              return;
+                            }
+                            setQcAcceptedQty(receivedQtyDisplay);
+                            setQcRejectedQty(0);
+                            setShowQcModal(true);
+                          }}
+                          className={`px-6 py-2 text-white rounded-lg ${latestReceipt ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                          disabled={!latestReceipt}
+                        >
+                          🔍 QC Accept
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const qty = Number(receivedQty || 0);
+                            if (!Number.isFinite(qty) || qty <= 0) {
+                              alert('Receive Qty must be > 0');
+                              return;
+                            }
+                            try {
+                              if (!latestReceipt) {
+                                await receiveSrv(selectedRow, qty);
+                              }
+                              await approveSrv(selectedRow);
+                              await loadAll();
+                              alert('✅ SRV approved successfully!');
+                            } catch (err: any) {
+                              alert('Failed to approve SRV: ' + (err?.response?.data?.message || err.message || err));
+                            }
+                          }}
+                          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                        >
+                          ✓ Approve
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await deleteSrv(selectedRow.id);
+                              setShowViewModal(false);
+                              setSelectedRow(null);
+                            } catch (err: any) {
+                              alert('Failed to reject SRV: ' + (err?.response?.data?.message || err.message || err));
+                            }
+                          }}
+                          className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                        >
+                          ✗ Reject
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setShowViewModal(false);
+                          setSelectedRow(null);
+                          setShowQcModal(false);
+                        }}
+                        className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+                      >
+                        Close
+                      </button>
                     </div>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Received Qty *</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={receivedQty}
-                      onChange={(e) => setReceivedQty(Number(e.target.value || 0))}
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Received By (Name)</label>
-                    <input
-                      type="text"
-                      value={receiverName}
-                      onChange={(e) => setReceiverName(e.target.value)}
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
-                      placeholder="Store keeper name"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Received By (Phone)</label>
-                    <input
-                      type="text"
-                      value={receiverPhone}
-                      onChange={(e) => setReceiverPhone(e.target.value)}
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
-                      placeholder="Phone"
-                    />
-                  </div>
-                </div>
-
-                <div className="text-sm text-gray-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  UIDs will NOT be generated at SRV receipt. UIDs will be generated only after QC is completed.
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setShowReceiveModal(false);
-                    setSelectedReceiveRow(null);
-                  }}
-                  className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!selectedReceiveRow) return;
-                    const qty = Number(receivedQty || 0);
-                    if (!Number.isFinite(qty) || qty <= 0) {
-                      alert('Received Qty must be > 0');
-                      return;
-                    }
-                    try {
-                      await apiClient.post(`/job-orders/store/receipt-vouchers/${selectedReceiveRow.id}/receive`, {
-                        receiverName,
-                        receiverPhone,
-                        receivedQuantity: qty,
-                      });
-                      await apiClient.put(`/job-orders/store/receipt-vouchers/${selectedReceiveRow.id}/approve`, {});
-                      await loadAll();
-                      setShowReceiveModal(false);
-                      setSelectedReceiveRow(null);
-                      alert('✅ SRV received and approved successfully!');
-                    } catch (err: any) {
-                      alert('Failed to receive SRV: ' + (err?.response?.data?.message || err.message || err));
-                    }
-                  }}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                >
-                  Receive & Approve
-                </button>
-              </div>
+                    {showQcModal && (
+                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+                        <div className="bg-white rounded-lg w-[95vw] max-w-2xl max-h-[92vh] overflow-y-auto">
+                          <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+                            <h3 className="text-xl font-bold text-gray-900">QC Accept (SRV)</h3>
+                            <button
+                              onClick={() => setShowQcModal(false)}
+                              className="text-gray-500 hover:text-gray-700 text-2xl"
+                            >
+                              ×
+                            </button>
+                          </div>
+                          <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">QC Date *</label>
+                                <input
+                                  type="date"
+                                  value={qcDate}
+                                  onChange={(e) => setQcDate(e.target.value)}
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">Received Qty</label>
+                                <div className="mt-1 px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900">
+                                  {receivedQtyDisplay}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">Accepted Qty *</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={qcAcceptedQty}
+                                  onChange={(e) => setQcAcceptedQty(Number(e.target.value || 0))}
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">Rejected Qty</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={qcRejectedQty}
+                                  onChange={(e) => setQcRejectedQty(Number(e.target.value || 0))}
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                                />
+                              </div>
+                            </div>
+                            <div className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                              QC completion will generate UIDs for accepted quantity and release stock.
+                            </div>
+                          </div>
+                          <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+                            <button
+                              onClick={() => setShowQcModal(false)}
+                              className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const received = receivedQtyDisplay;
+                                const a = Number(qcAcceptedQty || 0);
+                                const r = Number(qcRejectedQty || 0);
+                                if (!qcDate) {
+                                  alert('QC Date is required');
+                                  return;
+                                }
+                                if (!Number.isFinite(a) || a <= 0) {
+                                  alert('Accepted Qty must be > 0');
+                                  return;
+                                }
+                                if (!Number.isFinite(r) || r < 0) {
+                                  alert('Rejected Qty must be >= 0');
+                                  return;
+                                }
+                                if (a + r > received) {
+                                  alert(`Accepted + Rejected cannot exceed Received (${received}).`);
+                                  return;
+                                }
+                                if (!confirm(`Complete QC now?\n\nAccepted: ${a}\nRejected: ${r}\n\nUIDs will be generated for accepted quantity.`)) {
+                                  return;
+                                }
+                                try {
+                                  await qcAcceptSrv(jobOrderId, a, r);
+                                  await loadAll();
+                                  setShowQcModal(false);
+                                  alert('✅ QC completed successfully!');
+                                } catch (err: any) {
+                                  alert('Failed to QC Accept: ' + (err?.response?.data?.message || err.message || err));
+                                }
+                              }}
+                              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                            >
+                              QC Accept
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}
