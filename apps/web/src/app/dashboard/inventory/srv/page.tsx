@@ -24,6 +24,8 @@ type ReceiptVoucherRow = {
   to_warehouse_id?: string;
   movement_date?: string;
   received_by?: string;
+  received_by_name?: string;
+  received_by_phone?: string;
   approved_by?: string;
   approved_at?: string;
   notes?: string;
@@ -34,6 +36,16 @@ type User = {
   employee_code?: string;
 };
 
+type Warehouse = {
+  id: string;
+  code?: string;
+  name?: string;
+};
+
+function isUuidLike(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
 export default function SrvPage() {
   const router = useRouter();
   const todayDate = getTodayDateInputValue();
@@ -42,6 +54,7 @@ export default function SrvPage() {
   const [srvHistory, setSrvHistory] = useState<ReceiptVoucherRow[]>([]);
   const [activeSrvView, setActiveSrvView] = useState<'open' | 'history'>('open');
   const [users, setUsers] = useState<User[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
 
   const [qcSummary, setQcSummary] = useState<any | null>(null);
   const [qcSummaryLoading, setQcSummaryLoading] = useState(false);
@@ -122,6 +135,65 @@ export default function SrvPage() {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  const fetchWarehouses = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('/api/v1/inventory/warehouses', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        setWarehouses([]);
+        return;
+      }
+
+      const data = await response.json();
+      setWarehouses(Array.isArray(data) ? data : []);
+    } catch {
+      setWarehouses([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchWarehouses();
+  }, [fetchWarehouses]);
+
+  const resolveWarehouseLabel = useCallback(
+    (warehouseId?: string | null) => {
+      const id = String(warehouseId || '').trim();
+      if (!id) return '-';
+
+      const wh = warehouses.find((w) => String(w?.id || '').trim() === id);
+      if (!wh) return id;
+
+      const code = String(wh.code || '').trim();
+      const name = String(wh.name || '').trim();
+
+      if (code && name) return `${code} - ${name}`;
+      return name || code || id;
+    },
+    [warehouses],
+  );
+
+  const resolveEmployeeLabel = useCallback(
+    (value?: string | null) => {
+      const raw = String(value || '').trim();
+      if (!raw) return '-';
+
+      if (!isUuidLike(raw)) return raw;
+
+      const user = users.find((u) => String(u?.id || '').trim() === raw);
+      if (!user) return raw;
+
+      const code = String(user.employee_code || '').trim();
+      return `${user.employee_name}${code ? ` (${code})` : ''}`;
+    },
+    [users],
+  );
 
   const fetchQcSummary = useCallback(async (jobOrderId: string) => {
     const id = String(jobOrderId || '').trim();
@@ -240,8 +312,9 @@ export default function SrvPage() {
 
       const prefillQty = Number(latestReceipt?.quantity ?? row.quantity ?? 0) || 0;
       setReceivedQty(prefillQty);
-      setReceiverName(String((latestReceipt as any)?.received_by_name || '') || '');
-      setReceiverPhone(String((latestReceipt as any)?.received_by_phone || '') || '');
+      const receivedByName = String((latestReceipt as any)?.received_by_name || (latestReceipt as any)?.received_by || row.received_by_name || row.received_by || '').trim();
+      setReceiverName(receivedByName ? resolveEmployeeLabel(receivedByName) : '');
+      setReceiverPhone(String((latestReceipt as any)?.received_by_phone || row.received_by_phone || '') || '');
 
       // Initialize QC modal state (single-item SRV, but same QC screen as GRN)
       setQcFormData([
@@ -269,7 +342,7 @@ export default function SrvPage() {
       setShowQcModal(false);
       setShowViewModal(true);
     },
-    [srvHistory, fetchQcSummary]
+    [srvHistory, fetchQcSummary, resolveEmployeeLabel]
   );
 
   const receiveSrv = useCallback(
@@ -316,6 +389,9 @@ export default function SrvPage() {
     const receivedAt = row.movement_date ? new Date(row.movement_date).toLocaleString() : '-';
     const approvedAt = row.approved_at ? new Date(row.approved_at).toLocaleString() : '-';
     const statusLabel = row.approved_by ? 'APPROVED' : 'PENDING';
+
+    const warehouseLabel = resolveWarehouseLabel(row.to_warehouse_id);
+    const receivedByLabel = resolveEmployeeLabel(row.received_by);
     const html = `
       <!DOCTYPE html>
       <html>
@@ -375,11 +451,11 @@ export default function SrvPage() {
             </div>
             <div class="field">
               <div class="label">To Warehouse</div>
-              <div class="value">${row.to_warehouse_id || '-'}</div>
+              <div class="value">${warehouseLabel || '-'}</div>
             </div>
             <div class="field">
               <div class="label">Received By</div>
-              <div class="value">${row.received_by || '-'}</div>
+              <div class="value">${receivedByLabel || '-'}</div>
             </div>
             <div class="field">
               <div class="label">Approved By</div>
@@ -435,7 +511,7 @@ export default function SrvPage() {
       w.document.close();
       w.print();
     }
-  }, []);
+  }, [resolveEmployeeLabel, resolveWarehouseLabel]);
 
   return (
     <div className="min-h-screen bg-[#E8DCC4] p-8">
@@ -535,7 +611,7 @@ export default function SrvPage() {
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-700">{row.uid || '-'}</td>
                       <td className="px-6 py-4 text-sm text-gray-700">{row.quantity || 0}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{row.received_by || '-'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-700">{resolveEmployeeLabel(row.received_by)}</td>
                       <td className="px-6 py-4 text-sm text-gray-700">
                         {row.movement_date
                           ? new Date(row.movement_date).toLocaleString()
@@ -621,7 +697,7 @@ export default function SrvPage() {
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-700">{row.uid || '-'}</td>
                       <td className="px-6 py-4 text-sm text-gray-700">{row.quantity || 0}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{row.received_by || '-'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-700">{resolveEmployeeLabel(row.received_by)}</td>
                       <td className="px-6 py-4 text-sm text-gray-700">
                         {row.movement_date
                           ? new Date(row.movement_date).toLocaleString()
@@ -700,7 +776,8 @@ export default function SrvPage() {
                   Number(qcSummary?.approvedUidsCount || 0) > 0 ||
                   Number(qcSummary?.stockAdded || 0) > 0;
 
-                const qcActionsDisabled = qcSummaryLoading || qcCompleted;
+                const srvApproved = Boolean(latestReceipt?.approved_by);
+                const qcActionsDisabled = qcSummaryLoading || qcCompleted || srvApproved;
 
                 return (
                   <>
@@ -745,7 +822,7 @@ export default function SrvPage() {
                         <div>
                           <label className="block text-sm font-medium text-gray-700">Warehouse</label>
                           <p className="mt-1 text-gray-900">
-                            {latestReceipt?.to_warehouse_id || selectedRow.to_warehouse_id || '-'}
+                            {resolveWarehouseLabel(latestReceipt?.to_warehouse_id || selectedRow.to_warehouse_id)}
                           </p>
                         </div>
                       </div>
@@ -818,49 +895,68 @@ export default function SrvPage() {
                     <div className="p-6 border-t border-gray-200 flex justify-between items-center">
                       <div className="flex gap-3">
                         <button
-                          onClick={() => {
-                            if (!latestReceipt) {
-                              alert('Please Receive SRV first.');
-                              return;
-                            }
-                            if (qcActionsDisabled) {
+                          onClick={async () => {
+                            if (qcSummaryLoading) return;
+                            if (qcCompleted) {
                               alert('QC already completed for this SRV.');
                               return;
                             }
-                            setQcFormData([
-                              {
-                                itemId: String(selectedRow?.item_id || selectedRow?.id || '').trim() || String(selectedRow?.id),
-                                itemCode: String(selectedRow?.item_code || '').trim() || '-',
-                                itemName: String(selectedRow?.item_name || '').trim() || '-',
-                                receivedQty: receivedQtyDisplay,
-                                acceptedQty: receivedQtyDisplay,
-                                rejectedQty: 0,
-                                qcNotes: '',
-                                rejectionReason: '',
-                                qcFileUrl: '',
-                                qcFileName: '',
-                                qcFileType: '',
-                                qcFileSize: 0,
-                                checked_by: '',
-                              },
-                            ]);
-                            setQcMetadata({
-                              invoiceNumber: '',
-                              qcDate: getTodayDateInputValue(),
-                              qcBy: '',
-                            });
-                            setShowQcModal(true);
+                            if (srvApproved) {
+                              alert('SRV already approved.');
+                              return;
+                            }
+
+                            const qty = Number(receivedQty || 0);
+                            if (!Number.isFinite(qty) || qty <= 0) {
+                              alert('Receive Qty must be > 0');
+                              return;
+                            }
+
+                            try {
+                              // Ensure SRV receipt exists (QC happens AFTER receipt).
+                              if (!latestReceipt) {
+                                await receiveSrv(selectedRow, qty);
+                                await loadAll();
+                              }
+
+                              setQcFormData([
+                                {
+                                  itemId: String(selectedRow?.item_id || selectedRow?.id || '').trim() || String(selectedRow?.id),
+                                  itemCode: String(selectedRow?.item_code || '').trim() || '-',
+                                  itemName: String(selectedRow?.item_name || '').trim() || '-',
+                                  receivedQty: Number(receivedQtyDisplay || qty) || qty,
+                                  acceptedQty: Number(receivedQtyDisplay || qty) || qty,
+                                  rejectedQty: 0,
+                                  qcNotes: '',
+                                  rejectionReason: '',
+                                  qcFileUrl: '',
+                                  qcFileName: '',
+                                  qcFileType: '',
+                                  qcFileSize: 0,
+                                  checked_by: '',
+                                },
+                              ]);
+                              setQcMetadata({
+                                invoiceNumber: '',
+                                qcDate: getTodayDateInputValue(),
+                                qcBy: '',
+                              });
+                              setShowQcModal(true);
+                            } catch (err: any) {
+                              alert('Failed to start QC: ' + (err?.response?.data?.message || err.message || err));
+                            }
                           }}
-                          className={`px-6 py-2 text-white rounded-lg ${latestReceipt && !qcActionsDisabled ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}
-                          disabled={!latestReceipt || qcActionsDisabled}
-                          title={qcSummaryLoading ? 'Checking QC status…' : qcCompleted ? 'QC already completed' : undefined}
+                          className={`px-6 py-2 text-white rounded-lg ${!qcActionsDisabled ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                          disabled={qcActionsDisabled}
+                          title={qcSummaryLoading ? 'Checking QC status…' : srvApproved ? 'Already approved' : qcCompleted ? 'QC already completed' : undefined}
                         >
                           🔍 QC Accept
                         </button>
                         <button
                           onClick={async () => {
-                            if (qcActionsDisabled) {
-                              alert('QC already completed. No further approvals needed.');
+                            if (qcSummaryLoading) return;
+                            if (srvApproved) {
+                              alert('SRV already approved.');
                               return;
                             }
                             const qty = Number(receivedQty || 0);
@@ -868,10 +964,30 @@ export default function SrvPage() {
                               alert('Receive Qty must be > 0');
                               return;
                             }
+
                             try {
+                              // Ensure receipt exists (approve is not allowed on a non-received SRV)
                               if (!latestReceipt) {
                                 await receiveSrv(selectedRow, qty);
+                                await loadAll();
                               }
+
+                              // Enforce GRN-like behavior: approval requires QC completion.
+                              // (Backend also enforces this; this just gives immediate feedback.)
+                              const jobOrderId = String(selectedRow.job_order_id || selectedRow.id || '').trim();
+                              const freshSummary = await apiClient.get<any>(`/job-orders/${jobOrderId}/qc-summary`);
+                              const freshQcCompleted =
+                                Number(freshSummary?.passedUidsCount || 0) > 0 ||
+                                Number(freshSummary?.approvedUidsCount || 0) > 0 ||
+                                Number(freshSummary?.stockAdded || 0) > 0;
+
+                              if (!freshQcCompleted) {
+                                alert(
+                                  'Cannot approve SRV: QC inspection must be completed first. Please complete QC via the QC Accept action.',
+                                );
+                                return;
+                              }
+
                               await approveSrv(selectedRow);
                               await loadAll();
                               alert('✅ SRV approved successfully!');
@@ -879,9 +995,9 @@ export default function SrvPage() {
                               alert('Failed to approve SRV: ' + (err?.response?.data?.message || err.message || err));
                             }
                           }}
-                          className={`px-6 py-2 text-white rounded-lg ${qcActionsDisabled ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
-                          disabled={qcActionsDisabled}
-                          title={qcSummaryLoading ? 'Checking QC status…' : qcCompleted ? 'Disabled after QC completion' : undefined}
+                          className={`px-6 py-2 text-white rounded-lg ${qcSummaryLoading || srvApproved ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+                          disabled={qcSummaryLoading || srvApproved}
+                          title={qcSummaryLoading ? 'Checking QC status…' : srvApproved ? 'Already approved' : undefined}
                         >
                           ✓ Approve
                         </button>

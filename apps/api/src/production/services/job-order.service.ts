@@ -4119,6 +4119,25 @@ export class JobOrderService {
       throw new BadRequestException('Not a SRV history row');
     }
 
+    // GRN-like rule: SRV cannot be approved until QC inspection is completed.
+    // (SRV receipt itself is stored as a stock_entry with available_quantity=0; stock becomes available only after QC.)
+    const jobOrderId = String(meta?.job_order_id || '').trim();
+    if (!jobOrderId) {
+      throw new BadRequestException('Cannot approve SRV: missing job_order_id');
+    }
+
+    const qcSummary = await this.getQcSummary(tenantId, jobOrderId);
+    const qcCompleted =
+      Number((qcSummary as any)?.passedUidsCount || 0) > 0 ||
+      Number((qcSummary as any)?.approvedUidsCount || 0) > 0 ||
+      Number((qcSummary as any)?.stockAdded || 0) > 0;
+
+    if (!qcCompleted) {
+      throw new BadRequestException(
+        'Cannot approve SRV: QC inspection must be completed first. Please complete QC via the QC Accept action.',
+      );
+    }
+
     const nextMeta = {
       ...meta,
       srv_approved_by: approver,
