@@ -302,26 +302,26 @@ export default function SrvPage() {
 
   const openView = useCallback(
     async (row: ReceiptVoucherRow) => {
-      setSelectedRow(row);
+      const receiptRow = openSrvs.find((o) => o.id === row.id) || srvHistory.find((h) => h.id === row.id) || row;
+      setSelectedRow(receiptRow);
 
-      const jobOrderId = String(row.job_order_id || row.id || '').trim();
-      const latestReceipt = srvHistory.find((h) => String(h.job_order_id || '').trim() === jobOrderId) || null;
+      const jobOrderId = String(receiptRow.job_order_id || receiptRow.id || '').trim();
 
       setQcSummary(null);
       fetchQcSummary(jobOrderId);
 
-      const prefillQty = Number(latestReceipt?.quantity ?? row.quantity ?? 0) || 0;
+      const prefillQty = Number(receiptRow.quantity ?? 0) || 0;
       setReceivedQty(prefillQty);
       const receivedByNameRaw = String(
-        (latestReceipt as any)?.received_by_name ||
-          row.received_by_name ||
-          (latestReceipt as any)?.received_by ||
-          row.received_by ||
+        (receiptRow as any)?.received_by_name ||
+          receiptRow.received_by_name ||
+          (receiptRow as any)?.received_by ||
+          receiptRow.received_by ||
           '',
       ).trim();
       const receiverNamePrefill = receivedByNameRaw && isUuidLike(receivedByNameRaw) ? '' : receivedByNameRaw;
       setReceiverName(receiverNamePrefill);
-      setReceiverPhone(String((latestReceipt as any)?.received_by_phone || row.received_by_phone || '') || '');
+      setReceiverPhone(String((receiptRow as any)?.received_by_phone || receiptRow.received_by_phone || '') || '');
 
       // Initialize QC modal state (single-item SRV, but same QC screen as GRN)
       setQcFormData([
@@ -349,7 +349,7 @@ export default function SrvPage() {
       setShowQcModal(false);
       setShowViewModal(true);
     },
-    [srvHistory, fetchQcSummary]
+    [openSrvs, srvHistory, fetchQcSummary]
   );
 
   const receiveSrv = useCallback(
@@ -770,20 +770,24 @@ export default function SrvPage() {
 
               {(() => {
                 const jobOrderId = String(selectedRow.job_order_id || selectedRow.id || '').trim();
-                const latestReceipt = srvHistory.find((h) => String(h.job_order_id || '').trim() === jobOrderId) || null;
-                const statusLabel = latestReceipt?.approved_by ? 'APPROVED' : 'DRAFT';
-                const receivedAt = (latestReceipt as any)?.received_at || latestReceipt?.movement_date || null;
-                const approvedAt = latestReceipt?.approved_at || null;
+                const receiptRow =
+                  openSrvs.find((o) => o.id === selectedRow.id) ||
+                  srvHistory.find((h) => h.id === selectedRow.id) ||
+                  selectedRow;
 
-                const receivedQtyDisplay = Number(latestReceipt?.quantity ?? selectedRow.quantity ?? 0) || 0;
-                const availableQtyDisplay = Number((latestReceipt as any)?.available_quantity ?? 0) || 0;
+                const statusLabel = receiptRow?.approved_by ? 'APPROVED' : 'DRAFT';
+                const receivedAt = (receiptRow as any)?.received_at || receiptRow?.movement_date || null;
+                const approvedAt = receiptRow?.approved_at || null;
+
+                const receivedQtyDisplay = Number(receiptRow?.quantity ?? 0) || 0;
+                const availableQtyDisplay = Number((receiptRow as any)?.available_quantity ?? 0) || 0;
 
                 const qcCompleted =
                   Number(qcSummary?.passedUidsCount || 0) > 0 ||
                   Number(qcSummary?.approvedUidsCount || 0) > 0 ||
                   Number(qcSummary?.stockAdded || 0) > 0;
 
-                const srvApproved = Boolean(latestReceipt?.approved_by);
+                const srvApproved = Boolean(receiptRow?.approved_by);
                 const qcActionsDisabled = qcSummaryLoading || qcCompleted || srvApproved;
 
                 return (
@@ -829,7 +833,7 @@ export default function SrvPage() {
                         <div>
                           <label className="block text-sm font-medium text-gray-700">Warehouse</label>
                           <p className="mt-1 text-gray-900">
-                            {resolveWarehouseLabel(latestReceipt?.to_warehouse_id || selectedRow.to_warehouse_id)}
+                            {resolveWarehouseLabel(receiptRow?.to_warehouse_id || selectedRow.to_warehouse_id)}
                           </p>
                         </div>
                       </div>
