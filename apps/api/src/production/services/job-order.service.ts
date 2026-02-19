@@ -2603,8 +2603,10 @@ export class JobOrderService {
 
     if (!jobOrder) throw new NotFoundException('Job order not found');
     const joStatus = String((jobOrder as any)?.status || '').toUpperCase();
-    if (joStatus !== 'COMPLETED' && joStatus !== 'STORE_ISSUED') {
-      throw new BadRequestException('Job order must be STORE_ISSUED / COMPLETED before QC');
+    // QC for SRV receipts can happen even when production is still IN_PROGRESS (partial completion).
+    // We primarily gate QC by SRV receipt existence below.
+    if (joStatus !== 'IN_PROGRESS' && joStatus !== 'STORE_ISSUED' && joStatus !== 'COMPLETED') {
+      throw new BadRequestException('Job order must be IN_PROGRESS / STORE_ISSUED / COMPLETED before QC');
     }
 
     const approver = String(userId || '').trim();
@@ -2719,12 +2721,10 @@ export class JobOrderService {
         remainingToRelease -= newAvail;
       }
 
-      // Mark job order completed after QC release.
-      await this.supabase
-        .from('production_job_orders')
-        .update({ status: 'COMPLETED' } as any)
-        .eq('tenant_id', tenantId)
-        .eq('id', jobOrderId);
+      // Do NOT change job order status here.
+      // - Production completion already sets status to STORE_ISSUED.
+      // - Partial production stays IN_PROGRESS.
+      // QC just releases stock + generates UIDs (if applicable).
 
       return {
         jobOrderId,
