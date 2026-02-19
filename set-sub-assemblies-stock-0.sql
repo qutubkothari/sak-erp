@@ -12,13 +12,38 @@
 
 BEGIN;
 
+-- Preflight: ensure you're running against the ERP schema
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'items'
+  ) THEN
+    RAISE EXCEPTION 'Missing table public.items. You are likely connected to the wrong database/project, or your ERP schema is not deployed.';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'inventory_stock'
+  ) THEN
+    RAISE EXCEPTION 'Missing table public.inventory_stock. ERP inventory schema is not deployed in this database.';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'stock_entries'
+  ) THEN
+    RAISE EXCEPTION 'Missing table public.stock_entries. ERP inventory schema is not deployed in this database.';
+  END IF;
+END $$;
+
 -- 0) Preview (dry-run) what will be affected
 SELECT
   i.tenant_id,
   COUNT(DISTINCT i.id) AS sub_assembly_items,
   COALESCE(SUM(ist.quantity), 0) AS inventory_stock_qty_sum
-FROM items i
-LEFT JOIN inventory_stock ist
+FROM public.items i
+LEFT JOIN public.inventory_stock ist
   ON ist.tenant_id = i.tenant_id
  AND ist.item_id = i.id
 WHERE i.type = 'SUB_ASSEMBLY'
@@ -26,13 +51,13 @@ GROUP BY i.tenant_id
 ORDER BY i.tenant_id;
 
 -- 1) Zero current-stock table rows (inventory_stock)
-UPDATE inventory_stock ist
+UPDATE public.inventory_stock ist
 SET
   quantity = 0,
   reserved_quantity = 0,
   last_movement_date = NOW(),
   updated_at = NOW()
-FROM items i
+FROM public.items i
 WHERE i.id = ist.item_id
   AND i.tenant_id = ist.tenant_id
   AND i.type = 'SUB_ASSEMBLY'
@@ -85,7 +110,7 @@ BEGIN
       AND column_name='updated_at'
   ) INTO has_se_updated_at;
 
-  sql_text := 'UPDATE stock_entries se SET quantity = 0';
+  sql_text := 'UPDATE public.stock_entries se SET quantity = 0';
 
   IF se_available_col IS NOT NULL THEN
     sql_text := sql_text || ', ' || quote_ident(se_available_col) || ' = 0';
@@ -100,7 +125,7 @@ BEGIN
   END IF;
 
   sql_text := sql_text ||
-    ' FROM items i' ||
+    ' FROM public.items i' ||
     ' WHERE i.id = se.item_id' ||
     ' AND i.tenant_id = se.tenant_id' ||
     ' AND i.type = ''SUB_ASSEMBLY''';
@@ -117,8 +142,8 @@ SELECT
   i.tenant_id,
   COUNT(*) AS inventory_stock_rows,
   COALESCE(SUM(ist.quantity), 0) AS total_quantity
-FROM inventory_stock ist
-JOIN items i
+FROM public.inventory_stock ist
+JOIN public.items i
   ON i.id = ist.item_id
  AND i.tenant_id = ist.tenant_id
 WHERE i.type = 'SUB_ASSEMBLY'
