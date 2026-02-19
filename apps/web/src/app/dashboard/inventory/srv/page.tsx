@@ -925,7 +925,8 @@ export default function SrvPage() {
 
                             try {
                               // Ensure SRV receipt exists (QC happens AFTER receipt).
-                              if (!latestReceipt) {
+                              const hasReceipt = Boolean((receiptRow as any)?.received_at || receiptRow?.movement_date);
+                              if (!hasReceipt) {
                                 await receiveSrv(selectedRow, qty);
                                 await loadAll();
                               }
@@ -978,7 +979,8 @@ export default function SrvPage() {
 
                             try {
                               // Ensure receipt exists (approve is not allowed on a non-received SRV)
-                              if (!latestReceipt) {
+                              const hasReceipt = Boolean((receiptRow as any)?.received_at || receiptRow?.movement_date);
+                              if (!hasReceipt) {
                                 await receiveSrv(selectedRow, qty);
                                 await loadAll();
                               }
