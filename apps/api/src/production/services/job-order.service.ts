@@ -5440,112 +5440,15 @@ export class JobOrderService {
       createdSubJobOrders.push({ sa, jobOrder: created, completed: false });
     }
 
-    console.log(`[SmartJO] Created ${createdSubJobOrders.length} sub-assembly job orders. Starting multi-pass completion...`);
+    console.log(`[SmartJO] Created ${createdSubJobOrders.length} sub-assembly job orders as DRAFT. Manual store flow required: issue materials via SIV → receive via SRV → QC approval → then execute main JO.`);
 
-    // PHASE 2: Complete sub-assemblies in multiple passes (deepest first).
-    // Each pass completes sub-assemblies whose materials are now available.
-    // This handles nested dependencies where SUB-A needs SUB-B's output.
-    const MAX_COMPLETION_PASSES = 10;
-    let passNumber = 0;
-    let completedInLastPass = 0;
-
-    do {
-      passNumber += 1;
-      completedInLastPass = 0;
-
-      console.log(`[SmartJO] Completion pass ${passNumber}/${MAX_COMPLETION_PASSES}...`);
-
-      for (const entry of createdSubJobOrders) {
-        if (entry.completed) continue;
-
-        const { sa, jobOrder } = entry;
-
-        // Check if this sub-assembly's materials are now available
-        const { data: materialsRaw } = await this.supabase
-          .from('job_order_materials')
-          .select('id, item_id, selected_variant_id, required_quantity')
-          .eq('job_order_id', jobOrder.id);
-
-        let materials = Array.isArray(materialsRaw) ? materialsRaw : [];
-        try {
-          materials = await this.normalizeJobOrderMaterialRows(tenantId, materials);
-        } catch (e: any) {
-          console.warn('[SmartJO] Material normalization skipped during availability check:', e?.message || e);
-        }
-
-        let allMaterialsAvailable = true;
-        for (const mat of (materials || [])) {
-          const needed = Number(mat.required_quantity) || 0;
-          if (needed <= 0) continue;
-
-          const itemIdToCheck = (mat as any)?.selected_variant_id || (mat as any)?.item_id;
-          if (!this.isUuid(String(itemIdToCheck || ''))) {
-            allMaterialsAvailable = false;
-            console.log(`[SmartJO] ${sa.itemCode}: Material has invalid item id (cannot check stock)`);
-            break;
-          }
-
-          const available = await this.getAvailableStock(tenantId, itemIdToCheck);
-          if (available < needed) {
-            allMaterialsAvailable = false;
-            console.log(`[SmartJO] ${sa.itemCode}: Material ${mat.item_id} insufficient (need ${needed}, have ${available})`);
-            break;
-          }
-        }
-
-        if (!allMaterialsAvailable) {
-          console.log(`[SmartJO] ${sa.itemCode}: Skipping completion pass ${passNumber} - materials not yet available`);
-          continue;
-        }
-
-        try {
-          // Set to IN_PROGRESS so completeJobOrder can run
-          await this.supabase
-            .from('production_job_orders')
-            .update({ status: 'IN_PROGRESS', actual_start_date: new Date().toISOString() })
-            .eq('id', jobOrder.id);
-
-          // Complete the job order (consume materials, generate UIDs)
-          const completed = await this.completeJobOrder(tenantId, jobOrder.id, userId, { allowPartialConsumption: false });
-          completedSubJobOrders.push(completed);
-
-          // New workflow: SRV receive (SYSTEM) with quantity, then QC completes and generates UIDs.
-          const qty = Math.max(0, Number((jobOrder as any)?.quantity || 0) || 0) || Math.max(0, Number((sa as any)?.toMakeQuantity || 0) || 0) || 1;
-          await this.receiveStoreReceiptVoucher(tenantId, jobOrder.id, userId, {
-            receiverName: 'SYSTEM',
-            receivedQuantity: qty,
-          });
-          await this.approveQC(
-            tenantId,
-            jobOrder.id,
-            {
-              acceptedQuantity: qty,
-              rejectedQuantity: 0,
-            },
-            userId,
-          );
-
-          entry.completed = true;
-          completedInLastPass += 1;
-          console.log(`[SmartJO] ${sa.itemCode}: Completed and QC approved (pass ${passNumber})`);
-        } catch (err: any) {
-          console.error(`[SmartJO] ${sa.itemCode}: Failed to complete in pass ${passNumber}:`, err?.message || err);
-          // Don't throw - try again in next pass
-        }
-      }
-
-      console.log(`[SmartJO] Pass ${passNumber} completed: ${completedInLastPass} sub-assemblies finished`);
-
-    } while (completedInLastPass > 0 && passNumber < MAX_COMPLETION_PASSES);
-
-    // Check if all sub-assemblies were completed
-    const incompleteSubAssemblies = createdSubJobOrders.filter((e) => !e.completed);
-    if (incompleteSubAssemblies.length > 0) {
-      const incompleteList = incompleteSubAssemblies.map((e) => e.sa.itemCode).join(', ');
-      console.warn(`[SmartJO] ${incompleteSubAssemblies.length} sub-assemblies could not be completed: ${incompleteList}`);
-      console.warn(`[SmartJO] This usually means raw materials are missing. Please GRN the required materials first.`);
-      // Don't throw - let the main JO be created, user can see the issue in the materials preview
-    }
+    // NOTE: Sub-assembly JOs intentionally remain in DRAFT/PLANNED status.
+    // The store flow must be followed for each sub-assembly before the main JO can be executed:
+    //   1. Store raises a Material Requisition / SIV against the sub-assembly JO
+    //   2. Inventory is issued (stock decremented)
+    //   3. Sub-assembly is manufactured and received via SRV
+    //   4. QC approves the received sub-assembly
+    // Only after all sub-assemblies are QC-approved does the main JO have the required components in stock.
 
     // Create the main finished-goods job order. Keep it as-is (typically PLANNED) for shop floor execution.
     onProgress?.({
