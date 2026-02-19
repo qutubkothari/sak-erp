@@ -1783,6 +1783,37 @@ export class JobOrderService {
       qcCountsByJobOrderId.set(id, counts);
     }
 
+    // Also derive SRV QC completion from stock_entries metadata so non-UID items
+    // can still show "QC Completed" after QC release.
+    const { data: srvEntries, error: srvEntriesError } = await this.supabase
+      .from('stock_entries')
+      .select('id, available_quantity, metadata')
+      .eq('tenant_id', tenantId)
+      .eq('metadata->>created_from', 'STORE_RECEIPT')
+      .in('metadata->>job_order_id', jobOrderIds)
+      .order('created_at', { ascending: false })
+      .limit(1000);
+
+    if (srvEntriesError) throw new BadRequestException(srvEntriesError.message);
+
+    const srvQcByJobOrderId = new Map<string, { qcCompleted: boolean; srvApproved: boolean }>();
+    for (const entry of Array.isArray(srvEntries) ? srvEntries : []) {
+      const meta = (entry as any)?.metadata || {};
+      const jobId = String(meta?.job_order_id || '').trim();
+      if (!jobId) continue;
+
+      const hasQcCompletedAt = Boolean(String(meta?.qc_completed_at || '').trim());
+      const avail = Number((entry as any)?.available_quantity || 0) || 0;
+      const qcCompleted = hasQcCompletedAt || avail > 0;
+      const srvApproved = Boolean(String(meta?.srv_approved_at || '').trim());
+
+      const prev = srvQcByJobOrderId.get(jobId) || { qcCompleted: false, srvApproved: false };
+      srvQcByJobOrderId.set(jobId, {
+        qcCompleted: prev.qcCompleted || qcCompleted,
+        srvApproved: prev.srvApproved || srvApproved,
+      });
+    }
+
     return rows.map((r: any) => {
       const baseStatus = String(r?.status || '').trim();
       const baseKey = baseStatus.toUpperCase();
@@ -1796,9 +1827,11 @@ export class JobOrderService {
         pending: 0,
       };
 
-      if (baseKey === 'COMPLETED') {
+      const srv = srvQcByJobOrderId.get(String(r?.id || '').trim()) || { qcCompleted: false, srvApproved: false };
+
+      if (baseKey === 'COMPLETED' || baseKey === 'STORE_ISSUED') {
         if (counts.onHold > 0) workflowStatus = 'QC Failed';
-        else if (counts.total > 0 && counts.pending === 0) workflowStatus = 'QC Completed';
+        else if (srv.qcCompleted || (counts.total > 0 && counts.pending === 0)) workflowStatus = 'QC Completed';
         else workflowStatus = 'Awaiting QC';
       }
 

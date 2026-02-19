@@ -187,7 +187,7 @@ export default function SrvPage() {
       if (!isUuidLike(raw)) return raw;
 
       const user = users.find((u) => String(u?.id || '').trim() === raw);
-      if (!user) return raw;
+      if (!user) return '-';
 
       const code = String(user.employee_code || '').trim();
       return `${user.employee_name}${code ? ` (${code})` : ''}`;
@@ -312,8 +312,15 @@ export default function SrvPage() {
 
       const prefillQty = Number(latestReceipt?.quantity ?? row.quantity ?? 0) || 0;
       setReceivedQty(prefillQty);
-      const receivedByName = String((latestReceipt as any)?.received_by_name || (latestReceipt as any)?.received_by || row.received_by_name || row.received_by || '').trim();
-      setReceiverName(receivedByName ? resolveEmployeeLabel(receivedByName) : '');
+      const receivedByNameRaw = String(
+        (latestReceipt as any)?.received_by_name ||
+          row.received_by_name ||
+          (latestReceipt as any)?.received_by ||
+          row.received_by ||
+          '',
+      ).trim();
+      const receiverNamePrefill = receivedByNameRaw && isUuidLike(receivedByNameRaw) ? '' : receivedByNameRaw;
+      setReceiverName(receiverNamePrefill);
       setReceiverPhone(String((latestReceipt as any)?.received_by_phone || row.received_by_phone || '') || '');
 
       // Initialize QC modal state (single-item SRV, but same QC screen as GRN)
@@ -342,7 +349,7 @@ export default function SrvPage() {
       setShowQcModal(false);
       setShowViewModal(true);
     },
-    [srvHistory, fetchQcSummary, resolveEmployeeLabel]
+    [srvHistory, fetchQcSummary]
   );
 
   const receiveSrv = useCallback(
@@ -391,7 +398,7 @@ export default function SrvPage() {
     const statusLabel = row.approved_by ? 'APPROVED' : 'PENDING';
 
     const warehouseLabel = resolveWarehouseLabel(row.to_warehouse_id);
-    const receivedByLabel = resolveEmployeeLabel(row.received_by);
+    const receivedByLabel = resolveEmployeeLabel(row.received_by_name || row.received_by);
     const html = `
       <!DOCTYPE html>
       <html>
@@ -611,7 +618,7 @@ export default function SrvPage() {
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-700">{row.uid || '-'}</td>
                       <td className="px-6 py-4 text-sm text-gray-700">{row.quantity || 0}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{resolveEmployeeLabel(row.received_by)}</td>
+                      <td className="px-6 py-4 text-sm text-gray-700">{resolveEmployeeLabel(row.received_by_name || row.received_by)}</td>
                       <td className="px-6 py-4 text-sm text-gray-700">
                         {row.movement_date
                           ? new Date(row.movement_date).toLocaleString()
@@ -697,7 +704,7 @@ export default function SrvPage() {
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-700">{row.uid || '-'}</td>
                       <td className="px-6 py-4 text-sm text-gray-700">{row.quantity || 0}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{resolveEmployeeLabel(row.received_by)}</td>
+                      <td className="px-6 py-4 text-sm text-gray-700">{resolveEmployeeLabel(row.received_by_name || row.received_by)}</td>
                       <td className="px-6 py-4 text-sm text-gray-700">
                         {row.movement_date
                           ? new Date(row.movement_date).toLocaleString()

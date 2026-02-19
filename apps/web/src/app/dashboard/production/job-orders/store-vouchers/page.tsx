@@ -7,8 +7,8 @@ export default function StoreVouchersLegacyRedirect() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace('/dashboard/inventory/store-vouchers');
+    router.replace('/dashboard/inventory/siv');
   }, [router]);
 
-  return <div className="p-6 text-sm text-gray-600">Redirecting to Inventory SIV / SRV…</div>;
+  return <div className="p-6 text-sm text-gray-600">Redirecting to Inventory SIV…</div>;
 }

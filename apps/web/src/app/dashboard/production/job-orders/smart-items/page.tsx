@@ -1162,7 +1162,7 @@ function SmartJobOrdersItemsPageContent() {
 
       alert(
         `❌ Cannot create Job Order before material issue.\n\n` +
-        `Please issue required materials first from Inventory → SIV / SRV.\n\n` +
+        `Please issue required materials first from Inventory → SIV.\n\n` +
         `Shortage details:\n${shortageList}`,
       );
       return;

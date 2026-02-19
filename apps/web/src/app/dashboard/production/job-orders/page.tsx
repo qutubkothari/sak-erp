@@ -860,7 +860,7 @@ function JobOrdersPageContent() {
 
       if (blockedByStoreIssue) {
         const goToStore = window.confirm(
-          'Cannot start this Job Order yet because SIV (material issue) is pending.\n\nOpen Inventory SIV / SRV screen now?',
+          'Cannot start this Job Order yet because SIV (material issue) is pending.\n\nOpen Inventory SIV screen now?',
         );
         if (goToStore) {
           router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(id)}`);
