@@ -2690,7 +2690,7 @@ export class JobOrderService {
         p_warehouse_id: warehouseId,
         p_location_id: null,
         p_quantity_change: acceptedQuantity,
-        p_category: normalizeInventoryCategory(itemCategory, 'FINISHED_GOOD'),
+        p_category: normalizeInventoryCategory(itemCategory, 'FINISHED_GOODS'),
       });
       if (invErr) throw new BadRequestException(invErr.message);
 
