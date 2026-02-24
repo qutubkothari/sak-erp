@@ -845,6 +845,34 @@ function JobOrdersPageContent() {
   const handleUpdateStatus = async (id: string, status: string) => {
     setLoading(true);
     try {
+      // Pre-flight: if starting a JO, check that sub-assembly components are in stock
+      if (status === 'IN_PROGRESS') {
+        try {
+          const readiness = await apiClient.get<{
+            ready: boolean;
+            blockers: Array<{ itemCode: string; itemName: string; needed: number; available: number; pendingSubJoNumber: string | null }>;
+          }>(`/job-orders/store/material-requisitions/${id}/readiness`);
+
+          if (!readiness.ready && readiness.blockers.length > 0) {
+            const lines = readiness.blockers.map((b) => {
+              const jo = b.pendingSubJoNumber ? ` (JO: ${b.pendingSubJoNumber})` : '';
+              return `• ${b.itemCode} — need ${b.needed}, in stock ${b.available}${jo}`;
+            }).join('\n');
+            alert(
+              `⚠️ Cannot start this Job Order yet.\n\n` +
+              `The following sub-assemblies are not yet manufactured / received into stock:\n\n${lines}\n\n` +
+              `Complete each sub-assembly Job Order (SRV receipt → QC approval) first.`
+            );
+            return;
+          }
+        } catch (readinessErr: any) {
+          // Fail-safe: if readiness check throws, block the start rather than allowing through
+          const errMsg = String((readinessErr as any)?.response?.data?.message || (readinessErr as any)?.message || 'network error');
+          alert(`⚠️ Sub-assembly readiness check failed (${errMsg}).\n\nStart blocked — please refresh and try again.`);
+          return;
+        }
+      }
+
       await apiClient.put(`/job-orders/${id}/status`, { status });
       fetchJobOrders();
       alert(`Job Order status updated to ${status}`);
@@ -1072,6 +1100,8 @@ function JobOrdersPageContent() {
       QC_FAILED: 'bg-red-100 text-red-800',
       AWAITING_QC: 'bg-amber-100 text-amber-900',
       QC_COMPLETED: 'bg-emerald-100 text-emerald-900',
+      STORE_ISSUED: 'bg-cyan-100 text-cyan-800',
+      SENT_TO_STORE: 'bg-cyan-100 text-cyan-800',
     };
     /*
       QC_FAILED_QC_FAILED____________________________________: 'bg-red-100 text-red-800',
@@ -2429,7 +2459,7 @@ function JobOrdersPageContent() {
                             <div className="font-medium text-gray-900">{material.itemCode}</div>
                             <div className="text-gray-500 text-xs">{material.itemName}</div>
                           </td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">-{material.toConsume}</td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">{material.toConsume > 0 ? `-${material.toConsume}` : material.toConsume}</td>
                           <td className="px-4 py-3 text-sm text-right">{material.currentStock}</td>
                           <td className="px-4 py-3 text-sm text-right text-yellow-600">{material.reservedStock}</td>
                           <td className="px-4 py-3 text-sm text-right font-medium">

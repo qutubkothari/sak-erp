@@ -1,17 +1,16 @@
--- Clear ONLY transactional data: Job Orders, UIDs, PR, PO (tenant-scoped)
+-- Clear transactional data: Job Orders, SIV, SRV, UIDs, PR, PO, GRN (tenant-scoped)
 --
--- ✅ Keeps master data: items, vendors, BOMs
--- ✅ Keeps inventory/stock tables and quantities: stock_entries, inventory_stock, warehouses
+-- ✅ Keeps master data: items, vendors, BOMs, warehouses
+-- ✅ Keeps raw-material stock_entries (GRN stock from before this cleanup)
 --
 -- Targets (if present in your DB):
+-- - stock_movements (SIV: reference_type='SIV')
+-- - stock_entries   (SRV: created_from='STORE_RECEIPT', QC: created_from='QC_APPROVAL', GRN: GRN_APPROVE/GRN_QC_ACCEPT)
 -- - production_job_orders + job_order_materials + job_order_operations + job_order_quality
 -- - uid_registry (+ optional aux tables if they exist)
+-- - grns + grn_items + debit_notes + debit_note_items
 -- - purchase_requisitions + purchase_requisition_items
 -- - purchase_orders + purchase_order_items
---
--- Notes:
--- - If your GRN tables have FK links to PO/PO items, this script attempts to NULL those links before deleting POs.
--- - This script intentionally does NOT touch GRNs, stock_entries, inventory_stock, bom_headers, bom_items.
 --
 -- HOW TO USE:
 -- 1) Backup DB (recommended).
@@ -61,97 +60,81 @@ BEGIN
   END IF;
 
   -- -------------------------
-  -- Pre-unlink (or delete) GRN -> PO links (to avoid FK violations if your schema enforces them)
-  --
-  -- Some deployments enforce:
-  --   grns.po_id NOT NULL REFERENCES purchase_orders(id)
-  -- In that case, setting po_id = NULL will fail.
-  -- This script will then delete GRN docs (grn_items + grns) for the tenant to unlock PO deletion.
+  -- GRN stock_entries (must be before grn_items/grns)
+  -- -------------------------
+  IF to_regclass('public.stock_entries') IS NOT NULL THEN
+    RAISE NOTICE 'Deleting GRN stock_entries (GRN_APPROVE / GRN_QC_ACCEPT) for tenant...';
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'stock_entries' AND column_name = 'created_from'
+    ) THEN
+      DELETE FROM stock_entries
+      WHERE tenant_id = v_tenant_id
+        AND created_from IN ('GRN_APPROVE', 'GRN_QC_ACCEPT');
+    ELSE
+      DELETE FROM stock_entries
+      WHERE tenant_id = v_tenant_id
+        AND (metadata->>'created_from') IN ('GRN_APPROVE', 'GRN_QC_ACCEPT');
+    END IF;
+  END IF;
+
+  -- -------------------------
+  -- GRNs (debit_notes → grn_items → grns)
   -- -------------------------
   BEGIN
-    IF to_regclass('public.grn_items') IS NOT NULL AND to_regclass('public.grns') IS NOT NULL THEN
-      -- First unlink grn_items.po_item_id if present
+    -- Debit notes reference GRNs; delete them first.
+    IF to_regclass('public.debit_note_items') IS NOT NULL THEN
+      RAISE NOTICE 'Deleting debit_note_items for tenant...';
+      DELETE FROM debit_note_items
+      WHERE debit_note_id IN (SELECT id FROM debit_notes WHERE tenant_id = v_tenant_id);
+    END IF;
+
+    IF to_regclass('public.debit_notes') IS NOT NULL THEN
+      RAISE NOTICE 'Deleting debit_notes for tenant...';
+      DELETE FROM debit_notes WHERE tenant_id = v_tenant_id;
+    END IF;
+
+    IF to_regclass('public.grn_items') IS NOT NULL THEN
+      RAISE NOTICE 'Deleting grn_items for tenant...';
+      DELETE FROM grn_items
+      WHERE grn_id IN (SELECT id FROM grns WHERE tenant_id = v_tenant_id);
+    END IF;
+
+    IF to_regclass('public.grns') IS NOT NULL THEN
+      RAISE NOTICE 'Deleting grns for tenant...';
+      -- Temporarily drop audit_grns_deletion trigger if present (returns NEW on DELETE, cancelling rows)
       IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'grn_items' AND column_name = 'po_item_id'
+        SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+        WHERE c.relname = 'grns' AND t.tgname = 'audit_grns_deletion' AND NOT t.tgisinternal
       ) THEN
-        RAISE NOTICE 'Unlinking grn_items.po_item_id for tenant...';
-        UPDATE grn_items
-        SET po_item_id = NULL
-        WHERE grn_id IN (SELECT id FROM grns WHERE tenant_id = v_tenant_id)
-          AND po_item_id IS NOT NULL;
+        BEGIN
+          EXECUTE 'DROP TRIGGER audit_grns_deletion ON grns';
+          v_grn_audit_trigger_dropped := true;
+          RAISE NOTICE 'Dropped audit_grns_deletion trigger temporarily.';
+        EXCEPTION WHEN others THEN
+          RAISE NOTICE 'Could not drop audit_grns_deletion: %', SQLERRM;
+        END;
       END IF;
 
-      -- Then try to unlink grns.po_id (may fail if NOT NULL)
-      IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'grns' AND column_name = 'po_id'
-      ) THEN
-        RAISE NOTICE 'Unlinking grns.po_id for tenant (may fail if NOT NULL)...';
+      DELETE FROM grns WHERE tenant_id = v_tenant_id;
+
+      IF v_grn_audit_trigger_dropped AND to_regprocedure('public.log_deletion()') IS NOT NULL THEN
         BEGIN
-          UPDATE grns
-          SET po_id = NULL
-          WHERE tenant_id = v_tenant_id
-            AND po_id IS NOT NULL;
+          EXECUTE 'CREATE TRIGGER audit_grns_deletion BEFORE UPDATE OR DELETE ON grns FOR EACH ROW EXECUTE FUNCTION log_deletion()';
+          RAISE NOTICE 'Recreated audit_grns_deletion trigger.';
         EXCEPTION WHEN others THEN
-          RAISE NOTICE 'Cannot NULL grns.po_id (likely NOT NULL/FK). Deleting GRN docs for tenant instead...';
-          DELETE FROM grn_items WHERE grn_id IN (SELECT id FROM grns WHERE tenant_id = v_tenant_id);
-
-          -- Important: some deployments attach audit_grns_deletion trigger with log_deletion() that returns NEW on DELETE,
-          -- which cancels hard deletes. Temporarily drop the trigger to allow cleanup.
-          IF EXISTS (
-            SELECT 1
-            FROM pg_trigger t
-            JOIN pg_class c ON c.oid = t.tgrelid
-            WHERE c.relname = 'grns'
-              AND t.tgname = 'audit_grns_deletion'
-              AND NOT t.tgisinternal
-          ) THEN
-            BEGIN
-              EXECUTE 'DROP TRIGGER audit_grns_deletion ON grns';
-              v_grn_audit_trigger_dropped := true;
-              RAISE NOTICE 'Dropped trigger audit_grns_deletion on grns (temporary)';
-            EXCEPTION WHEN others THEN
-              v_grn_audit_trigger_dropped := false;
-              RAISE NOTICE 'Could not drop audit_grns_deletion trigger; grns delete may be blocked.';
-            END;
-          END IF;
-
-          DELETE FROM grns WHERE tenant_id = v_tenant_id;
-
-          IF v_grn_audit_trigger_dropped AND to_regprocedure('public.log_deletion()') IS NOT NULL THEN
-            BEGIN
-              EXECUTE 'CREATE TRIGGER audit_grns_deletion BEFORE UPDATE OR DELETE ON grns FOR EACH ROW EXECUTE FUNCTION log_deletion()';
-              RAISE NOTICE 'Re-created trigger audit_grns_deletion on grns';
-            EXCEPTION WHEN others THEN
-              RAISE NOTICE 'Could not re-create audit_grns_deletion trigger on grns (please verify manually)';
-            END;
-          END IF;
+          RAISE NOTICE 'Could not recreate audit_grns_deletion: %', SQLERRM;
         END;
       END IF;
     END IF;
-  EXCEPTION WHEN undefined_table THEN
-    RAISE NOTICE 'GRN tables not found, skipping GRN unlink/delete step...';
-  END;
 
-  -- Legacy GRN table (some DBs still have public.grn with po_id)
-  BEGIN
-    IF to_regclass('public.grn') IS NOT NULL AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name = 'grn' AND column_name = 'po_id'
-    ) THEN
-      RAISE NOTICE 'Handling legacy grn.po_id links (try NULL, else delete legacy GRNs)...';
-      BEGIN
-        UPDATE grn
-        SET po_id = NULL
-        WHERE tenant_id = v_tenant_id
-          AND po_id IS NOT NULL;
-      EXCEPTION WHEN others THEN
-        DELETE FROM grn WHERE tenant_id = v_tenant_id;
-      END;
+    -- Legacy public.grn table
+    IF to_regclass('public.grn') IS NOT NULL THEN
+      RAISE NOTICE 'Deleting legacy grn rows for tenant...';
+      DELETE FROM grn WHERE tenant_id = v_tenant_id;
     END IF;
   EXCEPTION WHEN undefined_table THEN
-    RAISE NOTICE 'Legacy grn table not found, skipping...';
+    RAISE NOTICE 'GRN tables not found, skipping...';
   END;
 
   -- -------------------------
@@ -207,6 +190,43 @@ BEGIN
   IF to_regclass('public.uid_registry') IS NOT NULL THEN
     RAISE NOTICE 'Deleting uid_registry...';
     DELETE FROM uid_registry WHERE tenant_id = v_tenant_id;
+  END IF;
+
+  -- -------------------------
+  -- SIV (stock_movements) + SRV / QC (stock_entries)
+  -- -------------------------
+  IF to_regclass('public.stock_movements') IS NOT NULL AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'stock_movements' AND column_name = 'reference_type'
+  ) THEN
+    RAISE NOTICE 'Deleting SIV stock_movements for tenant...';
+    DELETE FROM stock_movements
+    WHERE tenant_id = v_tenant_id
+      AND reference_type = 'SIV';
+  END IF;
+
+  IF to_regclass('public.stock_entries') IS NOT NULL THEN
+    -- SRV rows (Store Receipt Voucher)
+    RAISE NOTICE 'Deleting SRV stock_entries (STORE_RECEIPT) for tenant...';
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'stock_entries' AND column_name = 'created_from'
+    ) THEN
+      DELETE FROM stock_entries WHERE tenant_id = v_tenant_id AND created_from = 'STORE_RECEIPT';
+    ELSE
+      DELETE FROM stock_entries WHERE tenant_id = v_tenant_id AND metadata->>'created_from' = 'STORE_RECEIPT';
+    END IF;
+
+    -- QC approval rows
+    RAISE NOTICE 'Deleting QC stock_entries (QC_APPROVAL) for tenant...';
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'stock_entries' AND column_name = 'created_from'
+    ) THEN
+      DELETE FROM stock_entries WHERE tenant_id = v_tenant_id AND created_from = 'QC_APPROVAL';
+    ELSE
+      DELETE FROM stock_entries WHERE tenant_id = v_tenant_id AND metadata->>'created_from' = 'QC_APPROVAL';
+    END IF;
   END IF;
 
   -- -------------------------
@@ -396,11 +416,19 @@ BEGIN
   RAISE NOTICE '✅ Done. Transactional tables cleared. Stock/BOM/vendors/items preserved.';
 END $$;
 
--- Optional verification counts (safe to run)
-SELECT 'production_job_orders' AS table_name, COUNT(*) AS remaining FROM production_job_orders WHERE tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c'
+-- Verification counts (all should be 0)
+SELECT 'production_job_orders'  AS table_name, COUNT(*) AS remaining FROM production_job_orders  WHERE tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c'
 UNION ALL
-SELECT 'uid_registry', COUNT(*) FROM uid_registry WHERE tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c'
+SELECT 'uid_registry',           COUNT(*) FROM uid_registry            WHERE tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c'
 UNION ALL
-SELECT 'purchase_requisitions', COUNT(*) FROM purchase_requisitions WHERE tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c'
+SELECT 'grns',                   COUNT(*) FROM grns                    WHERE tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c'
 UNION ALL
-SELECT 'purchase_orders', COUNT(*) FROM purchase_orders WHERE tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c';
+SELECT 'grn_items',              COUNT(*) FROM grn_items               WHERE grn_id IN (SELECT id FROM grns WHERE tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c')
+UNION ALL
+SELECT 'SIV stock_movements',    COUNT(*) FROM stock_movements         WHERE tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c' AND reference_type = 'SIV'
+UNION ALL
+SELECT 'SRV stock_entries',      COUNT(*) FROM stock_entries           WHERE tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c' AND metadata->>'created_from' = 'STORE_RECEIPT'
+UNION ALL
+SELECT 'purchase_requisitions',  COUNT(*) FROM purchase_requisitions   WHERE tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c'
+UNION ALL
+SELECT 'purchase_orders',        COUNT(*) FROM purchase_orders         WHERE tenant_id = 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c';

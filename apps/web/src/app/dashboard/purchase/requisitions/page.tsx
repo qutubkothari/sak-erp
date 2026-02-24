@@ -1143,7 +1143,6 @@ function PRContent() {
                     </label>
                     <input
                       type="date"
-                      max={todayDate}
                       value={formData.requiredDate}
                       onChange={(e) => setFormData({ ...formData, requiredDate: e.target.value })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"

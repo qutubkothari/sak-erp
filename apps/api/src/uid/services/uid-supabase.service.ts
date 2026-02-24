@@ -1136,7 +1136,7 @@ export class UidSupabaseService {
       .from('uid_registry')
       .select(`
         uid, 
-        entity_id, 
+        entity_id,
         entity_type, 
         status, 
         location, 
@@ -1177,6 +1177,7 @@ export class UidSupabaseService {
     }
 
     if (itemId) {
+      // Filter by entity_id (the item/entity this UID belongs to)
       query = query.eq('entity_id', itemId);
     }
 
@@ -1210,7 +1211,7 @@ export class UidSupabaseService {
     // Fetch item details separately if we have UIDs
     if (data && data.length > 0) {
       console.log('[getAllUIDs] Fetching item details for', data.length, 'UIDs');
-      const entityIds = [...new Set(data.map(uid => uid.entity_id).filter(Boolean))];
+      const entityIds = [...new Set(data.map((uid: any) => uid.entity_id).filter(Boolean))];
       
       console.log('[getAllUIDs] Unique entity IDs:', entityIds);
       
@@ -1227,7 +1228,8 @@ export class UidSupabaseService {
           
           // Attach item details to UIDs
           data.forEach((uid: any) => {
-            const item = itemsMap.get(uid.entity_id);
+            const itemLookupId = uid.entity_id;
+            const item = itemsMap.get(itemLookupId);
             if (item) {
               uid.items = item;
             }

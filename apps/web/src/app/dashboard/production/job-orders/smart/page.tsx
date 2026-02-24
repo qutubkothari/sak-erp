@@ -168,6 +168,10 @@ function SmartJobOrdersPageContent() {
 
   const [createSummary, setCreateSummary] = useState<SmartCreateResponse | null>(null);
   const [showCreateSummary, setShowCreateSummary] = useState(false);
+  const createSummaryJoNumber = useMemo(() => {
+    const jo = (createSummary as any)?.jobOrder || (createSummary as any)?.job_order;
+    return jo?.job_order_number || jo?.jobOrderNumber || '';
+  }, [createSummary]);
 
   const [creating, setCreating] = useState(false);
 
@@ -830,12 +834,25 @@ function SmartJobOrdersPageContent() {
                   Materials below will appear in <span className="font-semibold">SIV</span> for manual issue by storekeeper.
                 </div>
               </div>
-              <button
-                onClick={() => setShowCreateSummary(false)}
-                className="px-3 py-1.5 rounded-md border border-amber-300 text-amber-800 hover:bg-amber-100"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-2">
+                {createSummaryJoNumber && (
+                  <button
+                    onClick={() => {
+                      setShowCreateSummary(false);
+                      router.push(`/dashboard/inventory/siv?joNumber=${encodeURIComponent(createSummaryJoNumber)}`);
+                    }}
+                    className="px-4 py-2 rounded-lg bg-[#8B6F47] text-white hover:bg-[#6F4E37] font-semibold text-sm shadow-sm"
+                  >
+                    → Issue Materials in SIV
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowCreateSummary(false)}
+                  className="px-3 py-1.5 rounded-md border border-amber-300 text-amber-800 hover:bg-amber-100"
+                >
+                  Close
+                </button>
+              </div>
             </div>
 
             {(() => {

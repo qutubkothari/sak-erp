@@ -2,7 +2,7 @@
 # - No git commit/push required
 # - Avoids heavy builds on VPS by building locally
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 # ====== CONFIG (Hostinger VPS) ======
 $HOSTINGER_IP = if ($env:HOSTINGER_IP) { $env:HOSTINGER_IP } else { "72.62.192.228" }
@@ -80,6 +80,7 @@ Run "Install deps (local)" {
 
 Run "Build hr-module (local)" {
   pnpm -C packages/hr-module build
+  if ($LASTEXITCODE -ne 0) { throw "hr-module build failed with exit code $LASTEXITCODE" }
 }
 
 Run "Build web (local)" {
@@ -89,16 +90,22 @@ Run "Build web (local)" {
   $env:NEXT_PUBLIC_API_URL = "/api/v1"
 
   pnpm -C apps/web build
+  $webExitCode = $LASTEXITCODE
 
   if ($null -ne $previousApiUrl) {
     $env:NEXT_PUBLIC_API_URL = $previousApiUrl
   } else {
     Remove-Item Env:NEXT_PUBLIC_API_URL -ErrorAction SilentlyContinue
   }
+
+  if ($webExitCode -ne 0) {
+    throw "Web build failed with exit code $webExitCode"
+  }
 }
 
 Run "Build api (local)" {
   pnpm -C apps/api build
+  if ($LASTEXITCODE -ne 0) { throw "API build failed with exit code $LASTEXITCODE" }
 }
 
 # ====== Package artifacts ======
@@ -147,6 +154,7 @@ Run "Create artifact archive ($archive)" {
 # ====== Upload & deploy on Hostinger ======
 Run "Upload archive to Hostinger" {
   ScpToHostinger $archive "/tmp/$archive"
+  if ($LASTEXITCODE -ne 0) { throw "SCP upload failed with exit code $LASTEXITCODE" }
 }
 
 Run "Deploy on Hostinger (extract, install prod deps, restart PM2)" {

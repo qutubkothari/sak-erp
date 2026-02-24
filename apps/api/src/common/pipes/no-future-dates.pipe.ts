@@ -21,9 +21,40 @@ const getTodayUtcDateOnly = (now: Date = new Date()): string => {
   return `${year}-${month}-${day}`;
 };
 
+// Fields that are allowed to have future dates (e.g., planning/expected dates)
+const FUTURE_ALLOWED_FIELDS = new Set([
+  'requiredDate',
+  'required_date',
+  'expectedDelivery',
+  'expectedDeliveryDate',
+  'expected_delivery_date',
+  'estimatedDeliveryDate',
+  'estimated_delivery_date',
+  'responseDeadline',
+  'response_deadline',
+  'dueDate',
+  'due_date',
+  'plannedDate',
+  'planned_date',
+  'targetDate',
+  'target_date',
+  'expectedDate',
+  'expected_date',
+  'scheduledDate',
+  'scheduled_date',
+]);
+
 const assertNoFutureDateString = (value: string, path: string) => {
   const trimmed = value.trim();
   if (!trimmed) return;
+
+  // Extract the field name from the path (e.g., "requiredDate" from "body.requiredDate")
+  const fieldName = path.split('.').pop() || '';
+  
+  // Skip validation if this field is allowed to have future dates
+  if (FUTURE_ALLOWED_FIELDS.has(fieldName)) {
+    return;
+  }
 
   if (DATE_ONLY_RE.test(trimmed)) {
     // Compare lexicographically since YYYY-MM-DD sorts naturally.

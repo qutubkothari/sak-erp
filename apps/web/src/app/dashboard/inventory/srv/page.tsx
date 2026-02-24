@@ -53,6 +53,7 @@ export default function SrvPage() {
   const [openSrvs, setOpenSrvs] = useState<ReceiptVoucherRow[]>([]);
   const [srvHistory, setSrvHistory] = useState<ReceiptVoucherRow[]>([]);
   const [activeSrvView, setActiveSrvView] = useState<'open' | 'history'>('open');
+  const [bulkApproving, setBulkApproving] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
 
@@ -367,6 +368,26 @@ export default function SrvPage() {
     await apiClient.put(`/job-orders/store/receipt-vouchers/${row.id}/approve`, {});
   }, []);
 
+  const approveAllPending = useCallback(async () => {
+    const pending = srvHistory.filter((r) => !r.approved_by);
+    if (pending.length === 0) { alert('No pending SRVs to approve.'); return; }
+    if (!confirm(`Approve all ${pending.length} pending SRV(s)?`)) return;
+    setBulkApproving(true);
+    let succeeded = 0;
+    let failed = 0;
+    for (const row of pending) {
+      try {
+        await apiClient.put(`/job-orders/store/receipt-vouchers/${row.id}/approve`, {});
+        succeeded++;
+      } catch {
+        failed++;
+      }
+    }
+    await loadAll();
+    setBulkApproving(false);
+    alert(`Bulk approve done: ${succeeded} approved${failed > 0 ? `, ${failed} failed` : ''}.`);
+  }, [srvHistory, loadAll]);
+
   const qcAcceptSrv = useCallback(
     async (jobOrderId: string, acceptedQuantity: number, rejectedQuantity: number, extra?: any) => {
       await apiClient.post(`/job-orders/${jobOrderId}/qc-approve`, {
@@ -655,6 +676,18 @@ export default function SrvPage() {
         )}
 
         {activeSrvView === 'history' && (
+          <div className="space-y-4">
+            {srvHistory.some((r) => !r.approved_by) && (
+              <div className="flex justify-end">
+                <button
+                  onClick={() => void approveAllPending()}
+                  disabled={bulkApproving}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 shadow-sm"
+                >
+                  {bulkApproving ? 'Approving...' : `✓ Approve All Pending (${srvHistory.filter((r) => !r.approved_by).length})`}
+                </button>
+              </div>
+            )}
           <div className="bg-white rounded-lg shadow-md overflow-hidden">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -749,6 +782,7 @@ export default function SrvPage() {
               </table>
             </div>
           </div>
+          </div>
         )}
 
         {showViewModal && selectedRow && (
@@ -788,7 +822,7 @@ export default function SrvPage() {
                   Number(qcSummary?.stockAdded || 0) > 0;
 
                 const srvApproved = Boolean(receiptRow?.approved_by);
-                const qcActionsDisabled = qcSummaryLoading || qcCompleted || srvApproved;
+                const qcActionsDisabled = qcSummaryLoading || qcCompleted;
 
                 return (
                   <>
@@ -960,7 +994,7 @@ export default function SrvPage() {
                           }}
                           className={`px-6 py-2 text-white rounded-lg ${!qcActionsDisabled ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}
                           disabled={qcActionsDisabled}
-                          title={qcSummaryLoading ? 'Checking QC status…' : srvApproved ? 'Already approved' : qcCompleted ? 'QC already completed' : undefined}
+                          title={qcSummaryLoading ? 'Checking QC status…' : qcCompleted ? 'QC already completed' : undefined}
                         >
                           🔍 QC Accept
                         </button>
@@ -983,22 +1017,6 @@ export default function SrvPage() {
                               if (!hasReceipt) {
                                 await receiveSrv(selectedRow, qty);
                                 await loadAll();
-                              }
-
-                              // Enforce GRN-like behavior: approval requires QC completion.
-                              // (Backend also enforces this; this just gives immediate feedback.)
-                              const jobOrderId = String(selectedRow.job_order_id || selectedRow.id || '').trim();
-                              const freshSummary = await apiClient.get<any>(`/job-orders/${jobOrderId}/qc-summary`);
-                              const freshQcCompleted =
-                                Number(freshSummary?.passedUidsCount || 0) > 0 ||
-                                Number(freshSummary?.approvedUidsCount || 0) > 0 ||
-                                Number(freshSummary?.stockAdded || 0) > 0;
-
-                              if (!freshQcCompleted) {
-                                alert(
-                                  'Cannot approve SRV: QC inspection must be completed first. Please complete QC via the QC Accept action.',
-                                );
-                                return;
                               }
 
                               await approveSrv(selectedRow);

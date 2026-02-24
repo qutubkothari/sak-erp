@@ -11,7 +11,6 @@ import {
   ShoppingCart,
   Package,
   Factory,
-  CheckSquare,
   CreditCard,
   DollarSign,
   Wrench,
@@ -20,7 +19,6 @@ import {
   Tag,
   Shield,
   Settings,
-  Bug,
   LogOut,
   ClipboardList
 } from 'lucide-react';
@@ -69,13 +67,7 @@ const navigation = [
     children: [
       { name: 'Job Orders', href: '/dashboard/production/job-orders/smart-items' },
       { name: 'BOM', href: '/dashboard/bom' },
-      { name: 'Work Stations', href: '/dashboard/work-stations' },
     ],
-  },
-  {
-    name: 'Quality',
-    icon: CheckSquare,
-    href: '/dashboard/quality',
   },
   {
     name: 'Accounts',
@@ -130,11 +122,6 @@ const navigation = [
     name: 'Settings',
     icon: Settings,
     href: '/dashboard/settings',
-  },
-  {
-    name: 'Debug',
-    icon: Bug,
-    href: '/dashboard/debug',
   },
 ];
 
@@ -301,7 +288,7 @@ function getAllowedNavigationNames(user: StoredUser | null): Set<string> {
     'BOM & Engineering': ['Production'],
     Documents: ['Documents'],
     Reports: ['Dashboard'],
-    Settings: ['Settings', 'Debug'],
+    Settings: ['Settings'],
   };
 
   enabledModules.forEach((module) => {

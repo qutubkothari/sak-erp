@@ -676,26 +676,22 @@ function GRNContent() {
       }
       setPurchaseOrdersById(nextById);
       
-      // Filter POs: Only show APPROVED POs that are not fully received
-      // A PO is available if:
-      // 1. Status is APPROVED
-      // 2. Has items where ordered_qty > received_qty (partial or no delivery)
+      // Filter POs: Only show APPROVED POs that are not fully received.
+      // The API returns receipt_status = OPEN | PARTIALLY_RECEIVED | FULLY_RECEIVED.
+      // Exclude FULLY_RECEIVED (no remaining items to receive).
       const availablePOs = allPOsList.filter((po: any) => {
-        if (po.status !== 'APPROVED') {
-          return false;
-        }
-        
-        // Check if PO has any items that are not fully received
-        if (po.po_items && po.po_items.length > 0) {
-          const hasPartialItems = po.po_items.some((item: any) => {
+        if (po.status !== 'APPROVED') return false;
+        // If API computed receipt_status, use it directly
+        if (po.receipt_status === 'FULLY_RECEIVED') return false;
+        // Fallback: check purchase_order_items directly
+        const items: any[] = po.purchase_order_items || po.po_items || [];
+        if (items.length > 0) {
+          return items.some((item: any) => {
             const ordered = parseFloat(item.ordered_qty || 0);
             const received = parseFloat(item.received_qty || 0);
-            return received < ordered; // Item is not fully received
+            return received < ordered;
           });
-          return hasPartialItems;
         }
-        
-        // If no items data, assume it's available (shouldn't happen in normal flow)
         return true;
       });
       

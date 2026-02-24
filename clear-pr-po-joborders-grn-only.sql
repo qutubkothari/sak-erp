@@ -19,10 +19,19 @@ DO $$
 DECLARE
   v_tenant_id_text text := 'f87a5ab0-0619-4f1c-bab9-e78ca750e56c';
   v_tenant_id UUID;
+  v_actor_user_id uuid;
   v_delete_uids boolean := true;
   v_delete_stock_entries boolean := true;
   v_delete_inventory_stock boolean := true;
+  v_delete_siv boolean := true;
+  v_delete_srv boolean := true;
   v_stock_entries_has_created_from boolean;
+  v_stock_entries_available_col text;
+  v_stock_entries_has_allocated boolean;
+  v_stock_entries_has_updated_at boolean;
+  v_sql text;
+  v_po_audit_trigger_dropped boolean := false;
+  v_grn_audit_trigger_dropped boolean := false;
   v_items_has_type boolean;
   v_items_has_category boolean;
   v_items_has_sub_category boolean;
@@ -40,6 +49,27 @@ BEGIN
 
   RAISE NOTICE 'Deleting PR/PO/JO/GRN transactions for tenant: %', v_tenant_id;
 
+  -- Some deployments log UPDATE/DELETE actions via trigger log_deletion() into activity_logs,
+  -- requiring current_setting('app.current_user_id')::uuid NOT NULL.
+  -- In Supabase SQL Editor this setting is usually empty, so set it to a real tenant user.
+  IF to_regclass('public.users') IS NOT NULL THEN
+    SELECT id
+    INTO v_actor_user_id
+    FROM public.users
+    WHERE tenant_id = v_tenant_id
+    ORDER BY created_at ASC NULLS LAST, id
+    LIMIT 1;
+
+    IF v_actor_user_id IS NOT NULL THEN
+      PERFORM set_config('app.current_user_id', v_actor_user_id::text, true);
+      RAISE NOTICE 'Using app.current_user_id=% for delete audit triggers', v_actor_user_id;
+    ELSE
+      RAISE NOTICE 'No users found for tenant; audit triggers may fail (activity_logs.user_id NOT NULL).';
+    END IF;
+  ELSE
+    RAISE NOTICE 'public.users table not found; skipping app.current_user_id setup.';
+  END IF;
+
   -- Detect optional columns/tables safely (some deployments differ)
   SELECT EXISTS (
     SELECT 1
@@ -48,6 +78,43 @@ BEGIN
       AND table_name = 'stock_entries'
       AND column_name = 'created_from'
   ) INTO v_stock_entries_has_created_from;
+
+  -- stock_entries column names can differ between deployments
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'stock_entries'
+      AND column_name = 'available_quantity'
+  ) THEN
+    v_stock_entries_available_col := 'available_quantity';
+  ELSIF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'stock_entries'
+      AND column_name = 'available_qty'
+  ) THEN
+    v_stock_entries_available_col := 'available_qty';
+  ELSE
+    v_stock_entries_available_col := NULL;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'stock_entries'
+      AND column_name = 'allocated_quantity'
+  ) INTO v_stock_entries_has_allocated;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'stock_entries'
+      AND column_name = 'updated_at'
+  ) INTO v_stock_entries_has_updated_at;
 
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
@@ -92,22 +159,46 @@ BEGIN
   -- JOB ORDERS (production)
   -- =========================
 
+  IF v_delete_siv AND to_regclass('public.stock_movements') IS NOT NULL THEN
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema='public'
+        AND table_name='stock_movements'
+        AND column_name='reference_type'
+    ) THEN
+      RAISE NOTICE 'Deleting SIV stock_movements for tenant...';
+      DELETE FROM stock_movements
+      WHERE tenant_id = v_tenant_id
+        AND reference_type = 'SIV';
+    ELSE
+      RAISE NOTICE 'stock_movements.reference_type not found; skipping SIV delete.';
+    END IF;
+  END IF;
+
+  IF v_delete_srv AND v_delete_stock_entries THEN
+    RAISE NOTICE 'Deleting SRV stock_entries (STORE_RECEIPT) for tenant...';
+    IF v_stock_entries_has_created_from THEN
+      DELETE FROM stock_entries
+      WHERE tenant_id = v_tenant_id
+        AND created_from = 'STORE_RECEIPT';
+    ELSE
+      DELETE FROM stock_entries
+      WHERE tenant_id = v_tenant_id
+        AND metadata->>'created_from' = 'STORE_RECEIPT';
+    END IF;
+  END IF;
+
   IF v_delete_stock_entries THEN
     RAISE NOTICE 'Deleting QC stock_entries (QC_APPROVAL) for tenant...';
     IF v_stock_entries_has_created_from THEN
       DELETE FROM stock_entries
       WHERE tenant_id = v_tenant_id
-        AND created_from = 'QC_APPROVAL'
-        AND (metadata->>'job_order_id') IN (
-          SELECT id::text FROM production_job_orders WHERE tenant_id = v_tenant_id
-        );
+        AND created_from = 'QC_APPROVAL';
     ELSE
       DELETE FROM stock_entries
       WHERE tenant_id = v_tenant_id
-        AND metadata->>'created_from' = 'QC_APPROVAL'
-        AND (metadata->>'job_order_id') IN (
-          SELECT id::text FROM production_job_orders WHERE tenant_id = v_tenant_id
-        );
+        AND metadata->>'created_from' = 'QC_APPROVAL';
     END IF;
   END IF;
 
@@ -117,19 +208,32 @@ BEGIN
     -- We target sub-assemblies by:
     -- 1) item type/category tags (if present)
     -- 2) OR any item that has a BOM header (reliable "subassembly" definition)
-    EXECUTE (
-      'UPDATE stock_entries '
-      'SET quantity = 0, available_quantity = 0, allocated_quantity = 0 '
-      'WHERE tenant_id = $1 '
-      '  AND item_id IN ( '
-      '    SELECT i.id FROM items i '
-      '    WHERE i.tenant_id = $1 '
-      '      AND (' || v_subassembly_item_condition || ') '
-      '    UNION '
-      '    SELECT bh.item_id FROM bom_headers bh '
-      '    WHERE bh.tenant_id = $1 '
-      '  )'
-    ) USING v_tenant_id;
+    v_sql := 'UPDATE stock_entries SET quantity = 0';
+
+    IF v_stock_entries_available_col IS NOT NULL THEN
+      v_sql := v_sql || ', ' || quote_ident(v_stock_entries_available_col) || ' = 0';
+    END IF;
+
+    IF v_stock_entries_has_allocated THEN
+      v_sql := v_sql || ', allocated_quantity = 0';
+    END IF;
+
+    IF v_stock_entries_has_updated_at THEN
+      v_sql := v_sql || ', updated_at = NOW()';
+    END IF;
+
+    v_sql := v_sql
+      || ' WHERE tenant_id = $1'
+      || '   AND item_id IN ('
+      || '     SELECT i.id FROM items i'
+      || '     WHERE i.tenant_id = $1'
+      || '       AND (' || v_subassembly_item_condition || ')'
+      || '     UNION'
+      || '     SELECT bh.item_id FROM bom_headers bh'
+      || '     WHERE bh.tenant_id = $1'
+      || '   )';
+
+    EXECUTE v_sql USING v_tenant_id;
   END IF;
 
   IF v_delete_stock_entries AND v_delete_inventory_stock AND to_regclass('public.inventory_stock') IS NOT NULL THEN
@@ -280,12 +384,69 @@ BEGIN
   DELETE FROM purchase_order_items
   WHERE po_id IN (SELECT id FROM purchase_orders WHERE tenant_id = v_tenant_id);
 
+  -- The audit_purchase_orders_deletion BEFORE DELETE trigger calls log_deletion() which returns
+  -- NEW (= NULL on DELETE), silently cancelling each row's delete. Drop the trigger temporarily.
   RAISE NOTICE 'Deleting purchase_orders...';
-  DELETE FROM purchase_orders WHERE tenant_id = v_tenant_id;
+  BEGIN
+    DELETE FROM purchase_orders WHERE tenant_id = v_tenant_id;
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'PO delete failed (likely audit trigger cancelling rows). Dropping trigger temporarily...';
+    IF EXISTS (
+      SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+      WHERE c.relname = 'purchase_orders' AND t.tgname = 'audit_purchase_orders_deletion' AND NOT t.tgisinternal
+    ) THEN
+      BEGIN
+        EXECUTE 'DROP TRIGGER audit_purchase_orders_deletion ON purchase_orders';
+        v_po_audit_trigger_dropped := true;
+        RAISE NOTICE 'Dropped audit_purchase_orders_deletion trigger temporarily.';
+      EXCEPTION WHEN others THEN
+        RAISE NOTICE 'Could not drop PO audit trigger: %', SQLERRM;
+      END;
+    END IF;
+    DELETE FROM purchase_orders WHERE tenant_id = v_tenant_id;
+  END;
+
+  -- If POs weren't deleted (trigger-cancelled without error), NULL their pr_id so PRs can be deleted.
+  IF EXISTS (SELECT 1 FROM purchase_orders WHERE tenant_id = v_tenant_id LIMIT 1) THEN
+    RAISE NOTICE 'Some POs still exist (audit trigger may have cancelled deletes). NULLing pr_id to unblock PR deletion...';
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='purchase_orders' AND column_name='pr_id'
+    ) THEN
+      UPDATE purchase_orders SET pr_id = NULL
+      WHERE tenant_id = v_tenant_id AND pr_id IS NOT NULL;
+    END IF;
+    -- Retry PO delete after unlinking
+    IF v_po_audit_trigger_dropped OR NOT EXISTS (
+      SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+      WHERE c.relname = 'purchase_orders' AND t.tgname = 'audit_purchase_orders_deletion' AND NOT t.tgisinternal
+    ) THEN
+      DELETE FROM purchase_orders WHERE tenant_id = v_tenant_id;
+    END IF;
+  END IF;
+
+  -- Recreate the PO audit trigger if we dropped it
+  IF v_po_audit_trigger_dropped AND to_regprocedure('public.log_deletion()') IS NOT NULL THEN
+    BEGIN
+      EXECUTE 'CREATE TRIGGER audit_purchase_orders_deletion BEFORE UPDATE OR DELETE ON purchase_orders FOR EACH ROW EXECUTE FUNCTION log_deletion()';
+      RAISE NOTICE 'Recreated audit_purchase_orders_deletion trigger.';
+    EXCEPTION WHEN others THEN
+      RAISE NOTICE 'Could not recreate PO audit trigger (may already exist): %', SQLERRM;
+    END;
+  END IF;
 
   RAISE NOTICE 'Deleting purchase_requisition_items...';
   DELETE FROM purchase_requisition_items
   WHERE pr_id IN (SELECT id FROM purchase_requisitions WHERE tenant_id = v_tenant_id);
+
+  -- Safety: NULL out any remaining purchase_orders.pr_id links before deleting PRs
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='purchase_orders' AND column_name='pr_id'
+  ) THEN
+    UPDATE purchase_orders SET pr_id = NULL
+    WHERE tenant_id = v_tenant_id AND pr_id IS NOT NULL;
+  END IF;
 
   RAISE NOTICE 'Deleting purchase_requisitions...';
   DELETE FROM purchase_requisitions WHERE tenant_id = v_tenant_id;

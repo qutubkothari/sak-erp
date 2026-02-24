@@ -2328,7 +2328,35 @@ function SmartJobOrdersItemsPageContent() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {preview.subAssembliesToMake.map((sa, idx) => {
+                        {(() => {
+                          // Build hierarchical serial numbers (1, 1.1, 1.2, 2, 2.1...)
+                          // using parentBomId from the explosion nodes
+                          const bomParentMap = new Map<string, string>();
+                          for (const node of (preview.nodes || [])) {
+                            if (node.componentType === 'BOM' && node.parentBomId) {
+                              bomParentMap.set(node.bomId, node.parentBomId);
+                            }
+                          }
+                          const saBomIdSet = new Set((preview.subAssembliesToMake || []).map((sa) => sa.bomId));
+                          const saChildrenOf = new Map<string | null, string[]>();
+                          for (const sa of (preview.subAssembliesToMake || [])) {
+                            const parentBomId = bomParentMap.get(sa.bomId);
+                            const parentKey = (parentBomId && saBomIdSet.has(parentBomId)) ? parentBomId : null;
+                            if (!saChildrenOf.has(parentKey)) saChildrenOf.set(parentKey, []);
+                            const ch = saChildrenOf.get(parentKey)!;
+                            if (!ch.includes(sa.bomId)) ch.push(sa.bomId);
+                          }
+                          const saSerialNum = new Map<string, string>();
+                          const assignNums = (parentKey: string | null, prefix: string) => {
+                            (saChildrenOf.get(parentKey) || []).forEach((bomId, i) => {
+                              const num = prefix ? `${prefix}.${i + 1}` : `${i + 1}`;
+                              saSerialNum.set(bomId, num);
+                              assignNums(bomId, num);
+                            });
+                          };
+                          assignNums(null, '');
+
+                          return preview.subAssembliesToMake.map((sa, idx) => {
                           const ready = isSubAssemblyReady(sa.bomId);
                           const selected = selectedSABatchKeys.has(getSAKey(sa));
                           return (
@@ -2342,7 +2370,7 @@ function SmartJobOrdersItemsPageContent() {
                                   className="h-4 w-4"
                                 />
                               </td>
-                              <td className="px-4 py-2 text-sm text-gray-600">{idx + 1}</td>
+                              <td className="px-4 py-2 text-sm text-gray-600">{saSerialNum.get(sa.bomId) ?? idx + 1}</td>
                               <td className="px-4 py-2 text-sm text-gray-900">
                                 {sa.itemCode} - {sa.itemName}
                               </td>
@@ -2362,7 +2390,8 @@ function SmartJobOrdersItemsPageContent() {
                               </td>
                             </tr>
                           );
-                        })}
+                        });
+                        })()}
                       </tbody>
                     </table>
                   </div>

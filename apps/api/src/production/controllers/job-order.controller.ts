@@ -230,6 +230,12 @@ export class JobOrderController {
     return this.jobOrderService.getStoreIssueVoucherHistory(tenantId);
   }
 
+  @Get('store/material-requisitions/:id/readiness')
+  async checkMaterialReadiness(@Request() req: any, @Param('id') id: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.jobOrderService.checkIssuanceReadiness(tenantId, id);
+  }
+
   @Post('store/material-requisitions/:id/issue')
   async issueMaterialRequisition(@Request() req: any, @Param('id') id: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];

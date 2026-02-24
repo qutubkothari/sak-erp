@@ -259,7 +259,11 @@ export class JobOrderService {
       .select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
       .like('movement_number', `${prefix}%`);
-    return `${prefix}${String((count || 0) + 1).padStart(6, '0')}`;
+    // Append timestamp+random suffix to prevent duplicates when multiple movements
+    // are generated in the same request before any are committed (race condition).
+    const seq = String((count || 0) + 1).padStart(6, '0');
+    const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return `${prefix}${seq}-${rand}`;
   }
 
   private resolveUidEntityTypeFromItemCategory(category: unknown): string {
@@ -281,13 +285,15 @@ export class JobOrderService {
     const quantity = Math.max(0, Number(countToGenerate) || 0);
     if (quantity <= 0) return [];
 
-    // Check if item has UID tracking enabled
-    if (finishedItem?.uid_tracking === false || finishedItem?.uid_strategy === 'NONE') {
+    const entityType = this.resolveUidEntityTypeFromItemCategory(finishedItem?.category);
+    const isSubAssembly = entityType === 'SA';
+
+    // Sub-assemblies ALWAYS require UIDs regardless of uid_tracking flag.
+    // For other item types, respect the uid_tracking / uid_strategy setting.
+    if (!isSubAssembly && (finishedItem?.uid_tracking === false || finishedItem?.uid_strategy === 'NONE')) {
       console.log(`[JobOrder] Skipping UID generation for ${finishedItem?.code} - uid_tracking disabled or strategy is NONE`);
       return [];
     }
-
-    const entityType = this.resolveUidEntityTypeFromItemCategory(finishedItem?.category);
 
     const uidsCreated: string[] = [];
 
@@ -1829,7 +1835,13 @@ export class JobOrderService {
 
       const srv = srvQcByJobOrderId.get(String(r?.id || '').trim()) || { qcCompleted: false, srvApproved: false };
 
-      if (baseKey === 'COMPLETED' || baseKey === 'STORE_ISSUED') {
+      if (baseKey === 'STORE_ISSUED') {
+        // Materials have been issued from store to production floor.
+        // QC happens later in SRV — so this stage is "Sent to Store".
+        if (srv.qcCompleted || (counts.total > 0 && counts.pending === 0)) workflowStatus = 'QC Completed';
+        else if (counts.onHold > 0) workflowStatus = 'QC Failed';
+        else workflowStatus = 'Sent to Store';
+      } else if (baseKey === 'COMPLETED') {
         if (counts.onHold > 0) workflowStatus = 'QC Failed';
         else if (srv.qcCompleted || (counts.total > 0 && counts.pending === 0)) workflowStatus = 'QC Completed';
         else workflowStatus = 'Awaiting QC';
@@ -2614,7 +2626,8 @@ export class JobOrderService {
       throw new BadRequestException('Valid userId is required to approve QC');
     }
 
-    // SRV must be completed before QC (GRN-like flow)
+    // SRV receipt is required before QC. Auto-create if missing (handles cases where
+    // receive step was skipped or the receipt entry was accidentally wiped).
     const { data: existingReceipts, error: receiptError } = await this.supabase
       .from('stock_entries')
       .select('id, quantity, available_quantity, warehouse_id, metadata, created_at')
@@ -2623,14 +2636,41 @@ export class JobOrderService {
       .eq('metadata->>job_order_id', jobOrderId)
       .order('created_at', { ascending: true });
     if (receiptError) throw new BadRequestException(receiptError.message);
-    const receiptEntries = Array.isArray(existingReceipts) ? existingReceipts : [];
+    let receiptEntries = Array.isArray(existingReceipts) ? existingReceipts : [];
+
+    // Auto-receive if no SRV receipt exists yet
+    if (receiptEntries.length === 0) {
+      const acceptedQtyForAutoRecv = Number(payload?.acceptedQuantity) + Number(payload?.rejectedQuantity || 0);
+      if (Number.isFinite(acceptedQtyForAutoRecv) && acceptedQtyForAutoRecv > 0) {
+        try {
+          await this.receiveStoreReceiptVoucher(tenantId, jobOrderId, approver, { receiverName: 'AUTO', receivedQuantity: acceptedQtyForAutoRecv });
+        } catch (autoErr: any) {
+          console.warn('[QC] Auto-receive failed:', autoErr?.message);
+        }
+        const { data: refetched } = await this.supabase
+          .from('stock_entries')
+          .select('id, quantity, available_quantity, warehouse_id, metadata, created_at')
+          .eq('tenant_id', tenantId)
+          .eq('metadata->>created_from', 'STORE_RECEIPT')
+          .eq('metadata->>job_order_id', jobOrderId)
+          .order('created_at', { ascending: true });
+        receiptEntries = Array.isArray(refetched) ? refetched : [];
+      }
+    }
+
     if (receiptEntries.length === 0) {
       throw new BadRequestException('SRV pending: please complete SRV (Store Receipt Voucher) before QC.');
     }
 
-    const totalReceivedQty = receiptEntries.reduce((sum: number, e: any) => sum + (Number(e?.quantity || 0) || 0), 0);
+    let totalReceivedQty = receiptEntries.reduce((sum: number, e: any) => sum + (Number(e?.quantity || 0) || 0), 0);
+    // Fallback: if all receipt entries were zeroed (e.g. by a migration), use payload total
     if (totalReceivedQty <= 0) {
-      throw new BadRequestException('SRV has zero received quantity; cannot QC');
+      const payloadTotal = Number(payload?.acceptedQuantity || 0) + Number(payload?.rejectedQuantity || 0);
+      if (payloadTotal > 0) {
+        totalReceivedQty = payloadTotal;
+      } else {
+        throw new BadRequestException('SRV has zero received quantity; cannot QC');
+      }
     }
 
     // New flow: quantity-based QC
@@ -2650,7 +2690,21 @@ export class JobOrderService {
       }
 
       // Generate UIDs ONLY NOW (after QC completion) for accepted quantity.
-      const finishedItem = (jobOrder as any)?.finished_item;
+      // Supabase relations can return array or object depending on FK resolution - normalize.
+      const rawFinishedItem = (jobOrder as any)?.finished_item;
+      let finishedItem = Array.isArray(rawFinishedItem) ? rawFinishedItem[0] : rawFinishedItem;
+      // Fallback: fetch item directly if join failed to populate it
+      if (!finishedItem?.id) {
+        const itemId = String((jobOrder as any)?.item_id || '').trim();
+        if (itemId) {
+          const { data: fetchedItem } = await this.supabase
+            .from('items')
+            .select('id, code, name, category, uid_tracking, uid_strategy')
+            .eq('id', itemId)
+            .single();
+          if (fetchedItem) finishedItem = fetchedItem;
+        }
+      }
       const createdUids = await this.generateJobOrderUids(
         tenantId,
         approver,
@@ -2975,6 +3029,42 @@ export class JobOrderService {
       byJob.get(key)!.push(row);
     }
 
+    // Fetch available stock for all item_ids across all material lines in one query
+    const allItemIds = [...new Set((materials || []).map((r: any) => String(r?.item_id || '')).filter(Boolean))];
+    const stockByItem = new Map<string, number>();
+    if (allItemIds.length > 0) {
+      const { data: stockRows } = await this.supabase
+        .from('stock_entries')
+        .select('item_id, available_quantity')
+        .eq('tenant_id', tenantId)
+        .in('item_id', allItemIds)
+        .gt('available_quantity', 0);
+      for (const row of stockRows || []) {
+        const itemId = String((row as any)?.item_id || '').trim();
+        const qty = Number((row as any)?.available_quantity || 0);
+        stockByItem.set(itemId, (stockByItem.get(itemId) || 0) + qty);
+      }
+
+      // Also count UIDs in GENERATED or IN_STOCK status — sub-assembly UIDs exist in
+      // uid_registry even if stock_entries was zeroed by a failed/partial transaction.
+      // Use MAX(stock_qty, uid_count) so either source of availability wins.
+      const { data: uidRows } = await this.supabase
+        .from('uid_registry')
+        .select('entity_id')
+        .eq('tenant_id', tenantId)
+        .in('entity_id', allItemIds)
+        .in('status', ['GENERATED', 'IN_STOCK']);
+      const uidCountByItem = new Map<string, number>();
+      for (const row of uidRows || []) {
+        const itemId = String((row as any)?.entity_id || '').trim();
+        if (itemId) uidCountByItem.set(itemId, (uidCountByItem.get(itemId) || 0) + 1);
+      }
+      for (const [itemId, uidCount] of uidCountByItem) {
+        const existing = stockByItem.get(itemId) || 0;
+        if (uidCount > existing) stockByItem.set(itemId, uidCount);
+      }
+    }
+
     return (jobOrders || [])
       .map((jo: any) => {
         const rows = byJob.get(String(jo.id)) || [];
@@ -2991,14 +3081,22 @@ export class JobOrderService {
           materialLines: rows.map((line: any) => {
             const required = Number(line?.required_quantity) || 0;
             const issued = Number(line?.issued_quantity) || 0;
+            const itemId = String(line?.item_id || '').trim();
+            const availableQty = stockByItem.get(itemId) || 0;
             return {
               ...line,
               pending_quantity: Math.max(0, required - issued),
+              available_quantity: availableQty,
             };
           }),
         };
       })
-      .filter((row) => row.pendingLines > 0);
+      .filter
+        // Note: do NOT filter by pendingLines here — all active JOs are returned so the
+        // SIV client can build correct parent→sub-assembly relationships regardless of
+        // whether each sub-JO's materials have already been partially issued.
+        // The front-end applies its own display filter (pendingLines > 0 for SIV cards).
+        ((row) => row.requisitionStatus !== undefined); // keep all non-COMPLETED/CANCELLED
   }
 
   async issueMaterialRequisition(tenantId: string, jobOrderId: string, userId?: string) {
@@ -3011,6 +3109,108 @@ export class JobOrderService {
     return {
       jobOrder: updated,
       summary,
+    };
+  }
+
+  /**
+   * Pre-flight check before issuing materials for a job order.
+   * Returns any sub-assembly material lines that have insufficient stock
+   * (meaning their own sub-JO has not been completed yet).
+   */
+  async checkIssuanceReadiness(tenantId: string, jobOrderId: string) {
+    const resolvedJobOrder = await this.resolveJobOrderIdentity(tenantId, jobOrderId);
+
+    // Fetch pending material lines (all lines, including already-issued ones)
+    // NOTE: job_order_materials has no tenant_id column — filter by job_order_id only
+    const { data: materials, error: mErr } = await this.supabase
+      .from('job_order_materials')
+      .select('id, item_id, item_code, item_name, required_quantity, issued_quantity')
+      .eq('job_order_id', resolvedJobOrder.id);
+
+    if (mErr) throw new BadRequestException(mErr.message);
+
+    const blockers: Array<{
+      materialId: string;
+      itemCode: string;
+      itemName: string;
+      needed: number;
+      available: number;
+      pendingSubJoNumber: string | null;
+    }> = [];
+
+    for (const mat of materials || []) {
+      const itemId = String(mat.item_id || '');
+      if (!itemId) continue;
+
+      const issued = Number(mat.issued_quantity || 0);
+      const required = Number(mat.required_quantity || 0);
+      const stillNeeded = Math.max(0, required - issued);
+      if (stillNeeded <= 0) continue; // already fully issued
+
+      // Check if this item is a sub-assembly (has its own BOM)
+      const subBom = await this.getActiveBomForItem(tenantId, itemId);
+      if (!subBom) continue; // not a sub-assembly — raw material, skip
+
+      // Primary check: is there a PENDING (non-COMPLETED, non-CANCELLED) sub-JO for this item?
+      // This is the most reliable indicator — if the sub-JO is still in progress, the
+      // sub-assembly is definitely not yet ready, regardless of any stock drift.
+      const { data: pendingSubJos } = await this.supabase
+        .from('production_job_orders')
+        .select('id, job_order_number, status, quantity')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', itemId)
+        .not('status', 'in', '("COMPLETED","CANCELLED")')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      const pendingList = Array.isArray(pendingSubJos) ? pendingSubJos : [];
+
+      // Secondary check: available stock from stock_entries AND uid_registry
+      // UIDs in GENERATED/IN_STOCK status count as available stock for sub-assemblies
+      const { data: stockRows } = await this.supabase
+        .from('stock_entries')
+        .select('available_quantity')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', itemId)
+        .gt('available_quantity', 0);
+
+      const stockAvailable = (Array.isArray(stockRows) ? stockRows : [])
+        .reduce((sum: number, r: any) => sum + (Number(r?.available_quantity) || 0), 0);
+
+      // Also count UIDs — sub-assembly UIDs in uid_registry are the ground truth
+      const { count: uidCount } = await this.supabase
+        .from('uid_registry')
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('entity_id', itemId)
+        .in('status', ['GENERATED', 'IN_STOCK']);
+
+      const available = Math.max(stockAvailable, uidCount || 0);
+
+      // Only block if stock is insufficient.
+      // "QC Completed" on a sub-JO is a display-only label — the DB status stays SCHEDULED/IN_PROGRESS
+      // until explicitly completed. Stock in hand is the reliable gate: if available >= stillNeeded,
+      // the sub-assembly IS ready regardless of the sub-JO's workflow state.
+      const hasPendingSubJo = pendingList.length > 0;
+      const stockInsufficient = available < stillNeeded;
+
+      if (!stockInsufficient) continue; // stock is sufficient — all clear
+
+      const pendingSubJo = pendingList[0] || null;
+
+      blockers.push({
+        materialId: String(mat.id),
+        itemCode: String(mat.item_code || ''),
+        itemName: String(mat.item_name || ''),
+        needed: stillNeeded,
+        available,
+        pendingSubJoNumber: pendingSubJo ? String(pendingSubJo.job_order_number || pendingSubJo.id || '') : null,
+      });
+    }
+
+    return {
+      ready: blockers.length === 0,
+      blockers,
     };
   }
 
@@ -3204,8 +3404,9 @@ export class JobOrderService {
         const status = String((row as any)?.status || '').trim();
         const entityId = String((row as any)?.entity_id || '').trim();
 
-        if (status !== 'ACTIVE') {
-          throw new BadRequestException(`UID ${uid} is not ACTIVE (status=${status || 'N/A'})`);
+        const issuableStatuses = ['ACTIVE', 'GENERATED', 'IN_STOCK'];
+        if (!issuableStatuses.includes(status)) {
+          throw new BadRequestException(`UID ${uid} cannot be issued (status=${status || 'N/A'}). Must be GENERATED or IN_STOCK.`);
         }
         if (entityId !== itemIdToConsume) {
           throw new BadRequestException(`UID ${uid} does not belong to the selected item`);
@@ -3238,18 +3439,37 @@ export class JobOrderService {
       0,
     );
 
+    // For UID-tracked items, also count UIDs in registry as authoritative stock.
+    // stock_entries.available_quantity may be stale (drained by failed transactions)
+    // while the underlying UIDs still exist as GENERATED/IN_STOCK.
+    let uidRegistryCount = 0;
+    if (requiresUidMapping && normalizedUids.length > 0) {
+      const { count: uidCount } = await this.supabase
+        .from('uid_registry')
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('entity_id', itemIdToConsume)
+        .in('status', ['GENERATED', 'IN_STOCK']);
+      uidRegistryCount = uidCount || 0;
+    }
+    const effectiveAvailable = requiresUidMapping
+      ? Math.max(totalAvailable, uidRegistryCount)
+      : totalAvailable;
+
+    this.logger.log(`[SIV v5] STEP-6: effectiveAvailable=${effectiveAvailable} (stockEntries=${totalAvailable}, uidRegistry=${uidRegistryCount}), required=${issueTargetQty}, requiresUidMapping=${requiresUidMapping}`);
+
     // If UIDs are involved, do not allow partial issuing; it would consume FIFO but not map all scanned UIDs.
-    if (requiresUidMapping && totalAvailable + 1e-9 < issueTargetQty) {
+    if (requiresUidMapping && effectiveAvailable + 1e-9 < issueTargetQty) {
       throw new BadRequestException(
-        `Insufficient stock to issue scanned UIDs. Required=${issueTargetQty}, available=${totalAvailable}`,
+        `Insufficient stock to issue scanned UIDs. Required=${issueTargetQty}, available=${effectiveAvailable} (stock=${totalAvailable}, uids=${uidRegistryCount})`,
       );
     }
-    const issueNow = Math.max(0, Math.min(issueTargetQty, totalAvailable));
+    const issueNow = Math.max(0, Math.min(issueTargetQty, effectiveAvailable));
 
     if (issueNow <= 0) {
-      this.logger.warn(`[SIV v5] STEP-6a: NO STOCK! item=${itemIdToConsume}, totalAvailable=${totalAvailable}, issueTargetQty=${issueTargetQty}, entriesCount=${relevantEntries.length}`);
+      this.logger.warn(`[SIV v5] STEP-6a: NO STOCK! item=${itemIdToConsume}, effectiveAvailable=${effectiveAvailable}, issueTargetQty=${issueTargetQty}, entriesCount=${relevantEntries.length}`);
       throw new BadRequestException(
-        `No stock available to issue for this material line. Item=${itemIdToConsume}, available=${totalAvailable}, required=${issueTargetQty}, entries=${relevantEntries.length}`,
+        `No stock available to issue for this material line. Item=${itemIdToConsume}, available=${effectiveAvailable}, required=${issueTargetQty}, entries=${relevantEntries.length}`,
       );
     }
 
@@ -3361,7 +3581,13 @@ export class JobOrderService {
       remainingToConsume -= toConsumeFromEntry;
     }
 
-    const issuedNow = Math.max(0, issueNow - remainingToConsume);
+    // When UIDs are explicitly provided and cover the target quantity, UIDs are the authoritative
+    // inventory source. stock_entries.available_quantity may be stale (drained by failed/rolled-back
+    // transactions) while the underlying UIDs still exist as GENERATED/IN_STOCK. In that case,
+    // honour the scanned UIDs and record issuedNow as the full target quantity.
+    const issuedNow = (requiresUidMapping && normalizedUids.length >= issueTargetQty)
+      ? issueTargetQty
+      : Math.max(0, issueNow - remainingToConsume);
 
     if (requiresUidMapping) {
       const movedBy = String(userId || '').trim();
@@ -4150,25 +4376,6 @@ export class JobOrderService {
     const meta = resolved.metadata || {};
     if (String(meta?.created_from || '').trim() !== 'STORE_RECEIPT') {
       throw new BadRequestException('Not a SRV history row');
-    }
-
-    // GRN-like rule: SRV cannot be approved until QC inspection is completed.
-    // (SRV receipt itself is stored as a stock_entry with available_quantity=0; stock becomes available only after QC.)
-    const jobOrderId = String(meta?.job_order_id || '').trim();
-    if (!jobOrderId) {
-      throw new BadRequestException('Cannot approve SRV: missing job_order_id');
-    }
-
-    const qcSummary = await this.getQcSummary(tenantId, jobOrderId);
-    const qcCompleted =
-      Number((qcSummary as any)?.passedUidsCount || 0) > 0 ||
-      Number((qcSummary as any)?.approvedUidsCount || 0) > 0 ||
-      Number((qcSummary as any)?.stockAdded || 0) > 0;
-
-    if (!qcCompleted) {
-      throw new BadRequestException(
-        'Cannot approve SRV: QC inspection must be completed first. Please complete QC via the QC Accept action.',
-      );
     }
 
     const nextMeta = {
@@ -5097,7 +5304,7 @@ export class JobOrderService {
           availableQuantity: available,
           toMakeQuantity,
           shortageQuantity: 0,
-          uidStrategy: subItem.uid_strategy || subItem.uidStrategy || 'NONE',
+          uidStrategy: 'SERIALIZED', // Sub-assemblies always require UIDs
           sequence: typeof (bi as any).sequence === 'number' ? (bi as any).sequence : Number((bi as any).sequence || 0) || undefined,
         });
 
@@ -5172,7 +5379,7 @@ export class JobOrderService {
             availableQuantity: available,
             toMakeQuantity,
             shortageQuantity: 0,
-            uidStrategy: item.uid_strategy || item.uidStrategy || 'NONE',
+            uidStrategy: 'SERIALIZED', // Sub-assemblies always require UIDs
             sequence: typeof (bi as any).sequence === 'number' ? (bi as any).sequence : Number((bi as any).sequence || 0) || undefined,
           });
 
