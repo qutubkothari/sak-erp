@@ -171,6 +171,7 @@ function GRNContent() {
   const canApproveGRN = hasModulePermission(currentUser, 'Purchase Management', 'approve');
   const [grns, setGrns] = useState<GRN[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
@@ -913,6 +914,8 @@ function GRNContent() {
   };
 
   const actuallyCreateGRN = async () => {
+    if (submitting) return; // Prevent double submission
+    
     try {
       // Validate required fields
       if (!formData.poId) {
@@ -929,6 +932,8 @@ function GRNContent() {
         alert('No items to receive. Please select a PO with items.');
         return;
       }
+      
+      setSubmitting(true);
       
       // Transform data to match API expectations
       const payload = {
@@ -1010,6 +1015,8 @@ function GRNContent() {
     } catch (error) {
       console.error('Error creating GRN:', error);
       setAlertMessage({ type: 'error', message: 'Failed to create GRN. Please try again.' });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -1849,9 +1856,10 @@ function GRNContent() {
               </button>
               <button
                 onClick={handleCreateGRN}
-                className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                disabled={submitting}
+                className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Create GRN
+                {submitting ? 'Creating...' : 'Create GRN'}
               </button>
             </div>
           </div>
