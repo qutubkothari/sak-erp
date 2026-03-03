@@ -78,6 +78,13 @@ export default function SrvPage() {
     rejectedQty: number;
     qcNotes: string;
     rejectionReason: string;
+    qcFiles?: Array<{
+      url: string;
+      name: string;
+      type: string;
+      size: number;
+    }>;
+    // Keep legacy fields for backward compatibility
     qcFileUrl?: string;
     qcFileName?: string;
     qcFileType?: string;
@@ -282,14 +289,24 @@ export default function SrvPage() {
           return;
         }
 
+        const newFile = {
+          url: url,
+          name: String(file.name),
+          type: String(file.type),
+          size: Number(file.size) || 0,
+        };
+
         setQcFormData((prev) => {
           const next = [...prev];
+          const existingFiles = next[index].qcFiles || [];
           next[index] = {
             ...next[index],
-            qcFileUrl: url,
-            qcFileName: String(file.name),
-            qcFileType: String(file.type),
-            qcFileSize: Number(file.size) || 0,
+            qcFiles: [...existingFiles, newFile],
+            // Update legacy fields to point to first file for backward compatibility
+            qcFileUrl: existingFiles.length === 0 ? url : next[index].qcFileUrl,
+            qcFileName: existingFiles.length === 0 ? newFile.name : next[index].qcFileName,
+            qcFileType: existingFiles.length === 0 ? newFile.type : next[index].qcFileType,
+            qcFileSize: existingFiles.length === 0 ? newFile.size : next[index].qcFileSize,
           };
           return next;
         });
@@ -300,6 +317,25 @@ export default function SrvPage() {
     },
     [],
   );
+
+  const handleRemoveQCFile = useCallback((itemIndex: number, fileIndex: number) => {
+    setQcFormData((prev) => {
+      const next = [...prev];
+      const files = next[itemIndex].qcFiles || [];
+      const updatedFiles = files.filter((_, idx) => idx !== fileIndex);
+      
+      next[itemIndex] = {
+        ...next[itemIndex],
+        qcFiles: updatedFiles,
+        // Update legacy fields to point to first file
+        qcFileUrl: updatedFiles.length > 0 ? updatedFiles[0].url : '',
+        qcFileName: updatedFiles.length > 0 ? updatedFiles[0].name : '',
+        qcFileType: updatedFiles.length > 0 ? updatedFiles[0].type : '',
+        qcFileSize: updatedFiles.length > 0 ? updatedFiles[0].size : 0,
+      };
+      return next;
+    });
+  }, []);
 
   const openView = useCallback(
     async (row: ReceiptVoucherRow) => {
@@ -1235,29 +1271,49 @@ export default function SrvPage() {
 
                                   <div className="mt-3">
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                      Upload QC Photo / Report (PNG, JPG, PDF)
+                                      Upload QC Photos / Reports (PNG, JPG, PDF)
                                     </label>
                                     <input
                                       type="file"
                                       accept="image/png,image/jpeg,image/jpg,application/pdf"
+                                      multiple
                                       onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) handleQCFileSelect(file, index);
+                                        const files = Array.from(e.target.files || []);
+                                        files.forEach(file => handleQCFileSelect(file, index));
+                                        // Clear the input so the same file can be uploaded again if needed
+                                        e.target.value = '';
                                       }}
                                       className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                                     />
-                                    {(item.qcFileName || item.qcFileUrl) && (
-                                      <div className="text-xs text-gray-600 mt-1">
-                                        Selected: {item.qcFileName || 'QC Attachment'}
-                                        {item.qcFileUrl && (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleViewInvoice(item.qcFileUrl!, item.qcFileName)}
-                                            className="ml-2 text-blue-600 hover:text-blue-800 underline"
-                                          >
-                                            View
-                                          </button>
-                                        )}
+                                    {item.qcFiles && item.qcFiles.length > 0 && (
+                                      <div className="mt-2 space-y-1">
+                                        <div className="text-xs font-medium text-gray-700">
+                                          Uploaded Files ({item.qcFiles.length}):
+                                        </div>
+                                        {item.qcFiles.map((file, fileIndex) => (
+                                          <div key={fileIndex} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">
+                                            <span className="flex-1 truncate">
+                                              📎 {file.name}
+                                            </span>
+                                            <div className="flex gap-2 ml-2">
+                                              <button
+                                                type="button"
+                                                onClick={() => handleViewInvoice(file.url, file.name)}
+                                                className="text-blue-600 hover:text-blue-800 underline"
+                                              >
+                                                View
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleRemoveQCFile(index, fileIndex)}
+                                                className="text-red-600 hover:text-red-800 font-bold"
+                                                title="Remove file"
+                                              >
+                                                ×
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ))}
                                       </div>
                                     )}
                                   </div>

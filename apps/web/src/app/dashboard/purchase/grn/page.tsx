@@ -206,6 +206,13 @@ function GRNContent() {
     rejectedQty: number;
     qcNotes: string;
     rejectionReason: string;
+    qcFiles?: Array<{
+      url: string;
+      name: string;
+      type: string;
+      size: number;
+    }>;
+    // Keep legacy fields for backward compatibility
     qcFileUrl?: string;
     qcFileName?: string;
     qcFileType?: string;
@@ -447,19 +454,46 @@ function GRNContent() {
         return;
       }
 
+      const newFile = {
+        url: url,
+        name: String(data?.name || file.name),
+        type: String(data?.type || file.type),
+        size: Number(data?.size || file.size) || 0,
+      };
+
       const newData = [...qcFormData];
+      const existingFiles = newData[index].qcFiles || [];
       newData[index] = {
         ...newData[index],
-        qcFileUrl: url,
-        qcFileName: String(data?.name || file.name),
-        qcFileType: String(data?.type || file.type),
-        qcFileSize: Number(data?.size || file.size) || 0,
+        qcFiles: [...existingFiles, newFile],
+        // Update legacy fields to point to first file for backward compatibility
+        qcFileUrl: existingFiles.length === 0 ? url : newData[index].qcFileUrl,
+        qcFileName: existingFiles.length === 0 ? newFile.name : newData[index].qcFileName,
+        qcFileType: existingFiles.length === 0 ? newFile.type : newData[index].qcFileType,
+        qcFileSize: existingFiles.length === 0 ? newFile.size : newData[index].qcFileSize,
       };
       setQcFormData(newData);
     } catch (e) {
       console.error('QC upload error:', e);
       alert('QC upload failed. Please try again.');
     }
+  };
+
+  const handleRemoveQCFile = (itemIndex: number, fileIndex: number) => {
+    const newData = [...qcFormData];
+    const files = newData[itemIndex].qcFiles || [];
+    const updatedFiles = files.filter((_, idx) => idx !== fileIndex);
+    
+    newData[itemIndex] = {
+      ...newData[itemIndex],
+      qcFiles: updatedFiles,
+      // Update legacy fields to point to first file
+      qcFileUrl: updatedFiles.length > 0 ? updatedFiles[0].url : '',
+      qcFileName: updatedFiles.length > 0 ? updatedFiles[0].name : '',
+      qcFileType: updatedFiles.length > 0 ? updatedFiles[0].type : '',
+      qcFileSize: updatedFiles.length > 0 ? updatedFiles[0].size : 0,
+    };
+    setQcFormData(newData);
   };
 
   useEffect(() => {
@@ -2202,6 +2236,16 @@ function GRNContent() {
                           const receivedQty = item.received_qty || item.received_quantity || 0;
                           const acceptedQty = item.accepted_qty || item.accepted_quantity || receivedQty;
                           const rejectedQty = item.rejected_qty || item.rejected_quantity || 0;
+                          // Load existing QC files
+                          const existingFiles = [];
+                          if (item.qc_file_url) {
+                            existingFiles.push({
+                              url: item.qc_file_url,
+                              name: item.qc_file_name || 'QC Attachment',
+                              type: item.qc_file_type || '',
+                              size: item.qc_file_size || 0,
+                            });
+                          }
                           return {
                             itemId: item.id,
                             itemCode: item.item_code || item.item?.code,
@@ -2211,6 +2255,8 @@ function GRNContent() {
                             rejectedQty: rejectedQty,
                             qcNotes: item.qc_notes || '',
                             rejectionReason: item.rejection_reason || '',
+                            qcFiles: existingFiles,
+                            // Keep legacy fields for backward compatibility
                             qcFileUrl: item.qc_file_url || '',
                             qcFileName: item.qc_file_name || '',
                             qcFileType: item.qc_file_type || '',
@@ -2715,29 +2761,49 @@ function GRNContent() {
 
                     <div className="mt-3">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Upload QC Photo / Report (PNG, JPG, PDF)
+                        Upload QC Photos / Reports (PNG, JPG, PDF)
                       </label>
                       <input
                         type="file"
                         accept="image/png,image/jpeg,image/jpg,application/pdf"
+                        multiple
                         onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleQCFileSelect(file, index);
+                          const files = Array.from(e.target.files || []);
+                          files.forEach(file => handleQCFileSelect(file, index));
+                          // Clear the input so the same file can be uploaded again if needed
+                          e.target.value = '';
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                       />
-                      {(item.qcFileName || item.qcFileUrl) && (
-                        <div className="text-xs text-gray-600 mt-1">
-                          Selected: {item.qcFileName || 'QC Attachment'}
-                          {item.qcFileUrl && (
-                            <button
-                              type="button"
-                              onClick={() => handleViewInvoice(item.qcFileUrl!, item.qcFileName)}
-                              className="ml-2 text-blue-600 hover:text-blue-800 underline"
-                            >
-                              View
-                            </button>
-                          )}
+                      {item.qcFiles && item.qcFiles.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          <div className="text-xs font-medium text-gray-700">
+                            Uploaded Files ({item.qcFiles.length}):
+                          </div>
+                          {item.qcFiles.map((file, fileIndex) => (
+                            <div key={fileIndex} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">
+                              <span className="flex-1 truncate">
+                                📎 {file.name}
+                              </span>
+                              <div className="flex gap-2 ml-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewInvoice(file.url, file.name)}
+                                  className="text-blue-600 hover:text-blue-800 underline"
+                                >
+                                  View
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveQCFile(index, fileIndex)}
+                                  className="text-red-600 hover:text-red-800 font-bold"
+                                  title="Remove file"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
