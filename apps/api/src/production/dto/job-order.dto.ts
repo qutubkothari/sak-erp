@@ -102,6 +102,10 @@ export class CreateJobOrderDto {
   notes?: string;
 
   @IsOptional()
+  @IsUUID()
+  assignedTo?: string;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => JobOrderOperationDto)
@@ -188,7 +192,9 @@ export class UpdateOperationDto {
   @IsOptional()
   @IsString()
   notes?: string;
-}
+  @IsOptional()
+  @IsUUID()
+  assignedTo?: string;}
 
 export class PartialCompleteJobOrderDto {
   @IsNotEmpty()

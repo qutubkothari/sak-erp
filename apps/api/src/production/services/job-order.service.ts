@@ -1606,6 +1606,17 @@ export class JobOrderService {
       }
     }
 
+    // Get assigned user name if provided
+    let assignedToName = null;
+    if (dto.assignedTo) {
+      const { data: assignedUser } = await this.supabase
+        .from('users')
+        .select('full_name, employee_name')
+        .eq('id', dto.assignedTo)
+        .single();
+      assignedToName = assignedUser?.employee_name || assignedUser?.full_name;
+    }
+
     // Create job order
     const { data: jobOrder, error } = await this.supabase
       .from('production_job_orders')
@@ -1622,6 +1633,8 @@ export class JobOrderService {
         sales_order_item_id: dto.salesOrderItemId || null,
         priority: dto.priority || 'NORMAL',
         notes: dto.notes || null,
+        assigned_to: dto.assignedTo || null,
+        assigned_to_name: assignedToName,
         created_by: userId,
       })
       .select()
@@ -1889,9 +1902,23 @@ export class JobOrderService {
   }
 
   async update(tenantId: string, id: string, dto: UpdateJobOrderDto) {
+    const updateData: any = { ...dto };
+    
+    // Get assigned user name if assignedTo is being updated
+    if (dto.assignedTo) {
+      const { data: assignedUser } = await this.supabase
+        .from('users')
+        .select('full_name, employee_name')
+        .eq('id', dto.assignedTo)
+        .single();
+      updateData.assigned_to_name = assignedUser?.employee_name || assignedUser?.full_name;
+    } else if (dto.assignedTo === null) {
+      updateData.assigned_to_name = null;
+    }
+
     const { error } = await this.supabase
       .from('production_job_orders')
-      .update(dto)
+      .update(updateData)
       .eq('tenant_id', tenantId)
       .eq('id', id);
 
