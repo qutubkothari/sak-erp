@@ -37,6 +37,7 @@ interface User {
   employee_name: string;
   employee_code: string;
   designation?: string;
+  full_name?: string;
 }
 
 interface Operation {
@@ -83,10 +84,14 @@ interface JobOrder {
   rejectedQuantity?: number;
   startDate: string;
   endDate?: string;
+  actualStartDate?: string;
+  actualEndDate?: string;
   priority: string;
   status: string;
   workflowStatus?: string;
   notes?: string;
+  assignedTo?: string;
+  assignedToName?: string;
   operations?: Operation[];
   materials?: Material[];
   createdAt: string;
@@ -199,6 +204,7 @@ function JobOrdersPageContent() {
     startDate: getTodayDateInputValue(),
     endDate: '',
     priority: 'NORMAL',
+    assignedTo: '',
     notes: '',
   });
 
@@ -232,9 +238,13 @@ function JobOrdersPageContent() {
       rejectedQuantity: jo.rejected_quantity ?? jo.rejectedQuantity,
       startDate: jo.start_date || jo.startDate,
       endDate: jo.end_date || jo.endDate,
+      actualStartDate: jo.actual_start_date || jo.actualStartDate,
+      actualEndDate: jo.actual_end_date || jo.actualEndDate,
       priority: jo.priority,
       status: jo.status,
       workflowStatus: jo.workflow_status ?? jo.workflowStatus,
+      assignedTo: jo.assigned_to || jo.assignedTo,
+      assignedToName: jo.assigned_to_name || jo.assignedToName,
       notes: jo.notes,
       createdAt: jo.created_at || jo.createdAt,
       operations: operationsRaw.map((op: any) => ({
@@ -770,6 +780,7 @@ function JobOrdersPageContent() {
         quantity: formData.quantity,
         startDate: formData.startDate,
         priority: formData.priority,
+        assignedTo: formData.assignedTo || undefined,
         notes: formData.notes,
       };
       
@@ -1076,6 +1087,7 @@ function JobOrdersPageContent() {
       startDate: getTodayDateInputValue(),
       endDate: '',
       priority: 'NORMAL',
+      assignedTo: '',
       notes: '',
     });
     setOperations([]);
@@ -1565,10 +1577,81 @@ function JobOrdersPageContent() {
     },
     {
       id: 'startDate',
-      label: 'Start Date',
+      label: 'Planned Start',
       accessor: (jo) => jo.startDate,
       sortAccessor: (jo) => (jo.startDate ? new Date(jo.startDate).getTime() : 0),
-      cell: (jo) => <span>{jo.startDate ? new Date(jo.startDate).toLocaleDateString() : '-'}</span>,
+      cell: (jo) => <span className="text-xs">{jo.startDate ? new Date(jo.startDate).toLocaleDateString() : '-'}</span>,
+    },
+    {
+      id: 'actualStartDate',
+      label: 'Actual Start',
+      accessor: (jo) => jo.actualStartDate,
+      sortAccessor: (jo) => (jo.actualStartDate ? new Date(jo.actualStartDate).getTime() : 0),
+      cell: (jo) => (
+        <span className="text-xs">
+          {jo.actualStartDate ? new Date(jo.actualStartDate).toLocaleDateString() : '-'}
+        </span>
+      ),
+    },
+    {
+      id: 'days',
+      label: 'Days',
+      accessor: (jo) => {
+        if (jo.actualEndDate && jo.actualStartDate) {
+          const start = new Date(jo.actualStartDate);
+          const end = new Date(jo.actualEndDate);
+          return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        } else if (jo.actualStartDate && !jo.actualEndDate && jo.status === 'IN_PROGRESS') {
+          const start = new Date(jo.actualStartDate);
+          const now = new Date();
+          return Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        }
+        return null;
+      },
+      sortAccessor: (jo) => {
+        if (jo.actualEndDate && jo.actualStartDate) {
+          const start = new Date(jo.actualStartDate);
+          const end = new Date(jo.actualEndDate);
+          return (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+        } else if (jo.actualStartDate && !jo.actualEndDate && jo.status === 'IN_PROGRESS') {
+          const start = new Date(jo.actualStartDate);
+          const now = new Date();
+          return (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+        }
+        return 0;
+      },
+      cell: (jo) => {
+        const days = (() => {
+          if (jo.actualEndDate && jo.actualStartDate) {
+            const start = new Date(jo.actualStartDate);
+            const end = new Date(jo.actualEndDate);
+            return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+          } else if (jo.actualStartDate && !jo.actualEndDate && jo.status === 'IN_PROGRESS') {
+            const start = new Date(jo.actualStartDate);
+            const now = new Date();
+            return Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+          }
+          return null;
+        })();
+        
+        return days !== null ? (
+          <span className={`text-xs font-medium ${jo.status === 'IN_PROGRESS' ? 'text-blue-600' : ''}`}>
+            {days} {jo.status === 'IN_PROGRESS' ? '(ongoing)' : ''}
+          </span>
+        ) : (
+          <span className="text-xs text-gray-400">-</span>
+        );
+      },
+    },
+    {
+      id: 'assignedTo',
+      label: 'Assigned To',
+      accessor: (jo) => jo.assignedToName || jo.assignedTo,
+      cell: (jo) => (
+        <span className="text-xs text-gray-700">
+          {jo.assignedToName || '-'}
+        </span>
+      ),
     },
     {
       id: 'priority',
@@ -1901,6 +1984,22 @@ function JobOrdersPageContent() {
               </div>
 
               <div>
+                <label className="block text-sm font-medium mb-1">Assigned To</label>
+                <select
+                  value={formData.assignedTo}
+                  onChange={(e) => setFormData({...formData, assignedTo: e.target.value})}
+                  className="w-full border rounded px-3 py-2"
+                >
+                  <option value="">-- Unassigned --</option>
+                  {users.map(user => (
+                    <option key={user.id} value={user.id}>
+                      {user.employee_name || user.full_name} {user.employee_code ? `(${user.employee_code})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium mb-1">Notes</label>
                 <input
                   type="text"
@@ -2150,10 +2249,51 @@ function JobOrdersPageContent() {
                 <strong>Quantity:</strong> {selectedJobOrder.quantity}
               </div>
               <div>
-                <strong>Start Date:</strong> {new Date(selectedJobOrder.startDate).toLocaleDateString()}
+                <strong>Planned Start:</strong> {new Date(selectedJobOrder.startDate).toLocaleDateString()}
+              </div>
+              <div>
+                <strong>Actual Start:</strong>{' '}
+                {selectedJobOrder.actualStartDate ? (
+                  <span className="text-green-700 font-medium">
+                    {new Date(selectedJobOrder.actualStartDate).toLocaleString()}
+                  </span>
+                ) : (
+                  <span className="text-gray-400">Not started</span>
+                )}
+              </div>
+              <div>
+                <strong>Actual End:</strong>{' '}
+                {selectedJobOrder.actualEndDate ? (
+                  <span className="text-blue-700 font-medium">
+                    {new Date(selectedJobOrder.actualEndDate).toLocaleString()}
+                  </span>
+                ) : (
+                  <span className="text-gray-400">Not completed</span>
+                )}
+              </div>
+              <div>
+                <strong>Days Taken:</strong>{' '}
+                {(() => {
+                  if (selectedJobOrder.actualEndDate && selectedJobOrder.actualStartDate) {
+                    const start = new Date(selectedJobOrder.actualStartDate);
+                    const end = new Date(selectedJobOrder.actualEndDate);
+                    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                    return <span className="text-blue-700 font-medium">{days} days</span>;
+                  } else if (selectedJobOrder.actualStartDate && selectedJobOrder.status === 'IN_PROGRESS') {
+                    const start = new Date(selectedJobOrder.actualStartDate);
+                    const now = new Date();
+                    const days = Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                    return <span className="text-yellow-600 font-medium">{days} days (ongoing)</span>;
+                  }
+                  return <span className="text-gray-400">-</span>;
+                })()}
               </div>
               <div>
                 <strong>Priority:</strong> {selectedJobOrder.priority}
+              </div>
+              <div>
+                <strong>Assigned To:</strong>{' '}
+                {selectedJobOrder.assignedToName || <span className="text-gray-400">Unassigned</span>}
               </div>
               <div>
                 <strong>Status:</strong>{' '}
