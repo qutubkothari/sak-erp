@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../components/ui/ListTable';
+import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 
 interface WorkStation {
   id: string;
@@ -118,14 +119,11 @@ export default function WorkStationsPage() {
   const fetchWorkStations = async () => {
     setLoading(true);
     try {
-      console.log('Fetching work stations');
       const data = await apiClient.get('/production/work-stations');
-      console.log('Received data:', data);
       // Ensure data is always an array
       const stationsArray = Array.isArray(data) ? data : (data?.data ? data.data : []);
       setWorkStations(stationsArray);
     } catch (error) {
-      console.error('Failed to fetch work stations:', error);
       setWorkStations([]);
       alert('Failed to load work stations: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
@@ -148,7 +146,6 @@ export default function WorkStationsPage() {
       resetForm();
       fetchWorkStations();
     } catch (error: any) {
-      console.error('Save error:', error);
       alert('Failed to save work station: ' + (error.message || 'Unknown error'));
     } finally {
       setLoading(false);
@@ -169,7 +166,13 @@ export default function WorkStationsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this work station?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Work Station',
+      message: 'Are you sure you want to delete this work station?',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     setLoading(true);
     try {

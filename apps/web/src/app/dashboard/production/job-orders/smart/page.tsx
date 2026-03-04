@@ -419,12 +419,8 @@ function SmartJobOrdersPageContent() {
 
           const issueSummary = (result as any)?.issueMaterialsSummary;
           if (issueSummary?.error) {
-            console.error('[SmartJO] Materials issue step failed:', issueSummary);
           } else if (Array.isArray(issueSummary?.failures) && issueSummary.failures.length > 0) {
-            console.error('[SmartJO] Materials issuance failures:', issueSummary.failures);
-            console.error('[SmartJO] Full issueMaterialsSummary:', issueSummary);
           } else if (issueSummary) {
-            console.log('[SmartJO] issueMaterialsSummary:', issueSummary);
           }
 
           setCreateSummary(result);
@@ -437,7 +433,6 @@ function SmartJobOrdersPageContent() {
           setShowCreateProgress(false);
           setCreating(false);
           setCreateJobId('');
-          console.error('[SmartJO] Smart Job Order async job FAILED:', status);
           alert(`❌ Failed to create Smart Job Order: ${status.error || 'Unknown error'}`);
         }
       } catch (err: any) {

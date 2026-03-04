@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from '../../components/Sidebar';
+import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
+import { CommandPalette } from '@/components/CommandPalette';
+import { ConfirmDialogProvider } from '@/components/ui/ConfirmDialog';
 import {
   getDefaultLandingPath,
   isPathAllowedForUser,
@@ -42,14 +45,28 @@ export default function DashboardLayout({
     }
   }, [pathname, router]);
 
+  // Don't show breadcrumbs on the root dashboard page
+  const showBreadcrumbs = pathname !== '/dashboard';
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      {/* Command palette — global Cmd+K */}
+      <CommandPalette />
+      {/* Confirm dialog portal */}
+      <ConfirmDialogProvider />
+
       <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
-      <main 
+      <main
         className={`min-h-screen transition-all duration-300 ${
           sidebarCollapsed ? 'ml-16' : 'ml-56'
         }`}
       >
+        {/* Top sub-header with breadcrumbs */}
+        {showBreadcrumbs && (
+          <div className="sticky top-0 z-30 border-b border-gray-200 bg-white/80 backdrop-blur-sm px-4 lg:px-6 py-2.5 flex items-center">
+            <Breadcrumbs />
+          </div>
+        )}
         <div className="p-4 lg:p-6">
           {children}
         </div>

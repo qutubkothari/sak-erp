@@ -39,7 +39,6 @@ export default function WorkflowHistory({ documentId }: WorkflowHistoryProps) {
       const data = await apiClient.get<WorkflowHistoryItem[]>(`/documents/${documentId}/workflow-history`);
       setHistory(Array.isArray(data) ? data : []);
     } catch (e: any) {
-      console.error('Failed to load workflow history:', e);
       setError(e.response?.data?.message || 'Failed to load workflow history');
       setHistory([]);
     } finally {

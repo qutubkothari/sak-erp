@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import { getTodayDateInputValue } from '@/lib/date';
+import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 
 // Import HR module utilities
 import {
@@ -250,11 +251,9 @@ function hasModulePermission(
 
 function userCanAccessManagement(user: StoredUser | null): boolean {
   if (!user) {
-    console.log('[HR Access Check] No user found');
     return false;
   }
 
-  console.log('[HR Access Check] User:', user.email);
 
   // Prefer permissions-based check (works for multi-role and custom role names)
   if (
@@ -263,14 +262,11 @@ function userCanAccessManagement(user: StoredUser | null): boolean {
     hasModulePermission(user, 'HR Management', 'create') ||
     hasModulePermission(user, 'HR Management', 'delete')
   ) {
-    console.log('[HR Access Check] ✅ Access granted via permissions');
     return true;
   }
 
   // Fallback: allow known admin/owner patterns by role name
   const roleNames = getUserRoleNames(user);
-  console.log('[HR Access Check] User roles:', roleNames);
-  console.log('[HR Access Check] Role names as strings:', JSON.stringify(roleNames));
   
   const hasAdminRole = roleNames.some((name) =>
     [
@@ -291,9 +287,7 @@ function userCanAccessManagement(user: StoredUser | null): boolean {
   );
   
   if (hasAdminRole) {
-    console.log('[HR Access Check] ✅ Access granted via role name');
   } else {
-    console.log('[HR Access Check] ❌ Access denied - no matching role');
   }
   
   return hasAdminRole;
@@ -628,7 +622,6 @@ function HrPageContent() {
       setKpiDefinitions(Array.isArray(kpis) ? kpis : kpis?.data || []);
       setMeritDemeritTypes(Array.isArray(types) ? types : types?.data || []);
     } catch (error) {
-      console.error('Failed to load master config:', error);
     }
   };
 
@@ -651,7 +644,6 @@ function HrPageContent() {
         setEmployeeDocuments(Array.isArray(docs) ? docs : (docs.data || []));
         setMeritsDemerits(Array.isArray(md) ? md : (md.data || []));
       } catch (e) {
-        console.error('Failed to load employee documents/merits:', e);
         setEmployeeDocuments([]);
         setMeritsDemerits([]);
       }
@@ -846,7 +838,6 @@ function HrPageContent() {
         }
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
 
       const msg = (error as any)?.message || String(error);
       if (msg.includes('401') || msg.toLowerCase().includes('unauthorized')) {
@@ -879,7 +870,6 @@ function HrPageContent() {
       fetchData();
       alert('Employee created successfully');
     } catch (error) {
-      console.error('Error creating employee:', error);
       alert('Failed to create employee');
     }
   };
@@ -900,7 +890,6 @@ function HrPageContent() {
       fetchData();
       alert('Attendance recorded successfully');
     } catch (error) {
-      console.error('Error recording attendance:', error);
       alert('Failed to record attendance');
     }
   };
@@ -921,7 +910,6 @@ function HrPageContent() {
       fetchData();
       alert('Leave request submitted successfully');
     } catch (error) {
-      console.error('Error applying leave:', error);
       alert('Failed to submit leave request');
     }
   };
@@ -944,7 +932,6 @@ function HrPageContent() {
       fetchData();
       alert('Leave approved successfully');
     } catch (error) {
-      console.error('Error approving leave:', error);
       alert('Failed to approve leave');
     }
   };
@@ -967,7 +954,6 @@ function HrPageContent() {
       fetchData();
       alert('Leave rejected successfully');
     } catch (error) {
-      console.error('Error rejecting leave:', error);
       alert('Failed to reject leave');
     }
   };
@@ -982,7 +968,6 @@ function HrPageContent() {
       fetchData();
       alert('Salary component added successfully');
     } catch (error) {
-      console.error('Error creating salary component:', error);
       alert('Failed to add salary component');
     } finally {
       setLoading(false);
@@ -990,13 +975,18 @@ function HrPageContent() {
   };
 
   const handleDeleteSalaryComponent = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this salary component?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Salary Component',
+      message: 'Are you sure you want to delete this salary component?',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/hr/salary/${id}`);
       fetchData();
       alert('Salary component deleted successfully');
     } catch (error) {
-      console.error('Error deleting salary component:', error);
       alert('Failed to delete salary component');
     }
   };
@@ -1011,7 +1001,6 @@ function HrPageContent() {
       fetchData();
       alert('Payroll run created successfully');
     } catch (error) {
-      console.error('Error creating payroll run:', error);
       alert('Failed to create payroll run');
     } finally {
       setLoading(false);
@@ -1019,14 +1008,19 @@ function HrPageContent() {
   };
 
   const handleGeneratePayslips = async (runId: string) => {
-    if (!confirm('Generate payslips for this payroll run?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Generate Payslips',
+      message: 'Generate payslips for this payroll run?',
+      confirmLabel: 'Generate',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     setLoading(true);
     try {
       await apiClient.post(`/hr/payroll/run/${runId}/generate`);
       fetchData();
       alert('Payslips generated successfully');
     } catch (error) {
-      console.error('Error generating payslips:', error);
       const message = error instanceof Error ? error.message : String(error);
       alert(`Failed to generate payslips${message ? `: ${message}` : ''}`);
     } finally {
@@ -1114,7 +1108,6 @@ function HrPageContent() {
       });
       fetchData();
     } catch (error) {
-      console.error('Error saving monthly payroll:', error);
       alert('Failed to save monthly payroll');
     } finally {
       setLoading(false);
@@ -1122,14 +1115,19 @@ function HrPageContent() {
   };
 
   const handleProcessMonthlyPayroll = async (id: string) => {
-    if (!confirm('Process this monthly payroll? This will lock the record.')) return;
+    const confirmed = await confirmDialog({
+      title: 'Process Monthly Payroll',
+      message: 'Process this monthly payroll? This will lock the record.',
+      confirmLabel: 'Process',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     setLoading(true);
     try {
       await apiClient.put(`/hr/payroll/monthly/${id}/process`);
       fetchData();
       alert('Monthly payroll processed successfully');
     } catch (error) {
-      console.error('Error processing monthly payroll:', error);
       alert('Failed to process monthly payroll');
     } finally {
       setLoading(false);
@@ -1137,14 +1135,19 @@ function HrPageContent() {
   };
 
   const handleDeleteMonthlyPayroll = async (id: string) => {
-    if (!confirm('Delete this monthly payroll record?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Monthly Payroll',
+      message: 'Delete this monthly payroll record?',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     setLoading(true);
     try {
       await apiClient.delete(`/hr/payroll/monthly/${id}`);
       fetchData();
       alert('Monthly payroll deleted successfully');
     } catch (error) {
-      console.error('Error deleting monthly payroll:', error);
       alert('Failed to delete monthly payroll');
     } finally {
       setLoading(false);
@@ -1297,7 +1300,6 @@ function HrPageContent() {
       fetchData();
       alert(`Successfully saved ${components.length} salary components`);
     } catch (error) {
-      console.error('Error saving comprehensive salary:', error);
       alert('Failed to save salary components');
     } finally {
       setLoading(false);
@@ -1367,7 +1369,6 @@ function HrPageContent() {
       setLoading(false);
       return metrics;
     } catch (error) {
-      console.error('Error calculating KPI:', error);
       setLoading(false);
       return null;
     }
@@ -1544,7 +1545,6 @@ function HrPageContent() {
         setMeritsDemerits(Array.isArray(mdRes) ? mdRes : (mdRes.data || []));
       }
     } catch (error) {
-      console.error('Error auto-generating merit/demerit:', error);
     }
   };
 
@@ -1579,7 +1579,6 @@ function HrPageContent() {
         manual_notes: ''
       });
     } catch (error) {
-      console.error('Error saving manual KPIs:', error);
       alert('Failed to save manual KPIs');
     } finally {
       setLoading(false);
@@ -1644,7 +1643,6 @@ function HrPageContent() {
         professional_tax: professionalTax
       });
     } catch (error) {
-      console.error('Error fetching employee salary:', error);
       // Set default values if fetch fails
       setMonthlyPayrollForm({
         employee_id: employeeId,
@@ -2372,7 +2370,6 @@ function HrPageContent() {
         }, 250);
       }
     } catch (error: any) {
-      console.error(error);
       alert(error?.message || 'Failed to print payslip');
     }
   };
@@ -2427,7 +2424,6 @@ function HrPageContent() {
       setAttendanceImportResult(`Imported: ${imported}, Skipped: ${skipped}`);
       fetchData();
     } catch (err: any) {
-      console.error(err);
       alert(err?.message || 'Failed to import attendance');
     } finally {
       setLoading(false);
@@ -2497,7 +2493,13 @@ function HrPageContent() {
 
   const handleDeleteEmployeeDocument = async (docId: string) => {
     if (!selectedEmployee?.id) return;
-    if (!confirm('Delete this document?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Document',
+      message: 'Delete this document?',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     setLoading(true);
     try {
       await apiClient.delete(`/hr/employees/${selectedEmployee.id}/documents/${docId}`);
@@ -2544,7 +2546,13 @@ function HrPageContent() {
 
   const handleDeleteMeritDemerit = async (recordId: string) => {
     if (!selectedEmployee?.id) return;
-    if (!confirm('Delete this record?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Record',
+      message: 'Delete this record?',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     setLoading(true);
     try {
       await apiClient.delete(`/hr/employees/${selectedEmployee.id}/merits-demerits/${recordId}`);
@@ -3945,7 +3953,13 @@ function HrPageContent() {
                 <>
                   <button
                     onClick={async () => {
-                      if (!confirm('Approve this leave request?')) return;
+                      const confirmed = await confirmDialog({
+                        title: 'Approve Leave',
+                        message: 'Approve this leave request?',
+                        confirmLabel: 'Approve',
+                        variant: 'warning',
+                      });
+                      if (!confirmed) return;
                       await handleApproveLeave(selectedLeave.id);
                       setShowLeaveDetails(false);
                     }}
@@ -3955,7 +3969,13 @@ function HrPageContent() {
                   </button>
                   <button
                     onClick={async () => {
-                      if (!confirm('Reject this leave request?')) return;
+                      const confirmed = await confirmDialog({
+                        title: 'Reject Leave',
+                        message: 'Reject this leave request?',
+                        confirmLabel: 'Reject',
+                        variant: 'danger',
+                      });
+                      if (!confirmed) return;
                       await handleRejectLeave(selectedLeave.id);
                       setShowLeaveDetails(false);
                     }}

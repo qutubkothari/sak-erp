@@ -119,7 +119,6 @@ export default function UIDTrackingPage() {
         setTotalCount(response.total);
       }
     } catch (error) {
-      console.error('Error fetching UIDs:', error);
     } finally {
       setLoading(false);
     }
@@ -156,7 +155,6 @@ export default function UIDTrackingPage() {
       setSearchResults(data);
       setShowSearchDropdown(data.length > 0);
     } catch (error) {
-      console.error('Error searching UIDs:', error);
     } finally {
       setSearchLoading(false);
     }
@@ -179,7 +177,6 @@ export default function UIDTrackingPage() {
       setShowTraceModal(true);
       setShowSearchDropdown(false);
     } catch (error) {
-      console.error('Error searching UID:', error);
       alert('Error searching for UID');
     }
   };
@@ -212,7 +209,6 @@ export default function UIDTrackingPage() {
       
       alert('Part number updated successfully!');
     } catch (error) {
-      console.error('Error updating part number:', error);
       alert('Failed to update part number');
     }
   };
@@ -597,7 +593,6 @@ export default function UIDTrackingPage() {
                         setSelectedUID(parsedUID);
                         setShowTraceModal(true);
                       } catch (error) {
-                        console.error('Error loading trace data:', error);
                         alert('Error loading trace information');
                       }
                     }}

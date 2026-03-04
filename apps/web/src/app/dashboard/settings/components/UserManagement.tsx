@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, UserX, UserCheck, Search, Mail, Eye, EyeOff } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
+import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 
 interface User {
   id: string;
@@ -49,7 +50,6 @@ export default function UserManagement() {
       const data = await apiClient.get<User[]>('/users');
       setUsers(data);
     } catch (error) {
-      console.error('Failed to fetch users:', error);
     } finally {
       setLoading(false);
     }
@@ -66,20 +66,22 @@ export default function UserManagement() {
       await apiClient.put(`/users/${userId}`, { is_active: !currentStatus });
       fetchUsers();
     } catch (error) {
-      console.error('Failed to update user status:', error);
     }
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-      return;
-    }
+    const confirmed = await confirmDialog({
+      title: 'Delete User',
+      message: 'Are you sure you want to delete this user? This action cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/users/${userId}`);
       alert('User deleted successfully');
       fetchUsers();
     } catch (error: any) {
-      console.error('Failed to delete user:', error);
       alert(`Failed to delete user: ${error.message || 'Unknown error'}`);
     }
   };
@@ -261,7 +263,6 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
       const data = await apiClient.get<any[]>('/roles');
       setRoles(data);
     } catch (error) {
-      console.error('Failed to fetch roles:', error);
     }
   };
 
@@ -441,7 +442,6 @@ function EditUserModal({
       const data = await apiClient.get<any[]>('/roles');
       setRoles(data);
     } catch (error) {
-      console.error('Failed to fetch roles:', error);
     }
   };
 

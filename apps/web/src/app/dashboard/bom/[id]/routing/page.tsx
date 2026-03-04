@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { confirmDialog } from '../../../../../components/ui/ConfirmDialog';
 
 interface WorkStation {
   id: string;
@@ -37,34 +38,25 @@ export default function BOMRoutingPage() {
   
   // Extract BOM ID from params or URL pathname as fallback
   const getBomId = (): string | null => {
-    console.log('Getting BOM ID - params:', params);
-    console.log('params.id type:', typeof params?.id);
-    console.log('params.id value:', params?.id);
     
     if (!params) {
-      console.log('No params object');
       // Fallback: extract from URL pathname
       const pathname = window.location.pathname;
-      console.log('Pathname:', pathname);
       const match = pathname.match(/\/bom\/([^\/]+)\/routing/);
       if (match) {
-        console.log('Extracted from pathname:', match[1]);
         return match[1];
       }
       return null;
     }
     
     if (typeof params.id === 'string') {
-      console.log('Returning string ID:', params.id);
       return params.id;
     }
     
     if (Array.isArray(params.id) && params.id.length > 0) {
-      console.log('Returning array ID[0]:', params.id[0]);
       return params.id[0];
     }
     
-    console.log('No valid ID found in params');
     return null;
   };
   
@@ -89,19 +81,15 @@ export default function BOMRoutingPage() {
   // Set bomId when params become available
   useEffect(() => {
     const id = getBomId();
-    console.log('useEffect - extracted BOM ID:', id);
     setBomId(id);
   }, [params]);
 
   useEffect(() => {
-    console.log('Data fetch useEffect - bomId:', bomId);
     
     if (!bomId) {
-      console.log('No bomId available yet');
       return;
     }
     
-    console.log('Fetching data for BOM ID:', bomId);
     fetchBOM();
     fetchRouting();
     fetchWorkStations();
@@ -118,7 +106,6 @@ export default function BOMRoutingPage() {
         setBom(data);
       }
     } catch (error) {
-      console.error('Failed to fetch BOM:', error);
     }
   };
 
@@ -138,7 +125,6 @@ export default function BOMRoutingPage() {
         setRoutingSteps(stepsArray);
       }
     } catch (error) {
-      console.error('Failed to fetch routing:', error);
       setRoutingSteps([]);
     } finally {
       setLoading(false);
@@ -160,7 +146,6 @@ export default function BOMRoutingPage() {
         setWorkStations(stationsArray);
       }
     } catch (error) {
-      console.error('Failed to fetch work stations:', error);
       setWorkStations([]);
     }
   };
@@ -203,7 +188,6 @@ export default function BOMRoutingPage() {
         manhours_required: formData.manhoursRequired,
       };
 
-      console.log('Submitting routing payload:', payload);
 
       let response;
       if (editingId) {
@@ -238,7 +222,6 @@ export default function BOMRoutingPage() {
       resetForm();
       fetchRouting();
     } catch (error: any) {
-      console.error('Save error:', error);
       alert('Failed to save routing step: ' + (error.message || 'Unknown error'));
     } finally {
       setLoading(false);
@@ -260,7 +243,13 @@ export default function BOMRoutingPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this routing step?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Routing Step',
+      message: 'Are you sure you want to delete this routing step?',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       const token = localStorage.getItem('accessToken');

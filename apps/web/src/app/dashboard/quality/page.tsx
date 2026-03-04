@@ -163,7 +163,6 @@ export default function QualityPage() {
           : [];
       setUsers(normalizedUsers);
     } catch (error) {
-      console.error('Error fetching form data:', error);
       setUids([]);
       setUsers([]);
     }
@@ -178,7 +177,6 @@ export default function QualityPage() {
     try {
       // Fetch UID details which contains vendor, item, GRN info
       const uidDetails = await apiClient.get(`/uid/details/${uid}`);
-      console.log('UID Details:', uidDetails);
 
       const grnId = uidDetails.grnId || uidDetails.grn_id || null;
       let grnDetails: any = null;
@@ -187,7 +185,6 @@ export default function QualityPage() {
         try {
           grnDetails = await apiClient.get(`/purchase/grn/${grnId}`);
         } catch (grnError) {
-          console.warn('Failed to fetch GRN details for UID:', grnError);
         }
       }
 
@@ -228,7 +225,6 @@ export default function QualityPage() {
         }]
       };
       
-      console.log('Mock GRN for display:', mockGRN);
       setSelectedGRN(mockGRN);
       
       // Auto-fill form with UID data
@@ -240,7 +236,6 @@ export default function QualityPage() {
         quantity_inspected: 1, // UID represents 1 unit
       });
     } catch (error) {
-      console.error('Error fetching UID details:', error);
       alert('Failed to fetch UID information. Please check if the UID exists.');
     }
   };
@@ -261,7 +256,6 @@ export default function QualityPage() {
         setDashboard(data);
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
     }
   };
 
@@ -302,8 +296,6 @@ export default function QualityPage() {
         inspection_checklist: inspectionForm.remarks || '',
       };
       
-      console.log('Creating inspection with UID:', inspectionForm.uid);
-      console.log('Inspection data:', inspectionData);
       await apiClient.post('/quality/inspections', inspectionData);
       setShowInspectionForm(false);
       setInspectionForm({
@@ -321,7 +313,6 @@ export default function QualityPage() {
       fetchData();
       alert('Inspection created successfully');
     } catch (error) {
-      console.error('Error creating inspection:', error);
       alert('Failed to create inspection');
     }
   };
@@ -344,7 +335,6 @@ export default function QualityPage() {
       fetchData();
       alert('Inspection completed successfully');
     } catch (error) {
-      console.error('Error completing inspection:', error);
       alert('Failed to complete inspection');
     }
   };
@@ -367,7 +357,6 @@ export default function QualityPage() {
       fetchData();
       alert('NCR created successfully');
     } catch (error) {
-      console.error('Error creating NCR:', error);
       alert('Failed to create NCR');
     }
   };
@@ -445,7 +434,6 @@ export default function QualityPage() {
       fetchData();
       alert('Inspection updated successfully');
     } catch (error) {
-      console.error('Error updating inspection:', error);
       alert('Failed to update inspection');
     }
   };
@@ -457,7 +445,6 @@ export default function QualityPage() {
       fetchData();
       alert('Inspection deleted successfully');
     } catch (error) {
-      console.error('Error deleting inspection:', error);
       alert('Failed to delete inspection');
     }
   };
@@ -1615,7 +1602,6 @@ export default function QualityPage() {
                   fetchData();
                   alert('NCR updated successfully');
                 } catch (error) {
-                  console.error('Error updating NCR:', error);
                   alert('Failed to update NCR');
                 }
               }}

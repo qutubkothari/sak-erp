@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import { getTodayDateInputValue } from '@/lib/date';
 
 function getApiV1BaseUrl(): string | null {
@@ -107,7 +108,6 @@ export default function SrvPage() {
       setOpenSrvs(open || []);
       setSrvHistory(hist || []);
     } catch (err: any) {
-      console.error('Failed to load SRV data:', err);
       alert('Failed to load SRV data: ' + (err?.message || err));
     } finally {
       setLoading(false);
@@ -311,7 +311,6 @@ export default function SrvPage() {
           return next;
         });
       } catch (e) {
-        console.error('QC upload error:', e);
         alert('QC upload failed. Please try again.');
       }
     },
@@ -407,7 +406,13 @@ export default function SrvPage() {
   const approveAllPending = useCallback(async () => {
     const pending = srvHistory.filter((r) => !r.approved_by);
     if (pending.length === 0) { alert('No pending SRVs to approve.'); return; }
-    if (!confirm(`Approve all ${pending.length} pending SRV(s)?`)) return;
+    const confirmed = await confirmDialog({
+      title: 'Bulk Approve SRVs',
+      message: `Approve all ${pending.length} pending SRV(s)?`,
+      confirmLabel: 'Approve All',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     setBulkApproving(true);
     let succeeded = 0;
     let failed = 0;
@@ -437,7 +442,13 @@ export default function SrvPage() {
 
   const deleteSrv = useCallback(
     async (movementId: string) => {
-      if (!confirm('Delete this SRV entry? Stock/UIDs will be reversed.')) return;
+      const confirmed = await confirmDialog({
+        title: 'Delete SRV Entry',
+        message: 'Delete this SRV entry? Stock/UIDs will be reversed.',
+        confirmLabel: 'Delete',
+        variant: 'danger',
+      });
+      if (!confirmed) return;
       try {
         await apiClient.delete(`/job-orders/store/receipt-vouchers/${movementId}`);
         await loadAll();

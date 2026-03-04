@@ -6,6 +6,7 @@ import { apiClient } from '../../../../lib/api-client';
 import SearchableSelect from '../../../components/SearchableSelect';
 import DuplicateWarning, { useDuplicateDetection } from '../../../components/DuplicateWarning';
 import { getTodayDateInputValue } from '@/lib/date';
+import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 
 type TabType = 'customers' | 'quotations' | 'orders' | 'dispatch' | 'warranties';
 
@@ -498,7 +499,6 @@ export default function SalesPage() {
 
       setTimeout(cleanup, 30_000);
     } catch (err: any) {
-      console.error('Failed to print warranty certificate:', err);
       alert(err?.message || 'Failed to print warranty certificate');
     }
   };
@@ -525,10 +525,8 @@ export default function SalesPage() {
   const fetchItems = async () => {
     try {
       const data = await apiClient.get<any[]>('/items');
-      console.log('Fetched items:', data);
       setItems(data);
     } catch (err: any) {
-      console.error('Failed to fetch items:', err);
     }
   };
 
@@ -582,7 +580,6 @@ export default function SalesPage() {
       const result = await apiClient.post(`/sales/orders/${orderId}/send-email`, {});
       alert(`Sales order email sent to: ${result?.to || 'customer email'}`);
     } catch (err: any) {
-      console.error('Error sending sales order email:', err);
       alert(err?.message || 'Failed to send sales order email');
     } finally {
       setSendingSOEmailId(null);
@@ -625,7 +622,13 @@ export default function SalesPage() {
   };
 
   const handleDeleteSalesOrder = async (order: SalesOrder) => {
-    if (!confirm(`Delete sales order ${order.so_number}?`)) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Sales Order',
+      message: `Delete sales order ${order.so_number}?`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/sales/orders/${order.id}`);
       await fetchOrders();
@@ -667,7 +670,13 @@ export default function SalesPage() {
   };
 
   const handleDeleteDispatch = async (dispatch: DispatchNote) => {
-    if (!confirm(`Delete dispatch note ${dispatch.dn_number}? This will attempt to revert stock and UIDs.`)) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Dispatch Note',
+      message: `Delete dispatch note ${dispatch.dn_number}? This will attempt to revert stock and UIDs.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/sales/dispatch/${dispatch.id}`);
       await fetchDispatches();
@@ -706,7 +715,13 @@ export default function SalesPage() {
   };
 
   const handleDeleteWarranty = async (warranty: Warranty) => {
-    if (!confirm(`Delete warranty ${warranty.warranty_number}?`)) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Warranty',
+      message: `Delete warranty ${warranty.warranty_number}?`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/sales/warranties/${warranty.id}`);
       await fetchWarranties();
@@ -749,17 +764,13 @@ export default function SalesPage() {
         await apiClient.put(`/sales/customers/${editingCustomerId}`, customerForm);
         alert('Customer updated successfully!');
       } else {
-        console.log('Creating customer with data:', customerForm);
         const response = await apiClient.post('/sales/customers', customerForm);
-        console.log('Customer created successfully:', response);
         alert('Customer created successfully!');
       }
       setShowCustomerForm(false);
       resetCustomerForm();
       fetchCustomers();
     } catch (err: any) {
-      console.error('Full error object:', err);
-      console.error('Error response:', err.response?.data);
       setError(err.response?.data?.message || err.message || 'Failed to save customer');
     } finally {
       setLoading(false);
@@ -807,7 +818,13 @@ export default function SalesPage() {
   };
 
   const handleDeleteCustomer = async (customer: Customer) => {
-    if (!confirm(`Delete customer ${customer.customer_name}? This will deactivate the customer.`)) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Customer',
+      message: `Delete customer ${customer.customer_name}? This will deactivate the customer.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/sales/customers/${customer.id}`);
       await fetchCustomers();
@@ -891,7 +908,13 @@ export default function SalesPage() {
 
   const handleDeleteQuotation = async (quotation: Quotation) => {
     if (quotation.status !== 'DRAFT') return;
-    if (!confirm(`Delete quotation ${quotation.quotation_number}?`)) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Quotation',
+      message: `Delete quotation ${quotation.quotation_number}?`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/sales/quotations/${quotation.id}`);
       await fetchQuotations();
@@ -945,7 +968,6 @@ export default function SalesPage() {
         customer_id: selectedOrderForDispatch?.customer_id,
       };
 
-      console.log('Creating dispatch with payload:', dispatchPayload);
       await apiClient.post('/sales/dispatch', dispatchPayload);
       alert('Dispatch note created successfully!');
       setShowDispatchForm(false);
@@ -967,7 +989,6 @@ export default function SalesPage() {
       fetchOrders();
       fetchWarranties();
     } catch (err: any) {
-      console.error('Dispatch creation error:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Failed to create dispatch';
       setError(errorMessage);
       alert('❌ Dispatch Creation Failed:\n\n' + errorMessage);
@@ -1097,17 +1118,13 @@ export default function SalesPage() {
 
   const fetchSalesOrderItems = async (orderId: string) => {
     try {
-      console.log('Fetching SO items for order:', orderId);
       const data = await apiClient.get(`/sales/orders/${orderId}`);
-      console.log('SO data received:', data);
       const itemsArray = data.sales_order_items || data.items || [];
-      console.log('SO items extracted:', itemsArray);
       setSalesOrderItems(itemsArray);
       if (itemsArray.length === 0) {
         alert('⚠️ Warning: This sales order has no items. Please check the sales order.');
       }
     } catch (err: any) {
-      console.error('Failed to fetch SO items:', err);
       const errorMsg = err.response?.data?.message || err.message || 'Unknown error';
       alert('❌ Failed to fetch sales order items:\n\n' + errorMsg);
       setSalesOrderItems([]);
@@ -1128,11 +1145,9 @@ export default function SalesPage() {
       setAvailableUIDs({ ...availableUIDs, [itemId]: uids });
       
       if (uids.length === 0) {
-        console.warn(`No UIDs available for item ${itemId}`);
         alert(`⚠️ No saleable UIDs found for this item. Ensure QC is PASSED and inventory is IN_STOCK.`);
       }
     } catch (err: any) {
-      console.error('Failed to fetch UIDs:', err);
       const errorMsg = err.response?.data?.message || err.message || 'Unknown error';
       alert('❌ Failed to fetch available UIDs:\n\n' + errorMsg);
       setAvailableUIDs({ ...availableUIDs, [itemId]: [] });

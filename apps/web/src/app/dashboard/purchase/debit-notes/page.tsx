@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
+import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 
 interface DebitNote {
   id: string;
@@ -54,7 +55,6 @@ export default function DebitNotesPage() {
       const data = await apiClient.get<DebitNote[]>(`/purchase/debit-notes${params}`);
       setDebitNotes(data);
     } catch (error) {
-      console.error('Failed to fetch debit notes:', error);
     } finally {
       setLoading(false);
     }
@@ -66,12 +66,17 @@ export default function DebitNotesPage() {
       setSelectedDebitNote(data);
       setShowViewModal(true);
     } catch (error) {
-      console.error('Failed to fetch debit note details:', error);
     }
   };
 
   const approveDebitNote = async (id: string) => {
-    if (!confirm('Are you sure you want to approve this debit note? This will update the GRN payable amount.')) return;
+    const confirmed = await confirmDialog({
+      title: 'Approve Debit Note',
+      message: 'Are you sure you want to approve this debit note? This will update the GRN payable amount.',
+      confirmLabel: 'Approve',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     
     try {
       await apiClient.post(`/purchase/debit-notes/${id}/approve`, {});
@@ -79,13 +84,18 @@ export default function DebitNotesPage() {
       setShowViewModal(false);
       fetchDebitNotes();
     } catch (error: any) {
-      console.error('Failed to approve debit note:', error);
       alert(`Failed to approve: ${error.message || 'Unknown error'}`);
     }
   };
 
   const sendEmailToSupplier = async (id: string) => {
-    if (!confirm('Send this debit note to the supplier via email?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Send Debit Note',
+      message: 'Send this debit note to the supplier via email?',
+      confirmLabel: 'Send Email',
+      variant: 'info',
+    });
+    if (!confirmed) return;
     
     try {
       await apiClient.post(`/purchase/debit-notes/${id}/send-email`, {});
@@ -93,7 +103,6 @@ export default function DebitNotesPage() {
       setShowViewModal(false);
       fetchDebitNotes();
     } catch (error: any) {
-      console.error('Failed to send email:', error);
       alert(`Failed to send email: ${error.message || 'Unknown error'}`);
     }
   };
@@ -105,7 +114,6 @@ export default function DebitNotesPage() {
       setShowViewModal(false);
       fetchDebitNotes();
     } catch (error: any) {
-      console.error('Failed to update status:', error);
       alert(`Failed to update: ${error.message || 'Unknown error'}`);
     }
   };
@@ -121,7 +129,6 @@ export default function DebitNotesPage() {
       alert('Return status updated successfully!');
       viewDebitNote(debitNoteId); // Refresh
     } catch (error: any) {
-      console.error('Failed to update return status:', error);
       alert(`Failed to update: ${error.message || 'Unknown error'}`);
     }
   };

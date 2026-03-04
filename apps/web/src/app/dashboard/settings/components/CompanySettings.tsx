@@ -31,7 +31,6 @@ export default function CompanySettings() {
       const data = await apiClient.get<Company>('/tenant/current');
       setCompany(data);
     } catch (error) {
-      console.error('Failed to fetch company:', error);
     } finally {
       setLoading(false);
     }

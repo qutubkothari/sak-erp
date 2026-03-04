@@ -1,6 +1,8 @@
 'use client';
 
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { Download } from 'lucide-react';
+import { downloadCSV } from '@/lib/utils';
 
 export type ListTableColumn<T> = {
   id: string;
@@ -31,6 +33,8 @@ export type ListTableProps<T> = {
   toolbarRight?: ReactNode;
   emptyState?: ReactNode;
   className?: string;
+  /** When provided, a "Export CSV" button appears in the toolbar */
+  exportFilename?: string;
 };
 
 function safeParseJson<T>(value: string | null): T | null {
@@ -83,6 +87,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
     toolbarRight,
     emptyState,
     className = '',
+    exportFilename,
   } = props;
 
   const columnsMenuRef = useRef<HTMLDivElement | null>(null);
@@ -229,6 +234,21 @@ export function ListTable<T>(props: ListTableProps<T>) {
     localStorage.setItem(visibilityStorageKey, JSON.stringify(defaultVisibility));
   };
 
+  const handleExportCSV = () => {
+    if (!exportFilename) return;
+    // Build export rows from all sorted/filtered rows (not just current page)
+    const exportRows = sortedRows.map((row) => {
+      const obj: Record<string, unknown> = {};
+      for (const col of visibleColumns) {
+        if (col.hideable === false) continue; // Skip checkbox columns
+        const val = col.accessor ? col.accessor(row) : '';
+        obj[col.label] = val instanceof Date ? val.toISOString() : val;
+      }
+      return obj as Record<string, unknown>;
+    });
+    downloadCSV(exportRows, exportFilename);
+  };
+
   return (
     <div className={`bg-white rounded-lg shadow-md overflow-hidden ${className}`}>
       {/* Toolbar */}
@@ -315,6 +335,17 @@ export function ListTable<T>(props: ListTableProps<T>) {
 
         <div className="flex items-center gap-3 justify-end">
           {toolbarRight}
+          {exportFilename && (
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              title="Export to CSV"
+              className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-sm text-gray-700 transition-colors"
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Export CSV</span>
+            </button>
+          )}
           <select
             value={pageSize}
             onChange={(e) => {

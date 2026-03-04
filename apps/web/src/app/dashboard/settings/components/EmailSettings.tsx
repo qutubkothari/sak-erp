@@ -67,7 +67,6 @@ export default function EmailSettings() {
       const data = await apiClient.get<EmailConfig[]>('/emails/config');
       setEmailConfigs(data);
     } catch (error) {
-      console.error('Failed to fetch email config:', error);
       setMessage('Failed to load email configuration');
     } finally {
       setLoading(false);

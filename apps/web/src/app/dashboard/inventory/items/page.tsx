@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import DrawingManager from '../../../../components/DrawingManager';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 
@@ -181,7 +182,6 @@ export default function ItemsPage() {
         await fetchCategories();
         alert('Category added successfully!');
       } catch (error) {
-        console.error('Error adding category:', error);
         alert('Failed to add category');
       }
     }
@@ -195,7 +195,6 @@ export default function ItemsPage() {
         await fetchCategories();
         alert('Category updated successfully!');
       } catch (error) {
-        console.error('Error updating category:', error);
         alert('Failed to update category');
       }
     }
@@ -208,7 +207,6 @@ export default function ItemsPage() {
         await fetchCategories();
         alert('Category deleted successfully!');
       } catch (error) {
-        console.error('Error deleting category:', error);
         alert('Failed to delete category');
       }
     }
@@ -219,7 +217,6 @@ export default function ItemsPage() {
       const data = await apiClient.get('/categories');
       setCategories(data);
     } catch (error) {
-      console.error('Error fetching categories:', error);
     }
   };
 
@@ -229,7 +226,6 @@ export default function ItemsPage() {
       const data = await apiClient.get('/purchase/vendors');
       setVendors(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error fetching vendors:', error);
       setVendors([]);
     }
   };
@@ -240,7 +236,6 @@ export default function ItemsPage() {
       await fetchCategories();
       alert('Default categories restored!');
     } catch (error) {
-      console.error('Error seeding categories:', error);
       alert('Failed to restore categories');
     }
   };
@@ -325,7 +320,6 @@ export default function ItemsPage() {
       
       setItems(data);
     } catch (error) {
-      console.error('Error fetching items:', error);
       alert('Failed to fetch items');
     } finally {
       setLoading(false);
@@ -359,7 +353,6 @@ export default function ItemsPage() {
               revisionNotes: drawingLink!.revisionNotes || 'Uploaded via item form',
             });
           } catch (err) {
-            console.error('Error linking drawing before item update:', err);
             // Continue to item update; if drawing is compulsory, API may still reject.
           }
         }
@@ -377,7 +370,6 @@ export default function ItemsPage() {
               revisionNotes: drawingLink.revisionNotes || 'Uploaded via item form',
             });
           } catch (err) {
-            console.error('Error linking drawing after item update:', err);
             alert('Item updated, but drawing could not be linked. Please upload it from the Drawings tab.');
           }
         }
@@ -397,7 +389,6 @@ export default function ItemsPage() {
               revisionNotes: drawingLink.revisionNotes || 'Initial version',
             });
           } catch (err) {
-            console.error('Error linking drawing after item create:', err);
             alert('Item created, but drawing could not be linked. Please upload it from the Drawings tab.');
           }
         }
@@ -414,7 +405,6 @@ export default function ItemsPage() {
                 vendor_item_code: vendor.vendor_item_code,
               });
             } catch (vendorError) {
-              console.error('Error adding vendor to new item:', vendorError);
               // Continue with other vendors even if one fails
             }
           }
@@ -428,7 +418,6 @@ export default function ItemsPage() {
       resetForm();
       fetchItems();
     } catch (error: any) {
-      console.error('Error saving item:', error);
       alert(error.response?.data?.message || 'Failed to save item');
     }
   };
@@ -496,7 +485,6 @@ export default function ItemsPage() {
         () => actuallyCreateItem(payload, drawingLink),
       );
     } catch (error: any) {
-      console.error('Error saving item:', error);
       alert(error.response?.data?.message || 'Failed to save item');
     }
   };
@@ -517,7 +505,6 @@ export default function ItemsPage() {
         drawing_file_name: fileName || prev.drawing_file_name,
       }));
     } catch (error) {
-      console.error('Error loading existing drawings:', error);
     }
   };
 
@@ -563,7 +550,6 @@ export default function ItemsPage() {
       const data = await apiClient.get(`/inventory/items/${itemId}/vendors`);
       setItemVendors(data || []);
     } catch (error) {
-      console.error('Error fetching item vendors:', error);
       setItemVendors([]);
     }
   };
@@ -576,12 +562,9 @@ export default function ItemsPage() {
 
   const fetchVariants = async (parentItemId: string) => {
     try {
-      console.log('[fetchVariants] Fetching variants for parent:', parentItemId);
       const data = await apiClient.get(`/items/${parentItemId}/variants`);
-      console.log('[fetchVariants] Received variants:', data);
       setVariants(data || []);
     } catch (error) {
-      console.error('Error fetching variants:', error);
       setVariants([]);
     }
   };
@@ -609,24 +592,26 @@ export default function ItemsPage() {
         uid_strategy: 'NONE',
       };
       
-      console.log('[addVariantQuick] Sending payload:', payload);
       const result = await apiClient.post('/inventory/items', payload);
-      console.log('[addVariantQuick] Result:', result);
       
       setNewVariant({ code: '', name: '', variant_name: '', is_default: false });
       await fetchVariants(selectedParentItem.id);
       await fetchItems();
       alert('Variant added successfully!');
     } catch (error: any) {
-      console.error('[addVariantQuick] Full error:', error);
-      console.error('[addVariantQuick] Error response:', error.response);
       const errorMsg = error.response?.data?.message || error.message || 'Failed to add variant';
       alert('Failed to add variant:\n' + errorMsg);
     }
   };
 
   const deleteVariant = async (variantId: string) => {
-    if (!confirm('Delete this variant? This cannot be undone.')) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Variant',
+      message: 'Delete this variant? This cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     
     try {
       await apiClient.delete(`/inventory/items/${variantId}`);
@@ -636,7 +621,6 @@ export default function ItemsPage() {
       await fetchItems();
       alert('Variant deleted successfully!');
     } catch (error: any) {
-      console.error('Error deleting variant:', error);
       alert(error.response?.data?.message || 'Failed to delete variant');
     }
   };
@@ -651,7 +635,6 @@ export default function ItemsPage() {
       await fetchVariants(selectedParentItem.id);
       await fetchItems();
     } catch (error: any) {
-      console.error('Error updating default variant:', error);
       alert(error.response?.data?.message || 'Failed to update default variant');
     }
   };
@@ -691,7 +674,6 @@ export default function ItemsPage() {
         });
         fetchItemVendors(editingItem.id);
       } catch (error: any) {
-        console.error('Error adding vendor:', error);
         const status = error?.response?.status;
         const apiMessage =
           error?.response?.data?.message ||
@@ -742,14 +724,19 @@ export default function ItemsPage() {
   const removeItemVendor = async (vendorId: string) => {
     if (editingItem) {
       // If editing, remove from database
-      if (!confirm('Remove this vendor?')) return;
+      const confirmed = await confirmDialog({
+        title: 'Remove Vendor',
+        message: 'Remove this vendor?',
+        confirmLabel: 'Remove',
+        variant: 'warning',
+      });
+      if (!confirmed) return;
 
       try {
         await apiClient.delete(`/inventory/items/${editingItem.id}/vendors/${vendorId}`);
         alert('Vendor removed successfully!');
         fetchItemVendors(editingItem.id);
       } catch (error) {
-        console.error('Error removing vendor:', error);
         alert('Failed to remove vendor');
       }
     } else {
@@ -759,27 +746,37 @@ export default function ItemsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this item?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Item',
+      message: 'Are you sure you want to delete this item?',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     
     try {
       await apiClient.delete(`/inventory/items/${id}`);
       alert('Item deleted successfully!');
       fetchItems();
     } catch (error) {
-      console.error('Error deleting item:', error);
       alert('Failed to delete item');
     }
   };
 
   const handleRestore = async (id: string) => {
-    if (!confirm('Are you sure you want to restore this item?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Restore Item',
+      message: 'Are you sure you want to restore this item?',
+      confirmLabel: 'Restore',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     
     try {
       await apiClient.put(`/inventory/items/${id}`, { is_active: true });
       alert('Item restored successfully!');
       fetchItems();
     } catch (error) {
-      console.error('Error restoring item:', error);
       alert('Failed to restore item');
     }
   };
@@ -804,7 +801,6 @@ export default function ItemsPage() {
         drawing_file_name: file.name,
       };
     } catch (error) {
-      console.error('Error uploading drawing:', error);
       alert('Failed to upload drawing');
       return null;
     } finally {
@@ -836,7 +832,13 @@ export default function ItemsPage() {
       return;
     }
 
-    if (!confirm(`Add inventory for ${itemsWithQty.length} items?`)) return;
+    const confirmed = await confirmDialog({
+      title: 'Add Inventory',
+      message: `Add inventory for ${itemsWithQty.length} items?`,
+      confirmLabel: 'Add',
+      variant: 'info',
+    });
+    if (!confirmed) return;
 
     try {
       // Fetch warehouses to get warehouse IDs
@@ -877,7 +879,6 @@ export default function ItemsPage() {
       setBulkInventoryItems([]);
       fetchItems();
     } catch (error) {
-      console.error('Error adding bulk inventory:', error);
       alert('Failed to add bulk inventory');
     }
   };

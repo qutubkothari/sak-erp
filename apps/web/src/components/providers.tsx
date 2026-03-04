@@ -12,6 +12,7 @@ export function Providers({ children }: { children: ReactNode }) {
           queries: {
             staleTime: 60 * 1000,
             refetchOnWindowFocus: false,
+            retry: 1,
           },
         },
       })
@@ -20,7 +21,19 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-      <Toaster position="top-right" />
+      <Toaster
+        position="top-right"
+        richColors
+        expand={false}
+        duration={4000}
+        toastOptions={{
+          classNames: {
+            toast: 'font-sans text-sm',
+            title: 'font-semibold',
+            description: 'text-gray-500',
+          },
+        }}
+      />
     </QueryClientProvider>
   );
 }

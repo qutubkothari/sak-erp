@@ -213,4 +213,53 @@
   .assembly-tree-line {
     @apply border-l-2 border-primary/30;
   }
+
+  /* Enterprise focus ring — used for keyboard nav accessibility */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2;
+  }
+
+  /* Badge variants */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .badge-success { @apply bg-green-100 text-green-800; }
+  .badge-warning { @apply bg-amber-100 text-amber-800; }
+  .badge-danger  { @apply bg-red-100 text-red-800; }
+  .badge-info    { @apply bg-blue-100 text-blue-800; }
+  .badge-neutral { @apply bg-gray-100 text-gray-700; }
+}
+
+/* ── Enterprise print styles ─────────────────────────────── */
+@media print {
+  /* Hide chrome elements during print */
+  aside,
+  nav,
+  .no-print,
+  [data-no-print] {
+    display: none !important;
+  }
+
+  main {
+    margin-left: 0 !important;
+    padding: 0 !important;
+  }
+
+  body {
+    font-size: 11pt;
+    color: black;
+    background: white;
+  }
+
+  .print-break-after  { page-break-after: always; }
+  .print-break-before { page-break-before: always; }
+  .print-break-inside { page-break-inside: avoid; }
+
+  table { border-collapse: collapse; }
+  table th, table td {
+    border: 1pt solid #999;
+    padding: 4pt 8pt;
+    font-size: 10pt;
+  }
+  table thead { background: #eee !important; }
 }

@@ -87,7 +87,6 @@ export default function ManagerDashboardPage() {
       });
       setApprovals(data);
     } catch (error) {
-      console.error('Error fetching approvals:', error);
     } finally {
       setLoading(false);
     }

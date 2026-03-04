@@ -238,7 +238,6 @@ export default function ServicePage() {
         setProductLookupResults(results);
         setShowProductLookupDropdown(results.length > 0);
       } catch (err) {
-        console.error('Failed to lookup product/part/uid:', err);
         setProductLookupResults([]);
         setShowProductLookupDropdown(false);
       } finally {
@@ -299,7 +298,6 @@ export default function ServicePage() {
       const data = await apiClient.get<Customer[]>('/sales/customers');
       setCustomers(data);
     } catch (err) {
-      console.error('Failed to fetch customers:', err);
     }
   };
 
@@ -308,7 +306,6 @@ export default function ServicePage() {
       const data = await apiClient.get<Item[]>('/items');
       setItems(data);
     } catch (err) {
-      console.error('Failed to fetch items:', err);
     }
   };
 
@@ -318,7 +315,6 @@ export default function ServicePage() {
       const uniqueShipNames = [...new Set(data.map(t => t.ship_name).filter(Boolean))] as string[];
       setShipNames(uniqueShipNames.sort());
     } catch (err) {
-      console.error('Failed to fetch ship names:', err);
     }
   };
 
@@ -353,7 +349,6 @@ export default function ServicePage() {
       const data = await apiClient.get<UIDRecord[]>(`/uid?item_id=${itemId}&status=GENERATED`);
       setAvailableUIDs(data);
     } catch (err) {
-      console.error('Failed to fetch UIDs:', err);
       setAvailableUIDs([]);
     }
   };
@@ -441,7 +436,6 @@ export default function ServicePage() {
         expected_completion_date: ticketData.expected_completion_date || null,
       };
       
-      console.log('Submitting ticket data:', cleanedData);
       
       // If there are files, upload them first
       let attachmentUrls: string[] = [];
@@ -469,7 +463,6 @@ export default function ServicePage() {
           const uploadResult = await uploadResponse.json();
           attachmentUrls = uploadResult?.urls || [];
         } catch (uploadError) {
-          console.error('File upload failed:', uploadError);
           alert('Warning: File upload failed. Ticket will be created without attachments.');
         }
       }
@@ -481,7 +474,6 @@ export default function ServicePage() {
       };
       
       const response = await apiClient.post('/service/tickets', ticketDataWithAttachments);
-      console.log('Ticket creation response:', response);
       setShowTicketForm(false);
       setTicketForm({
         customer_id: '',
@@ -505,7 +497,6 @@ export default function ServicePage() {
       fetchTickets();
       fetchShipNames(); // Refresh ship names list
     } catch (err: any) {
-      console.error('Ticket creation error:', err);
       setError(err.message || 'Failed to create service ticket');
     } finally {
       setLoading(false);

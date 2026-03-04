@@ -382,7 +382,6 @@ function GRNContent() {
           return;
         }
       } catch (e) {
-        console.warn('Invoice upload failed; falling back to base64', e);
       }
 
       const reader = new FileReader();
@@ -474,7 +473,6 @@ function GRNContent() {
       };
       setQcFormData(newData);
     } catch (e) {
-      console.error('QC upload error:', e);
       alert('QC upload failed. Please try again.');
     }
   };
@@ -696,7 +694,6 @@ function GRNContent() {
       
       if (!poResponse.ok) {
         const errorData = await poResponse.json();
-        console.error('Failed to fetch purchase orders:', poResponse.status, errorData);
         setPurchaseOrders([]);
         return;
       }
@@ -730,10 +727,8 @@ function GRNContent() {
         return true;
       });
       
-      console.log('Available POs (approved and not fully received):', availablePOs);
       setPurchaseOrders(availablePOs);
     } catch (error) {
-      console.error('Error fetching purchase orders:', error);
       setPurchaseOrders([]);
     }
   };
@@ -750,16 +745,13 @@ function GRNContent() {
       
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('Failed to fetch warehouses:', response.status, errorData);
         if (response.status === 401) {
-          console.error('Authentication failed - token may be expired');
         }
         setWarehouses([]);
         return;
       }
       
       const data = await response.json();
-      console.log('Warehouses fetched:', data);
       const warehousesList = Array.isArray(data) ? data : [];
       setWarehouses(warehousesList);
 
@@ -778,7 +770,6 @@ function GRNContent() {
         }
       }
     } catch (error) {
-      console.error('Error fetching warehouses:', error);
       setWarehouses([]);
     }
   };
@@ -794,7 +785,6 @@ function GRNContent() {
       });
       
       if (!response.ok) {
-        console.error('Failed to fetch users:', response.status);
         setUsers([]);
         return;
       }
@@ -802,7 +792,6 @@ function GRNContent() {
       const data = await response.json();
       setUsers(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error fetching users:', error);
       setUsers([]);
     }
   };
@@ -879,7 +868,6 @@ function GRNContent() {
       const data = await apiClient.get(`/purchase/grn?${params}`);
       setGrns(data);
     } catch (error) {
-      console.error('Error fetching GRNs:', error);
     } finally {
       setLoading(false);
     }
@@ -942,7 +930,6 @@ function GRNContent() {
       setEditMode(false);
       fetchGRNs();
     } catch (error) {
-      console.error('Error updating GRN:', error);
       setAlertMessage({ type: 'error', message: 'Failed to update GRN. Please try again.' });
     }
   };
@@ -1001,14 +988,11 @@ function GRNContent() {
         })),
       };
       
-      console.log('Creating GRN with payload:', payload);
-      console.log('Items with acceptedQty:', payload.items.map(i => `${i.itemCode}: ${i.acceptedQty}`));
       
       // Update item HSN codes if different from master
       const token = localStorage.getItem('accessToken');
       for (const item of formData.items) {
         if (item.supplierHsnCode && item.supplierHsnCode !== item.masterHsnCode) {
-          console.log(`Updating HSN for ${item.itemCode}: ${item.masterHsnCode} → ${item.supplierHsnCode}`);
           try {
             await fetch(`/api/v1/inventory/items/${item.itemId}`, {
               method: 'PUT',
@@ -1019,7 +1003,6 @@ function GRNContent() {
               body: JSON.stringify({ hsn_code: item.supplierHsnCode }),
             });
           } catch (err) {
-            console.error(`Failed to update HSN for ${item.itemCode}:`, err);
           }
         }
       }
@@ -1035,7 +1018,6 @@ function GRNContent() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('GRN created successfully:', data);
         setAlertMessage({ type: 'success', message: 'GRN created successfully!' });
         setShowModal(false);
         fetchGRNs();
@@ -1043,11 +1025,9 @@ function GRNContent() {
         resetForm();
       } else {
         const errorData = await response.json();
-        console.error('GRN creation failed:', errorData);
         setAlertMessage({ type: 'error', message: `Failed to create GRN: ${errorData.message || 'Unknown error'}` });
       }
     } catch (error) {
-      console.error('Error creating GRN:', error);
       setAlertMessage({ type: 'error', message: 'Failed to create GRN. Please try again.' });
     } finally {
       setSubmitting(false);
@@ -1096,7 +1076,6 @@ function GRNContent() {
 
   const fetchGRNUIDs = async (grnId: string) => {
     try {
-      console.log('Fetching UIDs for GRN:', grnId);
       setLoadingUIDs(true);
       setSelectedGRNUIDs([]);
       const token = localStorage.getItem('accessToken');
@@ -1107,12 +1086,9 @@ function GRNContent() {
         },
       });
 
-      console.log('UIDs response status:', response.status);
       if (response.ok) {
         const data = await response.json();
-        console.log('UIDs data received:', data);
         const uidsArray = Array.isArray(data) ? data : [];
-        console.log('Setting UIDs array:', uidsArray);
         
         if (uidsArray.length === 0) {
           setAlertMessage({ 
@@ -1125,14 +1101,12 @@ function GRNContent() {
         }
       } else {
         const errorData = await response.json();
-        console.error('Failed to fetch UIDs:', errorData);
         setAlertMessage({
           type: 'error',
           message: `Failed to fetch UIDs: ${errorData.message || 'Unknown error'}. UIDs are auto-generated when GRN status is COMPLETED.` 
         });
       }
     } catch (error) {
-      console.error('Error fetching UIDs:', error);
       setAlertMessage({ type: 'error', message: 'Failed to fetch UIDs. Please check your connection.' });
     } finally {
       setLoadingUIDs(false);
@@ -1156,7 +1130,6 @@ function GRNContent() {
         alert('Purchase trail not found for this UID');
       }
     } catch (error) {
-      console.error('Error fetching purchase trail:', error);
       alert('Failed to fetch purchase trail');
     } finally {
       setLoadingTrail(false);
@@ -1399,7 +1372,6 @@ function GRNContent() {
           <button
             type="button"
             onClick={async () => {
-              console.log('View clicked for GRN:', grn);
 
               // Fetch full GRN details with items
               try {
@@ -1408,10 +1380,8 @@ function GRNContent() {
                   headers: { Authorization: `Bearer ${token}` },
                 });
                 const detailedGRN = await response.json();
-                console.log('Detailed GRN data:', detailedGRN);
                 setSelectedGRN(detailedGRN);
               } catch (error) {
-                console.error('Error fetching GRN details:', error);
                 setSelectedGRN(grn); // Fallback to list data
               }
 
@@ -1427,7 +1397,6 @@ function GRNContent() {
             <button
               type="button"
               onClick={() => {
-                console.log('UIDs clicked for GRN:', grn.id);
                 fetchGRNUIDs(grn.id);
               }}
               className="text-green-600 hover:text-green-900 mr-3 font-medium"
@@ -1483,7 +1452,6 @@ function GRNContent() {
                   items: hydratedItems as any,
                 });
               } catch (error) {
-                console.error('Error fetching GRN details for edit:', error);
                 setSelectedGRN(grn);
                 setEditFormData({
                   invoiceNumber: grn.invoice_number || '',
@@ -2291,12 +2259,8 @@ function GRNContent() {
                     </button>
                     <button
                       onClick={async () => {
-                        console.log('Approve button clicked!');
-                        console.log('GRN ID:', selectedGRN.id);
-                        console.log('GRN Status:', selectedGRN.status);
                         try {
                           const token = localStorage.getItem('accessToken');
-                          console.log('Token exists:', !!token);
                           const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/status`, {
                             method: 'POST',
                             headers: {
@@ -2306,20 +2270,16 @@ function GRNContent() {
                             body: JSON.stringify({ status: 'APPROVED' }),
                           });
 
-                          console.log('Response status:', response.status);
                           const responseData = await response.json();
-                          console.log('Response data:', responseData);
                           
                           if (response.ok) {
                             setAlertMessage({ type: 'success', message: 'GRN approved successfully! UIDs generated.' });
                             setShowViewModal(false);
                             fetchGRNs();
                           } else {
-                            console.error('Error response:', responseData);
                             setAlertMessage({ type: 'error', message: `Failed to approve GRN: ${responseData.message}` });
                           }
                         } catch (error) {
-                          console.error('Catch error:', error);
                           setAlertMessage({ type: 'error', message: 'Failed to approve GRN. Please try again.' });
                         }
                       }}
@@ -2334,7 +2294,6 @@ function GRNContent() {
                     </button>
                     <button
                       onClick={async () => {
-                        console.log('Reject button clicked!');
                         try {
                           const token = localStorage.getItem('accessToken');
                           const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/status`, {
@@ -2874,7 +2833,6 @@ function GRNContent() {
                       });
                     }
                   } catch (error) {
-                    console.error('QC accept error:', error);
                     setAlertMessage({ type: 'error', message: 'Failed to complete QC inspection' });
                   }
                 }}

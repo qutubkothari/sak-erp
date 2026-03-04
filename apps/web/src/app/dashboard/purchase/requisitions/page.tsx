@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import { getTodayDateInputValue } from '@/lib/date';
+import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 
@@ -312,7 +313,6 @@ function PRContent() {
       const response = await apiClient.get('/purchase/requisitions');
       setRequisitions(Array.isArray(response) ? response : []);
     } catch (error: any) {
-      console.error('Error fetching requisitions:', error);
     } finally {
       setLoadingRequisitions(false);
     }
@@ -342,7 +342,6 @@ function PRContent() {
 
       setMasterItems(normalized);
     } catch (error: any) {
-      console.error('Error fetching items:', error);
       if (error.message && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
         setItemsLoadError('Session expired. Please refresh the page and login again.');
       } else {
@@ -402,7 +401,6 @@ function PRContent() {
               });
             }
           } catch (error) {
-            console.error('Error fetching last purchase price:', error);
           }
         }
 
@@ -430,7 +428,6 @@ function PRContent() {
         }));
       }
     } catch (error) {
-      console.error('Error fetching preferred vendor:', error);
       // Fallback to item without vendor
       setLastPurchasePrice(null);
       setItemForm((prev) => ({
@@ -622,7 +619,6 @@ function PRContent() {
       const data = await apiClient.get(`/purchase/requisitions/${prId}`);
       setSelectedPR(data);
     } catch (error) {
-      console.error('Error fetching PR details:', error);
       alert('Failed to load PR details');
       setShowDetailModal(false);
     } finally {
@@ -692,7 +688,6 @@ function PRContent() {
       setEditingPRId(prId);
       setShowCreateForm(true);
     } catch (error) {
-      console.error('Error loading PR for edit:', error);
       const msg = (error as any)?.message ? String((error as any).message) : '';
       alert(msg ? `Failed to load PR for editing: ${msg}` : 'Failed to load PR for editing');
     }
@@ -722,7 +717,6 @@ function PRContent() {
 
       return list[0]?.id || null;
     } catch (error) {
-      console.error('Error resolving item for RFQ preferred vendor:', error);
       return null;
     }
   };
@@ -757,7 +751,6 @@ function PRContent() {
           itemVendorMap[prItem.id] = [vendorId];
         }
       } catch (error) {
-        console.error('Error fetching preferred vendor for item:', error);
         continue;
       }
     }
@@ -800,7 +793,6 @@ function PRContent() {
                 });
             }
           } catch (err) {
-            console.error(`Error fetching vendors for item ${itemId}:`, err);
           }
         }
 
@@ -819,7 +811,6 @@ function PRContent() {
         setRfqVendors(vendorList.filter((v) => v?.is_active !== false));
       }
     } catch (error) {
-      console.error('Error fetching vendors for RFQ:', error);
       alert('Failed to load vendors');
     } finally {
       setRfqLoadingVendors(false);
@@ -890,7 +881,6 @@ function PRContent() {
       });
       setShowRfqPreview(true);
     } catch (error) {
-      console.error('Error previewing RFQ:', error);
       const message = error instanceof Error ? error.message : 'Failed to generate RFQ preview';
       alert(message === 'Failed to generate RFQ preview' ? message : `Failed to generate RFQ preview: ${message}`);
     } finally {
@@ -945,7 +935,6 @@ function PRContent() {
       setRfqSubjectOverride('');
       setRfqCustomMessage('');
     } catch (error) {
-      console.error('Error sending RFQ:', error);
       alert('Failed to send RFQ');
     } finally {
       setRfqSending(false);
@@ -953,14 +942,19 @@ function PRContent() {
   };
 
   const handleApprove = async (prId: string) => {
-    if (!confirm('Are you sure you want to approve this PR?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Approve Purchase Requisition',
+      message: 'Are you sure you want to approve this PR?',
+      confirmLabel: 'Approve',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     try {
       await apiClient.post(`/purchase/requisitions/${prId}/approve`, {});
       alert('PR approved successfully!');
       setShowDetailModal(false);
       fetchRequisitions();
     } catch (error) {
-      console.error('Error approving PR:', error);
       alert('Failed to approve PR');
     }
   };
@@ -974,20 +968,24 @@ function PRContent() {
       setShowDetailModal(false);
       fetchRequisitions();
     } catch (error) {
-      console.error('Error rejecting PR:', error);
       alert('Failed to reject PR');
     }
   };
 
   const handleDelete = async (prId: string) => {
-    if (!confirm('Are you sure you want to delete this PR? This action cannot be undone.')) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Purchase Requisition',
+      message: 'Are you sure you want to delete this PR? This action cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/purchase/requisitions/${prId}`);
       alert('PR deleted successfully!');
       setShowDetailModal(false);
       fetchRequisitions();
     } catch (error) {
-      console.error('Error deleting PR:', error);
       alert('Failed to delete PR');
     }
   };
@@ -1028,7 +1026,6 @@ function PRContent() {
       setEditingPRId(null);
       fetchRequisitions(); // Refresh the list
     } catch (error: any) {
-      console.error('Error saving PR:', error);
       alert('Failed to save purchase requisition. Please try again.');
     }
   };

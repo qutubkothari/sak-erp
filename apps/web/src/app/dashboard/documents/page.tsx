@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
+import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 import WorkflowActions from './WorkflowActions';
 import WorkflowHistory from './WorkflowHistory';
 
@@ -310,7 +311,6 @@ export default function DocumentsPage() {
       const data = await apiClient.get<Document[]>(`/documents?${queryParams}`);
       setDocuments(data);
     } catch (error) {
-      console.error('Error fetching documents:', error);
     } finally {
       setLoading(false);
     }
@@ -321,7 +321,6 @@ export default function DocumentsPage() {
       const data = await apiClient.get<Category[]>('/document-categories');
       setCategories(data);
     } catch (error) {
-      console.error('Error fetching categories:', error);
     }
   }, []);
 
@@ -382,7 +381,6 @@ export default function DocumentsPage() {
         await runQualityCheck(created.id);
       }
     } catch (error) {
-      console.error('Error creating document:', error);
     }
   };
 
@@ -442,19 +440,23 @@ export default function DocumentsPage() {
       // Keep intelligence up to date in the background
       void runQualityCheck(selectedDocument.id);
     } catch (error) {
-      console.error('Error adding revision:', error);
       alert(getErrorMessage(error, 'Failed to add revision'));
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this document?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Document',
+      message: 'Are you sure you want to delete this document?',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       await apiClient.delete(`/documents/${id}`);
       fetchDocuments();
     } catch (error) {
-      console.error('Error deleting document:', error);
     }
   };
 
@@ -463,7 +465,6 @@ export default function DocumentsPage() {
       await apiClient.post(`/documents/${id}/archive`, {});
       fetchDocuments();
     } catch (error) {
-      console.error('Error archiving document:', error);
     }
   };
 
@@ -477,7 +478,6 @@ export default function DocumentsPage() {
       }
       window.open(res.url, '_blank', 'noopener,noreferrer');
     } catch (error) {
-      console.error('Error opening document:', error);
       alert('Failed to open document');
     } finally {
       setOpeningDocumentId(null);

@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import { useSelection } from '../../../hooks/useSelection';
+import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 
 interface StockLevel {
   id: string;
@@ -145,7 +146,6 @@ function InventoryPageContent() {
         setDemoItems(Array.isArray(data) ? data : []);
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
@@ -156,7 +156,6 @@ function InventoryPageContent() {
       await apiClient.put(`/inventory/alerts/${alertId}/acknowledge`);
       fetchData();
     } catch (error) {
-      console.error('Error acknowledging alert:', error);
     }
   };
 
@@ -173,7 +172,6 @@ function InventoryPageContent() {
       setEmailModal(false);
       setRecipientEmail('');
     } catch (error: any) {
-      console.error('Error sending email:', error);
       alert(error.response?.data?.message || 'Failed to send email');
     } finally {
       setSendingEmail(false);
@@ -186,57 +184,66 @@ function InventoryPageContent() {
       alert(result.message);
       fetchData();
     } catch (error: any) {
-      console.error('Error checking low stock:', error);
       alert('Failed to check low stock');
     }
   };
 
   const checkJobOrderAlerts = async () => {
     try {
-      console.log('[Frontend] Calling check-job-orders endpoint...');
       const result = await apiClient.post('/inventory/alerts/check-job-orders');
-      console.log('[Frontend] Check job orders result:', result);
       alert(result.message);
       fetchData();
     } catch (error: any) {
-      console.error('[Frontend] Error checking job orders:', error);
-      console.error('[Frontend] Error response:', error.response);
-      console.error('[Frontend] Error data:', error.response?.data);
       const errorMessage = error.response?.data?.message || error.message || 'Failed to check job orders';
       alert(`Error: ${errorMessage}`);
     }
   };
 
   const deleteMovements = async (ids: string[]) => {
-    if (!confirm(`Are you sure you want to delete ${ids.length} movements? This action cannot be undone.`)) return;
+    const confirmed = await confirmDialog({
+      title: `Delete ${ids.length} Movement${ids.length > 1 ? 's' : ''}`,
+      message: `Are you sure you want to delete ${ids.length} movements? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await Promise.all(ids.map(id => apiClient.delete(`/inventory/movements/${id}`)));
       movementSelection.deselectAll();
       fetchData();
     } catch (error) {
-      console.error('Error deleting movements:', error);
     }
   };
 
   const deleteAlerts = async (ids: string[]) => {
-    if (!confirm(`Are you sure you want to delete ${ids.length} alerts? This action cannot be undone.`)) return;
+    const confirmed = await confirmDialog({
+      title: `Delete ${ids.length} Alert${ids.length > 1 ? 's' : ''}`,
+      message: `Are you sure you want to delete ${ids.length} alerts? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await Promise.all(ids.map(id => apiClient.delete(`/inventory/alerts/${id}`)));
       alertSelection.deselectAll();
       fetchData();
     } catch (error) {
-      console.error('Error deleting alerts:', error);
     }
   };
 
   const deleteDemoItems = async (ids: string[]) => {
-    if (!confirm(`Are you sure you want to delete ${ids.length} demo items? This action cannot be undone.`)) return;
+    const confirmed = await confirmDialog({
+      title: `Delete ${ids.length} Demo Item${ids.length > 1 ? 's' : ''}`,
+      message: `Are you sure you want to delete ${ids.length} demo items? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await Promise.all(ids.map(id => apiClient.delete(`/inventory/demo/${id}`)));
       demoSelection.deselectAll();
       fetchData();
     } catch (error) {
-      console.error('Error deleting demo items:', error);
     }
   };
 

@@ -7,6 +7,7 @@ import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import { getTodayDateInputValue } from '@/lib/date';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
+import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 
 interface Item {
   id: string;
@@ -219,7 +220,6 @@ function JobOrdersPageContent() {
     fetchUsers();
     fetchAllBoms();
     fetchOpenSalesOrders();
-    console.log('Initial data fetch triggered');
   }, []);
 
   const mapJobOrderFromApi = (jo: any): JobOrder => {
@@ -292,14 +292,12 @@ function JobOrdersPageContent() {
         const mapped = mapJobOrderFromApi(detailsResult.value);
         setSelectedJobOrder(mapped);
       } else {
-        console.error('Error fetching job order details:', detailsResult.reason);
       }
 
       if (qcSummaryResult.status === 'fulfilled') {
         setQcSummary(qcSummaryResult.value ?? null);
       }
     } catch (error) {
-      console.error('Error fetching job order details:', error);
       // Keep basic details visible even if details fetch fails.
     } finally {
       setSelectedJobOrderLoading(false);
@@ -325,7 +323,6 @@ function JobOrdersPageContent() {
 
       setItemStockSummaryById(prev => ({ ...prev, [id]: normalized }));
     } catch (error) {
-      console.error('Error fetching item stock summary:', { itemId: id, error });
       // Store a safe default so we don't spam retries.
       setItemStockSummaryById(prev => ({
         ...prev,
@@ -355,7 +352,6 @@ function JobOrdersPageContent() {
       const mapped = (data || []).map((jo: any) => mapJobOrderFromApi(jo));
       setJobOrders(mapped);
     } catch (error) {
-      console.error('Error fetching job orders:', error);
     }
   };
 
@@ -372,7 +368,6 @@ function JobOrdersPageContent() {
 
       setItems(itemsWithOptionalStock || []);
     } catch (error) {
-      console.error('Error fetching items:', error);
       setItems([]);
     }
   };
@@ -391,7 +386,6 @@ function JobOrdersPageContent() {
         .filter((row) => row.id && openStatuses.has(row.status));
       setOpenSalesOrders(mapped);
     } catch (error) {
-      console.error('Error fetching open sales orders:', error);
       setOpenSalesOrders([]);
     }
   };
@@ -441,7 +435,6 @@ function JobOrdersPageContent() {
 
       setSalesOrderItems(mappedItems);
     } catch (error) {
-      console.error('Error fetching sales order items for mapping:', error);
       setSalesOrderItems([]);
     }
   };
@@ -457,7 +450,6 @@ function JobOrdersPageContent() {
       }));
       setWorkstations(mapped);
     } catch (error) {
-      console.error('Error fetching workstations:', error);
     }
   };
 
@@ -466,21 +458,17 @@ function JobOrdersPageContent() {
       const data = await apiClient.get('/hr/employees');
       setUsers(data);
     } catch (error) {
-      console.error('Error fetching users:', error);
     }
   };
 
   // Fetch all BOMs on page load
   const fetchAllBoms = async () => {
     try {
-      console.log('Fetching all BOMs...');
       const bomsData = await apiClient.get('/bom');
-      console.log('All BOMs loaded:', bomsData?.length || 0, 'First BOM:', bomsData?.[0]);
       const bomsArray = Array.isArray(bomsData) ? bomsData : [];
       setAllBoms(bomsArray);
       setBoms(bomsArray);
     } catch (error) {
-      console.error('Error fetching BOMs:', error);
       alert('Failed to load BOMs. Please check console for details.');
       setAllBoms([]);
       setBoms([]);
@@ -534,36 +522,22 @@ function JobOrdersPageContent() {
   const fetchBOMData = async (bomId: string) => {
     if (!bomId) return;
     
-    console.log('fetchBOMData called with bomId:', bomId);
     try {
       // Get BOM details to auto-populate item
       const selectedBom = allBoms.find(b => b.id === bomId);
       if (selectedBom && selectedBom.item_id) {
         setFormData(prev => ({ ...prev, itemId: selectedBom.item_id }));
-        console.log('Auto-populated item from BOM:', selectedBom.item_id);
       }
 
-      console.log('Loading BOM details for bomId:', bomId);
 
       // Fetch BOM items (materials)
-      console.log('Fetching BOM items for bomId:', bomId);
       const bomItems = await apiClient.get(`/bom/${bomId}/items`);
-      console.log('BOM items response:', bomItems);
-      console.log('First BOM item structure:', bomItems[0]);
       
       // Store base quantities from BOM (per 1 unit)
       const baseQuantities: { [key: string]: number } = {};
       const materialsWithVariantsRaw = await Promise.all(bomItems.map(async (item: any) => {
-        console.log('Processing BOM item:', {
-          component_id: item.component_id,
-          item_id: item.item_id,
-          component_code: item.component_code,
-          component_name: item.component_name,
-          quantity: item.quantity
-        });
         const itemId = String(item.component_id || item.item_id || '').trim();
         if (!itemId) {
-          console.warn('Skipping BOM item with no resolvable item id:', item);
           return null;
         }
 
@@ -582,7 +556,6 @@ function JobOrdersPageContent() {
             selectedVariantName = defaultVariant.variant_name || defaultVariant.name;
           }
         } catch (error) {
-          console.log('No variants found for item:', itemId);
         }
         
         return {
@@ -600,13 +573,9 @@ function JobOrdersPageContent() {
       
       setBaseMaterialQuantities(baseQuantities);
       setMaterials(materialsWithVariants);
-      console.log('Materials with variants set:', materialsWithVariants);
-      console.log('Base quantities:', baseQuantities);
 
       // Fetch routing (operations)
-      console.log('Fetching routing for bomId:', bomId);
       const routing = await apiClient.get(`/production/routing/bom/${bomId}?withStations=true`);
-      console.log('Routing response:', routing);
       
       if (routing && routing.length > 0) {
         const operations = routing.map((route: any) => ({
@@ -616,7 +585,6 @@ function JobOrdersPageContent() {
           acceptedVariationPercent: 5,
         }));
         setOperations(operations);
-        console.log('Operations set:', operations);
       }
       
       alert('BOM data loaded! Materials and operations have been added.');
@@ -629,7 +597,6 @@ function JobOrdersPageContent() {
         }
       }, 500);
     } catch (error) {
-      console.error('Error fetching BOM data:', error);
       alert('Error loading BOM data. Check console for details.');
     }
   };
@@ -755,21 +722,14 @@ function JobOrdersPageContent() {
   };
 
   const handleCreateJobOrder = async () => {
-    console.log('Create button clicked', { formData, operations, materials });
     
     if (!formData.itemId || !formData.quantity || !formData.startDate) {
-      console.log('Validation failed', { 
-        itemId: formData.itemId, 
-        quantity: formData.quantity, 
-        startDate: formData.startDate 
-      });
       alert('Please fill in all required fields');
       return;
     }
 
     setLoading(true);
     try {
-      console.log('Sending request to /job-orders');
       
       // Clean up the payload - remove empty endDate and extra fields from materials
       const payload: any = {
@@ -812,16 +772,13 @@ function JobOrdersPageContent() {
         }));
       }
       
-      console.log('Cleaned payload:', payload);
       const response = await apiClient.post('/job-orders', payload);
-      console.log('Job order created successfully', response);
 
       setShowCreateModal(false);
       resetForm();
       fetchJobOrders();
       alert('Job Order created successfully!');
     } catch (error: any) {
-      console.error('Error creating job order:', error);
       
       // Check if it's an inventory shortage error
       const errorMessage = error?.message || '';
@@ -888,7 +845,6 @@ function JobOrdersPageContent() {
       fetchJobOrders();
       alert(`Job Order status updated to ${status}`);
     } catch (error: any) {
-      console.error('Error updating status:', error);
 
       const errorMsg = String(error?.response?.data?.message || error?.message || 'Failed to update status');
       const lower = errorMsg.toLowerCase();
@@ -898,9 +854,12 @@ function JobOrdersPageContent() {
         lower.includes('material issue pending');
 
       if (blockedByStoreIssue) {
-        const goToStore = window.confirm(
-          'Cannot start this Job Order yet because SIV (material issue) is pending.\n\nOpen Inventory SIV screen now?',
-        );
+        const goToStore = await confirmDialog({
+          title: 'SIV Pending',
+          message: 'Cannot start this Job Order yet because SIV (material issue) is pending. Open Inventory SIV screen now?',
+          confirmLabel: 'Open SIV Screen',
+          variant: 'warning',
+        });
         if (goToStore) {
           router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(id)}`);
         }
@@ -922,7 +881,6 @@ function JobOrdersPageContent() {
       setCompletionPreview(preview);
       setShowCompletionModal(true);
     } catch (error: any) {
-      console.error('Error fetching completion preview:', error);
       const errorMsg = error.response?.data?.message || error.message || 'Failed to load completion preview';
       alert(errorMsg);
       setCompletionJobOrderId(null);
@@ -952,7 +910,6 @@ function JobOrdersPageContent() {
           'UIDs will be generated only after QC is completed.',
       );
     } catch (error: any) {
-      console.error('Error completing job order:', error);
       const errorMsg = error.response?.data?.message || error.message || 'Failed to complete job order';
       alert(errorMsg);
     } finally {
@@ -994,7 +951,6 @@ function JobOrdersPageContent() {
             `UIDs will be generated after QC is completed.`,
       );
     } catch (error: any) {
-      console.error('Error recording partial completion:', error);
       const errorMsg = error.response?.data?.message || error.message || 'Failed to record partial completion';
       alert(errorMsg);
     } finally {
@@ -1035,7 +991,6 @@ function JobOrdersPageContent() {
           autoRepairText,
       );
     } catch (error: any) {
-      console.error('Error issuing materials:', error);
       setLoading(false);
       const errorMsg = error.response?.data?.message || error.message || 'Failed to issue materials';
       alert(errorMsg);
@@ -1070,7 +1025,6 @@ function JobOrdersPageContent() {
           `Failures: ${failuresCount}`,
       );
     } catch (error: any) {
-      console.error('Error repairing smart issuance:', error);
       setLoading(false);
       const errorMsg = error.response?.data?.message || error.message || 'Failed to repair Smart Job Order issuance';
       alert(errorMsg);
@@ -1938,7 +1892,6 @@ function JobOrdersPageContent() {
                         requiredQuantity: baseMaterialQuantities[mat.itemId] * newQuantity
                       }));
                       setMaterials(updatedMaterials);
-                      console.log('Materials updated for quantity:', newQuantity, updatedMaterials);
                     }
                   }}
                   className="w-full border rounded px-3 py-2"
@@ -2164,7 +2117,6 @@ function JobOrdersPageContent() {
                         }))}
                         value={mat.itemId}
                         onChange={(value) => {
-                          console.log('Material changed to:', value);
                           void changeMaterialItem(idx, value);
                         }}
                         placeholder="Search item by code or name..."
@@ -2462,7 +2414,6 @@ function JobOrdersPageContent() {
                                       setSelectedJobOrder(null);
                                       fetchJobOrders();
                                     } catch (error) {
-                                      console.error('Error starting operation:', error);
                                       alert('Failed to start operation');
                                     }
                                   }}
@@ -2484,7 +2435,6 @@ function JobOrdersPageContent() {
                                       setSelectedJobOrder(null);
                                       fetchJobOrders();
                                     } catch (error) {
-                                      console.error('Error completing operation:', error);
                                       alert('Failed to complete operation');
                                     }
                                   }}

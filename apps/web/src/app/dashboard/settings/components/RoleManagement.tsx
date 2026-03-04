@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Shield, Check } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
+import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 
 interface Permission {
   module: string;
@@ -103,21 +104,23 @@ export default function RoleManagement() {
       const data = await apiClient.get<Role[]>('/roles');
       setRoles(data);
     } catch (error) {
-      console.error('Failed to fetch roles:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteRole = async (roleId: string) => {
-    if (!confirm('Are you sure you want to delete this role? Users with this role will need to be reassigned.')) {
-      return;
-    }
+    const confirmed = await confirmDialog({
+      title: 'Delete Role',
+      message: 'Are you sure you want to delete this role? Users with this role will need to be reassigned.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/roles/${roleId}`);
       fetchRoles();
     } catch (error) {
-      console.error('Failed to delete role:', error);
     }
   };
 

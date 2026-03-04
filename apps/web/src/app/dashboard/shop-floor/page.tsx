@@ -61,7 +61,6 @@ export default function ShopFloorPage() {
       const stationsArray = Array.isArray(data) ? data : (data?.data ? data.data : []);
       setWorkStations(stationsArray);
     } catch (error) {
-      console.error('Failed to fetch work stations:', error);
       setWorkStations([]);
     }
   };
@@ -75,7 +74,6 @@ export default function ShopFloorPage() {
       const data = await response.json();
       setActiveOperation(data);
     } catch (error) {
-      console.error('Failed to fetch active operation:', error);
     }
   };
 
@@ -89,7 +87,6 @@ export default function ShopFloorPage() {
       const queueArray = Array.isArray(data) ? data : (data?.data ? data.data : []);
       setQueue(queueArray);
     } catch (error) {
-      console.error('Failed to fetch queue:', error);
       setQueue([]);
     }
   };

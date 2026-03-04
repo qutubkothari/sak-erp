@@ -35,7 +35,6 @@ export default function ImportItemsPage() {
         setPreview(jsonData.slice(0, 10)); // Show first 10 rows
       } catch (err) {
         alert('Failed to parse file. Please check the format.');
-        console.error('Parse error:', err);
       }
     };
 
@@ -61,7 +60,6 @@ export default function ImportItemsPage() {
         alert(`Import completed!\nSuccess: ${uploadResults.success}\nFailed: ${uploadResults.failed}`);
       } catch (err: any) {
         alert('Failed to upload items: ' + (err.message || 'Unknown error'));
-        console.error('Upload error:', err);
       } finally {
         setUploading(false);
       }

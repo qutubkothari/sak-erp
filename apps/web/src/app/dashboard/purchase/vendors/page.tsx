@@ -2,9 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { apiClient } from '../../../../../lib/api-client';
 import { useSelection } from '../../../../hooks/useSelection';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
+import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
+import { PageHeader, PrimaryButton, DangerButton, SecondaryButton } from '../../../../components/ui/PageHeader';
+import { TableSkeleton } from '../../../../components/ui/Skeleton';
+import { EmptyState } from '../../../../components/ui/EmptyState';
+import { Plus, Trash2, Download } from 'lucide-react';
+import { downloadCSV } from '@/lib/utils';
 
 interface Vendor {
   id: string;
@@ -81,7 +88,6 @@ export default function VendorsPage() {
   });
 
   useEffect(() => {
-    console.log('🔵 VENDORS PAGE MOUNTED - Fetching vendors');
     fetchVendors();
   }, [filterCategory]);
 
@@ -93,22 +99,13 @@ export default function VendorsPage() {
   const fetchVendors = async () => {
     try {
       setLoading(true);
-      console.log('🔵 [VENDORS] Fetching with filter:', filterCategory, 'search:', searchTerm);
-      
       const params = new URLSearchParams();
       if (filterCategory !== 'ALL') params.append('category', filterCategory);
       if (searchTerm) params.append('search', searchTerm);
-
       const data = await apiClient.get<Vendor[]>(`/purchase/vendors?${params}`);
-      console.log('🔵 [VENDORS] Received:', Array.isArray(data) ? data.length : 0, 'vendors');
-      
-      if (data && Array.isArray(data) && data.length > 0) {
-        console.log('🔵 [VENDORS] First vendor:', data[0].name);
-      }
-      
       setVendors(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('🔴 Error fetching vendors:', error);
+    } catch {
+      toast.error('Failed to load vendors');
       setVendors([]);
     } finally {
       setLoading(false);
@@ -119,14 +116,16 @@ export default function VendorsPage() {
     try {
       if (editingVendor) {
         await apiClient.put(`/purchase/vendors/${editingVendor.id}`, formData);
+        toast.success('Vendor updated successfully');
       } else {
         await apiClient.post('/purchase/vendors', formData);
+        toast.success('Vendor created successfully');
       }
       setShowModal(false);
       fetchVendors();
       resetForm();
-    } catch (error) {
-      console.error('Error saving vendor:', error);
+    } catch {
+      toast.error('Failed to save vendor. Please try again.');
     }
   };
 
@@ -175,28 +174,58 @@ export default function VendorsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this vendor?')) return;
-
+    const confirmed = await confirmDialog({
+      title: 'Delete Vendor',
+      message: 'Are you sure you want to delete this vendor? This action cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/purchase/vendors/${id}`);
+      toast.success('Vendor deleted');
       fetchVendors();
-    } catch (error) {
-      console.error('Error deleting vendor:', error);
+    } catch {
+      toast.error('Failed to delete vendor');
     }
   };
 
   const handleDeleteAll = async () => {
-    if (!confirm(`Are you sure you want to delete ${selection.selectedItems.length} vendors? This action cannot be undone.`)) return;
-
+    const confirmed = await confirmDialog({
+      title: `Delete ${selection.selectedItems.length} Vendors`,
+      message: `This will permanently delete ${selection.selectedItems.length} vendor${selection.selectedItems.length > 1 ? 's' : ''}. This action cannot be undone.`,
+      confirmLabel: 'Delete All',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await Promise.all(
         selection.selectedItems.map(vendor => apiClient.delete(`/purchase/vendors/${vendor.id}`))
       );
+      toast.success(`Deleted ${selection.selectedItems.length} vendor${selection.selectedItems.length > 1 ? 's' : ''}`);
       selection.deselectAll();
       fetchVendors();
-    } catch (error) {
-      console.error('Error deleting vendors:', error);
+    } catch {
+      toast.error('Failed to delete some vendors');
     }
+  };
+
+  const handleExportCSV = () => {
+    const rows = vendors.map(v => ({
+      Code: v.code,
+      Name: v.name,
+      Category: v.category,
+      Contact: v.contact_person,
+      Email: v.email,
+      Phone: v.phone,
+      City: v.city || '',
+      State: v.state || '',
+      'Payment Terms': v.payment_terms,
+      Rating: v.rating,
+      Status: v.is_active ? 'Active' : 'Inactive',
+    }));
+    downloadCSV(rows, `vendors-${new Date().toISOString().slice(0, 10)}`);
+    toast.success('Vendors exported to CSV');
   };
 
   const resetForm = () => {
@@ -229,62 +258,51 @@ export default function VendorsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <button
-              onClick={() => router.push('/dashboard/purchase')}
-              className="text-amber-600 hover:text-amber-800 mb-2"
-            >
-              ← Back to Purchase Management
-            </button>
-            <h1 className="text-4xl font-bold text-amber-900">Vendor Management</h1>
-            <p className="text-amber-700">Manage supplier and vendor information</p>
-          </div>
-          <div className="flex gap-3">
+    <div className="space-y-5">
+      <PageHeader
+        title="Vendor Management"
+        subtitle="Manage supplier and vendor information"
+        badge={vendors.length > 0 ? `${vendors.length}` : undefined}
+        action={
+          <PrimaryButton onClick={() => { resetForm(); setShowModal(true); }}>
+            <Plus className="h-4 w-4" />
+            Add Vendor
+          </PrimaryButton>
+        }
+        secondaryAction={
+          <div className="flex items-center gap-2">
+            {selection.hasSelections && (
+              <DangerButton onClick={handleDeleteAll}>
+                <Trash2 className="h-4 w-4" />
+                Delete ({selection.selectedItems.length})
+              </DangerButton>
+            )}
+            <SecondaryButton onClick={handleExportCSV}>
+              <Download className="h-4 w-4" />
+              Export CSV
+            </SecondaryButton>
             <div className="flex rounded-lg overflow-hidden border border-gray-300 bg-white">
               <button
                 onClick={() => setViewMode('table')}
-                className={`px-4 py-2 text-sm font-medium transition-colors ${
-                  viewMode === 'table'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                className={`px-3 py-2 text-xs font-medium transition-colors ${
+                  viewMode === 'table' ? 'bg-amber-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
                 }`}
               >
-                📊 Table
+                Table
               </button>
               <button
                 onClick={() => setViewMode('cards')}
-                className={`px-4 py-2 text-sm font-medium transition-colors ${
-                  viewMode === 'cards'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                className={`px-3 py-2 text-xs font-medium transition-colors ${
+                  viewMode === 'cards' ? 'bg-amber-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
                 }`}
               >
-                🃏 Cards
+                Cards
               </button>
             </div>
-            {selection.hasSelections && (
-              <button
-                onClick={handleDeleteAll}
-                className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold"
-              >
-                Delete Selected ({selection.selectedItems.length})
-              </button>
-            )}
-            <button
-              onClick={() => {
-                resetForm();
-                setShowModal(true);
-              }}
-              className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold"
-            >
-              + Add Vendor
-            </button>
           </div>
-        </div>
+        }
+      />
+      <div>
 
         {/* Filters */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -342,13 +360,19 @@ export default function VendorsPage() {
 
         {/* Vendors Grid */}
         {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading vendors...</div>
+          <TableSkeleton rows={6} cols={6} />
         ) : vendors.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">🏢</div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">No Vendors Found</h3>
-            <p className="text-gray-500">Add your first vendor to get started</p>
-          </div>
+          <EmptyState
+            variant="empty"
+            title="No Vendors Found"
+            description="Add your first vendor to get started."
+            action={
+              <PrimaryButton onClick={() => { resetForm(); setShowModal(true); }}>
+                <Plus className="h-4 w-4" />
+                Add First Vendor
+              </PrimaryButton>
+            }
+          />
         ) : (() => {
           // Sort vendors
           const sortedVendors = [...vendors].sort((a, b) => {

@@ -240,7 +240,6 @@ function SmartJobOrdersItemsPageContent() {
         return Boolean(parsed.previewLoaded || hasPreviewNodes);
       }
     } catch (e) {
-      console.error('Failed to load cached previewLoaded flag:', e);
     }
     return false;
   });
@@ -279,7 +278,6 @@ function SmartJobOrdersItemsPageContent() {
         return parsed.itemId || '';
       }
     } catch (e) {
-      console.error('Failed to load cached itemId:', e);
     }
     return '';
   });
@@ -294,7 +292,6 @@ function SmartJobOrdersItemsPageContent() {
         return parsed.quantity || 1;
       }
     } catch (e) {
-      console.error('Failed to load cached quantity:', e);
     }
     return 1;
   });
@@ -318,7 +315,6 @@ function SmartJobOrdersItemsPageContent() {
         return parsed.preview as SmartPreview;
       }
     } catch (e) {
-      console.error('Failed to load cached preview:', e);
     }
     return null;
   });
@@ -333,7 +329,6 @@ function SmartJobOrdersItemsPageContent() {
         return parsed.selectedCategoryByNodeKey || {};
       }
     } catch (e) {
-      console.error('Failed to load cached selectedCategoryByNodeKey:', e);
     }
     return {};
   });
@@ -347,7 +342,6 @@ function SmartJobOrdersItemsPageContent() {
         return parsed.selectedItemByNodeKey || {};
       }
     } catch (e) {
-      console.error('Failed to load cached selectedItemByNodeKey:', e);
     }
     return {};
   });
@@ -362,7 +356,6 @@ function SmartJobOrdersItemsPageContent() {
         return parsed.stockByItemId || {};
       }
     } catch (e) {
-      console.error('Failed to load cached stockByItemId:', e);
     }
     return {};
   });
@@ -375,7 +368,6 @@ function SmartJobOrdersItemsPageContent() {
         return new Set(parsed.expandedBoms || []);
       }
     } catch (e) {
-      console.error('Failed to load cached expandedBoms:', e);
     }
     return new Set();
   });
@@ -440,12 +432,8 @@ function SmartJobOrdersItemsPageContent() {
 
           const issueSummary = (result as any)?.issueMaterialsSummary;
           if (issueSummary?.error) {
-            console.error('[SmartJO] Materials issue step failed:', issueSummary);
           } else if (Array.isArray(issueSummary?.failures) && issueSummary.failures.length > 0) {
-            console.error('[SmartJO] Materials issuance failures:', issueSummary.failures);
-            console.error('[SmartJO] Full issueMaterialsSummary:', issueSummary);
           } else if (issueSummary) {
-            console.log('[SmartJO] issueMaterialsSummary:', issueSummary);
           }
 
           setCreateSummary(result);
@@ -455,7 +443,6 @@ function SmartJobOrdersItemsPageContent() {
           try {
             localStorage.removeItem(CACHE_KEY);
           } catch (e) {
-            console.error('Failed to clear cache:', e);
           }
           
           // Show success notification and redirect to Job Orders list after a brief delay
@@ -470,7 +457,6 @@ function SmartJobOrdersItemsPageContent() {
           setShowCreateProgress(false);
           setCreating(false);
           setCreateJobId('');
-          console.error('[SmartJO] Smart Job Order async job FAILED:', status);
           alert(`❌ Failed to create Smart Job Order: ${status.error || 'Unknown error'}`);
         }
       } catch (err: any) {
@@ -722,7 +708,6 @@ function SmartJobOrdersItemsPageContent() {
         })
         .filter((i) => i !== null) as FinishedItem[];
 
-      console.log('[Job Orders] Loaded all items for component dropdowns:', allItemsNormalized.length);
       setAllItems(allItemsNormalized);
 
       // Enrich finished goods with category (BOM payload may omit category)
@@ -739,10 +724,8 @@ function SmartJobOrdersItemsPageContent() {
         product_category: it.product_category ?? productCategoryByItemId.get(String(it.id)) ?? null,
       }));
 
-      console.log('[Job Orders] Loaded finished goods with BOMs:', finishedGoodsEnriched.length, finishedGoodsEnriched);
       setFinishedGoodsItems(finishedGoodsEnriched);
     } catch (err: any) {
-      console.error('[Job Orders] Error loading items:', err);
       setFinishedGoodsItems([]);
       setAllItems([]);
       setItemsError(err?.message || 'Failed to load items');
@@ -994,7 +977,6 @@ function SmartJobOrdersItemsPageContent() {
       };
       localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
     } catch (e) {
-      console.error('Failed to cache Job Order state:', e);
     }
   }, [itemId, quantity, preview, selectedItemByNodeKey, selectedCategoryByNodeKey, stockByItemId, expandedBoms]);
 
@@ -2103,7 +2085,6 @@ function SmartJobOrdersItemsPageContent() {
                     setQuantity(1);
                     setPreviewError('');
                   } catch (e) {
-                    console.error('Failed to clear cache:', e);
                   }
                 }
               }}

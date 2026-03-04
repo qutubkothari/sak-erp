@@ -123,7 +123,6 @@ export default function UIDDeploymentPage() {
       setCustomers(data);
       setFilteredCustomers(data);
     } catch (error) {
-      console.error('Failed to fetch customers:', error);
     }
   };
   
@@ -152,7 +151,6 @@ export default function UIDDeploymentPage() {
       setCustomerLocations(locationArray);
       setFilteredLocations(locationArray);
     } catch (error) {
-      console.error('Failed to fetch locations:', error);
       setCustomerLocations([]);
       setFilteredLocations([]);
     }
@@ -233,7 +231,6 @@ export default function UIDDeploymentPage() {
       setDeployments(res.data);
       setTotalCount(res.total);
     } catch (error) {
-      console.error('Failed to fetch deployments:', error);
     } finally {
       setLoading(false);
     }
@@ -246,7 +243,6 @@ export default function UIDDeploymentPage() {
       setDeploymentHistory(history);
       setShowHistoryModal(true);
     } catch (error) {
-      console.error('Failed to fetch history:', error);
     }
   };
 
@@ -288,7 +284,6 @@ export default function UIDDeploymentPage() {
         is_current_location: true,
       });
     } catch (error) {
-      console.error('Failed to add deployment:', error);
       alert(`Failed to add deployment: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };

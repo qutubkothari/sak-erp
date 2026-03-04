@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
+import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 import ItemSearch from '../../../components/ItemSearch';
 import DrawingManager from '../../../components/DrawingManager';
 import { getUserRoleNames, readStoredUser } from '../../../lib/rbac';
@@ -49,7 +50,6 @@ const openDrawingUrlInNewTab = (url: string) => {
 
     window.open(url, '_blank', 'noopener,noreferrer');
   } catch (error) {
-    console.error('Error opening drawing:', error);
     alert('Failed to open drawing');
   }
 };
@@ -203,25 +203,6 @@ export default function BOMPage() {
     }
   }, [showModal]);
 
-  useEffect(() => {
-    if (!loading) {
-      console.log('[BOM] Loaded BOM count:', boms.length);
-      boms.forEach((bom) => {
-        console.log('[BOM] Summary data', {
-          bomId: bom.id,
-          itemName: bom.item?.name,
-          components: bom.bom_items?.map((item) => ({
-            id: item.id,
-            type: item.component_type,
-            hasItem: Boolean(item.item?.name),
-            hasChildBom: Boolean(item.child_bom?.item?.name),
-            childBomVersion: item.child_bom?.version,
-          })),
-        });
-      });
-    }
-  }, [boms, loading]);
-
   // Reset to page 1 when search query changes
   useEffect(() => {
     setCurrentPage(1);
@@ -232,26 +213,21 @@ export default function BOMPage() {
       const data = await apiClient.get('/bom');
       setAvailableBOMs(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error fetching BOMs:', error);
     }
   };
 
   const fetchBOMs = async () => {
     try {
       setLoading(true);
-      console.log('[BOM] Fetching BOMs...');
       
       const data = await apiClient.get('/bom');
-      console.log('[BOM] BOMs loaded:', data?.length || 0, 'First BOM:', data?.[0]);
       
       // Ensure data is an array
       setBoms(Array.isArray(data) ? data : []);
     } catch (error: any) {
-      console.error('Error fetching BOMs:', error);
       
       // Handle 401 Unauthorized - redirect to login
       if (error.message?.includes('Unauthorized') || error.message?.includes('401')) {
-        console.error('[BOM] Unauthorized - redirecting to login');
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
@@ -266,7 +242,6 @@ export default function BOMPage() {
   };
 
   const handleCreateBOM = async () => {
-    console.log('[BOM] Create BOM clicked - Form data:', formData);
     
     // Validation
     if (!formData.itemId) {
@@ -280,7 +255,6 @@ export default function BOMPage() {
     }
     
     try {
-      console.log('[BOM] Sending create request...');
       
       // Clean up empty date fields - send null instead of empty string
       const cleanedData = {
@@ -289,13 +263,11 @@ export default function BOMPage() {
       };
       
       const result = await apiClient.post('/bom', cleanedData);
-      console.log('[BOM] Create successful:', result);
       alert('BOM created successfully!');
       setShowModal(false);
       fetchBOMs();
       resetForm();
     } catch (error) {
-      console.error('[BOM] Create error:', error);
       alert(`Error creating BOM: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
@@ -327,7 +299,6 @@ export default function BOMPage() {
       resetForm();
       await fetchBOMs();
     } catch (error) {
-      console.error('[BOM] Update error:', error);
       alert(`Error updating BOM: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
@@ -347,14 +318,6 @@ export default function BOMPage() {
 
     // Get the item ID - try item_id first, then item.id
     const itemId = (bom as any).item_id || bom.item?.id || '';
-    
-    console.log('[BOM Edit] Opening edit modal for BOM:', {
-      bomId: bom.id,
-      item_id_direct: (bom as any).item_id,
-      item_obj_id: bom.item?.id,
-      item_code: bom.item?.code,
-      finalItemId: itemId
-    });
 
     setSelectedBom(bom);
 
@@ -390,11 +353,14 @@ export default function BOMPage() {
   };
 
   const handleDeleteBOM = async (bomId: string) => {
-    console.log('[BOM] Delete clicked for BOM:', bomId);
     
-    if (!confirm('Are you sure you want to delete this BOM? This action cannot be undone.')) {
-      return;
-    }
+    const confirmed = await confirmDialog({
+      title: 'Delete BOM',
+      message: 'Are you sure you want to delete this BOM? This action cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       await apiClient.delete(`/bom/${bomId}`);
@@ -402,7 +368,6 @@ export default function BOMPage() {
       setSelectedBom(null);
       fetchBOMs();
     } catch (error) {
-      console.error('[BOM] Error deleting:', error);
       alert('❌ Failed to delete BOM.');
     }
   };
@@ -414,7 +379,6 @@ export default function BOMPage() {
       setPurchaseTrail(data);
       setShowTrailModal(true);
     } catch (error) {
-      console.error('Error fetching purchase trail:', error);
       alert('Failed to fetch purchase trail');
     } finally {
       setLoadingTrail(false);
@@ -496,7 +460,6 @@ export default function BOMPage() {
       const dataUrl = await fileToDataUrl(file);
       handleUpdateItem(index, 'drawingUrl', dataUrl);
     } catch (error) {
-      console.error('Error reading drawing file:', error);
       alert('Failed to attach drawing');
     }
   };
@@ -1080,7 +1043,6 @@ export default function BOMPage() {
                         <div className="flex gap-2 pt-4 border-t">
                           <button
                             onClick={() => {
-                              console.log('[BOM] View Details clicked:', bom.id);
                               setSelectedBom(bom);
                             }}
                             className="flex-1 bg-amber-100 text-amber-700 px-4 py-2 rounded hover:bg-amber-200 text-sm"

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import { getTodayDateInputValue } from '@/lib/date';
@@ -10,6 +11,7 @@ import SearchableSelect from '../../../../components/SearchableSelect';
 import { useSelection } from '../../../../hooks/useSelection';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
+import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 
 interface PurchaseOrder {
   id: string;
@@ -186,7 +188,6 @@ function PurchaseOrdersContent() {
 
   // Fetch vendors on component mount
   useEffect(() => {
-    console.log('🔵 PO PAGE MOUNTED - About to fetch vendors');
     fetchVendors();
   }, []);
 
@@ -280,26 +281,20 @@ function PurchaseOrdersContent() {
 
   const fetchVendors = async () => {
     try {
-      console.log('🔵 [PO] Fetching vendors...');
       const token = localStorage.getItem('accessToken');
-      console.log('🔵 [PO] Token:', token ? 'Present ✅' : 'MISSING ❌');
       
       const response = await fetch('/api/v1/purchase/vendors', {
         headers: { Authorization: `Bearer ${token}` },
       });
       
-      console.log('🔵 [PO] Response status:', response.status, response.statusText);
       
       const data = await response.json();
-      console.log('🔵 [PO] Vendors fetched:', data?.length || 0, 'vendors');
       
       if (data && data.length > 0) {
-        console.log('🔵 [PO] First vendor:', data[0].name);
       }
       
       setVendors(data || []);
     } catch (error) {
-      console.error('🔴 Error fetching vendors:', error);
     }
   };
 
@@ -316,7 +311,6 @@ function PurchaseOrdersContent() {
         : [];
       setItems(normalized);
     } catch (error) {
-      console.error('Error fetching items:', error);
     }
   };
 
@@ -341,7 +335,6 @@ function PurchaseOrdersContent() {
       setPriceHistory((prev) => ({ ...prev, [key]: normalized }));
       return normalized;
     } catch (error) {
-      console.error('Error fetching price history:', error);
       setPriceHistory((prev) => ({ ...prev, [key]: [] }));
     }
 
@@ -415,14 +408,12 @@ function PurchaseOrdersContent() {
         setStockInfo(prev => ({ ...prev, [itemId]: data }));
       }
     } catch (error) {
-      console.error('Error fetching stock info:', error);
     }
   };
 
   const loadPRData = async (prId: string) => {
     try {
       setLoadingPR(true);
-      console.log('Loading PR data for ID:', prId);
       
       // Fetch fresh items data to ensure we have prices
       const token = localStorage.getItem('accessToken');
@@ -431,11 +422,8 @@ function PurchaseOrdersContent() {
       });
       const itemsData = await itemsResponse.json();
       const freshItems = itemsData || [];
-      console.log('Fetched items for price lookup:', freshItems.length);
       
       const prData = await apiClient.get(`/purchase/requisitions/${prId}/available-for-po`);
-      console.log('PR Data received:', prData);
-      console.log('PR Items:', prData.purchase_requisition_items);
       
       // Store PR ID for later use
       setCurrentPrId(prId);
@@ -443,8 +431,6 @@ function PurchaseOrdersContent() {
       // Map PR items to PO items and fetch preferred vendors
       const prItemsRaw = Array.isArray(prData.purchase_requisition_items) ? prData.purchase_requisition_items : [];
       const poItemsPromises = prItemsRaw.map(async (item: any) => {
-        console.log('Mapping PR item:', item);
-        console.log(`Item ID: ${item.item_id}, Item Code: ${item.item_code}, Items count: ${freshItems.length}`);
         
         // Try to find item in items master to get actual price
         let unitPrice = item.estimated_rate || 0;
@@ -456,9 +442,7 @@ function PurchaseOrdersContent() {
           const masterItem = freshItems.find((i: any) => i.code === item.item_code);
           if (masterItem) {
             itemId = masterItem.id;
-            console.log(`✓ Found item by code ${item.item_code}: ID = ${itemId}`);
           } else {
-            console.log(`⚠ Could not find item with code: ${item.item_code}`);
           }
         }
         
@@ -466,7 +450,6 @@ function PurchaseOrdersContent() {
           const masterItem = freshItems.find((i: any) => i.id === item.item_id);
           if (masterItem) {
             unitPrice = masterItem.standard_cost || masterItem.selling_price || unitPrice;
-            console.log(`Found price for ${item.item_code}: ${unitPrice}`);
           }
         }
         
@@ -474,23 +457,19 @@ function PurchaseOrdersContent() {
           const masterItem = freshItems.find((i: any) => i.id === itemId);
           if (masterItem) {
             unitPrice = masterItem.standard_cost || masterItem.selling_price || unitPrice;
-            console.log(`Found price for ${item.item_code}: ${unitPrice}`);
           }
         }
         
         // Fetch preferred vendor for this item (unconditional - try even if item not in master)
         if (itemId) {
           try {
-            console.log(`[PR→PO] Fetching preferred vendor for ${item.item_code} (ID: ${itemId})...`);
             const vendorResponse = await fetch(`/api/v1/items/${itemId}/vendors/preferred`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             
-            console.log(`[PR→PO] Vendor API response status for ${item.item_code}: ${vendorResponse.status}`);
             
             if (vendorResponse.ok) {
               const preferredVendor = await vendorResponse.json();
-              console.log(`[PR→PO] Vendor data for ${item.item_code}:`, preferredVendor);
               
               if (preferredVendor && preferredVendor.vendor_id) {
                 preferredVendorId = preferredVendor.vendor_id;
@@ -498,19 +477,14 @@ function PurchaseOrdersContent() {
                 if (preferredVendor.unit_price) {
                   unitPrice = preferredVendor.unit_price;
                 }
-                console.log(`✓ [PR→PO] Auto-selected preferred vendor for ${item.item_code}: ${preferredVendor.vendor_name} (ID: ${preferredVendorId})`);
               } else {
-                console.log(`⚠ [PR→PO] No vendor_id in response for ${item.item_code}:`, preferredVendor);
               }
             } else {
               const errorText = await vendorResponse.text();
-              console.log(`⚠ [PR→PO] Vendor API error for ${item.item_code} (${vendorResponse.status}): ${errorText}`);
             }
           } catch (error) {
-            console.error(`❌ [PR→PO] Exception fetching vendor for ${item.item_code}:`, error);
           }
         } else {
-          console.log(`⚠ [PR→PO] No item_id found for ${item.item_code}, skipping vendor fetch`);
         }
         
         const quantity = item.requested_qty || 0;
@@ -544,7 +518,6 @@ function PurchaseOrdersContent() {
       });
 
       const poItems = await Promise.all(poItemsPromises);
-      console.log('Mapped PO Items with preferred vendors:', poItems);
 
       setFormData((prev) => ({
         ...prev,
@@ -562,7 +535,6 @@ function PurchaseOrdersContent() {
           : `Loaded ${poItems.length} items from PR ${prData.pr_number}. ${autoSelectedCount} items have preferred vendors auto-selected. You can override vendor selection if needed. System will automatically create separate POs for different vendors.` 
       });
     } catch (error) {
-      console.error('Error loading PR data:', error);
       setAlertMessage({ type: 'error', message: 'Failed to load PR data. Please try again.' });
     } finally {
       setLoadingPR(false);
@@ -577,15 +549,10 @@ function PurchaseOrdersContent() {
       if (searchTerm) params.append('search', searchTerm);
 
       const data = await apiClient.get(`/purchase/orders?${params}`);
-      console.log('PO API Response:', data);
       if (data && data.length > 0) {
-        console.log('First PO:', data[0]);
-        console.log('PO Date:', data[0].po_date);
-        console.log('Delivery Date:', data[0].delivery_date);
       }
       setOrders(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error fetching orders:', error);
       setOrders([]);
     } finally {
       setLoading(false);
@@ -694,7 +661,6 @@ function PurchaseOrdersContent() {
               }
             }
           } catch (error) {
-            console.error(`Error checking drawings for item ${id}:`, error);
             itemsWithoutDrawings.push({ name });
             if (!firstMissing) {
               firstMissing = {
@@ -729,7 +695,6 @@ function PurchaseOrdersContent() {
         }
       }
 
-      console.log('FormData before transformation:', formData);
       
       // Group items by vendor
       const itemsByVendor = formData.items.reduce((acc, item) => {
@@ -743,7 +708,6 @@ function PurchaseOrdersContent() {
       }, {} as Record<string, PurchaseOrderFormItem[]>);
 
       const vendorIds = Object.keys(itemsByVendor);
-      console.log(`Creating ${vendorIds.length} PO(s) for ${vendorIds.length} vendor(s)`);
 
       const createdPOs = [];
       
@@ -799,7 +763,6 @@ function PurchaseOrdersContent() {
           items: transformedItems,
         };
 
-        console.log(`Creating PO for vendor ${vendorId}:`, payload);
         
         const response = await fetch('/api/v1/purchase/orders', {
           method: 'POST',
@@ -813,10 +776,8 @@ function PurchaseOrdersContent() {
         if (response.ok) {
           const data = await response.json();
           createdPOs.push(data.po_number || data.id);
-          console.log('PO created successfully:', data);
         } else {
           const errorData = await response.json();
-          console.error('PO creation failed:', errorData);
           throw new Error(`Failed to create PO for vendor: ${errorData.message || 'Unknown error'}`);
         }
       }
@@ -829,7 +790,6 @@ function PurchaseOrdersContent() {
         message: `Successfully created ${createdPOs.length} Purchase Order(s): ${createdPOs.join(', ')}` 
       });
     } catch (error: any) {
-      console.error('Error creating order:', error);
       setAlertMessage({ type: 'error', message: error.message || 'Failed to create PO. Please try again.' });
     } finally {
       setSubmitting(false);
@@ -991,7 +951,6 @@ function PurchaseOrdersContent() {
       fetchOrders();
       resetForm();
     } catch (error: any) {
-      console.error('Error updating PO:', error);
       setAlertMessage({ type: 'error', message: error.message || 'Failed to update PO' });
     } finally {
       setSubmitting(false);
@@ -1064,16 +1023,13 @@ function PurchaseOrdersContent() {
         // Fetch preferred vendor for this item
         try {
           const token = localStorage.getItem('accessToken');
-          console.log(`Fetching preferred vendor for item ${value}...`);
           const response = await fetch(`/api/v1/items/${value}/vendors/preferred`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           
-          console.log(`Preferred vendor API response status: ${response.status}`);
           
           if (response.ok) {
             const preferredVendor = await response.json();
-            console.log('Preferred vendor data:', preferredVendor);
 
             const preferredVendorId =
               preferredVendor?.vendor_id ??
@@ -1088,16 +1044,12 @@ function PurchaseOrdersContent() {
               if (preferredVendor.unit_price) {
                 updatedItems[index].unitPrice = preferredVendor.unit_price;
               }
-              console.log(`✓ Auto-selected preferred vendor: ${preferredVendor.vendor_name || preferredVendor.vendorName || preferredVendor.name || ''} (ID: ${String(preferredVendorId)}) for item ${selectedItem.code}`);
             } else {
-              console.log('⚠ No preferred vendor ID in response:', preferredVendor);
             }
           } else {
             const errorText = await response.text();
-            console.log(`⚠ Preferred vendor API returned ${response.status}: ${errorText}`);
           }
         } catch (error) {
-          console.error('❌ Error fetching preferred vendor:', error);
         }
       }
     } else {
@@ -1182,7 +1134,6 @@ function PurchaseOrdersContent() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
-      console.log('PO Details:', data);
       setSelectedPO(data);
       setShowViewModal(true);
 
@@ -1199,7 +1150,6 @@ function PurchaseOrdersContent() {
           );
         }
       } catch (e) {
-        console.error('Error prefetching PO price history:', e);
       }
 
       // Ensure we have item master data so we can resolve drawing_required + item ids
@@ -1207,7 +1157,6 @@ function PurchaseOrdersContent() {
         fetchItems();
       }
     } catch (error) {
-      console.error('Error fetching PO details:', error);
       setAlertMessage({ type: 'error', message: 'Failed to load PO details' });
     }
   };
@@ -1244,7 +1193,6 @@ function PurchaseOrdersContent() {
         throw new Error(error.message || 'Failed to save tracking information');
       }
     } catch (error: any) {
-      console.error('Error saving tracking:', error);
       setAlertMessage({ type: 'error', message: error.message || 'Failed to save tracking information' });
     }
   };
@@ -1264,7 +1212,6 @@ function PurchaseOrdersContent() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
-      console.log('PO Details for Edit:', data);
 
       const resolvedVendorId = String(data?.vendor_id || data?.vendorId || data?.vendor?.id || data?.vendor?.vendor_id || '');
       
@@ -1316,7 +1263,6 @@ function PurchaseOrdersContent() {
         message: mode === 'tracking' ? 'Update tracking details below' : 'Edit mode: Update the PO details below',
       });
     } catch (error) {
-      console.error('Error fetching PO details:', error);
       setAlertMessage({ type: 'error', message: 'Failed to load PO details' });
     }
   };
@@ -1336,7 +1282,6 @@ function PurchaseOrdersContent() {
         setPoEmailMessage('');
       }
     } catch (error: any) {
-      console.error('Error previewing PO email:', error);
       setAlertMessage({
         type: 'error',
         message: error?.message || 'Failed to generate PO email preview',
@@ -1385,7 +1330,6 @@ function PurchaseOrdersContent() {
       setShowViewModal(false);
       await fetchOrders();
     } catch (error: any) {
-      console.error('Error sending PO email:', error);
       setAlertMessage({
         type: 'error',
         message: error?.message || 'Failed to send PO email',
@@ -1425,7 +1369,6 @@ function PurchaseOrdersContent() {
         message: 'PDF downloaded successfully',
       });
     } catch (error: any) {
-      console.error('Error downloading PDF:', error);
       setAlertMessage({
         type: 'error',
         message: error?.message || 'Failed to download PDF',
@@ -1456,7 +1399,6 @@ function PurchaseOrdersContent() {
       // Don't revoke quickly — user may click download in the PDF viewer tab
       setTimeout(() => URL.revokeObjectURL(url), 300000);
     } catch (error: any) {
-      console.error('Error viewing PDF:', error);
       setAlertMessage({
         type: 'error',
         message: error?.message || 'Failed to view PDF',
@@ -1493,7 +1435,6 @@ function PurchaseOrdersContent() {
         }, 1000);
       };
     } catch (error: any) {
-      console.error('Error printing PDF:', error);
       setAlertMessage({
         type: 'error',
         message: error?.message || 'Failed to print PDF',
@@ -1502,7 +1443,13 @@ function PurchaseOrdersContent() {
   };
 
   const handleDeleteAll = async () => {
-    if (!confirm(`Are you sure you want to delete ${orderSelection.selectedItems.length} purchase orders? This action cannot be undone.`)) return;
+    const confirmed = await confirmDialog({
+      title: `Delete ${orderSelection.selectedItems.length} Purchase Order${orderSelection.selectedItems.length > 1 ? 's' : ''}`,
+      message: `This will permanently delete ${orderSelection.selectedItems.length} purchase order${orderSelection.selectedItems.length > 1 ? 's' : ''}. This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       const selectedOrders = [...orderSelection.selectedItems];
@@ -1550,7 +1497,6 @@ function PurchaseOrdersContent() {
         message: `Deleted ${successCount} of ${selectedOrders.length} purchase orders. Failed: ${details}${suffix}`,
       });
     } catch (error) {
-      console.error('Error deleting purchase orders:', error);
       setAlertMessage({
         type: 'error',
         message: (error as any)?.message || 'Failed to delete purchase orders',
@@ -2806,11 +2752,9 @@ function PurchaseOrdersContent() {
                             fetchOrders();
                           } else {
                             const errorData = await response.json();
-                            console.error('Approve failed:', errorData);
                             setAlertMessage({ type: 'error', message: `Failed to approve PO: ${errorData.message || 'Unknown error'}` });
                           }
                         } catch (error) {
-                          console.error('Error approving PO:', error);
                           setAlertMessage({ type: 'error', message: 'Error approving PO' });
                         }
                       }}
@@ -2836,11 +2780,9 @@ function PurchaseOrdersContent() {
                             fetchOrders();
                           } else {
                             const errorData = await response.json();
-                            console.error('Reject failed:', errorData);
                             setAlertMessage({ type: 'error', message: `Failed to reject PO: ${errorData.message || 'Unknown error'}` });
                           }
                         } catch (error) {
-                          console.error('Error rejecting PO:', error);
                           setAlertMessage({ type: 'error', message: 'Error rejecting PO' });
                         }
                       }}

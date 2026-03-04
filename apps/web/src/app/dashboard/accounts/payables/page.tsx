@@ -53,7 +53,6 @@ export default function AccountsPayablePage() {
       const data = await apiClient.get<VendorPayable[]>('/purchase/debit-notes/vendor-payables');
       setVendorPayables(data);
     } catch (error) {
-      console.error('Failed to fetch payables:', error);
     } finally {
       setLoading(false);
     }
@@ -73,7 +72,6 @@ export default function AccountsPayablePage() {
       setSelectedVendor(vendor);
       setShowDetailsModal(true);
     } catch (error) {
-      console.error('Failed to fetch vendor GRNs:', error);
     }
   };
 
@@ -123,7 +121,6 @@ export default function AccountsPayablePage() {
         payment_notes: '',
       });
     } catch (error: any) {
-      console.error('Failed to record payment:', error);
       alert(`Failed to record payment: ${error.message || 'Unknown error'}`);
     }
   };

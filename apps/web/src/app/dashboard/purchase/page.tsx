@@ -42,7 +42,6 @@ export default function PurchasePage() {
         pendingGRNs: Array.isArray(grns) ? grns.filter((grn: any) => grn.status === 'DRAFT' || grn.status === 'PENDING').length : 0,
       });
     } catch (error) {
-      console.error('Error fetching purchase stats:', error);
     } finally {
       setLoading(false);
     }

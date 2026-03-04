@@ -45,7 +45,6 @@ export default function WorkflowActions({ document, onSuccess }: WorkflowActions
       const data = await apiClient.get<Employee[]>('/hr/employees');
       setEmployees(Array.isArray(data) ? data : (data as any)?.data || []);
     } catch (error) {
-      console.error('Failed to load employees:', error);
     } finally {
       setLoadingEmployees(false);
     }

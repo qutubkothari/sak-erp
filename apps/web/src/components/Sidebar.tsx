@@ -20,8 +20,13 @@ import {
   Shield,
   Settings,
   LogOut,
-  ClipboardList
+  ClipboardList,
+  Search,
+  Moon,
+  Sun,
 } from 'lucide-react';
+import { useAuthStore, getUserDisplayName, getUserRoleLabel, getUserInitials } from '@/stores/auth.store';
+import { openCommandPalette } from '@/components/CommandPalette';
 
 const navigation = [
   {
@@ -126,8 +131,8 @@ const navigation = [
 ];
 
 type StoredUser = {
-  roles?: string[] | Array<{ role: { name: string; permissions?: any[] } }>;
-  role?: { name: string; permissions?: any[] };
+  roles?: string[] | Array<{ role: { name: string; permissions?: unknown } }>;
+  role?: { name: string; permissions?: unknown };
   first_name?: string;
   last_name?: string;
   firstName?: string;
@@ -317,17 +322,25 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
   // Tracks sections the user explicitly collapsed, so auto-expand doesn't immediately re-open them.
   const [manuallyCollapsedSections, setManuallyCollapsedSections] = useState<string[]>([]);
-  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
+  const [darkMode, setDarkMode] = useState(false);
 
+  // Use global auth store
+  const { user: currentUser, hydrate } = useAuthStore();
+  useEffect(() => { hydrate(); }, [hydrate]);
+
+  // Dark mode toggle
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const raw = localStorage.getItem('user');
-      setCurrentUser(raw ? (JSON.parse(raw) as StoredUser) : null);
-    } catch {
-      setCurrentUser(null);
-    }
+    const saved = localStorage.getItem('darkMode') === 'true';
+    setDarkMode(saved);
+    document.documentElement.classList.toggle('dark', saved);
   }, []);
+
+  const toggleDarkMode = () => {
+    const next = !darkMode;
+    setDarkMode(next);
+    localStorage.setItem('darkMode', String(next));
+    document.documentElement.classList.toggle('dark', next);
+  };
 
   const permissions = getUserPermissions(currentUser);
   const allowedNavigationNames = getAllowedNavigationNames(currentUser);
@@ -420,17 +433,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     });
   };
 
-  const getUserInitials = () => {
-    const first = currentUser?.first_name ?? currentUser?.firstName;
-    const last = currentUser?.last_name ?? currentUser?.lastName;
-    if (first || last) {
-      return `${first?.[0] || ''}${last?.[0] || ''}`.toUpperCase() || 'U';
-    }
-    if (currentUser?.email) {
-      return currentUser.email[0].toUpperCase();
-    }
-    return 'U';
-  };
+  const getUserInitialsLocal = () => getUserInitials(currentUser);
 
   return (
     <aside 
@@ -456,6 +459,32 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
       </div>
+
+      {/* Cmd+K search trigger */}
+      {!collapsed && (
+        <div className="px-3 pt-2 pb-1">
+          <button
+            onClick={openCommandPalette}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[#D4C4A8]/60 hover:bg-[#D4C4A8] text-[#6F4E37] text-xs font-medium transition-colors border border-[#8B6F47]/20"
+            title="Command palette (Ctrl+K)"
+          >
+            <Search size={13} className="flex-shrink-0" />
+            <span className="flex-1 text-left">Quick search…</span>
+            <kbd className="hidden sm:inline text-[10px] bg-white/70 border border-[#8B6F47]/20 rounded px-1.5 py-0.5 font-mono text-[#8B6F47]">⌘K</kbd>
+          </button>
+        </div>
+      )}
+      {collapsed && (
+        <div className="px-2 pt-2 pb-1 flex justify-center">
+          <button
+            onClick={openCommandPalette}
+            className="p-2 rounded-lg hover:bg-[#D4C4A8] text-[#6F4E37] transition-colors"
+            title="Quick search (Ctrl+K)"
+          >
+            <Search size={16} />
+          </button>
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-2">
@@ -527,22 +556,37 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       </nav>
 
       {/* User section */}
-      <div className={`border-t-2 border-[#8B6F47]/30 p-2 ${collapsed ? 'flex justify-center' : ''}`}>
+      <div className={`border-t-2 border-[#8B6F47]/30 p-2 ${collapsed ? 'flex flex-col items-center gap-1' : ''}`}>
+        {/* Dark mode toggle */}
+        <button
+          onClick={toggleDarkMode}
+          className={`rounded-lg p-1.5 hover:bg-[#D4C4A8] text-[#6F4E37] transition-colors ${collapsed ? '' : 'w-full flex items-center gap-2 px-2 py-1.5 mb-1 text-xs font-medium'}`}
+          title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {darkMode ? <Sun size={14} /> : <Moon size={14} />}
+          {!collapsed && <span>{darkMode ? 'Light mode' : 'Dark mode'}</span>}
+        </button>
+
         <div className={`flex items-center gap-3 ${collapsed ? '' : 'px-2 py-2'}`}>
           <div className="w-8 h-8 bg-[#8B6F47] rounded-full flex items-center justify-center flex-shrink-0 shadow-md">
-            <span className="text-xs font-bold text-white">{getUserInitials()}</span>
+            <span className="text-xs font-bold text-white">{getUserInitialsLocal()}</span>
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold truncate text-[#36454F]">
-                {currentUser?.email || 'User'}
+                {getUserDisplayName(currentUser)}
               </p>
+              {getUserRoleLabel(currentUser) && (
+                <p className="text-[10px] truncate text-[#8B6F47] font-medium">
+                  {getUserRoleLabel(currentUser)}
+                </p>
+              )}
               <button
                 onClick={() => {
                   localStorage.clear();
                   window.location.href = '/';
                 }}
-                className="text-xs text-[#6F4E37] hover:text-[#8B6F47] flex items-center gap-1 transition-colors font-medium"
+                className="text-xs text-[#6F4E37] hover:text-[#8B6F47] flex items-center gap-1 transition-colors font-medium mt-0.5"
               >
                 <LogOut size={12} />
                 Logout

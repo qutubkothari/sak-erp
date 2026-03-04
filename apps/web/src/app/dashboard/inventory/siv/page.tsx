@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 
 type BomComponent = {
   item_code: string;
@@ -133,7 +134,6 @@ export default function SivPage() {
       setMaterialRequests(reqs || []);
       setSivHistory(sivHist || []);
     } catch (err: any) {
-      console.error('Failed to load SIV data:', err);
       alert('Failed to load SIV data: ' + (err.message || err));
     } finally {
       setLoading(false);
@@ -167,7 +167,6 @@ export default function SivPage() {
         setLineBomData((prev) => ({ ...prev, [lineId]: [] }));
       }
     } catch (err) {
-      console.error('Failed to fetch BOM for item:', itemId, err);
       setLineBomData((prev) => ({ ...prev, [lineId]: [] }));
     } finally {
       setLineBomLoading((prev) => ({ ...prev, [lineId]: false }));
@@ -361,7 +360,13 @@ export default function SivPage() {
   }, [addUidToLineCart, materialRequests, normalizeUid, scanInputByJob, scannedUidsByLine]);
 
   const approveSivHistoryRow = useCallback(async (movementId: string) => {
-    if (!confirm('Approve this SIV history entry?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Approve SIV Entry',
+      message: 'Approve this SIV history entry?',
+      confirmLabel: 'Approve',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     try {
       await apiClient.put(`/job-orders/store/material-requisitions/history/${movementId}/approve`, {});
       await loadAll();
@@ -372,7 +377,13 @@ export default function SivPage() {
   }, [loadAll]);
 
   const deleteSivHistoryRow = useCallback(async (movementId: string) => {
-    if (!confirm('Delete this SIV entry? Stock/UIDs will be reversed.')) return;
+    const confirmedDel = await confirmDialog({
+      title: 'Delete SIV Entry',
+      message: 'Delete this SIV entry? Stock/UIDs will be reversed.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmedDel) return;
     try {
       await apiClient.delete(`/job-orders/store/material-requisitions/history/${movementId}`);
       await loadAll();
