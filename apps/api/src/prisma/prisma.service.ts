@@ -16,10 +16,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
-    // Disabled: EC2 doesn't have IPv6, Supabase direct connection requires IPv6
-    // TODO: Enable IPv6 on EC2 or use Supabase pooler
-    // await this.$connect();
-    console.log('⚠️ Database connection disabled - EC2 IPv6 issue');
+    // Uses Supabase connection pooler URL (IPv4-compatible) set in DATABASE_URL env var.
+    // Pooler URL format: postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres
+    if (this.configService.get('DATABASE_URL')) {
+      await this.$connect();
+    } else {
+      console.warn('⚠️ DATABASE_URL not set — Prisma will not connect (Supabase JS client still works)');
+    }
   }
 
   async onModuleDestroy() {

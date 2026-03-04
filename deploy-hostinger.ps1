@@ -53,7 +53,35 @@ Run "Preflight" {
   }
   Write-Host "Using SSH key: $KEY_PATH" -ForegroundColor Gray
   $script:usePassword = $false
-  
+
+  # Verify the API .env file exists and has required Supabase keys
+  $envPath = "apps/api/.env"
+  if (-not (Test-Path $envPath)) {
+    Write-Host ""
+    Write-Host "⚠️  WARNING: apps/api/.env not found!" -ForegroundColor Red
+    Write-Host "   The VPS will have NO Supabase credentials → all API calls will return 500." -ForegroundColor Red
+    Write-Host "   Create apps/api/.env with at minimum:" -ForegroundColor Yellow
+    Write-Host "     SUPABASE_URL=https://[project-ref].supabase.co" -ForegroundColor Gray
+    Write-Host "     SUPABASE_SERVICE_ROLE_KEY=eyJ..." -ForegroundColor Gray
+    Write-Host "     DATABASE_URL=postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres" -ForegroundColor Gray
+    Write-Host "     JWT_SECRET=..." -ForegroundColor Gray
+    Write-Host "     NODE_ENV=production" -ForegroundColor Gray
+    Write-Host ""
+    $continue = Read-Host "Continue WITHOUT .env? (y/n)"
+    if ($continue -ne "y") { exit 1 }
+  } else {
+    $envContent = Get-Content $envPath -Raw
+    $missingKeys = @()
+    foreach ($key in @('SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET')) {
+      if ($envContent -notmatch "^\s*$key\s*=") { $missingKeys += $key }
+    }
+    if ($missingKeys.Count -gt 0) {
+      Write-Host "⚠️  apps/api/.env is missing required keys: $($missingKeys -join ', ')" -ForegroundColor Yellow
+    } else {
+      Write-Host "✅ apps/api/.env found with required keys" -ForegroundColor Green
+    }
+  }
+
   Assert-CommandExists "ssh"
   Assert-CommandExists "scp"
   Assert-CommandExists "pnpm"

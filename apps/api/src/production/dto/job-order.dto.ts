@@ -154,6 +154,9 @@ export class UpdateJobOrderDto {
   @IsOptional()
   @IsUUID()
   salesOrderItemId?: string;
+
+  @IsOptional()
+  assignedTo?: string | null;
 }
 
 export class UpdateOperationDto {
