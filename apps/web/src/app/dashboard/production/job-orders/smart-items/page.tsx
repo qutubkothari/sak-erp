@@ -2066,7 +2066,7 @@ function SmartJobOrdersItemsPageContent() {
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-start gap-6 mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-[#36454F]">Smart Job Order (Item Swap)</h1>
+            <h1 className="text-4xl font-bold text-[#36454F]">Create Job Order</h1>
             <p className="text-[#6F4E37]">{headerSubtitle}</p>
           </div>
 

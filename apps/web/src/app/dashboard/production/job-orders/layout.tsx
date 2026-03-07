@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 const tabs = [
   {
     href: '/dashboard/production/job-orders/smart-items',
-    label: 'Smart Create (Item Swap)',
+    label: 'Create Job Order',
   },
   {
     href: '/dashboard/production/job-orders',
