@@ -62,7 +62,7 @@ Run "Preflight" {
     Write-Host "   The VPS will have NO Supabase credentials → all API calls will return 500." -ForegroundColor Red
     Write-Host "   Create apps/api/.env with at minimum:" -ForegroundColor Yellow
     Write-Host "     SUPABASE_URL=https://[project-ref].supabase.co" -ForegroundColor Gray
-    Write-Host "     SUPABASE_SERVICE_ROLE_KEY=eyJ..." -ForegroundColor Gray
+    Write-Host "     SUPABASE_KEY=eyJ..." -ForegroundColor Gray
     Write-Host "     DATABASE_URL=postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres" -ForegroundColor Gray
     Write-Host "     JWT_SECRET=..." -ForegroundColor Gray
     Write-Host "     NODE_ENV=production" -ForegroundColor Gray
@@ -72,8 +72,8 @@ Run "Preflight" {
   } else {
     $envContent = Get-Content $envPath -Raw
     $missingKeys = @()
-    foreach ($key in @('SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET')) {
-      if ($envContent -notmatch "^\s*$key\s*=") { $missingKeys += $key }
+    foreach ($key in @('SUPABASE_URL', 'SUPABASE_KEY', 'JWT_SECRET')) {
+      if ($envContent -notmatch "(?m)^\s*$key\s*=") { $missingKeys += $key }
     }
     if ($missingKeys.Count -gt 0) {
       Write-Host "⚠️  apps/api/.env is missing required keys: $($missingKeys -join ', ')" -ForegroundColor Yellow

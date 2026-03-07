@@ -284,12 +284,6 @@ export default function BOMRoutingPage() {
   return (
     <div className="container mx-auto py-6 px-4">
       <div className="mb-6">
-        <button
-          onClick={() => router.back()}
-          className="text-blue-600 hover:text-blue-800 mb-4 flex items-center"
-        >
-          ← Back to BOM
-        </button>
         <h1 className="text-3xl font-bold text-gray-900">
           Routing Configuration: {bom?.item_name || 'Loading...'}
         </h1>

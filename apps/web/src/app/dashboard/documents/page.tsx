@@ -523,12 +523,6 @@ export default function DocumentsPage() {
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="text-amber-600 hover:text-amber-800 text-sm mb-2"
-        >
-          ← Back to Dashboard
-        </button>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           Document Management
         </h1>

@@ -83,12 +83,6 @@ export default function PurchasePage() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="text-amber-800 hover:text-amber-900 mb-4 flex items-center gap-2"
-          >
-            ← Back to Dashboard
-          </button>
           <h1 className="text-4xl font-bold text-amber-900 mb-2">Purchase Management</h1>
           <p className="text-amber-700">Manage procurement, vendors, and purchase workflows</p>
         </div>

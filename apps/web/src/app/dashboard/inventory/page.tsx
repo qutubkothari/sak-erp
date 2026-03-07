@@ -280,12 +280,6 @@ function InventoryPageContent() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="text-amber-600 hover:text-amber-800 text-sm mb-2"
-        >
-          ← Back to Dashboard
-        </button>
         <h1 className="text-2xl font-bold text-gray-900">Inventory Management</h1>
         <p className="text-gray-600">Stock levels, movements, alerts, and demo inventory</p>
       </div>

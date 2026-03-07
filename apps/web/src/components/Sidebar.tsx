@@ -57,12 +57,10 @@ const navigation = [
     href: '/dashboard/inventory',
     icon: Package,
     children: [
-      { name: 'Stock Overview', href: '/dashboard/inventory' },
       { name: 'Stock Master', href: '/dashboard/inventory/items' },
       { name: 'GRN', href: '/dashboard/purchase/grn' },
       { name: 'SIV', href: '/dashboard/inventory/siv' },
       { name: 'SRV', href: '/dashboard/inventory/srv' },
-      { name: 'Import Items', href: '/dashboard/inventory/items/import' },
     ],
   },
   {

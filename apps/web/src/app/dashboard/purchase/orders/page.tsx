@@ -1727,12 +1727,6 @@ function PurchaseOrdersContent() {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <button
-              onClick={() => router.push('/dashboard/purchase')}
-              className="text-amber-600 hover:text-amber-800 mb-2"
-            >
-              ← Back to Purchase Management
-            </button>
             <h1 className="text-4xl font-bold text-amber-900">Purchase Orders</h1>
             <p className="text-amber-700">Create and manage purchase orders to vendors</p>
           </div>

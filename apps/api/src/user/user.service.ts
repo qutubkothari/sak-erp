@@ -178,8 +178,8 @@ export class UserService {
       throw new ConflictException('User with this email already exists');
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(dto.password, 12);
+    // Store password as plain text
+    const hashedPassword = dto.password;
 
     const roleIds = Array.isArray(dto.roleIds)
       ? dto.roleIds.filter(Boolean)

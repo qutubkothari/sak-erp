@@ -674,14 +674,6 @@ export default function QualityPage() {
 
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="text-amber-600 hover:text-amber-800 text-sm mb-2"
-        >
-          ← Back to Dashboard
-        </button>
-      </div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Quality & Inspection Management</h1>
         <div className="space-x-2">

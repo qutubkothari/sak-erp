@@ -1502,12 +1502,6 @@ function GRNContent() {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <button
-              onClick={() => router.push('/dashboard/purchase')}
-              className="text-amber-600 hover:text-amber-800 mb-2"
-            >
-              ← Back to Purchase Management
-            </button>
             <h1 className="text-4xl font-bold text-amber-900">Goods Receipt Note (GRN)</h1>
             <p className="text-amber-700">Record and manage goods received from vendors</p>
           </div>

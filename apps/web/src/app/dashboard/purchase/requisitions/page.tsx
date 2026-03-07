@@ -1063,13 +1063,6 @@ function PRContent() {
         {/* Header */}
         <div className="mb-8 flex justify-between items-center">
           <div>
-            <button
-              type="button"
-              onClick={() => router.push('/dashboard/purchase')}
-              className="text-amber-800 hover:text-amber-900 mb-4 flex items-center gap-2"
-            >
-              ← Back to Purchase
-            </button>
             <h1 className="text-4xl font-bold text-amber-900 mb-2">Purchase Requisitions</h1>
             <p className="text-amber-700">Create and manage purchase requisition requests</p>
           </div>

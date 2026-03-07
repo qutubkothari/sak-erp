@@ -292,14 +292,6 @@ export default function UIDTrackingPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      {/* Back Button */}
-      <button
-        onClick={() => router.push('/dashboard')}
-        className="mb-4 flex items-center gap-2 text-amber-600 hover:text-amber-800 font-medium"
-      >
-        ← Back to Dashboard
-      </button>
-
       {/* Header */}
       <div className="mb-6 flex justify-between items-start">
         <div>

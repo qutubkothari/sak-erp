@@ -594,13 +594,6 @@ export default function SrvPage() {
         {/* Header */}
         <div className="mb-8 flex justify-between items-center">
           <div>
-            <button
-              type="button"
-              onClick={() => router.push('/dashboard/inventory')}
-              className="text-[#6F4E37] hover:text-[#8B6F47] mb-4 flex items-center gap-2 font-medium"
-            >
-              ← Back to Inventory
-            </button>
             <h1 className="text-4xl font-bold text-[#36454F] mb-2">Store Receipt Voucher (SRV)</h1>
             <p className="text-[#6F4E37]">Receive finished goods from production</p>
           </div>

@@ -210,7 +210,7 @@ export function hasModulePermission(
 const MODULE_TO_ROUTE_PREFIXES: Record<string, string[]> = {
   'Purchase Management': ['/dashboard/purchase', '/dashboard/accounts'],
   'Sales Management': ['/dashboard/sales'],
-  Inventory: ['/dashboard/inventory', '/dashboard/uid'],
+  Inventory: ['/dashboard/inventory', '/dashboard/uid', '/dashboard/purchase/grn'],
   Production: ['/dashboard/production', '/dashboard/bom', '/dashboard/work-stations', '/dashboard/shop-floor'],
   'Quality Control': ['/dashboard/quality'],
   'HR Management': ['/dashboard/hr'],
@@ -236,13 +236,19 @@ export function getAllowedRoutePrefixes(user: StoredUser | null): string[] {
   return Array.from(new Set(prefixes));
 }
 
+// Override the default landing page for specific route prefixes.
+// e.g. Inventory users should land on Stock Master, not the movements/overview page.
+const LANDING_PAGE_OVERRIDES: Record<string, string> = {
+  '/dashboard/inventory': '/dashboard/inventory/items',
+};
+
 export function getDefaultLandingPath(user: StoredUser | null): string {
   if (isAdminLike(user)) return '/dashboard';
 
   const prefixes = getAllowedRoutePrefixes(user);
   // Prefer something other than the global dashboard.
   const firstNonDashboard = prefixes.find((p) => p !== '/dashboard');
-  if (firstNonDashboard) return firstNonDashboard;
+  if (firstNonDashboard) return LANDING_PAGE_OVERRIDES[firstNonDashboard] ?? firstNonDashboard;
 
   // If the user has no other module access (or no permissions configured yet),
   // send them to a safe page instead of looping on /dashboard.

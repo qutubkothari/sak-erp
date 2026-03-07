@@ -1093,12 +1093,6 @@ export default function ItemsPage() {
             )}
           </div>
           <button
-            onClick={() => router.push('/dashboard/inventory/items/import')}
-            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium flex items-center gap-2"
-          >
-            📊 Import Excel
-          </button>
-          <button
             onClick={initBulkInventory}
             className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
           >

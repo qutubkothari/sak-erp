@@ -180,8 +180,8 @@ export class AuthService {
       throw new ConflictException('User with this email already exists');
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(dto.password, 12);
+    // Store password as plain text
+    const hashedPassword = dto.password;
 
     // Parse name if provided as single field
     let firstName = dto.firstName;
@@ -356,12 +356,11 @@ export class AuthService {
       throw new UnauthorizedException('Account is deactivated');
     }
 
-    // Verify password - TEMPORARILY DISABLED FOR TESTING
-    // const isPasswordValid = await bcrypt.compare(dto.password, user.password);
-    // if (!isPasswordValid) {
-    //   throw new UnauthorizedException('Invalid credentials');
-    // }
-    // TODO: Re-enable password verification after fixing hash issue
+    // Verify password (plain text)
+    const isPasswordValid = dto.password === user.password;
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
     // Update last login
     await this.supabase

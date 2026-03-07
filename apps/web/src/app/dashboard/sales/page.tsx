@@ -1469,12 +1469,6 @@ export default function SalesPage() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="text-amber-600 hover:text-amber-800 text-sm mb-2"
-        >
-          ← Back to Dashboard
-        </button>
         <h1 className="text-2xl font-bold text-gray-900">Sales & Dispatch Management</h1>
         <p className="text-sm text-gray-600 mt-1">
           Manage customers, quotations, sales orders, dispatch, and warranties

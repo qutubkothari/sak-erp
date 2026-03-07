@@ -19,7 +19,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     // Uses Supabase connection pooler URL (IPv4-compatible) set in DATABASE_URL env var.
     // Pooler URL format: postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres
     if (this.configService.get('DATABASE_URL')) {
-      await this.$connect();
+      try {
+        await this.$connect();
+        console.log('✅ Prisma connected to database');
+      } catch (err) {
+        console.warn('⚠️ Prisma failed to connect — API will start anyway (Supabase JS client still works)');
+        console.warn('   Prisma error:', err?.message ?? err);
+      }
     } else {
       console.warn('⚠️ DATABASE_URL not set — Prisma will not connect (Supabase JS client still works)');
     }

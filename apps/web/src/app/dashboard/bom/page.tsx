@@ -515,12 +515,6 @@ export default function BOMPage() {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="text-amber-600 hover:text-amber-800 mb-2"
-            >
-              ← Back to Dashboard
-            </button>
             <h1 className="text-4xl font-bold text-amber-900">Bill of Materials (BOM)</h1>
             <p className="text-amber-700">Define and manage product structure</p>
           </div>

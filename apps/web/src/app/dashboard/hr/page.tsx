@@ -2607,14 +2607,6 @@ function HrPageContent() {
 
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="text-amber-600 hover:text-amber-800 text-sm mb-2"
-        >
-          ← Back to Dashboard
-        </button>
-      </div>
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold">
