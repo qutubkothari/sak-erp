@@ -275,6 +275,7 @@ function RoleModal({
   role,
   onClose,
   onSuccess,
+  canSubmit,
 }: {
   role?: Role;
   onClose: () => void;
