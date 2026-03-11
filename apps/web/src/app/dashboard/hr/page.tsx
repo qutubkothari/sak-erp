@@ -282,7 +282,7 @@ function HrPageContent() {
   const canEditHR = hasModulePermission(currentUser, 'HR Management', 'edit');
   const canDeleteHR = hasModulePermission(currentUser, 'HR Management', 'delete');
   const canApproveHR = hasModulePermission(currentUser, 'HR Management', 'approve');
-  const getCurrentUserId = () => currentUser?.id || readStoredUser()?.id || localStorage.getItem('userId');
+  const getCurrentUserId = () => currentUser?.id || localStorage.getItem('userId');
   
   // Region configuration (INDIA or UAE)
   const [complianceRegion, setComplianceRegion] = useState<'INDIA' | 'UAE'>('INDIA');
