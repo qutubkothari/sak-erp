@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import { getTodayDateInputValue } from '@/lib/date';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 function getApiV1BaseUrl(): string | null {
   const raw = (process.env.NEXT_PUBLIC_API_URL || '').trim();
@@ -49,6 +50,9 @@ function isUuidLike(value: string): boolean {
 
 export default function SrvPage() {
   const router = useRouter();
+  const currentUser = readStoredUser();
+  const canApprove = hasModulePermission(currentUser, 'Inventory', 'approve');
+  const canDelete = hasModulePermission(currentUser, 'Inventory', 'delete');
   const todayDate = getTodayDateInputValue();
   const [loading, setLoading] = useState(false);
   const [openSrvs, setOpenSrvs] = useState<ReceiptVoucherRow[]>([]);
@@ -699,12 +703,14 @@ export default function SrvPage() {
                           >
                             View
                           </button>
+                          {canDelete && (
                           <button
                             onClick={() => deleteSrv(row.id)}
                             className="text-red-600 hover:text-red-900 font-medium"
                           >
                             Delete
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -719,6 +725,7 @@ export default function SrvPage() {
           <div className="space-y-4">
             {srvHistory.some((r) => !r.approved_by) && (
               <div className="flex justify-end">
+                {canApprove && (
                 <button
                   onClick={() => void approveAllPending()}
                   disabled={bulkApproving}
@@ -726,6 +733,7 @@ export default function SrvPage() {
                 >
                   {bulkApproving ? 'Approving...' : `✓ Approve All Pending (${srvHistory.filter((r) => !r.approved_by).length})`}
                 </button>
+                )}
               </div>
             )}
           <div className="bg-white rounded-lg shadow-md overflow-hidden">
@@ -808,12 +816,14 @@ export default function SrvPage() {
                           >
                             Print
                           </button>
+                          {canDelete && (
                           <button
                             onClick={() => deleteSrv(row.id)}
                             className="text-red-600 hover:text-red-900 font-medium"
                           >
                             Delete
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>

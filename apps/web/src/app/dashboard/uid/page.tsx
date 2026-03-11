@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface UIDRecord {
   id: string;
@@ -62,6 +63,7 @@ const statusColors: Record<string, string> = {
 
 export default function UIDTrackingPage() {
   const router = useRouter();
+  const canEdit = hasModulePermission(readStoredUser(), 'Inventory', 'edit');
   const [uids, setUids] = useState<UIDRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchUID, setSearchUID] = useState('');
@@ -528,6 +530,7 @@ export default function UIDTrackingPage() {
                     ) : (
                       <span className="text-gray-400 text-xs">Not assigned</span>
                     )}
+                    {canEdit && (
                     <button
                       onClick={() => openPartNumberModal(uid)}
                       className="text-blue-600 hover:text-blue-800 text-xs"
@@ -535,6 +538,7 @@ export default function UIDTrackingPage() {
                     >
                       ✏️
                     </button>
+                    )}
                   </div>
                 </td>
                 <td className="px-6 py-4">

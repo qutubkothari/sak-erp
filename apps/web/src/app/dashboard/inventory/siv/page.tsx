@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 type BomComponent = {
   item_code: string;
@@ -57,6 +58,10 @@ type SivHistoryRow = {
 
 export default function SivPage() {
   const router = useRouter();
+  const currentUser = readStoredUser();
+  const canCreate = hasModulePermission(currentUser, 'Inventory', 'create');
+  const canApprove = hasModulePermission(currentUser, 'Inventory', 'approve');
+  const canDelete = hasModulePermission(currentUser, 'Inventory', 'delete');
   const [focusJobId, setFocusJobId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [materialRequests, setMaterialRequests] = useState<MaterialReq[]>([]);
@@ -731,6 +736,7 @@ export default function SivPage() {
                           >
                             Print
                           </button>
+                          {canCreate && (
                           <button
                             onClick={() => issueSelectedLines(req.id)}
                             disabled={busyJobId === req.id}
@@ -738,6 +744,7 @@ export default function SivPage() {
                           >
                             {busyJobId === req.id ? 'Issuing...' : 'Issue Selected'}
                           </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -1153,7 +1160,7 @@ export default function SivPage() {
                                   </td>
                                   <td className="px-4 py-3 text-sm">
                                     <div className="flex gap-3">
-                                      {!row.approved_by && (
+                                      {canApprove && !row.approved_by && (
                                         <button
                                           onClick={() => approveSivHistoryRow(row.id)}
                                           className="text-green-600 hover:text-green-900 font-medium"
@@ -1161,12 +1168,14 @@ export default function SivPage() {
                                           Approve
                                         </button>
                                       )}
+                                      {canDelete && (
                                       <button
                                         onClick={() => deleteSivHistoryRow(row.id)}
                                         className="text-red-600 hover:text-red-900 font-medium"
                                       >
                                         Delete
                                       </button>
+                                      )}
                                     </div>
                                   </td>
                                 </tr>

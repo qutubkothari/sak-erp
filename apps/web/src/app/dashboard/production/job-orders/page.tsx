@@ -171,6 +171,8 @@ function JobOrdersPageContent() {
   const legacy = searchParams.get('legacy') === '1';
   const currentUser = readStoredUser();
   const canCreate = hasModulePermission(currentUser, 'Production', 'create');
+  const canEdit = hasModulePermission(currentUser, 'Production', 'edit');
+  const canApprove = hasModulePermission(currentUser, 'Production', 'approve');
 
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -1648,7 +1650,7 @@ function JobOrdersPageContent() {
           >
             View
           </button>
-          {jo.status === 'DRAFT' && (
+          {jo.status === 'DRAFT' && canEdit && (
             <button
               type="button"
               onClick={() => handleUpdateStatus(jo.id, 'SCHEDULED')}
@@ -1658,7 +1660,7 @@ function JobOrdersPageContent() {
               Schedule
             </button>
           )}
-          {jo.status === 'SCHEDULED' && (
+          {jo.status === 'SCHEDULED' && canEdit && (
             <button
               type="button"
               onClick={() => handleUpdateStatus(jo.id, 'IN_PROGRESS')}
@@ -1668,7 +1670,7 @@ function JobOrdersPageContent() {
               Start
             </button>
           )}
-          {jo.status === 'IN_PROGRESS' && (
+          {jo.status === 'IN_PROGRESS' && canApprove && (
             <>
               <button
                 type="button"

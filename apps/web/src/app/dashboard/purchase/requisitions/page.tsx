@@ -110,6 +110,9 @@ function PRContent() {
   const todayDate = getTodayDateInputValue();
   const currentUser = readStoredUser();
   const canApprovePR = hasModulePermission(currentUser, 'Purchase Management', 'approve');
+  const canCreatePR = hasModulePermission(currentUser, 'Purchase Management', 'create');
+  const canEditPR = hasModulePermission(currentUser, 'Purchase Management', 'edit');
+  const canDeletePR = hasModulePermission(currentUser, 'Purchase Management', 'delete');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [items, setItems] = useState<PRItem[]>([]);
@@ -233,7 +236,7 @@ function PRContent() {
           >
             View Details
           </button>
-          {(req.status === 'DRAFT' || req.status === 'SUBMITTED' || req.status === 'REJECTED') && (
+          {(req.status === 'DRAFT' || req.status === 'SUBMITTED' || req.status === 'REJECTED') && canEditPR && (
             <button
               type="button"
               onClick={() => handleEditPR(req.id)}
@@ -260,6 +263,7 @@ function PRContent() {
               </button>
             </>
           )}
+          {canDeletePR && (
           <button
             type="button"
             onClick={() => handleDelete(req.id)}
@@ -267,6 +271,7 @@ function PRContent() {
           >
             Delete
           </button>
+          )}
         </div>
       ),
     },
@@ -1066,6 +1071,7 @@ function PRContent() {
             <h1 className="text-4xl font-bold text-amber-900 mb-2">Purchase Requisitions</h1>
             <p className="text-amber-700">Create and manage purchase requisition requests</p>
           </div>
+          {canCreatePR && (
           <button
             type="button"
             onClick={() => setShowCreateForm(true)}
@@ -1073,6 +1079,7 @@ function PRContent() {
           >
             + New Requisition
           </button>
+          )}
         </div>
 
         {/* Create Form Modal */}

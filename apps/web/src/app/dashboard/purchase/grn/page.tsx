@@ -169,6 +169,9 @@ function GRNContent() {
   const todayDate = getTodayDateInputValue();
   const currentUser = readStoredUser();
   const canApproveGRN = hasModulePermission(currentUser, 'Purchase Management', 'approve');
+  const canCreateGRN = hasModulePermission(currentUser, 'Purchase Management', 'create');
+  const canEditGRN = hasModulePermission(currentUser, 'Purchase Management', 'edit');
+  const canDeleteGRN = hasModulePermission(currentUser, 'Purchase Management', 'delete');
   const [grns, setGrns] = useState<GRN[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -1505,12 +1508,14 @@ function GRNContent() {
             <h1 className="text-4xl font-bold text-amber-900">Goods Receipt Note (GRN)</h1>
             <p className="text-amber-700">Record and manage goods received from vendors</p>
           </div>
+          {canCreateGRN && (
           <button
             onClick={() => setShowModal(true)}
             className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold"
           >
             + Create GRN
           </button>
+          )}
         </div>
 
         {/* GRN List */}

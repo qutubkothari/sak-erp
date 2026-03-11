@@ -7,6 +7,7 @@ import SearchableSelect from '../../../components/SearchableSelect';
 import DuplicateWarning, { useDuplicateDetection } from '../../../components/DuplicateWarning';
 import { getTodayDateInputValue } from '@/lib/date';
 import { confirmDialog } from '../../../components/ui/ConfirmDialog';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 type TabType = 'customers' | 'quotations' | 'orders' | 'dispatch' | 'warranties';
 
@@ -122,6 +123,11 @@ interface UIDRecord {
 
 export default function SalesPage() {
   const todayDate = getTodayDateInputValue();
+  const currentUser = readStoredUser();
+  const canCreate = hasModulePermission(currentUser, 'Sales Management', 'create');
+  const canEdit = hasModulePermission(currentUser, 'Sales Management', 'edit');
+  const canDelete = hasModulePermission(currentUser, 'Sales Management', 'delete');
+  const canApprove = hasModulePermission(currentUser, 'Sales Management', 'approve');
   const [activeTab, setActiveTab] = useState<TabType>('customers');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotations, setQuotations] = useState<Quotation[]>([]);
@@ -1511,6 +1517,7 @@ export default function SalesPage() {
         <div>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Customer List</h2>
+            {canCreate && (
             <button
               onClick={() => {
                 resetCustomerForm();
@@ -1520,6 +1527,7 @@ export default function SalesPage() {
             >
               + Add Customer
             </button>
+            )}
           </div>
 
           {loading ? (
@@ -1572,6 +1580,7 @@ export default function SalesPage() {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm">
                               <div className="flex flex-wrap items-center gap-2">
+                                {canEdit && (
                                 <button
                                   type="button"
                                   onClick={() => handleEditCustomer(customer)}
@@ -1579,6 +1588,8 @@ export default function SalesPage() {
                                 >
                                   Edit
                                 </button>
+                                )}
+                                {canDelete && (
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteCustomer(customer)}
@@ -1586,6 +1597,7 @@ export default function SalesPage() {
                                 >
                                   Delete
                                 </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -1799,6 +1811,7 @@ export default function SalesPage() {
         <div>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Quotations</h2>
+            {canCreate && (
             <button
               onClick={() => {
                 resetQuotationForm();
@@ -1808,6 +1821,7 @@ export default function SalesPage() {
             >
               + Create Quotation
             </button>
+            )}
           </div>
 
           {loading ? (
@@ -1862,6 +1876,7 @@ export default function SalesPage() {
                           >
                             View
                           </button>
+                          {canEdit && (
                           <button
                             type="button"
                             onClick={() => handleEditQuotation(quotation.id)}
@@ -1875,6 +1890,8 @@ export default function SalesPage() {
                           >
                             Edit
                           </button>
+                          )}
+                          {canDelete && (
                           <button
                             type="button"
                             onClick={() => handleDeleteQuotation(quotation)}
@@ -1888,6 +1905,7 @@ export default function SalesPage() {
                           >
                             Delete
                           </button>
+                          )}
                           {quotation.status === 'DRAFT' && (
                             <button
                               onClick={async () => {
@@ -2515,18 +2533,22 @@ export default function SalesPage() {
                           >
                             {smartJOLoading ? 'Loading…' : 'Create Job Order'}
                           </button>
+                          {canEdit && (
                           <button
                             onClick={() => handleEditSalesOrder(order.id)}
                             className="text-amber-600 hover:text-amber-900"
                           >
                             Edit
                           </button>
+                          )}
+                          {canDelete && (
                           <button
                             onClick={() => handleDeleteSalesOrder(order)}
                             className="text-red-600 hover:text-red-900"
                           >
                             Delete
                           </button>
+                          )}
                           {(order.status === 'READY_TO_DISPATCH' || order.status === 'CONFIRMED') && (
                             <button
                               onClick={async () => {
@@ -2957,6 +2979,7 @@ export default function SalesPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex flex-wrap items-center gap-2">
+                          {canEdit && (
                           <button
                             type="button"
                             onClick={() => handleEditDispatch(dispatch)}
@@ -2964,6 +2987,8 @@ export default function SalesPage() {
                           >
                             Edit
                           </button>
+                          )}
+                          {canDelete && (
                           <button
                             type="button"
                             onClick={() => handleDeleteDispatch(dispatch)}
@@ -2971,6 +2996,7 @@ export default function SalesPage() {
                           >
                             Delete
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>

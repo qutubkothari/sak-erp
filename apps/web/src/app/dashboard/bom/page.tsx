@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 import ItemSearch from '../../../components/ItemSearch';
 import DrawingManager from '../../../components/DrawingManager';
-import { getUserRoleNames, readStoredUser } from '../../../lib/rbac';
+import { readStoredUser, hasModulePermission } from '../../../lib/rbac';
 import { getTodayDateInputValue } from '../../../lib/date';
 
 const fileToDataUrl = (file: File): Promise<string> =>
@@ -182,17 +182,9 @@ export default function BOMPage() {
   });
   const [availableBOMs, setAvailableBOMs] = useState<BOM[]>([]);
 
-  const canEditBom = useMemo(() => {
-    const normalize = (value: string) =>
-      String(value || '')
-        .trim()
-        .toUpperCase()
-        .replace(/[\s-]+/g, '_')
-        .replace(/[^A-Z0-9_]/g, '');
-
-    const roles = getUserRoleNames(readStoredUser()).map(normalize);
-    return roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
-  }, []);
+  const canEditBom = hasModulePermission(readStoredUser(), 'BOM & Engineering', 'edit');
+  const canCreate = hasModulePermission(readStoredUser(), 'BOM & Engineering', 'create');
+  const canDelete = hasModulePermission(readStoredUser(), 'BOM & Engineering', 'delete');
 
   const isEditMode = Boolean(editingBomId);
 

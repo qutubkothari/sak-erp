@@ -6,6 +6,7 @@ import { apiClient } from '../../../../lib/api-client';
 import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 import WorkflowActions from './WorkflowActions';
 import WorkflowHistory from './WorkflowHistory';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface UserRef {
   first_name?: string;
@@ -109,6 +110,9 @@ const statusColors: Record<string, string> = {
 
 export default function DocumentsPage() {
   const router = useRouter();
+  const currentUser = readStoredUser();
+  const canCreate = hasModulePermission(currentUser, 'Documents', 'create');
+  const canDelete = hasModulePermission(currentUser, 'Documents', 'delete');
   const [documents, setDocuments] = useState<Document[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -534,12 +538,14 @@ export default function DocumentsPage() {
       {/* Action Bar */}
       <div className="mb-6 flex flex-wrap gap-4 items-center justify-between bg-white p-4 rounded-lg shadow">
         <div className="flex gap-2">
+          {canCreate && (
           <button
             onClick={() => setShowModal(true)}
             className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 transition-colors flex items-center gap-2"
           >
             <span>+</span> Upload Document
           </button>
+          )}
           <button
             onClick={() => setViewMode(viewMode === 'table' ? 'cards' : 'table')}
             className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors"
@@ -705,12 +711,14 @@ export default function DocumentsPage() {
                 >
                   Archive
                 </button>
+                {canDelete && (
                 <button
                   onClick={() => handleDelete(doc.id)}
                   className="bg-red-50 text-red-700 px-2 py-1 rounded text-xs hover:bg-red-100 transition-colors"
                 >
                   Delete
                 </button>
+                )}
               </div>
 
               {expandedAnalysisId === doc.id && (
@@ -947,12 +955,14 @@ export default function DocumentsPage() {
                       >
                         Revisions
                       </button>
+                      {canDelete && (
                       <button
                         onClick={() => handleDelete(doc.id)}
                         className="text-red-600 hover:text-red-900"
                       >
                         Delete
                       </button>
+                      )}
                     </td>
                   </tr>
 

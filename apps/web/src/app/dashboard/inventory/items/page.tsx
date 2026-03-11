@@ -6,6 +6,7 @@ import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import DrawingManager from '../../../../components/DrawingManager';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface Item {
   id: string;
@@ -83,6 +84,10 @@ const ITEMS_TABLE_PAGE_SIZE_STORAGE_KEY = 'itemsTablePageSize:v1';
 
 export default function ItemsPage() {
   const router = useRouter();
+  const currentUser = readStoredUser();
+  const canCreate = hasModulePermission(currentUser, 'Inventory', 'create');
+  const canEdit = hasModulePermission(currentUser, 'Inventory', 'edit');
+  const canDelete = hasModulePermission(currentUser, 'Inventory', 'delete');
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -1098,6 +1103,7 @@ export default function ItemsPage() {
           >
             📦 Bulk Inventory
           </button>
+          {canCreate && (
           <button
             onClick={() => {
               setEditingItem(null);
@@ -1108,6 +1114,7 @@ export default function ItemsPage() {
           >
             + Add Item
           </button>
+          )}
         </div>
       </div>
 
@@ -1378,12 +1385,14 @@ export default function ItemsPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     {item.is_active ? (
                       <>
+                        {canEdit && (
                         <button
                           onClick={() => handleEdit(item)}
                           className="text-amber-600 hover:text-amber-900 mr-3"
                         >
                           Edit
                         </button>
+                        )}
                         {!item.is_variant && (
                           <button
                             onClick={() => openVariantManager(item)}
@@ -1402,12 +1411,14 @@ export default function ItemsPage() {
                         >
                           Drawings
                         </button>
+                        {canDelete && (
                         <button
                           onClick={() => handleDelete(item.id)}
                           className="text-red-600 hover:text-red-900"
                         >
                           Delete
                         </button>
+                        )}
                       </>
                     ) : (
                       <button

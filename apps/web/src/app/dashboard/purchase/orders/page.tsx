@@ -108,6 +108,9 @@ function PurchaseOrdersContent() {
   const prId = searchParams?.get('prId');
   const currentUser = readStoredUser();
   const canApprovePO = hasModulePermission(currentUser, 'Purchase Management', 'approve');
+  const canCreatePO = hasModulePermission(currentUser, 'Purchase Management', 'create');
+  const canEditPO = hasModulePermission(currentUser, 'Purchase Management', 'edit');
+  const canDeletePO = hasModulePermission(currentUser, 'Purchase Management', 'delete');
 
   const [purchaseRequisitions, setPurchaseRequisitions] = useState<
     Array<{ id: string; pr_number: string; department?: string; status?: string }>
@@ -1709,6 +1712,7 @@ function PurchaseOrdersContent() {
           >
             View
           </button>
+          {canEditPO && (
           <button
             type="button"
             onClick={() => handleEditDetails(o.id, 'edit')}
@@ -1716,6 +1720,7 @@ function PurchaseOrdersContent() {
           >
             Edit
           </button>
+          )}
         </div>
       ),
     },
@@ -1731,7 +1736,7 @@ function PurchaseOrdersContent() {
             <p className="text-amber-700">Create and manage purchase orders to vendors</p>
           </div>
           <div className="flex gap-4">
-            {orderSelection.hasSelections && (
+            {orderSelection.hasSelections && canDeletePO && (
               <button
                 onClick={handleDeleteAll}
                 className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold"
@@ -1739,6 +1744,7 @@ function PurchaseOrdersContent() {
                 Delete Selected ({orderSelection.selectedItems.length})
               </button>
             )}
+            {canCreatePO && (
             <button
               onClick={() => {
                 setShowModal(true);
@@ -1753,6 +1759,7 @@ function PurchaseOrdersContent() {
             >
               + Create Purchase Order
             </button>
+            )}
           </div>
         </div>
 

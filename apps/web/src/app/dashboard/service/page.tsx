@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import SearchableSelect from '../../../components/SearchableSelect';
 import { getTodayDateInputValue } from '@/lib/date';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 type TabType = 'tickets' | 'technicians' | 'warranty-check' | 'reports';
 
@@ -106,6 +107,10 @@ function getAttachmentKind(url: string): 'image' | 'video' | 'other' {
 }
 
 export default function ServicePage() {
+  const currentUser = readStoredUser();
+  const canCreate = hasModulePermission(currentUser, 'Service Management', 'create');
+  const canEdit = hasModulePermission(currentUser, 'Service Management', 'edit');
+  const canDelete = hasModulePermission(currentUser, 'Service Management', 'delete');
   const todayDate = getTodayDateInputValue();
   const [activeTab, setActiveTab] = useState<TabType>('tickets');
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
@@ -706,12 +711,14 @@ export default function ServicePage() {
         <div>
           <div className="mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <h2 className="text-lg font-semibold">Service Tickets</h2>
+            {canCreate && (
             <button
               onClick={() => setShowTicketForm(true)}
               className="w-full sm:w-auto px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-center"
             >
               + Create Ticket
             </button>
+            )}
           </div>
 
           {loading ? (
@@ -806,7 +813,7 @@ export default function ServicePage() {
                           <button onClick={() => { setSelectedTicket(ticket); setShowStatusModal(true); }} className="text-amber-600 hover:text-amber-800" title="Update Status">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                           </button>
-                          {ticket.status === 'OPEN' && (
+                          {ticket.status === 'OPEN' && canDelete && (
                             <button onClick={async () => { if (confirm('Delete this ticket?')) { try { await apiClient.delete(`/service/tickets/${ticket.id}`); fetchTickets(); } catch (err: any) { setError(err.message); } } }} className="text-red-600 hover:text-red-800" title="Delete">
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                             </button>
@@ -1578,12 +1585,14 @@ export default function ServicePage() {
         <div>
           <div className="mb-4 flex justify-between items-center">
             <h2 className="text-lg font-semibold">Technicians</h2>
+          {canCreate && (
             <button
               onClick={() => setShowTechnicianForm(true)}
               className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
             >
               + Add Technician
             </button>
+          )}
           </div>
 
           {loading ? (
@@ -1634,12 +1643,16 @@ export default function ServicePage() {
                           <button onClick={() => { setSelectedTechnician(tech); setShowTechnicianDetails(true); }} className="text-blue-600 hover:text-blue-800" title="View Details">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                           </button>
+                          {canEdit && (
                           <button onClick={() => { setSelectedTechnician(tech); setTechnicianForm({ technician_name: tech.technician_name, specialization: tech.specialization || '', contact_number: tech.contact_number || '', email: tech.email || '', is_active: tech.is_active }); setShowEditTechnicianModal(true); }} className="text-amber-600 hover:text-amber-800" title="Edit">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                           </button>
+                          )}
+                          {canDelete && (
                           <button onClick={async () => { if (confirm(`Delete ${tech.technician_name}?`)) { try { await apiClient.delete(`/service/technicians/${tech.id}`); fetchTechnicians(); } catch (err: any) { setError(err.message); } } }} className="text-red-600 hover:text-red-800" title="Delete">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>

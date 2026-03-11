@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import { useSelection } from '../../../hooks/useSelection';
 import { confirmDialog } from '../../../components/ui/ConfirmDialog';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface StockLevel {
   id: string;
@@ -103,6 +104,8 @@ export default function InventoryPage() {
 
 function InventoryPageContent() {
   const router = useRouter();
+  const currentUser = readStoredUser();
+  const canDelete = hasModulePermission(currentUser, 'Inventory', 'delete');
   const searchParams = useSearchParams();
   const tabParam = searchParams.get('tab');
   
@@ -348,7 +351,7 @@ function InventoryPageContent() {
                     Select All ({movements.length} movements)
                   </span>
                 </label>
-                {movementSelection.hasSelections && (
+                {movementSelection.hasSelections && canDelete && (
                   <div className="flex gap-2">
                     <button
                       onClick={() => deleteMovements(Array.from(movementSelection.selectedIds))}
@@ -488,7 +491,7 @@ function InventoryPageContent() {
                     >
                       📧 Email Alert
                     </button>
-                    {alertSelection.hasSelections && (
+                    {alertSelection.hasSelections && canDelete && (
                       <>
                         <button
                           onClick={() => deleteAlerts(Array.from(alertSelection.selectedIds))}
@@ -583,7 +586,7 @@ function InventoryPageContent() {
                     Select All ({demoItems.length} demo items)
                   </span>
                 </label>
-                {demoSelection.hasSelections && (
+                {demoSelection.hasSelections && canDelete && (
                   <div className="flex gap-2">
                     <button
                       onClick={() => deleteDemoItems(Array.from(demoSelection.selectedIds))}

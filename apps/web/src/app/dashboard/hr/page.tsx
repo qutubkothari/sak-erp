@@ -322,6 +322,9 @@ function HrPageContent() {
 
   const isEmployeePortal = activeSection === 'employees';
   const canManage = userCanAccessManagement(currentUser);
+  const canCreateHR = hasModulePermission(currentUser, 'HR Management', 'create');
+  const canEditHR = hasModulePermission(currentUser, 'HR Management', 'edit');
+  const canDeleteHR = hasModulePermission(currentUser, 'HR Management', 'delete');
   
   // Region configuration (INDIA or UAE)
   const [complianceRegion, setComplianceRegion] = useState<'INDIA' | 'UAE'>('INDIA');
@@ -2645,7 +2648,7 @@ function HrPageContent() {
           </div>
         </div>
         <div className="space-x-2">
-          {!isEmployeePortal && activeTab === 'employees' && (
+          {!isEmployeePortal && activeTab === 'employees' && canCreateHR && (
             <button
               onClick={() => setShowEmployeeForm(true)}
               className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700"
@@ -2962,12 +2965,16 @@ function HrPageContent() {
                           <button onClick={() => { setSelectedEmployee(employee); setShowEmployeeDetails(true); }} className="text-blue-600 hover:text-blue-800" title="View Details">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                           </button>
+                          {canEditHR && (
                           <button onClick={() => { setSelectedEmployee(employee); setEmployeeForm({ employee_code: employee.employee_code, employee_name: employee.employee_name, designation: employee.designation || '', department: employee.department || '', date_of_joining: employee.date_of_joining, date_of_birth: '', contact_number: employee.contact_number || '', email: employee.email || '', address: '', biometric_id: '' }); setShowEditEmployee(true); }} className="text-amber-600 hover:text-amber-800" title="Edit">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                           </button>
+                          )}
+                          {canDeleteHR && (
                           <button onClick={async () => { if (confirm(`Mark ${employee.employee_name} as inactive?`)) { try { await apiClient.put(`/hr/employees/${employee.id}`, { status: 'INACTIVE' }); fetchData(); } catch (err: any) { alert('Failed to deactivate employee'); } } }} className="text-red-600 hover:text-red-800" title="Deactivate">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>

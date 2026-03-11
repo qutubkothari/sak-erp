@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../components/ui/ListTable';
 import { getTodayDateInputValue } from '@/lib/date';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface Inspection {
   id: string;
@@ -65,6 +66,10 @@ interface QualityDashboard {
 
 export default function QualityPage() {
   const router = useRouter();
+  const currentUser = readStoredUser();
+  const canCreate = hasModulePermission(currentUser, 'Quality Control', 'create');
+  const canEdit = hasModulePermission(currentUser, 'Quality Control', 'edit');
+  const canDelete = hasModulePermission(currentUser, 'Quality Control', 'delete');
   const todayDate = getTodayDateInputValue();
   const [activeTab, setActiveTab] = useState<'inspections' | 'ncr' | 'vendors' | 'dashboard'>('inspections');
   const [inspections, setInspections] = useState<Inspection[]>([]);
@@ -565,12 +570,16 @@ export default function QualityPage() {
           </button>
           {inspection.status === 'PENDING' && (
             <>
+              {canEdit && (
               <button onClick={() => handleEditInspection(inspection)} className="text-blue-600 hover:text-blue-800">
                 Edit
               </button>
+              )}
+              {canDelete && (
               <button onClick={() => setShowDeleteConfirm(inspection.id)} className="text-red-600 hover:text-red-800">
                 Delete
               </button>
+              )}
             </>
           )}
           {(inspection.status === 'PENDING' || inspection.status === 'IN_PROGRESS') && (
@@ -663,9 +672,11 @@ export default function QualityPage() {
             View
           </button>
           {ncr.status !== 'CLOSED' && (
+            canEdit && (
             <button onClick={() => setEditingNCR(ncr)} className="text-blue-600 hover:text-blue-800">
               Update
             </button>
+            )
           )}
         </div>
       ),
@@ -677,7 +688,7 @@ export default function QualityPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Quality & Inspection Management</h1>
         <div className="space-x-2">
-          {activeTab === 'inspections' && (
+          {activeTab === 'inspections' && canCreate && (
             <button
               onClick={() => setShowInspectionForm(true)}
               className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700"
@@ -685,7 +696,7 @@ export default function QualityPage() {
               + New Inspection
             </button>
           )}
-          {activeTab === 'ncr' && (
+          {activeTab === 'ncr' && canCreate && (
             <button
               onClick={() => setShowNcrForm(true)}
               className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
