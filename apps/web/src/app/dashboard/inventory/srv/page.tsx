@@ -1112,13 +1112,77 @@ export default function SrvPage() {
                     {showQcModal && (
                       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
                         <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
-                          <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-blue-50">
+                          <div className="sticky top-0 z-10 p-6 border-b border-gray-200 flex justify-between items-center gap-4 bg-blue-50">
                             <h2 className="text-2xl font-bold text-gray-900">🔍 QC Inspection</h2>
-                            <button onClick={() => setShowQcModal(false)} className="text-gray-500 hover:text-gray-700">
-                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => setShowQcModal(false)}
+                                className="px-5 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-white"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const hasRejectedWithoutReason = qcFormData.some(
+                                      (it) => it.rejectedQty > 0 && !it.rejectionReason?.trim(),
+                                    );
+                                    if (hasRejectedWithoutReason) {
+                                      alert('Please provide rejection reason for all rejected items');
+                                      return;
+                                    }
+
+                                    if (!qcMetadata.qcDate) {
+                                      alert('QC Date is required');
+                                      return;
+                                    }
+
+                                    const jobOrderId = String(selectedRow?.job_order_id || selectedRow?.id || '').trim();
+                                    if (!jobOrderId) {
+                                      alert('Missing Job Order ID');
+                                      return;
+                                    }
+
+                                    const accepted = qcFormData.reduce((sum, it) => sum + (Number(it.acceptedQty) || 0), 0);
+                                    const rejected = qcFormData.reduce((sum, it) => sum + (Number(it.rejectedQty) || 0), 0);
+                                    const received = qcFormData.reduce((sum, it) => sum + (Number(it.receivedQty) || 0), 0);
+
+                                    if (!Number.isFinite(accepted) || accepted <= 0) {
+                                      alert('Accepted Qty must be > 0');
+                                      return;
+                                    }
+                                    if (!Number.isFinite(rejected) || rejected < 0) {
+                                      alert('Rejected Qty must be >= 0');
+                                      return;
+                                    }
+                                    if (accepted + rejected > received) {
+                                      alert(`Accepted + Rejected cannot exceed Received (${received}).`);
+                                      return;
+                                    }
+
+                                    await qcAcceptSrv(jobOrderId, accepted, rejected, {
+                                      metadata: { ...qcMetadata, source: 'SRV' },
+                                      items: qcFormData,
+                                      checkedBy: qcFormData.reduce((acc, it) => {
+                                        const key = String(it.itemCode || it.itemId || '').trim();
+                                        if (key) acc[key] = String(it.checked_by || '').trim();
+                                        return acc;
+                                      }, {} as Record<string, string>),
+                                    });
+
+                                    await loadAll();
+                                    await fetchQcSummary(jobOrderId);
+                                    setShowQcModal(false);
+                                    alert('✅ QC completed successfully!');
+                                  } catch (err: any) {
+                                    alert('Failed to QC Accept: ' + (err?.response?.data?.message || err.message || err));
+                                  }
+                                }}
+                                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                              >
+                                ✓ Complete QC Inspection
+                              </button>
+                            </div>
                           </div>
 
                           <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
@@ -1336,75 +1400,6 @@ export default function SrvPage() {
                             </div>
                           </div>
 
-                          <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
-                            <button
-                              onClick={() => setShowQcModal(false)}
-                              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={async () => {
-                                try {
-                                  const hasRejectedWithoutReason = qcFormData.some(
-                                    (it) => it.rejectedQty > 0 && !it.rejectionReason?.trim(),
-                                  );
-                                  if (hasRejectedWithoutReason) {
-                                    alert('Please provide rejection reason for all rejected items');
-                                    return;
-                                  }
-
-                                  if (!qcMetadata.qcDate) {
-                                    alert('QC Date is required');
-                                    return;
-                                  }
-
-                                  const jobOrderId = String(selectedRow?.job_order_id || selectedRow?.id || '').trim();
-                                  if (!jobOrderId) {
-                                    alert('Missing Job Order ID');
-                                    return;
-                                  }
-
-                                  const accepted = qcFormData.reduce((sum, it) => sum + (Number(it.acceptedQty) || 0), 0);
-                                  const rejected = qcFormData.reduce((sum, it) => sum + (Number(it.rejectedQty) || 0), 0);
-                                  const received = qcFormData.reduce((sum, it) => sum + (Number(it.receivedQty) || 0), 0);
-
-                                  if (!Number.isFinite(accepted) || accepted <= 0) {
-                                    alert('Accepted Qty must be > 0');
-                                    return;
-                                  }
-                                  if (!Number.isFinite(rejected) || rejected < 0) {
-                                    alert('Rejected Qty must be >= 0');
-                                    return;
-                                  }
-                                  if (accepted + rejected > received) {
-                                    alert(`Accepted + Rejected cannot exceed Received (${received}).`);
-                                    return;
-                                  }
-
-                                  await qcAcceptSrv(jobOrderId, accepted, rejected, {
-                                    metadata: { ...qcMetadata, source: 'SRV' },
-                                    items: qcFormData,
-                                    checkedBy: qcFormData.reduce((acc, it) => {
-                                      const key = String(it.itemCode || it.itemId || '').trim();
-                                      if (key) acc[key] = String(it.checked_by || '').trim();
-                                      return acc;
-                                    }, {} as Record<string, string>),
-                                  });
-
-                                  await loadAll();
-                                  await fetchQcSummary(jobOrderId);
-                                  setShowQcModal(false);
-                                  alert('✅ QC completed successfully!');
-                                } catch (err: any) {
-                                  alert('Failed to QC Accept: ' + (err?.response?.data?.message || err.message || err));
-                                }
-                              }}
-                              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                            >
-                              ✓ Complete QC Inspection
-                            </button>
-                          </div>
                         </div>
                       </div>
                     )}

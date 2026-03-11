@@ -1197,12 +1197,26 @@ export default function SivPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[80vh]">
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-4 px-5 py-4 border-b bg-white">
               <div>
                 <h2 className="text-base font-semibold text-gray-900">Pick UIDs — {uidPickerItemCode}</h2>
                 <p className="text-xs text-gray-500 mt-0.5">Select up to {uidPickerMaxQty} UID{uidPickerMaxQty !== 1 ? 's' : ''} from available stock</p>
               </div>
-              <button onClick={() => setUidPickerOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setUidPickerOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmUidPicker}
+                  disabled={uidPickerSelected.length === 0}
+                  className="px-4 py-2 bg-[#8B6F47] text-white rounded-lg text-sm font-medium hover:bg-[#6F4E37] disabled:opacity-50"
+                >
+                  Confirm {uidPickerSelected.length > 0 ? `(${uidPickerSelected.length})` : ''}
+                </button>
+              </div>
             </div>
             {/* Toolbar */}
             <div className="flex items-center gap-3 px-5 py-2 border-b bg-gray-50">
@@ -1269,17 +1283,6 @@ export default function SivPage() {
                   </tbody>
                 </table>
               )}
-            </div>
-            {/* Footer */}
-            <div className="flex justify-end gap-3 px-5 py-4 border-t bg-gray-50">
-              <button onClick={() => setUidPickerOpen(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-100">Cancel</button>
-              <button
-                onClick={confirmUidPicker}
-                disabled={uidPickerSelected.length === 0}
-                className="px-4 py-2 bg-[#8B6F47] text-white rounded-lg text-sm font-medium hover:bg-[#6F4E37] disabled:opacity-50"
-              >
-                Confirm {uidPickerSelected.length > 0 ? `(${uidPickerSelected.length})` : ''}
-              </button>
             </div>
           </div>
         </div>
