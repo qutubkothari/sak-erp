@@ -169,7 +169,7 @@ interface MonthlyPayroll {
 }
 
 type StoredUser = {
-  id: string;
+  id?: string;
   email: string;
   firstName?: string;
   lastName?: string;
