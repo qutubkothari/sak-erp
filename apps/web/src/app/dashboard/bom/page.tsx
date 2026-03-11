@@ -533,6 +533,7 @@ export default function BOMPage() {
                 🃏 Cards
               </button>
             </div>
+            {canCreate && (
             <button
               onClick={() => {
                 setEditingBomId(null);
@@ -543,6 +544,7 @@ export default function BOMPage() {
             >
               + Create BOM
             </button>
+            )}
           </div>
         </div>
 
@@ -1738,12 +1740,14 @@ export default function BOMPage() {
             </div>
 
             <div className="p-6 border-t border-gray-200 flex justify-between">
+              {canDelete && (
               <button
                 onClick={() => handleDeleteBOM(selectedBom.id)}
                 className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
               >
                 Delete BOM
               </button>
+              )}
               <div className="flex gap-3">
                 {canEditBom && (
                   <button
