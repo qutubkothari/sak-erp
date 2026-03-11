@@ -441,6 +441,7 @@ function EditUserModal({
   user,
   onClose,
   onSuccess,
+  canSubmit,
 }: {
   user: User;
   onClose: () => void;
