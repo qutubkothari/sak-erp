@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import { getTodayDateInputValue } from '@/lib/date';
 import { confirmDialog } from '../../../components/ui/ConfirmDialog';
+import { getUserRoleNames as getStoredUserRoleNames, hasModulePermission as hasRbacPermission, readStoredUser } from '@/lib/rbac';
 
 // Import HR module utilities
 import {
@@ -193,37 +194,7 @@ function normalizeText(value: unknown): string {
 }
 
 function getUserRoleNames(user: StoredUser | null): string[] {
-  if (!user) return [];
-  const raw = (user as any).roles;
-  if (Array.isArray(raw) && raw.every((r) => typeof r === 'string')) {
-    return (raw as string[]).map(normalizeText).filter(Boolean);
-  }
-  if (Array.isArray(raw)) {
-    return raw
-      .map((entry: any) => entry?.role?.name)
-      .map(normalizeText)
-      .filter(Boolean);
-  }
-  if ((user as any).role?.name) {
-    return [normalizeText((user as any).role.name)];
-  }
-  return [];
-}
-
-function getUserPermissions(user: StoredUser | null): unknown {
-  if (!user) return [];
-  const raw = (user as any).roles;
-  if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'object') {
-    const flattened = raw.flatMap((entry: any) => entry?.role?.permissions ?? []);
-    if (flattened.length > 0) return flattened;
-
-    const first = raw.find((entry: any) => entry?.role?.permissions)?.role?.permissions;
-    return first ?? [];
-  }
-  if ((user as any).role?.permissions) {
-    return (user as any).role.permissions;
-  }
-  return [];
+  return getStoredUserRoleNames(user).map(normalizeText).filter(Boolean);
 }
 
 function hasModulePermission(
@@ -231,22 +202,7 @@ function hasModulePermission(
   moduleName: string,
   action: 'view' | 'create' | 'edit' | 'delete' | 'approve' = 'view',
 ): boolean {
-  const perms = getUserPermissions(user);
-
-  // Object-style permissions: treat "all"/"manageAll" as full access
-  if (perms && typeof perms === 'object' && !Array.isArray(perms)) {
-    const obj = perms as any;
-    if (obj.all === true || obj.manageAll === true) return true;
-    return false;
-  }
-
-  if (!Array.isArray(perms)) return false;
-  const target = normalizeText(moduleName);
-  return perms.some((p: any) => {
-    const mod = normalizeText(p?.module);
-    if (mod !== target) return false;
-    return Boolean(p?.[action]);
-  });
+  return hasRbacPermission(user, moduleName, action);
 }
 
 function userCanAccessManagement(user: StoredUser | null): boolean {
@@ -325,6 +281,8 @@ function HrPageContent() {
   const canCreateHR = hasModulePermission(currentUser, 'HR Management', 'create');
   const canEditHR = hasModulePermission(currentUser, 'HR Management', 'edit');
   const canDeleteHR = hasModulePermission(currentUser, 'HR Management', 'delete');
+  const canApproveHR = hasModulePermission(currentUser, 'HR Management', 'approve');
+  const getCurrentUserId = () => currentUser?.id || readStoredUser()?.id || localStorage.getItem('userId');
   
   // Region configuration (INDIA or UAE)
   const [complianceRegion, setComplianceRegion] = useState<'INDIA' | 'UAE'>('INDIA');
@@ -558,10 +516,7 @@ function HrPageContent() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      const raw = localStorage.getItem('user');
-      if (raw) {
-        setCurrentUser(JSON.parse(raw));
-      }
+      setCurrentUser(readStoredUser());
     } catch {
       // ignore
     }
@@ -855,6 +810,10 @@ function HrPageContent() {
 
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreateHR) {
+      alert('You do not have permission to create employees');
+      return;
+    }
     try {
       await apiClient.post('/hr/employees', employeeForm);
       setShowEmployeeForm(false);
@@ -879,6 +838,10 @@ function HrPageContent() {
 
   const handleRecordAttendance = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreateHR) {
+      alert('You do not have permission to record attendance');
+      return;
+    }
     try {
       await apiClient.post('/hr/attendance', attendanceForm);
       setShowAttendanceForm(false);
@@ -899,6 +862,10 @@ function HrPageContent() {
 
   const handleApplyLeave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isEmployeePortal && !canCreateHR) {
+      alert('You do not have permission to create leave requests');
+      return;
+    }
     try {
       await apiClient.post('/hr/leaves', leaveForm);
       setShowLeaveForm(false);
@@ -918,19 +885,12 @@ function HrPageContent() {
   };
 
   const handleApproveLeave = async (leaveId: string) => {
+    if (!canApproveHR) {
+      alert('You do not have permission to approve leave requests');
+      return;
+    }
     try {
-      const userId =
-        currentUser?.id ||
-        (() => {
-          try {
-            const raw = localStorage.getItem('user');
-            const parsed = raw ? (JSON.parse(raw) as StoredUser) : null;
-            return parsed?.id || null;
-          } catch {
-            return null;
-          }
-        })() ||
-        localStorage.getItem('userId');
+      const userId = getCurrentUserId();
       await apiClient.put(`/hr/leaves/${leaveId}/approve`, { approverId: userId });
       fetchData();
       alert('Leave approved successfully');
@@ -940,19 +900,12 @@ function HrPageContent() {
   };
 
   const handleRejectLeave = async (leaveId: string) => {
+    if (!canApproveHR) {
+      alert('You do not have permission to reject leave requests');
+      return;
+    }
     try {
-      const userId =
-        currentUser?.id ||
-        (() => {
-          try {
-            const raw = localStorage.getItem('user');
-            const parsed = raw ? (JSON.parse(raw) as StoredUser) : null;
-            return parsed?.id || null;
-          } catch {
-            return null;
-          }
-        })() ||
-        localStorage.getItem('userId');
+      const userId = getCurrentUserId();
       await apiClient.put(`/hr/leaves/${leaveId}/reject`, { approverId: userId });
       fetchData();
       alert('Leave rejected successfully');
@@ -964,6 +917,11 @@ function HrPageContent() {
   const handleCreateSalaryComponent = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    if (!canCreateHR) {
+      alert('You do not have permission to create salary components');
+      setLoading(false);
+      return;
+    }
     try {
       await apiClient.post('/hr/salary', salaryForm);
       setShowSalaryForm(false);
@@ -978,6 +936,10 @@ function HrPageContent() {
   };
 
   const handleDeleteSalaryComponent = async (id: string) => {
+    if (!canDeleteHR) {
+      alert('You do not have permission to delete salary components');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Delete Salary Component',
       message: 'Are you sure you want to delete this salary component?',
@@ -997,6 +959,11 @@ function HrPageContent() {
   const handleCreatePayrollRun = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    if (!canCreateHR) {
+      alert('You do not have permission to create payroll runs');
+      setLoading(false);
+      return;
+    }
     try {
       await apiClient.post('/hr/payroll/run', payrollRunForm);
       setShowPayrollRunForm(false);
@@ -1011,6 +978,10 @@ function HrPageContent() {
   };
 
   const handleGeneratePayslips = async (runId: string) => {
+    if (!canApproveHR) {
+      alert('You do not have permission to generate payslips');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Generate Payslips',
       message: 'Generate payslips for this payroll run?',
@@ -1034,6 +1005,11 @@ function HrPageContent() {
   const handleSaveMonthlyPayroll = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    if (selectedMonthlyPayroll?.id ? !canEditHR : !canCreateHR) {
+      alert(`You do not have permission to ${selectedMonthlyPayroll?.id ? 'edit' : 'create'} monthly payroll`);
+      setLoading(false);
+      return;
+    }
     try {
       // Calculate gross, net, and amount paid per salary slip format
       const empRes = await apiClient.get<any>(`/hr/salary/${monthlyPayrollForm.employee_id}`);
@@ -1118,6 +1094,10 @@ function HrPageContent() {
   };
 
   const handleProcessMonthlyPayroll = async (id: string) => {
+    if (!canApproveHR) {
+      alert('You do not have permission to process monthly payroll');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Process Monthly Payroll',
       message: 'Process this monthly payroll? This will lock the record.',
@@ -1138,6 +1118,10 @@ function HrPageContent() {
   };
 
   const handleDeleteMonthlyPayroll = async (id: string) => {
+    if (!canDeleteHR) {
+      alert('You do not have permission to delete monthly payroll');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Delete Monthly Payroll',
       message: 'Delete this monthly payroll record?',
@@ -1161,6 +1145,11 @@ function HrPageContent() {
   const handleSaveComprehensiveSalary = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    if (!canCreateHR && !canEditHR) {
+      alert('You do not have permission to save salary components');
+      setLoading(false);
+      return;
+    }
     
     try {
       const components = [];
@@ -1311,6 +1300,10 @@ function HrPageContent() {
 
   // KPI Calculation Function
   const calculateKPIMetrics = async (employeeId: string, month: string) => {
+    if (!canApproveHR) {
+      alert('You do not have permission to calculate KPI metrics');
+      return null;
+    }
     try {
       setLoading(true);
       
@@ -2408,6 +2401,10 @@ function HrPageContent() {
   };
 
   const handleAttendanceImport = async () => {
+    if (!canCreateHR) {
+      alert('You do not have permission to import attendance');
+      return;
+    }
     setLoading(true);
     setAttendanceImportResult('');
     try {
@@ -2434,6 +2431,10 @@ function HrPageContent() {
   };
 
   const handleEmployeeDocumentFileSelect = async (file: File) => {
+    if (!canEditHR) {
+      alert('You do not have permission to add employee documents');
+      return;
+    }
     const allowed = new Set([
       'application/pdf',
       'image/png',
@@ -2464,6 +2465,10 @@ function HrPageContent() {
 
   const handleAddEmployeeDocument = async () => {
     if (!selectedEmployee?.id) return;
+    if (!canEditHR) {
+      alert('You do not have permission to add employee documents');
+      return;
+    }
     if (!documentForm.doc_type.trim()) {
       alert('Document type is required');
       return;
@@ -2496,6 +2501,10 @@ function HrPageContent() {
 
   const handleDeleteEmployeeDocument = async (docId: string) => {
     if (!selectedEmployee?.id) return;
+    if (!canDeleteHR) {
+      alert('You do not have permission to delete employee documents');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Delete Document',
       message: 'Delete this document?',
@@ -2516,6 +2525,10 @@ function HrPageContent() {
 
   const handleAddMeritDemerit = async () => {
     if (!selectedEmployee?.id) return;
+    if (!canCreateHR) {
+      alert('You do not have permission to add merit or demerit records');
+      return;
+    }
     if (!meritDemeritForm.title.trim()) {
       alert('Title is required');
       return;
@@ -2549,6 +2562,10 @@ function HrPageContent() {
 
   const handleDeleteMeritDemerit = async (recordId: string) => {
     if (!selectedEmployee?.id) return;
+    if (!canDeleteHR) {
+      alert('You do not have permission to delete merit or demerit records');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Delete Record',
       message: 'Delete this record?',
@@ -2658,21 +2675,25 @@ function HrPageContent() {
           )}
           {!isEmployeePortal && activeTab === 'attendance' && (
             <>
-              <button
-                onClick={() => setShowAttendanceForm(true)}
-                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-              >
-                + Record Attendance
-              </button>
-              <button
-                onClick={() => { setAttendanceImportText(''); setAttendanceImportResult(''); setShowAttendanceImport(true); }}
-                className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700"
-              >
-                Import Attendance
-              </button>
+              {canCreateHR && (
+                <>
+                  <button
+                    onClick={() => setShowAttendanceForm(true)}
+                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                  >
+                    + Record Attendance
+                  </button>
+                  <button
+                    onClick={() => { setAttendanceImportText(''); setAttendanceImportResult(''); setShowAttendanceImport(true); }}
+                    className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700"
+                  >
+                    Import Attendance
+                  </button>
+                </>
+              )}
             </>
           )}
-          {activeTab === 'leaves' && (
+          {activeTab === 'leaves' && (isEmployeePortal || canCreateHR) && (
             <button
               onClick={() => setShowLeaveForm(true)}
               className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
@@ -2728,12 +2749,14 @@ function HrPageContent() {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold">KPI Definitions</h2>
-              <button
-                onClick={() => { setEditingKpi(null); setKpiForm({ kpi_name: '', kpi_category: 'ATTENDANCE', description: '', measurement_type: 'PERCENTAGE', min_value: 0, max_value: 100, threshold_excellent: 90, threshold_good: 75, threshold_acceptable: 60, auto_calculate: false, is_active: true }); setShowKpiForm(true); }}
-                className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700"
-              >
-                + Add KPI
-              </button>
+              {canCreateHR && (
+                <button
+                  onClick={() => { setEditingKpi(null); setKpiForm({ kpi_name: '', kpi_category: 'ATTENDANCE', description: '', measurement_type: 'PERCENTAGE', min_value: 0, max_value: 100, threshold_excellent: 90, threshold_good: 75, threshold_acceptable: 60, auto_calculate: false, is_active: true }); setShowKpiForm(true); }}
+                  className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700"
+                >
+                  + Add KPI
+                </button>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -2758,8 +2781,8 @@ function HrPageContent() {
                       <td className="px-4 py-2 text-sm">{kpi.auto_calculate ? '✓' : '✗'}</td>
                       <td className="px-4 py-2 text-sm"><span className={`px-2 py-1 rounded text-xs ${kpi.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>{kpi.is_active ? 'Active' : 'Inactive'}</span></td>
                       <td className="px-4 py-2 text-sm">
-                        <button onClick={() => { setEditingKpi(kpi); setKpiForm(kpi); setShowKpiForm(true); }} className="text-blue-600 hover:text-blue-800 mr-2">Edit</button>
-                        <button onClick={async () => { if(confirm('Delete this KPI?')) { await apiClient.delete(`/hr/kpi-definitions/${kpi.id}`); fetchMasterConfig(); }}} className="text-red-600 hover:text-red-800">Delete</button>
+                        {canEditHR && <button onClick={() => { setEditingKpi(kpi); setKpiForm(kpi); setShowKpiForm(true); }} className="text-blue-600 hover:text-blue-800 mr-2">Edit</button>}
+                        {canDeleteHR && <button onClick={async () => { if(confirm('Delete this KPI?')) { await apiClient.delete(`/hr/kpi-definitions/${kpi.id}`); fetchMasterConfig(); }}} className="text-red-600 hover:text-red-800">Delete</button>}
                       </td>
                     </tr>
                   ))}
@@ -2772,12 +2795,14 @@ function HrPageContent() {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold">Merit & Demerit Types</h2>
-              <button
-                onClick={() => { setEditingMeritType(null); setMeritTypeForm({ type_name: '', record_type: 'MERIT', category: 'ATTENDANCE', description: '', default_points: 10, severity: '', requires_approval: false, is_active: true }); setShowMeritTypeForm(true); }}
-                className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700"
-              >
-                + Add Type
-              </button>
+              {canCreateHR && (
+                <button
+                  onClick={() => { setEditingMeritType(null); setMeritTypeForm({ type_name: '', record_type: 'MERIT', category: 'ATTENDANCE', description: '', default_points: 10, severity: '', requires_approval: false, is_active: true }); setShowMeritTypeForm(true); }}
+                  className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700"
+                >
+                  + Add Type
+                </button>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -2802,8 +2827,8 @@ function HrPageContent() {
                       <td className="px-4 py-2 text-sm">{type.severity || '-'}</td>
                       <td className="px-4 py-2 text-sm"><span className={`px-2 py-1 rounded text-xs ${type.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>{type.is_active ? 'Active' : 'Inactive'}</span></td>
                       <td className="px-4 py-2 text-sm">
-                        <button onClick={() => { setEditingMeritType(type); setMeritTypeForm(type); setShowMeritTypeForm(true); }} className="text-blue-600 hover:text-blue-800 mr-2">Edit</button>
-                        <button onClick={async () => { if(confirm('Delete this type?')) { await apiClient.delete(`/hr/merit-demerit-types/${type.id}`); fetchMasterConfig(); }}} className="text-red-600 hover:text-red-800">Delete</button>
+                        {canEditHR && <button onClick={() => { setEditingMeritType(type); setMeritTypeForm(type); setShowMeritTypeForm(true); }} className="text-blue-600 hover:text-blue-800 mr-2">Edit</button>}
+                        {canDeleteHR && <button onClick={async () => { if(confirm('Delete this type?')) { await apiClient.delete(`/hr/merit-demerit-types/${type.id}`); fetchMasterConfig(); }}} className="text-red-600 hover:text-red-800">Delete</button>}
                       </td>
                     </tr>
                   ))}
@@ -3020,12 +3045,12 @@ function HrPageContent() {
                         </button>
                         {!isEmployeePortal && (
                           <>
-                            <button onClick={() => { setSelectedAttendance(record); setAttendanceForm({ employee_id: record.employee_id, attendance_date: record.attendance_date, check_in_time: record.check_in_time ? new Date(record.check_in_time).toTimeString().slice(0,5) : '', check_out_time: record.check_out_time ? new Date(record.check_out_time).toTimeString().slice(0,5) : '', status: record.status, remarks: '' }); setShowEditAttendance(true); }} className="text-amber-600 hover:text-amber-800" title="Edit">
+                            {canEditHR && <button onClick={() => { setSelectedAttendance(record); setAttendanceForm({ employee_id: record.employee_id, attendance_date: record.attendance_date, check_in_time: record.check_in_time ? new Date(record.check_in_time).toTimeString().slice(0,5) : '', check_out_time: record.check_out_time ? new Date(record.check_out_time).toTimeString().slice(0,5) : '', status: record.status, remarks: '' }); setShowEditAttendance(true); }} className="text-amber-600 hover:text-amber-800" title="Edit">
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                            </button>
-                            <button onClick={async () => { if (confirm('Delete this attendance record?')) { try { await apiClient.delete(`/hr/attendance/${record.id}`); fetchData(); } catch (err: any) { alert('Failed to delete attendance'); } } }} className="text-red-600 hover:text-red-800" title="Delete">
+                            </button>}
+                            {canDeleteHR && <button onClick={async () => { if (confirm('Delete this attendance record?')) { try { await apiClient.delete(`/hr/attendance/${record.id}`); fetchData(); } catch (err: any) { alert('Failed to delete attendance'); } } }} className="text-red-600 hover:text-red-800" title="Delete">
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            </button>
+                            </button>}
                           </>
                         )}
                       </div>
@@ -3078,7 +3103,7 @@ function HrPageContent() {
                         <button onClick={() => { setSelectedLeave(leave); setShowLeaveDetails(true); }} className="text-blue-600 hover:text-blue-800" title="View Details">
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                         </button>
-                        {!isEmployeePortal && canManage && isPendingLeaveStatus(leave.status) && (
+                        {!isEmployeePortal && canApproveHR && isPendingLeaveStatus(leave.status) && (
                           <>
                             <button onClick={() => handleApproveLeave(leave.id)} className="text-green-600 hover:text-green-800" title="Approve">
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
@@ -3086,12 +3111,12 @@ function HrPageContent() {
                             <button onClick={() => handleRejectLeave(leave.id)} className="text-red-600 hover:text-red-800" title="Reject">
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                             </button>
-                            <button onClick={() => { setSelectedLeave(leave); setLeaveForm({ employee_id: leave.employee_id, leave_type: leave.leave_type, start_date: leave.start_date, end_date: leave.end_date, total_days: leave.total_days, reason: leave.reason }); setShowEditLeave(true); }} className="text-amber-600 hover:text-amber-800" title="Edit">
+                            {canEditHR && <button onClick={() => { setSelectedLeave(leave); setLeaveForm({ employee_id: leave.employee_id, leave_type: leave.leave_type, start_date: leave.start_date, end_date: leave.end_date, total_days: leave.total_days, reason: leave.reason }); setShowEditLeave(true); }} className="text-amber-600 hover:text-amber-800" title="Edit">
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                            </button>
+                            </button>}
                           </>
                         )}
-                        {isPendingLeaveStatus(leave.status) && (
+                        {isPendingLeaveStatus(leave.status) && (isEmployeePortal || canEditHR) && (
                           <button onClick={async () => { if (confirm('Cancel this leave request?')) { try { await apiClient.put(`/hr/leaves/${leave.id}`, { status: 'CANCELLED' }); fetchData(); } catch (err: any) { alert('Failed to cancel leave'); } } }} className="text-gray-600 hover:text-gray-800" title="Cancel">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                           </button>
@@ -3129,7 +3154,7 @@ function HrPageContent() {
                   <h3 className="text-lg font-semibold">Monthly Payroll Processing</h3>
                   <p className="text-sm text-gray-600">Process employee salaries with variable components</p>
                 </div>
-                {!isEmployeePortal && (
+                {!isEmployeePortal && canCreateHR && (
                   <button onClick={() => { setSelectedMonthlyPayroll(null); setShowMonthlyPayrollForm(true); }} className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700">+ Process Salary</button>
                 )}
               </div>
@@ -3180,15 +3205,15 @@ function HrPageContent() {
                           <div className="flex space-x-2">
                             {record.status === 'DRAFT' && (
                               <>
-                                <button onClick={() => handleEditMonthlyPayroll(record)} className="text-amber-600 hover:text-amber-800" title="Edit">
+                                {canEditHR && <button onClick={() => handleEditMonthlyPayroll(record)} className="text-amber-600 hover:text-amber-800" title="Edit">
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                </button>
-                                <button onClick={() => handleProcessMonthlyPayroll(record.id!)} className="text-blue-600 hover:text-blue-800" title="Process">
+                                </button>}
+                                {canApproveHR && <button onClick={() => handleProcessMonthlyPayroll(record.id!)} className="text-blue-600 hover:text-blue-800" title="Process">
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                </button>
-                                <button onClick={() => handleDeleteMonthlyPayroll(record.id!)} className="text-red-600 hover:text-red-800" title="Delete">
+                                </button>}
+                                {canDeleteHR && <button onClick={() => handleDeleteMonthlyPayroll(record.id!)} className="text-red-600 hover:text-red-800" title="Delete">
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                </button>
+                                </button>}
                               </>
                             )}
                             {record.status !== 'DRAFT' && (
@@ -3213,9 +3238,9 @@ function HrPageContent() {
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold">Salary Components</h3>
                 <div>
-                  <button onClick={() => setShowComprehensiveSalaryForm(true)} className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700">
+                  {(canCreateHR || canEditHR) && <button onClick={() => setShowComprehensiveSalaryForm(true)} className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700">
                     + Add Component
-                  </button>
+                  </button>}
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -3238,7 +3263,7 @@ function HrPageContent() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{comp.component_name}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">₹{comp.amount.toFixed(2)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{comp.is_taxable ? 'Yes' : 'No'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm"><button onClick={() => handleDeleteSalaryComponent(comp.id)} className="text-red-600 hover:text-red-800"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{canDeleteHR && <button onClick={() => handleDeleteSalaryComponent(comp.id)} className="text-red-600 hover:text-red-800"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -3252,7 +3277,7 @@ function HrPageContent() {
             <>
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold">Payroll Runs</h3>
-                <button onClick={() => setShowPayrollRunForm(true)} className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700">+ Create Run</button>
+                {canCreateHR && <button onClick={() => setShowPayrollRunForm(true)} className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700">+ Create Run</button>}
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
@@ -3272,7 +3297,7 @@ function HrPageContent() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(run.run_date).toLocaleDateString()}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm"><span className={`px-2 py-1 text-xs rounded ${getStatusColor(run.status)}`}>{run.status}</span></td>
                         <td className="px-6 py-4 text-sm">{run.remarks || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">{run.status === 'PENDING' && (<button onClick={() => handleGeneratePayslips(run.id)} disabled={loading} className="text-amber-600 hover:text-amber-800 disabled:opacity-50">Generate Payslips</button>)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{run.status === 'PENDING' && canApproveHR && (<button onClick={() => handleGeneratePayslips(run.id)} disabled={loading} className="text-amber-600 hover:text-amber-800 disabled:opacity-50">Generate Payslips</button>)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -3768,7 +3793,7 @@ function HrPageContent() {
                       </div>
                       <div className="space-x-2">
                         <button type="button" onClick={() => openFileUrlInNewTab(d.file_url)} className="px-3 py-1 border rounded hover:bg-gray-50 text-sm">View</button>
-                        <button type="button" onClick={() => handleDeleteEmployeeDocument(d.id)} className="px-3 py-1 border rounded hover:bg-gray-50 text-sm text-red-600">Delete</button>
+                        {canDeleteHR && <button type="button" onClick={() => handleDeleteEmployeeDocument(d.id)} className="px-3 py-1 border rounded hover:bg-gray-50 text-sm text-red-600">Delete</button>}
                       </div>
                     </div>
                   ))}
@@ -3782,7 +3807,7 @@ function HrPageContent() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Upload File</label>
-                  <input type="file" className="w-full border rounded px-3 py-2" accept="application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={async (e) => { const file = e.target.files?.[0]; if (file) await handleEmployeeDocumentFileSelect(file); }} />
+                  <input type="file" disabled={!canEditHR} className="w-full border rounded px-3 py-2" accept="application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={async (e) => { const file = e.target.files?.[0]; if (file) await handleEmployeeDocumentFileSelect(file); }} />
                 </div>
                 <div className="col-span-2">
                   <label className="block text-sm font-medium mb-1">Or Paste File URL</label>
@@ -3793,7 +3818,7 @@ function HrPageContent() {
                   <input type="text" value={documentForm.notes} onChange={(e) => setDocumentForm({ ...documentForm, notes: e.target.value })} className="w-full border rounded px-3 py-2" placeholder="Any notes" />
                 </div>
                 <div className="col-span-2 flex justify-end">
-                  <button type="button" onClick={handleAddEmployeeDocument} disabled={loading} className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50">{loading ? 'Saving...' : 'Add Document'}</button>
+                  {canEditHR && <button type="button" onClick={handleAddEmployeeDocument} disabled={loading} className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50">{loading ? 'Saving...' : 'Add Document'}</button>}
                 </div>
               </div>
             </div>
@@ -3801,7 +3826,7 @@ function HrPageContent() {
             <div className="mt-6">
               <div className="flex justify-between items-center mb-2">
                 <h4 className="text-sm font-semibold">Merits & Demerits</h4>
-                <button 
+                {canApproveHR && <button 
                   type="button"
                   onClick={() => {
                     if (selectedEmployee?.id) {
@@ -3811,7 +3836,7 @@ function HrPageContent() {
                   className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
                 >
                   🎯 Calculate KPI & Auto-Generate
-                </button>
+                </button>}
               </div>
               <div className="border rounded">
                 <div className="divide-y">
@@ -3832,7 +3857,7 @@ function HrPageContent() {
                         {r.description && <div className="text-gray-600 mt-1">{r.description}</div>}
                       </div>
                       <div>
-                        <button type="button" onClick={() => handleDeleteMeritDemerit(r.id)} className="px-3 py-1 border rounded hover:bg-gray-50 text-sm text-red-600">Delete</button>
+                        {canDeleteHR && <button type="button" onClick={() => handleDeleteMeritDemerit(r.id)} className="px-3 py-1 border rounded hover:bg-gray-50 text-sm text-red-600">Delete</button>}
                       </div>
                     </div>
                   ))}
@@ -3864,7 +3889,7 @@ function HrPageContent() {
                   <textarea value={meritDemeritForm.description} onChange={(e) => setMeritDemeritForm({ ...meritDemeritForm, description: e.target.value })} className="w-full border rounded px-3 py-2" rows={2} />
                 </div>
                 <div className="col-span-2 flex justify-end">
-                  <button type="button" onClick={handleAddMeritDemerit} disabled={loading} className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50">{loading ? 'Saving...' : 'Add Record'}</button>
+                  {canCreateHR && <button type="button" onClick={handleAddMeritDemerit} disabled={loading} className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50">{loading ? 'Saving...' : 'Add Record'}</button>}
                 </div>
               </div>
             </div>
@@ -3879,7 +3904,7 @@ function HrPageContent() {
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-semibold mb-4">Edit Employee</h3>
-            <form onSubmit={async (e) => { e.preventDefault(); setLoading(true); setError(''); try { await apiClient.put(`/hr/employees/${selectedEmployee.id}`, employeeForm); setShowEditEmployee(false); fetchData(); alert('Employee updated successfully'); } catch (err: any) { setError(err.message); alert('Failed to update employee'); } finally { setLoading(false); } }} className="space-y-4">
+            <form onSubmit={async (e) => { e.preventDefault(); if (!canEditHR) { alert('You do not have permission to update employees'); return; } setLoading(true); setError(''); try { await apiClient.put(`/hr/employees/${selectedEmployee.id}`, employeeForm); setShowEditEmployee(false); fetchData(); alert('Employee updated successfully'); } catch (err: any) { setError(err.message); alert('Failed to update employee'); } finally { setLoading(false); } }} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Employee Code</label><input type="text" value={employeeForm.employee_code} onChange={(e) => setEmployeeForm({ ...employeeForm, employee_code: e.target.value })} className="w-full border rounded px-3 py-2" required /></div>
                 <div><label className="block text-sm font-medium mb-1">Employee Name</label><input type="text" value={employeeForm.employee_name} onChange={(e) => setEmployeeForm({ ...employeeForm, employee_name: e.target.value })} className="w-full border rounded px-3 py-2" required /></div>
@@ -3918,7 +3943,7 @@ function HrPageContent() {
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
             <h3 className="text-lg font-semibold mb-4">Edit Attendance</h3>
-            <form onSubmit={async (e) => { e.preventDefault(); setLoading(true); try { await apiClient.put(`/hr/attendance/${selectedAttendance.id}`, attendanceForm); setShowEditAttendance(false); fetchData(); alert('Attendance updated successfully'); } catch (err: any) { alert('Failed to update attendance'); } finally { setLoading(false); } }} className="space-y-4">
+            <form onSubmit={async (e) => { e.preventDefault(); if (!canEditHR) { alert('You do not have permission to update attendance'); return; } setLoading(true); try { await apiClient.put(`/hr/attendance/${selectedAttendance.id}`, attendanceForm); setShowEditAttendance(false); fetchData(); alert('Attendance updated successfully'); } catch (err: any) { alert('Failed to update attendance'); } finally { setLoading(false); } }} className="space-y-4">
               <div><label className="block text-sm font-medium mb-1">Date</label><input type="date" max={todayDate} value={attendanceForm.attendance_date} onChange={(e) => setAttendanceForm({ ...attendanceForm, attendance_date: e.target.value })} className="w-full border rounded px-3 py-2" required /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Check In</label><input type="time" value={attendanceForm.check_in_time} onChange={(e) => setAttendanceForm({ ...attendanceForm, check_in_time: e.target.value })} className="w-full border rounded px-3 py-2" /></div>
@@ -3948,7 +3973,7 @@ function HrPageContent() {
               </div>
             </div>
             <div className="mt-6 flex justify-end gap-2">
-              {!isEmployeePortal && canManage && isPendingLeaveStatus(selectedLeave.status) && (
+              {!isEmployeePortal && canApproveHR && isPendingLeaveStatus(selectedLeave.status) && (
                 <>
                   <button
                     onClick={async () => {
@@ -3995,7 +4020,7 @@ function HrPageContent() {
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
             <h3 className="text-lg font-semibold mb-4">Edit Leave Request</h3>
-            <form onSubmit={async (e) => { e.preventDefault(); setLoading(true); try { await apiClient.put(`/hr/leaves/${selectedLeave.id}`, leaveForm); setShowEditLeave(false); fetchData(); alert('Leave updated successfully'); } catch (err: any) { alert('Failed to update leave'); } finally { setLoading(false); } }} className="space-y-4">
+            <form onSubmit={async (e) => { e.preventDefault(); if (!canEditHR) { alert('You do not have permission to update leave requests'); return; } setLoading(true); try { await apiClient.put(`/hr/leaves/${selectedLeave.id}`, leaveForm); setShowEditLeave(false); fetchData(); alert('Leave updated successfully'); } catch (err: any) { alert('Failed to update leave'); } finally { setLoading(false); } }} className="space-y-4">
               <div><label className="block text-sm font-medium mb-1">Leave Type</label><select value={leaveForm.leave_type} onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })} className="w-full border rounded px-3 py-2" required><option value="CASUAL">Casual Leave</option><option value="SICK">Sick Leave</option><option value="EARNED">Earned Leave</option><option value="UNPAID">Unpaid Leave</option><option value="MATERNITY">Maternity Leave</option><option value="PATERNITY">Paternity Leave</option><option value="COMP_OFF">Compensatory Off</option></select></div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Start Date</label><input type="date" max={todayDate} value={leaveForm.start_date} onChange={(e) => { const newStartDate = e.target.value; const updatedForm = { ...leaveForm, start_date: newStartDate }; if (newStartDate && leaveForm.end_date) { const start = new Date(newStartDate); const end = new Date(leaveForm.end_date); const diffTime = Math.abs(end.getTime() - start.getTime()); const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; updatedForm.total_days = diffDays; } setLeaveForm(updatedForm); }} className="w-full border rounded px-3 py-2" required /></div>
@@ -4802,7 +4827,7 @@ function HrPageContent() {
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowKpiForm(false)} className="flex-1 px-4 py-2 border rounded hover:bg-gray-50">Cancel</button>
-              <button onClick={async () => { try { if(editingKpi) { await apiClient.put(`/hr/kpi-definitions/${editingKpi.id}`, kpiForm); } else { await apiClient.post('/hr/kpi-definitions', kpiForm); } await fetchMasterConfig(); setShowKpiForm(false); } catch(e) { alert('Failed to save KPI'); }}} className="flex-1 px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700">Save</button>
+              <button onClick={async () => { if (editingKpi ? !canEditHR : !canCreateHR) { alert(`You do not have permission to ${editingKpi ? 'update' : 'create'} KPI definitions`); return; } try { if(editingKpi) { await apiClient.put(`/hr/kpi-definitions/${editingKpi.id}`, kpiForm); } else { await apiClient.post('/hr/kpi-definitions', kpiForm); } await fetchMasterConfig(); setShowKpiForm(false); } catch(e) { alert('Failed to save KPI'); }}} className="flex-1 px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700">Save</button>
             </div>
           </div>
         </div>
@@ -4873,7 +4898,7 @@ function HrPageContent() {
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowMeritTypeForm(false)} className="flex-1 px-4 py-2 border rounded hover:bg-gray-50">Cancel</button>
-              <button onClick={async () => { try { if(editingMeritType) { await apiClient.put(`/hr/merit-demerit-types/${editingMeritType.id}`, meritTypeForm); } else { await apiClient.post('/hr/merit-demerit-types', meritTypeForm); } await fetchMasterConfig(); setShowMeritTypeForm(false); } catch(e) { alert('Failed to save type'); }}} className="flex-1 px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700">Save</button>
+              <button onClick={async () => { if (editingMeritType ? !canEditHR : !canCreateHR) { alert(`You do not have permission to ${editingMeritType ? 'update' : 'create'} merit and demerit types`); return; } try { if(editingMeritType) { await apiClient.put(`/hr/merit-demerit-types/${editingMeritType.id}`, meritTypeForm); } else { await apiClient.post('/hr/merit-demerit-types', meritTypeForm); } await fetchMasterConfig(); setShowMeritTypeForm(false); } catch(e) { alert('Failed to save type'); }}} className="flex-1 px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700">Save</button>
             </div>
           </div>
         </div>

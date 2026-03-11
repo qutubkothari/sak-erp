@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Building2, Save } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface Company {
   id: string;
@@ -16,6 +17,7 @@ interface Company {
 }
 
 export default function CompanySettings() {
+  const canEditSettings = hasModulePermission(readStoredUser(), 'Settings', 'edit');
   const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -39,6 +41,10 @@ export default function CompanySettings() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!company) return;
+    if (!canEditSettings) {
+      setMessage('You do not have permission to update company settings');
+      return;
+    }
 
     setSaving(true);
     setMessage('');
@@ -187,7 +193,7 @@ export default function CompanySettings() {
           <div className="flex justify-end pt-4">
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || !canEditSettings}
               className="flex items-center gap-2 px-6 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
               style={{ backgroundColor: '#8B6F47' }}
             >

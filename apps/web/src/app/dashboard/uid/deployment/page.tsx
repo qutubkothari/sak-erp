@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
 import { getTodayDateInputValue } from '@/lib/date';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface Customer {
   id: string;
@@ -52,6 +53,7 @@ interface PaginatedResponse<T> {
 
 export default function UIDDeploymentPage() {
   const todayDate = getTodayDateInputValue();
+  const canCreateDeployment = hasModulePermission(readStoredUser(), 'Inventory', 'create');
   const [deployments, setDeployments] = useState<UIDDeployment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
@@ -247,6 +249,10 @@ export default function UIDDeploymentPage() {
   };
 
   const openAddModal = (uid: UIDDeployment) => {
+    if (!canCreateDeployment) {
+      alert('You do not have permission to add deployment records');
+      return;
+    }
     setSelectedUID(uid);
     setNewDeployment({
       ...newDeployment,
@@ -258,6 +264,10 @@ export default function UIDDeploymentPage() {
 
   const addDeployment = async () => {
     if (!selectedUID) return;
+    if (!canCreateDeployment) {
+      alert('You do not have permission to add deployment records');
+      return;
+    }
     
     try {
       await apiClient.post('/uid/deployment', {
@@ -471,12 +481,14 @@ export default function UIDDeploymentPage() {
                       >
                         History
                       </button>
-                      <button
-                        onClick={() => openAddModal(deployment)}
-                        className="text-green-600 hover:text-green-800 font-medium"
-                      >
-                        + Add
-                      </button>
+                      {canCreateDeployment && (
+                        <button
+                          onClick={() => openAddModal(deployment)}
+                          className="text-green-600 hover:text-green-800 font-medium"
+                        >
+                          + Add
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -867,6 +879,7 @@ export default function UIDDeploymentPage() {
                 </button>
                 <button
                   onClick={addDeployment}
+                  disabled={!canCreateDeployment}
                   className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
                 >
                   Add Deployment

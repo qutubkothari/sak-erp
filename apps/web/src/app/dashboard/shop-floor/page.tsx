@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface Operation {
   id: string;
@@ -29,6 +30,9 @@ interface ActiveOperation {
 }
 
 export default function ShopFloorPage() {
+  const currentUser = readStoredUser();
+  const canStartOperation = hasModulePermission(currentUser, 'Production', 'create');
+  const canUpdateOperation = hasModulePermission(currentUser, 'Production', 'edit');
   const [workStations, setWorkStations] = useState<any[]>([]);
   const [selectedStation, setSelectedStation] = useState<string>('');
   const [queue, setQueue] = useState<Operation[]>([]);
@@ -92,6 +96,10 @@ export default function ShopFloorPage() {
   };
 
   const handleStartOperation = async (operation: Operation) => {
+    if (!canStartOperation) {
+      alert('You do not have permission to start operations');
+      return;
+    }
     setLoading(true);
     try {
       const token = localStorage.getItem('accessToken');
@@ -120,6 +128,10 @@ export default function ShopFloorPage() {
 
   const handleCompleteOperation = async () => {
     if (!activeOperation) return;
+    if (!canUpdateOperation) {
+      alert('You do not have permission to complete operations');
+      return;
+    }
     if (quantityCompleted <= 0) {
       alert('Quantity completed must be greater than 0');
       return;
@@ -155,6 +167,10 @@ export default function ShopFloorPage() {
 
   const handlePauseOperation = async () => {
     if (!activeOperation) return;
+    if (!canUpdateOperation) {
+      alert('You do not have permission to pause operations');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -273,20 +289,24 @@ export default function ShopFloorPage() {
             </div>
 
             <div className="flex space-x-4">
-              <button
-                onClick={handleCompleteOperation}
-                disabled={loading || quantityCompleted <= 0}
-                className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium"
-              >
-                {loading ? 'Processing...' : 'Complete Operation'}
-              </button>
-              <button
-                onClick={handlePauseOperation}
-                disabled={loading}
-                className="flex-1 bg-yellow-600 text-white px-6 py-3 rounded-lg hover:bg-yellow-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium"
-              >
-                {loading ? 'Processing...' : 'Pause Operation'}
-              </button>
+              {canUpdateOperation && (
+                <>
+                  <button
+                    onClick={handleCompleteOperation}
+                    disabled={loading || quantityCompleted <= 0}
+                    className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium"
+                  >
+                    {loading ? 'Processing...' : 'Complete Operation'}
+                  </button>
+                  <button
+                    onClick={handlePauseOperation}
+                    disabled={loading}
+                    className="flex-1 bg-yellow-600 text-white px-6 py-3 rounded-lg hover:bg-yellow-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium"
+                  >
+                    {loading ? 'Processing...' : 'Pause Operation'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -372,13 +392,15 @@ export default function ShopFloorPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() => handleStartOperation(operation)}
-                          disabled={loading}
-                          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
-                        >
-                          Start
-                        </button>
+                        {canStartOperation && (
+                          <button
+                            onClick={() => handleStartOperation(operation)}
+                            disabled={loading}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
+                          >
+                            Start
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

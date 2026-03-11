@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Shield, Check } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface Permission {
   module: string;
@@ -88,6 +89,10 @@ const MODULES = [
 ];
 
 export default function RoleManagement() {
+  const currentUser = readStoredUser();
+  const canCreateSettings = hasModulePermission(currentUser, 'Settings', 'create');
+  const canEditSettings = hasModulePermission(currentUser, 'Settings', 'edit');
+  const canDeleteSettings = hasModulePermission(currentUser, 'Settings', 'delete');
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -110,6 +115,10 @@ export default function RoleManagement() {
   };
 
   const handleDeleteRole = async (roleId: string) => {
+    if (!canDeleteSettings) {
+      alert('You do not have permission to delete roles');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Delete Role',
       message: 'Are you sure you want to delete this role? Users with this role will need to be reassigned.',
@@ -136,14 +145,16 @@ export default function RoleManagement() {
             Control access to different modules and features
           </p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity"
-          style={{ backgroundColor: '#8B6F47' }}
-        >
-          <Plus className="w-5 h-5" />
-          <span>Create Role</span>
-        </button>
+        {canCreateSettings && (
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity"
+            style={{ backgroundColor: '#8B6F47' }}
+          >
+            <Plus className="w-5 h-5" />
+            <span>Create Role</span>
+          </button>
+        )}
       </div>
 
       {/* Roles Grid */}
@@ -217,23 +228,27 @@ export default function RoleManagement() {
               </div>
 
               <div className="flex gap-2 pt-4 border-t" style={{ borderColor: '#E8DCC4' }}>
-                <button
-                  onClick={() => {
-                    setSelectedRole(role);
-                    setShowEditModal(true);
-                  }}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border-2 font-medium hover:bg-[#FAF9F6] transition-colors"
-                  style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-                >
-                  <Edit className="w-4 h-4" />
-                  <span>Edit</span>
-                </button>
-                <button
-                  onClick={() => handleDeleteRole(role.id)}
-                  className="px-3 py-2 rounded-lg border-2 border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {canEditSettings && (
+                  <button
+                    onClick={() => {
+                      setSelectedRole(role);
+                      setShowEditModal(true);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border-2 font-medium hover:bg-[#FAF9F6] transition-colors"
+                    style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
+                  >
+                    <Edit className="w-4 h-4" />
+                    <span>Edit</span>
+                  </button>
+                )}
+                {canDeleteSettings && (
+                  <button
+                    onClick={() => handleDeleteRole(role.id)}
+                    className="px-3 py-2 rounded-lg border-2 border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
               );
@@ -243,13 +258,13 @@ export default function RoleManagement() {
       )}
 
       {/* Create Role Modal */}
-      {showCreateModal && (
-        <RoleModal onClose={() => setShowCreateModal(false)} onSuccess={fetchRoles} />
+      {showCreateModal && canCreateSettings && (
+        <RoleModal onClose={() => setShowCreateModal(false)} onSuccess={fetchRoles} canSubmit={canCreateSettings} />
       )}
 
       {/* Edit Role Modal */}
-      {showEditModal && selectedRole && (
-        <RoleModal role={selectedRole} onClose={() => setShowEditModal(false)} onSuccess={fetchRoles} />
+      {showEditModal && selectedRole && canEditSettings && (
+        <RoleModal role={selectedRole} onClose={() => setShowEditModal(false)} onSuccess={fetchRoles} canSubmit={canEditSettings} />
       )}
     </div>
   );
@@ -264,6 +279,7 @@ function RoleModal({
   role?: Role;
   onClose: () => void;
   onSuccess: () => void;
+  canSubmit: boolean;
 }) {
   const [formData, setFormData] = useState({
     name: role?.name || '',
@@ -298,6 +314,10 @@ function RoleModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!canSubmit) {
+      setError(`You do not have permission to ${role ? 'update' : 'create'} roles`);
+      return;
+    }
     setLoading(true);
 
     try {
@@ -418,7 +438,7 @@ function RoleModal({
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !canSubmit}
               className="flex-1 px-4 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
               style={{ backgroundColor: '#8B6F47' }}
             >

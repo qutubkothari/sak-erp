@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface DebitNote {
   id: string;
@@ -34,6 +35,9 @@ interface DebitNoteItem {
 }
 
 export default function DebitNotesPage() {
+  const currentUser = readStoredUser();
+  const canApproveDebitNotes = hasModulePermission(currentUser, 'Purchase Management', 'approve');
+  const canEditDebitNotes = hasModulePermission(currentUser, 'Purchase Management', 'edit');
   const [debitNotes, setDebitNotes] = useState<DebitNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDebitNote, setSelectedDebitNote] = useState<DebitNote | null>(null);
@@ -70,6 +74,10 @@ export default function DebitNotesPage() {
   };
 
   const approveDebitNote = async (id: string) => {
+    if (!canApproveDebitNotes) {
+      alert('You do not have permission to approve debit notes');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Approve Debit Note',
       message: 'Are you sure you want to approve this debit note? This will update the GRN payable amount.',
@@ -89,6 +97,10 @@ export default function DebitNotesPage() {
   };
 
   const sendEmailToSupplier = async (id: string) => {
+    if (!canEditDebitNotes) {
+      alert('You do not have permission to send debit notes');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Send Debit Note',
       message: 'Send this debit note to the supplier via email?',
@@ -108,6 +120,10 @@ export default function DebitNotesPage() {
   };
 
   const updateStatus = async (id: string, status: string) => {
+    if (!canEditDebitNotes) {
+      alert('You do not have permission to update debit note status');
+      return;
+    }
     try {
       await apiClient.put(`/purchase/debit-notes/${id}/status`, { status });
       alert(`Debit note status updated to ${status}`);
@@ -119,6 +135,10 @@ export default function DebitNotesPage() {
   };
 
   const updateReturnStatus = async (debitNoteId: string, itemId: string, returnStatus: string) => {
+    if (!canEditDebitNotes) {
+      alert('You do not have permission to update return status');
+      return;
+    }
     const disposalNotes = prompt('Enter disposal notes (optional):');
     
     try {
@@ -374,7 +394,7 @@ export default function DebitNotesPage() {
                       )}
 
                       {/* Return Status Actions */}
-                      {item.return_status === 'PENDING' && selectedDebitNote.status !== 'CLOSED' && (
+                      {item.return_status === 'PENDING' && selectedDebitNote.status !== 'CLOSED' && canEditDebitNotes && (
                         <div className="mt-3 flex gap-2">
                           <button
                             onClick={() => updateReturnStatus(selectedDebitNote.id, item.id, 'RETURNED')}
@@ -411,7 +431,7 @@ export default function DebitNotesPage() {
                 Close
               </button>
               <div className="flex gap-3">
-                {selectedDebitNote.status === 'DRAFT' && (
+                {selectedDebitNote.status === 'DRAFT' && canApproveDebitNotes && (
                   <button
                     onClick={() => approveDebitNote(selectedDebitNote.id)}
                     className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
@@ -419,7 +439,7 @@ export default function DebitNotesPage() {
                     ✓ Approve Debit Note
                   </button>
                 )}
-                {selectedDebitNote.status === 'APPROVED' && (
+                {selectedDebitNote.status === 'APPROVED' && canEditDebitNotes && (
                   <button
                     onClick={() => sendEmailToSupplier(selectedDebitNote.id)}
                     className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -427,7 +447,7 @@ export default function DebitNotesPage() {
                     📧 Send Email to Supplier
                   </button>
                 )}
-                {selectedDebitNote.status === 'SENT' && (
+                {selectedDebitNote.status === 'SENT' && canEditDebitNotes && (
                   <button
                     onClick={() => updateStatus(selectedDebitNote.id, 'ACKNOWLEDGED')}
                     className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
@@ -435,7 +455,7 @@ export default function DebitNotesPage() {
                     ✓ Mark as Acknowledged
                   </button>
                 )}
-                {selectedDebitNote.status === 'ACKNOWLEDGED' && (
+                {selectedDebitNote.status === 'ACKNOWLEDGED' && canEditDebitNotes && (
                   <button
                     onClick={() => updateStatus(selectedDebitNote.id, 'CLOSED')}
                     className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"

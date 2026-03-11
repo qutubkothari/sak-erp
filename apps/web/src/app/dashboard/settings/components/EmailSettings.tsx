@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Mail, Save, RefreshCw } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface EmailConfig {
   id?: number;
@@ -52,6 +53,7 @@ const emailTypeLabels: Record<string, { name: string; description: string; icon:
 };
 
 export default function EmailSettings() {
+  const canEditSettings = hasModulePermission(readStoredUser(), 'Settings', 'edit');
   const [emailConfigs, setEmailConfigs] = useState<EmailConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -85,6 +87,10 @@ export default function EmailSettings() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEditSettings) {
+      setMessage('You do not have permission to update email configuration');
+      return;
+    }
     setSaving(true);
     setMessage('');
 
@@ -149,6 +155,7 @@ export default function EmailSettings() {
             <button
               type="button"
               onClick={handleApplyToAll}
+              disabled={!canEditSettings}
               className="px-4 py-2 rounded-lg text-sm font-medium hover:opacity-80 transition-opacity"
               style={{ backgroundColor: '#E8DCC4', color: '#6F4E37' }}
             >
@@ -186,6 +193,7 @@ export default function EmailSettings() {
                     <input
                       type="email"
                       required
+                      disabled={!canEditSettings}
                       value={config.email_address}
                       onChange={(e) => handleEmailChange(config.email_type, e.target.value)}
                       className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
@@ -216,7 +224,7 @@ export default function EmailSettings() {
             </p>
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || !canEditSettings}
               className="flex items-center gap-2 px-6 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
               style={{ backgroundColor: '#8B6F47' }}
             >

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { confirmDialog } from '../../../../../components/ui/ConfirmDialog';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface WorkStation {
   id: string;
@@ -35,6 +36,10 @@ interface BOM {
 export default function BOMRoutingPage() {
   const router = useRouter();
   const params = useParams();
+  const currentUser = readStoredUser();
+  const canCreateRouting = hasModulePermission(currentUser, 'BOM & Engineering', 'create');
+  const canEditRouting = hasModulePermission(currentUser, 'BOM & Engineering', 'edit');
+  const canDeleteRouting = hasModulePermission(currentUser, 'BOM & Engineering', 'delete');
   
   // Extract BOM ID from params or URL pathname as fallback
   const getBomId = (): string | null => {
@@ -152,6 +157,10 @@ export default function BOMRoutingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (editingId ? !canEditRouting : !canCreateRouting) {
+      alert(`You do not have permission to ${editingId ? 'edit' : 'add'} routing steps`);
+      return;
+    }
     
     if (!bomId) {
       alert('BOM ID is missing');
@@ -229,6 +238,10 @@ export default function BOMRoutingPage() {
   };
 
   const handleEdit = (step: RoutingStep) => {
+    if (!canEditRouting) {
+      alert('You do not have permission to edit routing steps');
+      return;
+    }
     setFormData({
       operationName: step.operation_name,
       workStationId: step.work_station_id,
@@ -243,6 +256,10 @@ export default function BOMRoutingPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canDeleteRouting) {
+      alert('You do not have permission to delete routing steps');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Delete Routing Step',
       message: 'Are you sure you want to delete this routing step?',
@@ -293,12 +310,14 @@ export default function BOMRoutingPage() {
       </div>
 
       <div className="flex justify-end mb-6">
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium"
-        >
-          {showForm ? 'Cancel' : '+ Add Routing Step'}
-        </button>
+        {canCreateRouting && (
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium"
+          >
+            {showForm ? 'Cancel' : '+ Add Routing Step'}
+          </button>
+        )}
       </div>
 
       {/* Form */}
@@ -437,7 +456,7 @@ export default function BOMRoutingPage() {
               </button>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || (editingId ? !canEditRouting : !canCreateRouting)}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
               >
                 {loading ? 'Saving...' : editingId ? 'Update' : 'Add'}
@@ -512,18 +531,22 @@ export default function BOMRoutingPage() {
                       {step.manhours_required || 1}h
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-3">
-                      <button
-                        onClick={() => handleEdit(step)}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(step.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Delete
-                      </button>
+                      {canEditRouting && (
+                        <button
+                          onClick={() => handleEdit(step)}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          Edit
+                        </button>
+                      )}
+                      {canDeleteRouting && (
+                        <button
+                          onClick={() => handleDelete(step.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))

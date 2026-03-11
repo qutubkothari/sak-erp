@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../components/ui/ListTable';
 import { confirmDialog } from '../../../components/ui/ConfirmDialog';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface WorkStation {
   id: string;
@@ -17,6 +18,10 @@ interface WorkStation {
 }
 
 export default function WorkStationsPage() {
+  const currentUser = readStoredUser();
+  const canCreate = hasModulePermission(currentUser, 'Production', 'create');
+  const canEdit = hasModulePermission(currentUser, 'Production', 'edit');
+  const canDelete = hasModulePermission(currentUser, 'Production', 'delete');
   const [workStations, setWorkStations] = useState<WorkStation[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -70,20 +75,25 @@ export default function WorkStationsPage() {
       label: 'Actions',
       cell: (station) => (
         <div className="text-sm space-x-2">
-          <button
-            type="button"
-            onClick={() => handleEdit(station)}
-            className="text-blue-600 hover:text-blue-900 font-medium"
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            onClick={() => handleDelete(station.id)}
-            className="text-red-600 hover:text-red-900 font-medium"
-          >
-            Delete
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => handleEdit(station)}
+              className="text-blue-600 hover:text-blue-900 font-medium"
+            >
+              Edit
+            </button>
+          )}
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => handleDelete(station.id)}
+              className="text-red-600 hover:text-red-900 font-medium"
+            >
+              Delete
+            </button>
+          )}
+          {!canEdit && !canDelete && <span className="text-gray-400">No actions</span>}
         </div>
       ),
       sortable: false,
@@ -133,6 +143,10 @@ export default function WorkStationsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (editingId ? !canEdit : !canCreate) {
+      alert(`You do not have permission to ${editingId ? 'edit' : 'create'} work stations`);
+      return;
+    }
     setLoading(true);
 
     try {
@@ -153,6 +167,10 @@ export default function WorkStationsPage() {
   };
 
   const handleEdit = (station: WorkStation) => {
+    if (!canEdit) {
+      alert('You do not have permission to edit work stations');
+      return;
+    }
     setFormData({
       stationName: station.station_name,
       stationCode: station.station_code,
@@ -166,6 +184,10 @@ export default function WorkStationsPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canDelete) {
+      alert('You do not have permission to delete work stations');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Delete Work Station',
       message: 'Are you sure you want to delete this work station?',
@@ -206,12 +228,14 @@ export default function WorkStationsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Work Stations</h1>
           <p className="text-gray-600 mt-1">Manage production work centers and workstations</p>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium"
-        >
-          {showForm ? 'Cancel' : '+ New Work Station'}
-        </button>
+        {canCreate && (
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium"
+          >
+            {showForm ? 'Cancel' : '+ New Work Station'}
+          </button>
+        )}
       </div>
 
       {/* Form */}
@@ -320,7 +344,7 @@ export default function WorkStationsPage() {
               </button>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || (editingId ? !canEdit : !canCreate)}
                 className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium"
               >
                 {loading ? 'Saving...' : editingId ? 'Update' : 'Create'}

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { getTodayDateInputValue } from '@/lib/date';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface VendorPayable {
   vendor_id: string;
@@ -28,6 +29,7 @@ interface GRNPayable {
 
 export default function AccountsPayablePage() {
   const todayDate = getTodayDateInputValue();
+  const canRecordPayment = hasModulePermission(readStoredUser(), 'Purchase Management', 'create');
   const [vendorPayables, setVendorPayables] = useState<VendorPayable[]>([]);
   const [selectedVendor, setSelectedVendor] = useState<VendorPayable | null>(null);
   const [vendorGRNs, setVendorGRNs] = useState<GRNPayable[]>([]);
@@ -76,6 +78,10 @@ export default function AccountsPayablePage() {
   };
 
   const openPaymentModal = (grn: GRNPayable) => {
+    if (!canRecordPayment) {
+      alert('You do not have permission to record payments');
+      return;
+    }
     setSelectedGRN(grn);
     setPaymentForm({
       ...paymentForm,
@@ -86,6 +92,10 @@ export default function AccountsPayablePage() {
 
   const recordPayment = async () => {
     if (!selectedGRN) return;
+    if (!canRecordPayment) {
+      alert('You do not have permission to record payments');
+      return;
+    }
     
     const amount = parseFloat(paymentForm.amount);
     if (isNaN(amount) || amount <= 0) {
@@ -325,12 +335,14 @@ export default function AccountsPayablePage() {
                           ₹{(grn.net_payable_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => openPaymentModal(grn)}
-                            className="px-4 py-1.5 bg-orange-600 text-white text-sm rounded hover:bg-orange-700 transition-colors"
-                          >
-                            💳 Record Payment
-                          </button>
+                          {canRecordPayment && (
+                            <button
+                              onClick={() => openPaymentModal(grn)}
+                              className="px-4 py-1.5 bg-orange-600 text-white text-sm rounded hover:bg-orange-700 transition-colors"
+                            >
+                              💳 Record Payment
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -465,6 +477,7 @@ export default function AccountsPayablePage() {
               </button>
               <button
                 onClick={recordPayment}
+                disabled={!canRecordPayment}
                 className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
               >
                 💳 Record Payment

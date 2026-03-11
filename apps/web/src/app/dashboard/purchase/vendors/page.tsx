@@ -12,6 +12,7 @@ import { TableSkeleton } from '../../../../components/ui/Skeleton';
 import { EmptyState } from '../../../../components/ui/EmptyState';
 import { Plus, Trash2, Download } from 'lucide-react';
 import { downloadCSV } from '@/lib/utils';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface Vendor {
   id: string;
@@ -42,6 +43,10 @@ interface Vendor {
 
 export default function VendorsPage() {
   const router = useRouter();
+  const currentUser = readStoredUser();
+  const canCreate = hasModulePermission(currentUser, 'Purchase Management', 'create');
+  const canEdit = hasModulePermission(currentUser, 'Purchase Management', 'edit');
+  const canDelete = hasModulePermission(currentUser, 'Purchase Management', 'delete');
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -130,6 +135,10 @@ export default function VendorsPage() {
   };
 
   const handleSubmit = async () => {
+    if (editingVendor ? !canEdit : !canCreate) {
+      toast.error(`You do not have permission to ${editingVendor ? 'edit' : 'create'} vendors`);
+      return;
+    }
     // For updates, skip duplicate check or include ID
     if (editingVendor) {
       await actuallyCreateVendor();
@@ -144,6 +153,10 @@ export default function VendorsPage() {
   };
 
   const handleEdit = (vendor: Vendor) => {
+    if (!canEdit) {
+      toast.error('You do not have permission to edit vendors');
+      return;
+    }
     setEditingVendor(vendor);
     setFormData({
       name: vendor.name,
@@ -174,6 +187,10 @@ export default function VendorsPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canDelete) {
+      toast.error('You do not have permission to delete vendors');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Delete Vendor',
       message: 'Are you sure you want to delete this vendor? This action cannot be undone.',
@@ -191,6 +208,10 @@ export default function VendorsPage() {
   };
 
   const handleDeleteAll = async () => {
+    if (!canDelete) {
+      toast.error('You do not have permission to delete vendors');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: `Delete ${selection.selectedItems.length} Vendors`,
       message: `This will permanently delete ${selection.selectedItems.length} vendor${selection.selectedItems.length > 1 ? 's' : ''}. This action cannot be undone.`,
@@ -263,15 +284,15 @@ export default function VendorsPage() {
         title="Vendor Management"
         subtitle="Manage supplier and vendor information"
         badge={vendors.length > 0 ? `${vendors.length}` : undefined}
-        action={
+        action={canCreate ? (
           <PrimaryButton onClick={() => { resetForm(); setShowModal(true); }}>
             <Plus className="h-4 w-4" />
             Add Vendor
           </PrimaryButton>
-        }
+        ) : undefined}
         secondaryAction={
           <div className="flex items-center gap-2">
-            {selection.hasSelections && (
+            {selection.hasSelections && canDelete && (
               <DangerButton onClick={handleDeleteAll}>
                 <Trash2 className="h-4 w-4" />
                 Delete ({selection.selectedItems.length})
@@ -366,12 +387,12 @@ export default function VendorsPage() {
             variant="empty"
             title="No Vendors Found"
             description="Add your first vendor to get started."
-            action={
+            action={canCreate ? (
               <PrimaryButton onClick={() => { resetForm(); setShowModal(true); }}>
                 <Plus className="h-4 w-4" />
                 Add First Vendor
               </PrimaryButton>
-            }
+            ) : undefined}
           />
         ) : (() => {
           // Sort vendors
@@ -557,18 +578,22 @@ export default function VendorsPage() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <div className="flex gap-2">
-                              <button
-                                onClick={() => handleEdit(vendor)}
-                                className="text-amber-600 hover:text-amber-800 font-medium"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDelete(vendor.id)}
-                                className="text-red-600 hover:text-red-800 font-medium"
-                              >
-                                Delete
-                              </button>
+                              {canEdit && (
+                                <button
+                                  onClick={() => handleEdit(vendor)}
+                                  className="text-amber-600 hover:text-amber-800 font-medium"
+                                >
+                                  Edit
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  onClick={() => handleDelete(vendor.id)}
+                                  className="text-red-600 hover:text-red-800 font-medium"
+                                >
+                                  Delete
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -652,18 +677,22 @@ export default function VendorsPage() {
                     </div>
 
                     <div className="flex gap-2 pt-4 border-t">
-                      <button
-                        onClick={() => handleEdit(vendor)}
-                        className="flex-1 bg-amber-100 text-amber-700 px-4 py-2 rounded hover:bg-amber-200"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(vendor.id)}
-                        className="flex-1 bg-red-100 text-red-700 px-4 py-2 rounded hover:bg-red-200"
-                      >
-                        Delete
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={() => handleEdit(vendor)}
+                          className="flex-1 bg-amber-100 text-amber-700 px-4 py-2 rounded hover:bg-amber-200"
+                        >
+                          Edit
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDelete(vendor.id)}
+                          className="flex-1 bg-red-100 text-red-700 px-4 py-2 rounded hover:bg-red-200"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1065,6 +1094,7 @@ export default function VendorsPage() {
               </button>
               <button
                 onClick={handleSubmit}
+                disabled={editingVendor ? !canEdit : !canCreate}
                 className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
               >
                 {editingVendor ? 'Update Vendor' : 'Create Vendor'}

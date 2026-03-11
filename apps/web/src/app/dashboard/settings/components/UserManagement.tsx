@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, UserX, UserCheck, Search, Mail, Eye, EyeOff } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface User {
   id: string;
@@ -33,6 +34,10 @@ function getUserRoles(user: User): Array<{ id: string; name: string }> {
 }
 
 export default function UserManagement() {
+  const currentUser = readStoredUser();
+  const canCreateSettings = hasModulePermission(currentUser, 'Settings', 'create');
+  const canEditSettings = hasModulePermission(currentUser, 'Settings', 'edit');
+  const canDeleteSettings = hasModulePermission(currentUser, 'Settings', 'delete');
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -62,6 +67,10 @@ export default function UserManagement() {
   );
 
   const handleToggleStatus = async (userId: string, currentStatus: boolean) => {
+    if (!canEditSettings) {
+      alert('You do not have permission to update users');
+      return;
+    }
     try {
       await apiClient.put(`/users/${userId}`, { is_active: !currentStatus });
       fetchUsers();
@@ -70,6 +79,10 @@ export default function UserManagement() {
   };
 
   const handleDeleteUser = async (userId: string) => {
+    if (!canDeleteSettings) {
+      alert('You do not have permission to delete users');
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Delete User',
       message: 'Are you sure you want to delete this user? This action cannot be undone.',
@@ -104,14 +117,16 @@ export default function UserManagement() {
         </div>
 
         {/* Create User Button */}
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity"
-          style={{ backgroundColor: '#8B6F47' }}
-        >
-          <Plus className="w-5 h-5" />
-          <span>Create User</span>
-        </button>
+        {canCreateSettings && (
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity"
+            style={{ backgroundColor: '#8B6F47' }}
+          >
+            <Plus className="w-5 h-5" />
+            <span>Create User</span>
+          </button>
+        )}
       </div>
 
       {/* Users Table */}
@@ -195,6 +210,7 @@ export default function UserManagement() {
                           setSelectedUser(user);
                           setShowEditModal(true);
                         }}
+                        style={{ display: canEditSettings ? undefined : 'none' }}
                         className="p-2 rounded-lg hover:bg-[#E8DCC4] transition-colors"
                         title="Edit User"
                       >
@@ -202,6 +218,7 @@ export default function UserManagement() {
                       </button>
                       <button
                         onClick={() => handleToggleStatus(user.id, user.is_active)}
+                        style={{ display: canEditSettings ? undefined : 'none' }}
                         className="p-2 rounded-lg hover:bg-[#E8DCC4] transition-colors"
                         title={user.is_active ? 'Deactivate User' : 'Activate User'}
                       >
@@ -213,6 +230,7 @@ export default function UserManagement() {
                       </button>
                       <button
                         onClick={() => handleDeleteUser(user.id)}
+                        style={{ display: canDeleteSettings ? undefined : 'none' }}
                         className="p-2 rounded-lg hover:bg-red-50 transition-colors"
                         title="Delete User"
                       >
@@ -228,20 +246,20 @@ export default function UserManagement() {
       </div>
 
       {/* Create User Modal */}
-      {showCreateModal && (
-        <CreateUserModal onClose={() => setShowCreateModal(false)} onSuccess={fetchUsers} />
+      {showCreateModal && canCreateSettings && (
+        <CreateUserModal onClose={() => setShowCreateModal(false)} onSuccess={fetchUsers} canSubmit={canCreateSettings} />
       )}
 
       {/* Edit User Modal */}
-      {showEditModal && selectedUser && (
-        <EditUserModal user={selectedUser} onClose={() => setShowEditModal(false)} onSuccess={fetchUsers} />
+      {showEditModal && selectedUser && canEditSettings && (
+        <EditUserModal user={selectedUser} onClose={() => setShowEditModal(false)} onSuccess={fetchUsers} canSubmit={canEditSettings} />
       )}
     </div>
   );
 }
 
 // Create User Modal Component
-function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+function CreateUserModal({ onClose, onSuccess, canSubmit }: { onClose: () => void; onSuccess: () => void; canSubmit: boolean }) {
   const [formData, setFormData] = useState({
     email: '',
     firstName: '',
@@ -269,6 +287,10 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!canSubmit) {
+      setError('You do not have permission to create users');
+      return;
+    }
     setLoading(true);
 
     try {
@@ -401,7 +423,7 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !canSubmit}
               className="flex-1 px-4 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
               style={{ backgroundColor: '#8B6F47' }}
             >
@@ -423,6 +445,7 @@ function EditUserModal({
   user: User;
   onClose: () => void;
   onSuccess: () => void;
+  canSubmit: boolean;
 }) {
   const [formData, setFormData] = useState({
     firstName: user.first_name,
@@ -448,6 +471,10 @@ function EditUserModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!canSubmit) {
+      setError('You do not have permission to update users');
+      return;
+    }
     setLoading(true);
 
     try {
@@ -558,7 +585,7 @@ function EditUserModal({
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !canSubmit}
               className="flex-1 px-4 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
               style={{ backgroundColor: '#8B6F47' }}
             >
