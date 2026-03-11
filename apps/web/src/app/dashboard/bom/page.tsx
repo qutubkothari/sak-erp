@@ -811,13 +811,6 @@ export default function BOMPage() {
                                   ✏️
                                 </button>
                               )}
-                              <button
-                                onClick={() => router.push(`/dashboard/bom/${bom.id}/routing`)}
-                                className="text-indigo-600 hover:text-indigo-900"
-                                title="Routing"
-                              >
-                                🔄
-                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1053,12 +1046,6 @@ export default function BOMPage() {
                               Edit
                             </button>
                           )}
-                          <button
-                            onClick={() => router.push(`/dashboard/bom/${bom.id}/routing`)}
-                            className="flex-1 bg-blue-100 text-blue-700 px-4 py-2 rounded hover:bg-blue-200 text-sm"
-                          >
-                            Routing
-                          </button>
                         </div>
                       </div>
                     ))}
