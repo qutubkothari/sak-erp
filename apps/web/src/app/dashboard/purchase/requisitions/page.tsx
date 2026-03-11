@@ -1576,7 +1576,7 @@ function PRContent() {
         {/* PR Detail Modal */}
         {showDetailModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg max-w-7xl w-full max-h-[90vh] overflow-auto">
+            <div className="bg-white rounded-lg max-w-7xl w-full max-h-[90vh] flex flex-col">
               {loadingDetail ? (
                 <div className="p-8 text-center">
                   <div className="animate-pulse">
@@ -1586,21 +1586,80 @@ function PRContent() {
                   <p className="text-gray-600 mt-4">Loading PR details...</p>
                 </div>
               ) : selectedPR ? (
-                <div className="p-6">
-                  {/* Header */}
-                  <div className="flex justify-between items-start mb-6">
+                <>
+                  {/* Sticky Header */}
+                  <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-4 rounded-t-lg flex justify-between items-center gap-4">
                     <div>
                       <h2 className="text-2xl font-bold text-gray-900">Purchase Requisition Details</h2>
                       <p className="text-gray-600 mt-1">PR Number: {selectedPR.pr_number}</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowDetailModal(false)}
-                      className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
-                    >
-                      ×
-                    </button>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {selectedPR.status === 'SUBMITTED' && (
+                        <>
+                          <button
+                            onClick={() => {
+                              handleEditPR(selectedPR.id);
+                              setShowDetailModal(false);
+                            }}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                          >
+                            Edit
+                          </button>
+                          {canApprovePR && (
+                            <>
+                              <button
+                                onClick={() => handleReject(selectedPR.id)}
+                                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                              >
+                                Reject
+                              </button>
+                              <button
+                                onClick={() => handleApprove(selectedPR.id)}
+                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                              >
+                                Approve
+                              </button>
+                            </>
+                          )}
+                        </>
+                      )}
+                      {selectedPR.status === 'APPROVED' && (
+                        <>
+                          <button
+                            onClick={async () => {
+                              const nextOpen = !rfqPanelOpen;
+                              setRfqPanelOpen(nextOpen);
+                              if (nextOpen && rfqVendors.length === 0) {
+                                await fetchRFQVendors();
+                              }
+                              if (nextOpen && selectedPR) {
+                                await fetchPreferredVendorsForPR(selectedPR);
+                              }
+                            }}
+                            className="px-4 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors text-sm"
+                          >
+                            Send RFQ
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowDetailModal(false);
+                              router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
+                            }}
+                            className="px-4 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors text-sm"
+                          >
+                            Create PO from this PR
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => setShowDetailModal(false)}
+                        className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors text-sm"
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
+                  <div className="p-6 overflow-auto flex-1">
 
                   {/* PR Info */}
                   <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
@@ -1762,72 +1821,7 @@ function PRContent() {
                     </div>
                   </div>
 
-                  {/* Action Buttons */}
-                  <div className="flex justify-end gap-3">
-                    {selectedPR.status === 'SUBMITTED' && (
-                      <>
-                        <button
-                          onClick={() => {
-                            handleEditPR(selectedPR.id);
-                            setShowDetailModal(false);
-                          }}
-                          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          Edit
-                        </button>
-                        {canApprovePR && (
-                          <>
-                            <button
-                              onClick={() => handleReject(selectedPR.id)}
-                              className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                            >
-                              Reject
-                            </button>
-                            <button
-                              onClick={() => handleApprove(selectedPR.id)}
-                              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                            >
-                              Approve
-                            </button>
-                          </>
-                        )}
-                      </>
-                    )}
-                    {selectedPR.status === 'APPROVED' && (
-                      <>
-                        <button
-                          onClick={async () => {
-                            const nextOpen = !rfqPanelOpen;
-                            setRfqPanelOpen(nextOpen);
-                            if (nextOpen && rfqVendors.length === 0) {
-                              await fetchRFQVendors();
-                            }
-                            if (nextOpen && selectedPR) {
-                              await fetchPreferredVendorsForPR(selectedPR);
-                            }
-                          }}
-                          className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors"
-                        >
-                          Send RFQ
-                        </button>
-                        <button
-                          onClick={() => {
-                            setShowDetailModal(false);
-                            router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
-                          }}
-                          className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors"
-                        >
-                          Create PO from this PR
-                        </button>
-                      </>
-                    )}
-                    <button
-                      onClick={() => setShowDetailModal(false)}
-                      className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
-                    >
-                      Close
-                    </button>
-                  </div>
+
 
                   {selectedPR.status === 'APPROVED' && rfqPanelOpen && (
                     <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
@@ -1887,7 +1881,8 @@ function PRContent() {
                       </div>
                     </div>
                   )}
-                </div>
+                  </div>
+                </>
               ) : (
                 <div className="p-8 text-center">
                   <p className="text-gray-600">No data available</p>
