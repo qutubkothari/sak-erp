@@ -524,7 +524,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                           key={child.href}
                           href={child.href}
                           className={`block px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                            isActivePath(child.href)
+                            pathname === child.href.split('?')[0]
                               ? 'bg-[#8B6F47] text-white shadow-sm'
                               : 'text-[#6F4E37] hover:bg-[#D4C4A8]'
                           }`}

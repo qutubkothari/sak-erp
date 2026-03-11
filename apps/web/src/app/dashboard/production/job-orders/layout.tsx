@@ -13,9 +13,11 @@ const tabs = [
 
 export default function JobOrdersLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const showTabs = pathname.startsWith('/dashboard/production/job-orders/smart-items');
 
   return (
     <div className="min-h-screen">
+      {showTabs && (
       <div className="px-8 pt-6">
         <div className="max-w-6xl mx-auto">
           <div className="bg-white/70 backdrop-blur rounded-xl border border-amber-200 shadow-sm px-3 py-2">
@@ -49,6 +51,7 @@ export default function JobOrdersLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </div>
+      )}
 
       {children}
     </div>
