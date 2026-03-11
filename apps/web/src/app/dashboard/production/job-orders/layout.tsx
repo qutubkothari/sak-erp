@@ -9,10 +9,6 @@ const tabs = [
     href: '/dashboard/production/job-orders/smart-items',
     label: 'Create Job Order',
   },
-  {
-    href: '/dashboard/production/job-orders',
-    label: 'Job Orders',
-  },
 ];
 
 export default function JobOrdersLayout({ children }: { children: ReactNode }) {
