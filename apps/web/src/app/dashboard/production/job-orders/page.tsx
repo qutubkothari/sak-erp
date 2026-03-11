@@ -170,6 +170,7 @@ function JobOrdersPageContent() {
   const todayDate = getTodayDateInputValue();
   const legacy = searchParams.get('legacy') === '1';
   const currentUser = readStoredUser();
+  const canCreate = hasModulePermission(currentUser, 'Production', 'create');
 
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -1697,6 +1698,7 @@ function JobOrdersPageContent() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-[#36454F]">Job Orders</h1>
         <div className="flex items-center gap-3">
+          {canCreate && (
           <button
             onClick={() => {
               if (legacy) {
@@ -1715,6 +1717,7 @@ function JobOrdersPageContent() {
           >
             + Create Job Order
           </button>
+          )}
         </div>
       </div>
 

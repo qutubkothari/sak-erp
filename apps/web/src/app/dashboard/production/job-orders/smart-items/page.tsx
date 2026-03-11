@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../../lib/api-client';
+import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import SearchableSelect from '../../../../../components/SearchableSelect';
 import { ChevronDown, ChevronRight, Package, Layers } from 'lucide-react';
 
@@ -183,6 +184,15 @@ export default function SmartJobOrdersItemsPage() {
 
 function SmartJobOrdersItemsPageContent() {
   const router = useRouter();
+  const currentUser = readStoredUser();
+  const canCreate = hasModulePermission(currentUser, 'Production', 'create');
+
+  useEffect(() => {
+    if (!canCreate) {
+      router.replace('/dashboard/production/job-orders');
+    }
+  }, [canCreate, router]);
+
   const searchParams = useSearchParams();
 
   const prefillItemId = searchParams.get('itemId') || '';
@@ -2060,6 +2070,8 @@ function SmartJobOrdersItemsPageContent() {
       </div>
     );
   };
+
+  if (!canCreate) return null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#FAF9F6] to-[#E8DCC4] p-6">
