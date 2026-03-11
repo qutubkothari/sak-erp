@@ -516,7 +516,7 @@ function HrPageContent() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      setCurrentUser(readStoredUser());
+      setCurrentUser(readStoredUser() as StoredUser | null);
     } catch {
       // ignore
     }
