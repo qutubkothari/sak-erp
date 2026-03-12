@@ -260,12 +260,15 @@ export default function UserManagement() {
 
 // Create User Modal Component
 function CreateUserModal({ onClose, onSuccess, canSubmit }: { onClose: () => void; onSuccess: () => void; canSubmit: boolean }) {
-  const [formData, setFormData] = useState({
+  const emptyFormData = {
     email: '',
     firstName: '',
     lastName: '',
     roleIds: [] as string[],
     password: '',
+  };
+  const [formData, setFormData] = useState({
+    ...emptyFormData,
   });
   const [roles, setRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -275,6 +278,18 @@ function CreateUserModal({ onClose, onSuccess, canSubmit }: { onClose: () => voi
   useEffect(() => {
     fetchRoles();
   }, []);
+
+  useEffect(() => {
+    setFormData(emptyFormData);
+    setShowPassword(false);
+  }, []);
+
+  const handleClose = () => {
+    setFormData(emptyFormData);
+    setShowPassword(false);
+    setError('');
+    onClose();
+  };
 
   const fetchRoles = async () => {
     try {
@@ -296,7 +311,7 @@ function CreateUserModal({ onClose, onSuccess, canSubmit }: { onClose: () => voi
     try {
       await apiClient.post('/users', formData);
       onSuccess();
-      onClose();
+      handleClose();
     } catch (error: any) {
       setError(error.message || 'Failed to create user');
     } finally {
@@ -311,7 +326,7 @@ function CreateUserModal({ onClose, onSuccess, canSubmit }: { onClose: () => voi
           Create New User
         </h2>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
@@ -320,6 +335,7 @@ function CreateUserModal({ onClose, onSuccess, canSubmit }: { onClose: () => voi
               <input
                 type="text"
                 required
+                autoComplete="off"
                 value={formData.firstName}
                 onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                 className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
@@ -333,6 +349,7 @@ function CreateUserModal({ onClose, onSuccess, canSubmit }: { onClose: () => voi
               <input
                 type="text"
                 required
+                autoComplete="off"
                 value={formData.lastName}
                 onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                 className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
@@ -348,6 +365,8 @@ function CreateUserModal({ onClose, onSuccess, canSubmit }: { onClose: () => voi
             <input
               type="email"
               required
+              name="create-user-email"
+              autoComplete="off"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
@@ -364,6 +383,8 @@ function CreateUserModal({ onClose, onSuccess, canSubmit }: { onClose: () => voi
                 type={showPassword ? 'text' : 'password'}
                 required
                 minLength={8}
+                name="create-user-password"
+                autoComplete="new-password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 className="w-full px-4 py-2 pr-11 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
@@ -415,7 +436,7 @@ function CreateUserModal({ onClose, onSuccess, canSubmit }: { onClose: () => voi
           <div className="flex gap-3 pt-4">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="flex-1 px-4 py-2 rounded-lg border-2 font-semibold hover:bg-[#FAF9F6] transition-colors"
               style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
             >

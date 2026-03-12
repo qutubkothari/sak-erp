@@ -1699,28 +1699,6 @@ function JobOrdersPageContent() {
     <div className="p-6 min-h-screen bg-gradient-to-br from-[#FAF9F6] to-[#E8DCC4]">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-[#36454F]">Job Orders</h1>
-        <div className="flex items-center gap-3">
-          {canCreate && (
-          <button
-            onClick={() => {
-              if (legacy) {
-                setShowCreateModal(true);
-                return;
-              }
-
-              router.push('/dashboard/production/job-orders/smart-items');
-            }}
-            className="px-4 py-2 bg-[#8B6F47] text-white rounded hover:bg-[#6F4E37]"
-            title={
-              legacy
-                ? 'Legacy Create Job Order (backup)'
-                : 'Smart Job Order: select FG + preview BOM expansion + create'
-            }
-          >
-            + Create Job Order
-          </button>
-          )}
-        </div>
       </div>
 
       {/* Job Orders List */}
