@@ -1,3 +1,10 @@
+import {
+  findScreenDefinition,
+  type PermissionEntry,
+  type PermissionAction,
+  SCREEN_DEFINITIONS,
+} from './permission-config';
+
 export type StoredUser = {
   roles?: string[] | Array<{ role: { name: string; permissions?: unknown } }>;
   role?: { name: string; permissions?: unknown };
@@ -8,14 +15,7 @@ export type StoredUser = {
   lastName?: string;
 };
 
-export type Permission = {
-  module?: string;
-  view?: boolean;
-  create?: boolean;
-  edit?: boolean;
-  delete?: boolean;
-  approve?: boolean;
-};
+export type Permission = PermissionEntry;
 
 const PRODUCTION_MANAGEMENT_DENYLIST = new Set(['production@saifautomations.com']);
 
@@ -32,6 +32,7 @@ function isProductionManagementDenied(user: StoredUser | null): boolean {
 function mergePermission(a: Permission, b: Permission): Permission {
   return {
     module: a.module || b.module,
+    screen: a.screen || b.screen,
     view: !!(a.view || b.view),
     create: !!(a.create || b.create),
     edit: !!(a.edit || b.edit),
@@ -89,6 +90,7 @@ function toPermission(value: unknown): Permission {
   if (!isRecord(value)) return {};
   return {
     module: typeof value.module === 'string' ? value.module : undefined,
+    screen: typeof value.screen === 'string' ? value.screen : undefined,
     view: !!value.view,
     create: !!value.create,
     edit: !!value.edit,
@@ -100,7 +102,7 @@ function toPermission(value: unknown): Permission {
 function normalizePermissions(value: unknown): Permission[] {
   if (Array.isArray(value)) return value.map(toPermission);
   if (isRecord(value)) {
-    if (typeof value.module === 'string') return [toPermission(value)];
+    if (typeof value.module === 'string' || typeof value.screen === 'string') return [toPermission(value)];
     return Object.keys(value).map((module) => {
       const entry = value[module];
       const perm = toPermission(entry);
@@ -165,9 +167,23 @@ export function getEnabledModules(user: StoredUser | null): Set<string> {
   if (!Array.isArray(raw)) return enabled;
 
   normalizePermissions(raw)
-    .filter((p) => isPermissionEnabled(p))
+    .filter((p) => isPermissionEnabled(p) && typeof p.module === 'string' && !p.screen)
     .forEach((p) => {
       if (typeof p.module === 'string' && p.module.trim().length > 0) enabled.add(p.module);
+    });
+
+  return enabled;
+}
+
+export function getEnabledScreens(user: StoredUser | null): Set<string> {
+  const enabled = new Set<string>();
+  const raw = getUserPermissionsRaw(user);
+  if (!Array.isArray(raw)) return enabled;
+
+  normalizePermissions(raw)
+    .filter((p) => isPermissionEnabled(p) && typeof p.screen === 'string')
+    .forEach((p) => {
+      if (typeof p.screen === 'string' && p.screen.trim().length > 0) enabled.add(p.screen);
     });
 
   return enabled;
@@ -179,7 +195,7 @@ export function getMergedPermissionsByModule(user: StoredUser | null): Map<strin
   if (!Array.isArray(raw)) return map;
 
   normalizePermissions(raw).forEach((p) => {
-    const key = typeof p.module === 'string' ? p.module : '';
+    const key = typeof p.module === 'string' && !p.screen ? p.module : '';
     if (!key) return;
     const existing = map.get(key) ?? { module: key };
     map.set(key, mergePermission(existing, { ...p, module: key }));
@@ -188,10 +204,55 @@ export function getMergedPermissionsByModule(user: StoredUser | null): Map<strin
   return map;
 }
 
+export function getMergedPermissionsByScreen(user: StoredUser | null): Map<string, Permission> {
+  const map = new Map<string, Permission>();
+  const raw = getUserPermissionsRaw(user);
+  if (!Array.isArray(raw)) return map;
+
+  normalizePermissions(raw).forEach((p) => {
+    const key = typeof p.screen === 'string' ? p.screen : '';
+    if (!key) return;
+    const existing = map.get(key) ?? { screen: key };
+    map.set(key, mergePermission(existing, { ...p, screen: key }));
+  });
+
+  return map;
+}
+
+function getCurrentPathname(): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.location.pathname || null;
+}
+
+function getScreenOverrideForPath(user: StoredUser | null, pathname: string | null): Permission | null {
+  if (!pathname) return null;
+  const screenDefinition = findScreenDefinition(pathname);
+  if (!screenDefinition) return null;
+
+  const screenPermissions = getMergedPermissionsByScreen(user);
+  const moduleScreenDefinitions = SCREEN_DEFINITIONS.filter(
+    (screen) => screen.module === screenDefinition.module,
+  );
+  const hasScreenOverridesForModule = moduleScreenDefinitions.some((screen) => screenPermissions.has(screen.key));
+  if (!hasScreenOverridesForModule) return null;
+
+  return screenPermissions.get(screenDefinition.key) ?? { screen: screenDefinition.key };
+}
+
+export function hasScreenPermission(
+  user: StoredUser | null,
+  pathname: string,
+  action: PermissionAction,
+): boolean {
+  if (isAdminLike(user)) return true;
+  const override = getScreenOverrideForPath(user, pathname);
+  return !!override?.[action];
+}
+
 export function hasModulePermission(
   user: StoredUser | null,
   moduleName: string,
-  action: keyof Omit<Permission, 'module'>,
+  action: PermissionAction,
 ): boolean {
   // Special-case: this account should not have access to Production Management
   // even if the role permissions are misconfigured.
@@ -201,6 +262,11 @@ export function hasModulePermission(
 
   // Admin / Super Admin / Owner gets all permissions by default
   if (isAdminLike(user)) return true;
+
+  const screenOverride = getScreenOverrideForPath(user, getCurrentPathname());
+  if (screenOverride && (screenOverride.screen || screenOverride.module === moduleName)) {
+    return !!screenOverride[action];
+  }
 
   const merged = getMergedPermissionsByModule(user);
   const perm = merged.get(moduleName);
@@ -224,6 +290,16 @@ const MODULE_TO_ROUTE_PREFIXES: Record<string, string[]> = {
 };
 
 export function getAllowedRoutePrefixes(user: StoredUser | null): string[] {
+  const screenPermissions = getMergedPermissionsByScreen(user);
+  const enabledScreens = SCREEN_DEFINITIONS.filter((screen) => {
+    const override = screenPermissions.get(screen.key);
+    return !!override && isPermissionEnabled(override);
+  }).map((screen) => screen.route);
+
+  if (enabledScreens.length > 0) {
+    return Array.from(new Set(enabledScreens));
+  }
+
   const enabledModules = getEnabledModules(user);
   const prefixes: string[] = [];
 
@@ -244,6 +320,9 @@ const LANDING_PAGE_OVERRIDES: Record<string, string> = {
 
 export function getDefaultLandingPath(user: StoredUser | null): string {
   if (isAdminLike(user)) return '/dashboard';
+
+  const enabledScreen = SCREEN_DEFINITIONS.find((screen) => hasScreenPermission(user, screen.route, 'view'));
+  if (enabledScreen) return enabledScreen.match === 'prefix' ? enabledScreen.route.replace(/\/$/, '') : enabledScreen.route;
 
   const prefixes = getAllowedRoutePrefixes(user);
   // Prefer something other than the global dashboard.
@@ -269,7 +348,17 @@ export function isPathAllowedForUser(user: StoredUser | null, pathname: string):
   // This allows production operators to access job orders without seeing the management page.
   if (pathname === '/dashboard/production') {
     if (isProductionManagementDenied(user)) return false;
+    const screenOverride = getScreenOverrideForPath(user, pathname);
+    if (screenOverride) return !!screenOverride.approve || !!screenOverride.view;
     return hasModulePermission(user, 'Production', 'approve');
+  }
+
+  const matchedScreen = findScreenDefinition(pathname);
+  if (matchedScreen) {
+    const screenOverride = getScreenOverrideForPath(user, pathname);
+    if (screenOverride) {
+      return isPermissionEnabled(screenOverride);
+    }
   }
 
   const prefixes = getAllowedRoutePrefixes(user);

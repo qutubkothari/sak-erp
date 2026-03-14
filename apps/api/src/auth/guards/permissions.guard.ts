@@ -3,12 +3,15 @@ import { Reflector } from '@nestjs/core';
 
 type ModulePermission = {
   module?: string;
+  screen?: string;
   view?: boolean;
   create?: boolean;
   edit?: boolean;
   delete?: boolean;
   approve?: boolean;
 };
+
+type PermissionActionKey = keyof Omit<ModulePermission, 'module' | 'screen'>;
 
 const MODULE_RESOURCE_MAP: Record<string, string[]> = {
   'Purchase Management': ['vendors', 'purchase_requisitions', 'purchase_orders', 'grns'],
@@ -24,7 +27,31 @@ const MODULE_RESOURCE_MAP: Record<string, string[]> = {
   Settings: ['users', 'roles'],
 };
 
-const MODULE_ACTION_TO_RESOURCE_ACTIONS: Record<keyof Omit<ModulePermission, 'module'>, string[]> = {
+const SCREEN_RESOURCE_MAP: Record<string, string[]> = {
+  'purchase-vendors': ['vendors'],
+  'purchase-requisitions': ['purchase_requisitions'],
+  'purchase-orders': ['purchase_orders'],
+  'purchase-grn': ['grns'],
+  'purchase-debit-notes': ['purchase_orders'],
+  'accounts-payables': ['purchase_orders'],
+  'inventory-items': ['items'],
+  'inventory-store-vouchers': ['items'],
+  'uid-overview': ['uid'],
+  'uid-deployment': ['uid'],
+  'uid-traceability': ['uid'],
+  'production-job-orders': ['job_orders'],
+  'production-create-job-order': ['job_orders'],
+  'production-smart-job-order': ['job_orders'],
+  'production-job-order-vouchers': ['job_orders'],
+  'production-work-stations': ['job_orders'],
+  'production-shop-floor': ['job_orders'],
+  'bom-overview': ['bom'],
+  'bom-routing': ['bom'],
+  'settings-overview': ['users', 'roles'],
+  'debug-tools': ['users', 'roles'],
+};
+
+const MODULE_ACTION_TO_RESOURCE_ACTIONS: Record<PermissionActionKey, string[]> = {
   view: ['read', 'view'],
   create: ['create'],
   edit: ['update', 'edit'],
@@ -42,10 +69,13 @@ export class PermissionsGuard implements CanActivate {
 
   private toModulePermission(value: unknown): ModulePermission | null {
     if (!this.isRecord(value)) return null;
-    if (typeof value.module !== 'string' || !value.module.trim()) return null;
+    const hasModule = typeof value.module === 'string' && !!value.module.trim();
+    const hasScreen = typeof value.screen === 'string' && !!value.screen.trim();
+    if (!hasModule && !hasScreen) return null;
 
     return {
-      module: value.module,
+      module: hasModule ? String(value.module) : undefined,
+      screen: hasScreen ? String(value.screen) : undefined,
       view: !!value.view,
       create: !!value.create,
       edit: !!value.edit,
@@ -64,12 +94,31 @@ export class PermissionsGuard implements CanActivate {
       }
 
       const modulePermission = this.toModulePermission(entry);
-      if (!modulePermission?.module) return;
+      if (!modulePermission?.module || modulePermission.screen) return;
 
       const resources = MODULE_RESOURCE_MAP[modulePermission.module] || [];
       resources.forEach((resource) => {
-        (Object.keys(MODULE_ACTION_TO_RESOURCE_ACTIONS) as Array<keyof Omit<ModulePermission, 'module'>>).forEach((actionKey) => {
+        (Object.keys(MODULE_ACTION_TO_RESOURCE_ACTIONS) as PermissionActionKey[]).forEach((actionKey) => {
           if (!modulePermission[actionKey]) return;
+          MODULE_ACTION_TO_RESOURCE_ACTIONS[actionKey].forEach((resourceAction) => {
+            permissions.push(`${resource}:${resourceAction}`);
+          });
+        });
+      });
+    });
+  }
+
+  private pushScreenPermissions(permissions: string[], rawPermissions: unknown) {
+    if (!Array.isArray(rawPermissions)) return;
+
+    rawPermissions.forEach((entry) => {
+      const screenPermission = this.toModulePermission(entry);
+      if (!screenPermission?.screen) return;
+
+      const resources = SCREEN_RESOURCE_MAP[screenPermission.screen] || [];
+      resources.forEach((resource) => {
+        (Object.keys(MODULE_ACTION_TO_RESOURCE_ACTIONS) as PermissionActionKey[]).forEach((actionKey) => {
+          if (!screenPermission[actionKey]) return;
           MODULE_ACTION_TO_RESOURCE_ACTIONS[actionKey].forEach((resourceAction) => {
             permissions.push(`${resource}:${resourceAction}`);
           });
@@ -92,6 +141,7 @@ export class PermissionsGuard implements CanActivate {
 
   private pushRolePermissions(permissions: string[], rawPermissions: unknown) {
     this.pushModulePermissions(permissions, rawPermissions);
+    this.pushScreenPermissions(permissions, rawPermissions);
     this.pushLegacyObjectPermissions(permissions, rawPermissions);
   }
 

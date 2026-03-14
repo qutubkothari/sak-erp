@@ -5,15 +5,9 @@ import { Plus, Edit, Trash2, Shield, Check } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { MODULES, SCREEN_DEFINITIONS, type PermissionEntry } from '@/lib/permission-config';
 
-interface Permission {
-  module: string;
-  view: boolean;
-  create: boolean;
-  edit: boolean;
-  delete: boolean;
-  approve: boolean;
-}
+type Permission = PermissionEntry;
 
 interface Role {
   id: string;
@@ -23,16 +17,28 @@ interface Role {
   created_at: string;
 }
 
-function normalizePermissions(value: unknown): Permission[] {
-  const makeDefault = (module: string): Permission => ({
-    module,
-    view: false,
-    create: false,
-    edit: false,
-    delete: false,
-    approve: false,
-  });
+const SCREEN_LABELS = new Map(SCREEN_DEFINITIONS.map((screen) => [screen.key, screen.label]));
 
+const makeDefaultModulePermission = (module: string): Permission => ({
+  module,
+  view: false,
+  create: false,
+  edit: false,
+  delete: false,
+  approve: false,
+});
+
+const makeDefaultScreenPermission = (screenKey: string, module: string): Permission => ({
+  module,
+  screen: screenKey,
+  view: false,
+  create: false,
+  edit: false,
+  delete: false,
+  approve: false,
+});
+
+function normalizePermissions(value: unknown): Permission[] {
   if (Array.isArray(value)) {
     return value as Permission[];
   }
@@ -41,10 +47,11 @@ function normalizePermissions(value: unknown): Permission[] {
     const asAny = value as any;
 
     // Some older data may store a single permission object.
-    if (typeof asAny.module === 'string') {
+    if (typeof asAny.module === 'string' || typeof asAny.screen === 'string') {
       return [
         {
           module: asAny.module,
+          screen: asAny.screen,
           view: !!asAny.view,
           create: !!asAny.create,
           edit: !!asAny.edit,
@@ -67,26 +74,45 @@ function normalizePermissions(value: unknown): Permission[] {
           approve: !!entry.approve,
         };
       }
-      return makeDefault(module);
+      return makeDefaultModulePermission(module);
     });
   }
 
-  return MODULES.map(makeDefault);
+  return MODULES.map(makeDefaultModulePermission);
 }
 
-const MODULES = [
-  'Purchase Management',
-  'Sales Management',
-  'Inventory',
-  'Production',
-  'Quality Control',
-  'HR Management',
-  'Service Management',
-  'BOM & Engineering',
-  'Documents',
-  'Reports',
-  'Settings',
-];
+function isPermissionEnabled(permission: Permission): boolean {
+  return !!(
+    permission.view ||
+    permission.create ||
+    permission.edit ||
+    permission.delete ||
+    permission.approve
+  );
+}
+
+function buildModulePermissions(permissions: Permission[]): Permission[] {
+  return MODULES.map((module) => {
+    const existing = permissions.find((permission) => permission.module === module && !permission.screen);
+    return existing ? { ...makeDefaultModulePermission(module), ...existing, module } : makeDefaultModulePermission(module);
+  });
+}
+
+function buildScreenPermissions(permissions: Permission[]): Permission[] {
+  return SCREEN_DEFINITIONS.map((screen) => {
+    const existing = permissions.find((permission) => permission.screen === screen.key);
+    return existing
+      ? { ...makeDefaultScreenPermission(screen.key, screen.module), ...existing, module: screen.module, screen: screen.key }
+      : makeDefaultScreenPermission(screen.key, screen.module);
+  });
+}
+
+function getPermissionLabel(permission: Permission): string {
+  if (permission.screen) {
+    return SCREEN_LABELS.get(permission.screen) || permission.screen;
+  }
+  return permission.module || 'Unknown';
+}
 
 export default function RoleManagement() {
   const currentUser = readStoredUser();
@@ -172,7 +198,7 @@ export default function RoleManagement() {
             (() => {
               const permissions = normalizePermissions((role as any).permissions);
               const allowedPermissions = permissions.filter(
-                (p) => p.view || p.create || p.edit || p.delete || p.approve,
+                (p) => isPermissionEnabled(p),
               );
               return (
             <div
@@ -208,11 +234,11 @@ export default function RoleManagement() {
                   ) : (
                     allowedPermissions.slice(0, 3).map((perm) => (
                     <span
-                      key={perm.module}
+                      key={perm.screen || perm.module}
                       className="text-xs px-2 py-1 rounded-full"
                       style={{ backgroundColor: '#E8DCC4', color: '#6F4E37' }}
                     >
-                      {perm.module}
+                      {getPermissionLabel(perm)}
                     </span>
                     ))
                   )}
@@ -282,25 +308,27 @@ function RoleModal({
   onSuccess: () => void;
   canSubmit: boolean;
 }) {
+  const initialPermissions = normalizePermissions((role as any)?.permissions);
   const [formData, setFormData] = useState({
     name: role?.name || '',
     description: role?.description || '',
-    permissions: normalizePermissions((role as any)?.permissions),
   });
+  const [modulePermissions, setModulePermissions] = useState<Permission[]>(() => buildModulePermissions(initialPermissions));
+  const [screenPermissions, setScreenPermissions] = useState<Permission[]>(() => buildScreenPermissions(initialPermissions));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handlePermissionChange = (moduleIndex: number, permission: keyof Omit<Permission, 'module'>, value: boolean) => {
-    const newPermissions = [...formData.permissions];
+  const handleModulePermissionChange = (moduleIndex: number, permission: keyof Omit<Permission, 'module' | 'screen'>, value: boolean) => {
+    const newPermissions = [...modulePermissions];
     newPermissions[moduleIndex] = {
       ...newPermissions[moduleIndex],
       [permission]: value,
     };
-    setFormData({ ...formData, permissions: newPermissions });
+    setModulePermissions(newPermissions);
   };
 
-  const handleSelectAll = (moduleIndex: number) => {
-    const newPermissions = [...formData.permissions];
+  const handleModuleSelectAll = (moduleIndex: number) => {
+    const newPermissions = [...modulePermissions];
     newPermissions[moduleIndex] = {
       ...newPermissions[moduleIndex],
       view: true,
@@ -309,7 +337,29 @@ function RoleModal({
       delete: true,
       approve: true,
     };
-    setFormData({ ...formData, permissions: newPermissions });
+    setModulePermissions(newPermissions);
+  };
+
+  const handleScreenPermissionChange = (screenIndex: number, permission: keyof Omit<Permission, 'module' | 'screen'>, value: boolean) => {
+    const newPermissions = [...screenPermissions];
+    newPermissions[screenIndex] = {
+      ...newPermissions[screenIndex],
+      [permission]: value,
+    };
+    setScreenPermissions(newPermissions);
+  };
+
+  const handleScreenSelectAll = (screenIndex: number) => {
+    const newPermissions = [...screenPermissions];
+    newPermissions[screenIndex] = {
+      ...newPermissions[screenIndex],
+      view: true,
+      create: true,
+      edit: true,
+      delete: true,
+      approve: true,
+    };
+    setScreenPermissions(newPermissions);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -322,10 +372,15 @@ function RoleModal({
     setLoading(true);
 
     try {
+      const payload = {
+        ...formData,
+        permissions: [...modulePermissions, ...screenPermissions],
+      };
+
       if (role) {
-        await apiClient.put(`/roles/${role.id}`, formData);
+        await apiClient.put(`/roles/${role.id}`, payload);
       } else {
-        await apiClient.post('/roles', formData);
+        await apiClient.post('/roles', payload);
       }
       onSuccess();
       onClose();
@@ -393,7 +448,7 @@ function RoleModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E8DCC4]">
-                  {formData.permissions.map((perm, idx) => (
+                  {modulePermissions.map((perm, idx) => (
                     <tr key={idx} className="hover:bg-[#FAF9F6]">
                       <td className="px-4 py-3 font-medium" style={{ color: '#6F4E37' }}>
                         {perm.module}
@@ -403,7 +458,7 @@ function RoleModal({
                           <input
                             type="checkbox"
                             checked={perm[action]}
-                            onChange={(e) => handlePermissionChange(idx, action, e.target.checked)}
+                            onChange={(e) => handleModulePermissionChange(idx, action, e.target.checked)}
                             className="w-4 h-4 rounded border-2 cursor-pointer"
                             style={{ accentColor: '#8B6F47' }}
                           />
@@ -412,7 +467,7 @@ function RoleModal({
                       <td className="px-4 py-3 text-center">
                         <button
                           type="button"
-                          onClick={() => handleSelectAll(idx)}
+                          onClick={() => handleModuleSelectAll(idx)}
                           className="p-1 rounded hover:bg-[#E8DCC4] transition-colors"
                           title="Select All"
                         >
@@ -421,6 +476,64 @@ function RoleModal({
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-lg font-semibold mb-4" style={{ color: '#6F4E37' }}>
+              Screen Permissions
+            </h3>
+            <div className="bg-white rounded-lg border-2 overflow-hidden" style={{ borderColor: '#E8DCC4' }}>
+              <table className="w-full">
+                <thead style={{ backgroundColor: '#FAF9F6', color: '#6F4E37' }}>
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Screen</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Module</th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold">View</th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold">Create</th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold">Edit</th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold">Delete</th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold">Approve</th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold">All</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E8DCC4]">
+                  {screenPermissions.map((perm, idx) => {
+                    const screen = SCREEN_DEFINITIONS[idx];
+                    return (
+                      <tr key={screen.key} className="hover:bg-[#FAF9F6]">
+                        <td className="px-4 py-3 font-medium" style={{ color: '#6F4E37' }}>
+                          {screen.label}
+                        </td>
+                        <td className="px-4 py-3 text-sm" style={{ color: '#8B6F47' }}>
+                          {screen.module}
+                        </td>
+                        {(['view', 'create', 'edit', 'delete', 'approve'] as const).map((action) => (
+                          <td key={action} className="px-4 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={perm[action]}
+                              onChange={(e) => handleScreenPermissionChange(idx, action, e.target.checked)}
+                              className="w-4 h-4 rounded border-2 cursor-pointer"
+                              style={{ accentColor: '#8B6F47' }}
+                            />
+                          </td>
+                        ))}
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleScreenSelectAll(idx)}
+                            className="p-1 rounded hover:bg-[#E8DCC4] transition-colors"
+                            title="Select All"
+                          >
+                            <Check className="w-4 h-4" style={{ color: '#8B6F47' }} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
