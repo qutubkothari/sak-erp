@@ -10,6 +10,7 @@ import {
   UseGuards,
   Request,
   Res,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { PurchaseOrdersService } from '../services/purchase-orders.service';
@@ -17,7 +18,7 @@ import { WorldClassPoPdfService } from '../services/world-class-po-pdf.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
-import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('purchase/orders')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -104,8 +105,25 @@ export class PurchaseOrdersController {
   }
 
   @Post(':id/status')
+  @RequireUpdate('purchase_orders')
   async updateStatus(@Request() req: any, @Param('id') id: string, @Body() body: { status: string }) {
+    const nextStatus = String(body?.status || '').trim().toUpperCase();
+    if (nextStatus === 'APPROVED' || nextStatus === 'REJECTED') {
+      throw new ForbiddenException('Use the dedicated approval endpoint for approve or reject actions');
+    }
     return this.poService.updateStatus(req.user.tenantId, id, body.status);
+  }
+
+  @Post(':id/approve')
+  @RequireApprove('purchase_orders')
+  async approve(@Request() req: any, @Param('id') id: string) {
+    return this.poService.updateStatus(req.user.tenantId, id, 'APPROVED');
+  }
+
+  @Post(':id/reject')
+  @RequireApprove('purchase_orders')
+  async reject(@Request() req: any, @Param('id') id: string) {
+    return this.poService.updateStatus(req.user.tenantId, id, 'REJECTED');
   }
 
   @Post(':id/tracking')

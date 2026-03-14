@@ -14,7 +14,7 @@ import { PurchaseRequisitionsService } from '../services/purchase-requisitions.s
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
-import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('purchase/requisitions')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -97,11 +97,13 @@ export class PurchaseRequisitionsController {
   }
 
   @Post(':id/approve')
+  @RequireApprove('purchase_requisitions')
   async approve(@Request() req: any, @Param('id') id: string) {
     return this.prService.approve(req.user.tenantId, id, req.user.userId);
   }
 
   @Post(':id/reject')
+  @RequireApprove('purchase_requisitions')
   async reject(@Request() req: any, @Param('id') id: string) {
     return this.prService.reject(req.user.tenantId, id, req.user.userId);
   }

@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Put, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Put, Param, Body, Query, UseGuards, Req, ForbiddenException } from '@nestjs/common';
 import { DebitNoteService } from '../services/debit-note.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { RequireApprove } from '../../auth/decorators/permissions.decorator';
 
 @Controller('purchase/debit-notes')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DebitNoteController {
   constructor(private readonly debitNoteService: DebitNoteService) {}
 
@@ -39,6 +41,7 @@ export class DebitNoteController {
   }
 
   @Post(':id/approve')
+  @RequireApprove('debit_notes')
   async approve(@Req() req: any, @Param('id') id: string) {
     const tenantId = req.user.tenantId;
     const userId = req.user.userId;
@@ -57,6 +60,10 @@ export class DebitNoteController {
     @Param('id') id: string,
     @Body() body: { status: string },
   ) {
+    const nextStatus = String(body?.status || '').trim().toUpperCase();
+    if (nextStatus === 'APPROVED') {
+      throw new ForbiddenException('Use the dedicated approval endpoint for approve actions');
+    }
     const tenantId = req.user.tenantId;
     return this.debitNoteService.updateStatus(tenantId, id, body.status);
   }

@@ -3,7 +3,7 @@ import { SalesService } from '../services/sales.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
-import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('sales')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -123,6 +123,7 @@ export class SalesController {
   }
 
   @Put('quotations/:id/approve')
+  @RequireApprove('sales')
   async approveQuotation(@Request() req: any, @Param('id') quotationId: string) {
     return this.salesService.approveQuotation(req, quotationId);
   }

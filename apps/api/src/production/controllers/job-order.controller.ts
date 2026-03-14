@@ -3,7 +3,7 @@ import { JobOrderService } from '../services/job-order.service';
 import { CreateJobOrderDto, PartialCompleteJobOrderDto, UpdateJobOrderDto, UpdateOperationDto } from '../dto/job-order.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
-import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('job-orders')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -207,6 +207,7 @@ export class JobOrderController {
   }
 
   @Post(':id/qc-approve')
+  @RequireApprove('job_orders')
   async approveQC(
     @Request() req: any, 
     @Param('id') id: string,
@@ -306,6 +307,7 @@ export class JobOrderController {
   }
 
   @Put('store/material-requisitions/history/:movementId/approve')
+  @RequireApprove('job_orders')
   async approveStoreIssueVoucherHistoryRow(@Request() req: any, @Param('movementId') movementId: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.userId || req.user?.id || req.user?.sub;
@@ -347,6 +349,7 @@ export class JobOrderController {
   }
 
   @Put('store/receipt-vouchers/history/:entryId/approve')
+  @RequireApprove('job_orders')
   async approveStoreReceiptVoucherHistoryRow(@Request() req: any, @Param('entryId') entryId: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id || req.user?.sub;
@@ -354,6 +357,7 @@ export class JobOrderController {
   }
 
   @Put('store/receipt-vouchers/:entryId/approve')
+  @RequireApprove('job_orders')
   async approveStoreReceiptVoucher(@Request() req: any, @Param('entryId') entryId: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id || req.user?.sub;

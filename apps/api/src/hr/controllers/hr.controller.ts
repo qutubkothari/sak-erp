@@ -2,7 +2,7 @@ import { BadRequestException, Controller, Get, Post, Put, Delete, Body, Param, Q
 import { HrService } from '../services/hr.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
-import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('hr')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -69,10 +69,12 @@ export class HrController {
     return this.hrService.getLeaves(req.user.tenantId, employeeId);
   }
   @Put('leaves/:id/approve')
+  @RequireApprove('hr')
   approveLeave(@Request() req: any, @Param('id') id: string, @Body('approverId') approverId: string) {
     return this.hrService.approveLeave(req.user.tenantId, id, approverId);
   }
   @Put('leaves/:id/reject')
+  @RequireApprove('hr')
   rejectLeave(@Request() req: any, @Param('id') id: string, @Body('approverId') approverId: string) {
     return this.hrService.rejectLeave(req.user.tenantId, id, approverId);
   }

@@ -14,7 +14,7 @@ type ModulePermission = {
 type PermissionActionKey = keyof Omit<ModulePermission, 'module' | 'screen'>;
 
 const MODULE_RESOURCE_MAP: Record<string, string[]> = {
-  'Purchase Management': ['vendors', 'purchase_requisitions', 'purchase_orders', 'grns'],
+  'Purchase Management': ['vendors', 'purchase_requisitions', 'purchase_orders', 'grns', 'debit_notes'],
   'Sales Management': ['sales'],
   Inventory: ['items', 'uid', 'grns'],
   Production: ['job_orders'],
@@ -32,8 +32,10 @@ const SCREEN_RESOURCE_MAP: Record<string, string[]> = {
   'purchase-requisitions': ['purchase_requisitions'],
   'purchase-orders': ['purchase_orders'],
   'purchase-grn': ['grns'],
-  'purchase-debit-notes': ['purchase_orders'],
-  'accounts-payables': ['purchase_orders'],
+  'purchase-debit-notes': ['debit_notes'],
+  'accounts-payables': ['debit_notes'],
+  'inventory-siv': ['job_orders'],
+  'inventory-srv': ['job_orders'],
   'inventory-items': ['items'],
   'inventory-store-vouchers': ['items'],
   'uid-overview': ['uid'],
@@ -57,6 +59,12 @@ const MODULE_ACTION_TO_RESOURCE_ACTIONS: Record<PermissionActionKey, string[]> =
   edit: ['update', 'edit'],
   delete: ['delete'],
   approve: ['approve'],
+};
+
+const MODULE_ACTION_RESOURCE_OVERRIDES: Partial<Record<PermissionActionKey, Record<string, string[]>>> = {
+  approve: {
+    Inventory: ['job_orders'],
+  },
 };
 
 @Injectable()
@@ -96,9 +104,14 @@ export class PermissionsGuard implements CanActivate {
       const modulePermission = this.toModulePermission(entry);
       if (!modulePermission?.module || modulePermission.screen) return;
 
-      const resources = MODULE_RESOURCE_MAP[modulePermission.module] || [];
-      resources.forEach((resource) => {
-        (Object.keys(MODULE_ACTION_TO_RESOURCE_ACTIONS) as PermissionActionKey[]).forEach((actionKey) => {
+      (Object.keys(MODULE_ACTION_TO_RESOURCE_ACTIONS) as PermissionActionKey[]).forEach((actionKey) => {
+        const resources = Array.from(
+          new Set([
+            ...(MODULE_RESOURCE_MAP[modulePermission.module] || []),
+            ...(MODULE_ACTION_RESOURCE_OVERRIDES[actionKey]?.[modulePermission.module] || []),
+          ]),
+        );
+        resources.forEach((resource) => {
           if (!modulePermission[actionKey]) return;
           MODULE_ACTION_TO_RESOURCE_ACTIONS[actionKey].forEach((resourceAction) => {
             permissions.push(`${resource}:${resourceAction}`);

@@ -2260,13 +2260,12 @@ function GRNContent() {
                       onClick={async () => {
                         try {
                           const token = localStorage.getItem('accessToken');
-                          const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/status`, {
+                          const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/approve`, {
                             method: 'POST',
                             headers: {
                               'Content-Type': 'application/json',
                               Authorization: `Bearer ${token}`,
                             },
-                            body: JSON.stringify({ status: 'APPROVED' }),
                           });
 
                           const responseData = await response.json();
@@ -2295,13 +2294,12 @@ function GRNContent() {
                       onClick={async () => {
                         try {
                           const token = localStorage.getItem('accessToken');
-                          const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/status`, {
+                          const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/reject`, {
                             method: 'POST',
                             headers: {
                               'Content-Type': 'application/json',
                               Authorization: `Bearer ${token}`,
                             },
-                            body: JSON.stringify({ status: 'REJECTED' }),
                           });
 
                           if (response.ok) {

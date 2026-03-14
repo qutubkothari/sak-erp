@@ -22,7 +22,7 @@ import { extname, resolve, join } from 'path';
 import { randomUUID } from 'crypto';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
-import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 function getUploadsRoot(): string {
   return (
@@ -190,8 +190,25 @@ export class GrnController {
   }
 
   @Post(':id/status')
+  @RequireUpdate('grns')
   async updateStatus(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    const nextStatus = String(body?.status || '').trim().toUpperCase();
+    if (nextStatus === 'APPROVED' || nextStatus === 'REJECTED') {
+      throw new BadRequestException('Use the dedicated approval endpoint for approve or reject actions');
+    }
     return this.grnService.updateStatus(req.user.tenantId, id, body.status, req.user.userId);
+  }
+
+  @Post(':id/approve')
+  @RequireApprove('grns')
+  async approve(@Request() req: any, @Param('id') id: string) {
+    return this.grnService.updateStatus(req.user.tenantId, id, 'APPROVED', req.user.userId);
+  }
+
+  @Post(':id/reject')
+  @RequireApprove('grns')
+  async reject(@Request() req: any, @Param('id') id: string) {
+    return this.grnService.updateStatus(req.user.tenantId, id, 'REJECTED', req.user.userId);
   }
 
   @Delete(':id')

@@ -34,6 +34,12 @@ export const RequireUpdate = (resource: string) =>
   SetMetadata('permissions', [`${resource}:update`]);
 
 /**
+ * Decorator to mark an endpoint as requiring approve permission
+ */
+export const RequireApprove = (resource: string) =>
+  SetMetadata('permissions', [`${resource}:approve`]);
+
+/**
  * Decorator to mark an endpoint as audit-logged
  * This will automatically log the action to activity_logs table
  */  

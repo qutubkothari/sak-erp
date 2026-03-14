@@ -2738,13 +2738,12 @@ function PurchaseOrdersContent() {
                       onClick={async () => {
                         try {
                           const token = localStorage.getItem('accessToken');
-                          const response = await fetch(`/api/v1/purchase/orders/${selectedPO.id}/status`, {
+                          const response = await fetch(`/api/v1/purchase/orders/${selectedPO.id}/approve`, {
                             method: 'POST',
                             headers: {
                               'Content-Type': 'application/json',
                               Authorization: `Bearer ${token}`,
                             },
-                            body: JSON.stringify({ status: 'APPROVED' }),
                           });
                           if (response.ok) {
                             setAlertMessage({ type: 'success', message: 'Purchase Order approved successfully!' });
@@ -2766,13 +2765,12 @@ function PurchaseOrdersContent() {
                       onClick={async () => {
                         try {
                           const token = localStorage.getItem('accessToken');
-                          const response = await fetch(`/api/v1/purchase/orders/${selectedPO.id}/status`, {
+                          const response = await fetch(`/api/v1/purchase/orders/${selectedPO.id}/reject`, {
                             method: 'POST',
                             headers: {
                               'Content-Type': 'application/json',
                               Authorization: `Bearer ${token}`,
                             },
-                            body: JSON.stringify({ status: 'REJECTED' }),
                           });
                           if (response.ok) {
                             setAlertMessage({ type: 'success', message: 'Purchase Order rejected successfully!' });
