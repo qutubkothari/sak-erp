@@ -29,7 +29,20 @@ import { useAuthStore, getUserDisplayName, getUserRoleLabel, getUserInitials } f
 import { openCommandPalette } from '@/components/CommandPalette';
 import { isPathAllowedForUser } from '@/lib/rbac';
 
-const navigation = [
+type NavigationChild = {
+  name: string;
+  href: string;
+};
+
+type NavigationItem = {
+  name: string;
+  href: string;
+  icon: any;
+  requiresManagerRole?: boolean;
+  children?: NavigationChild[];
+};
+
+const navigation: NavigationItem[] = [
   {
     name: 'Dashboard',
     href: '/dashboard',
@@ -316,9 +329,6 @@ interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
 }
-
-type NavigationItem = (typeof navigation)[number];
-type NavigationChild = NonNullable<NavigationItem['children']>[number];
 
 function getChildPath(href: string): string {
   return href.split('?')[0] || href;
