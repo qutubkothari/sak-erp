@@ -545,6 +545,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           const isActive = isActivePath(item.href);
           const isExpanded = expandedSections.includes(item.name);
           const hasChildren = item.children && item.children.length > 0;
+          const children = item.children ?? [];
 
           return (
             <div key={item.name} className="px-2 mb-0.5">
@@ -572,7 +573,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   </button>
                   {!collapsed && isExpanded && (
                     <div className="ml-5 mt-1 space-y-0.5 border-l-2 border-[#8B6F47]/30 pl-3">
-                      {item.children.map((child) => (
+                      {children.map((child) => (
                         <Link
                           key={child.href}
                           href={child.href}
