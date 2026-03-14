@@ -168,10 +168,10 @@ function GRNContent() {
   const router = useRouter();
   const todayDate = getTodayDateInputValue();
   const currentUser = readStoredUser();
-  const canApproveGRN = hasModulePermission(currentUser, 'Purchase Management', 'approve');
-  const canCreateGRN = hasModulePermission(currentUser, 'Purchase Management', 'create');
-  const canEditGRN = hasModulePermission(currentUser, 'Purchase Management', 'edit');
-  const canDeleteGRN = hasModulePermission(currentUser, 'Purchase Management', 'delete');
+  const canApproveGRN = hasModulePermission(currentUser, 'Inventory', 'approve');
+  const canCreateGRN = hasModulePermission(currentUser, 'Inventory', 'create');
+  const canEditGRN = hasModulePermission(currentUser, 'Inventory', 'edit');
+  const canDeleteGRN = hasModulePermission(currentUser, 'Inventory', 'delete');
   const [grns, setGrns] = useState<GRN[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);

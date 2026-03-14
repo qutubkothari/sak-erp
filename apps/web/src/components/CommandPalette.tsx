@@ -37,7 +37,7 @@ const staticItems: CmdItem[] = [
   { id: 'vendors', label: 'Vendors', subtitle: 'Manage supplier information', icon: <ShoppingCart className="h-4 w-4" />, href: '/dashboard/purchase/vendors', group: 'Purchase' },
   { id: 'purchase-orders', label: 'Purchase Orders', subtitle: 'Create and manage POs', icon: <ShoppingCart className="h-4 w-4" />, href: '/dashboard/purchase/orders', group: 'Purchase' },
   { id: 'requisitions', label: 'Purchase Requisitions', icon: <ShoppingCart className="h-4 w-4" />, href: '/dashboard/purchase/requisitions', group: 'Purchase' },
-  { id: 'grn', label: 'Goods Receipt Notes', icon: <ShoppingCart className="h-4 w-4" />, href: '/dashboard/purchase/grn', group: 'Purchase' },
+  { id: 'grn', label: 'Goods Receipt Notes', icon: <Package className="h-4 w-4" />, href: '/dashboard/purchase/grn', group: 'Inventory' },
   { id: 'debit-notes', label: 'Debit Notes', icon: <ShoppingCart className="h-4 w-4" />, href: '/dashboard/purchase/debit-notes', group: 'Purchase' },
 
   // Inventory

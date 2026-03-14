@@ -37,7 +37,7 @@ export const SCREEN_DEFINITIONS: ScreenDefinition[] = [
   { key: 'purchase-vendors', label: 'Purchase Vendors', module: 'Purchase Management', route: '/dashboard/purchase/vendors', match: 'exact' },
   { key: 'purchase-requisitions', label: 'Purchase Requisitions', module: 'Purchase Management', route: '/dashboard/purchase/requisitions', match: 'exact' },
   { key: 'purchase-orders', label: 'Purchase Orders', module: 'Purchase Management', route: '/dashboard/purchase/orders', match: 'exact' },
-  { key: 'purchase-grn', label: 'GRN', module: 'Purchase Management', route: '/dashboard/purchase/grn', match: 'exact' },
+  { key: 'purchase-grn', label: 'GRN', module: 'Inventory', route: '/dashboard/purchase/grn', match: 'exact' },
   { key: 'purchase-debit-notes', label: 'Debit Notes', module: 'Purchase Management', route: '/dashboard/purchase/debit-notes', match: 'exact' },
   { key: 'accounts-payables', label: 'Accounts Payables', module: 'Purchase Management', route: '/dashboard/accounts/payables', match: 'exact' },
   { key: 'sales-overview', label: 'Sales', module: 'Sales Management', route: '/dashboard/sales', match: 'exact' },
