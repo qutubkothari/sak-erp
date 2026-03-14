@@ -432,57 +432,6 @@ function RoleModal({
 
           <div>
             <h3 className="text-lg font-semibold mb-4" style={{ color: '#6F4E37' }}>
-              Module Permissions
-            </h3>
-            <div className="bg-white rounded-lg border-2 overflow-hidden" style={{ borderColor: '#E8DCC4' }}>
-              <table className="w-full">
-                <thead style={{ backgroundColor: '#FAF9F6', color: '#6F4E37' }}>
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Module</th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold">View</th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold">Create</th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold">Edit</th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold">Delete</th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold">Approve</th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold">All</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E8DCC4]">
-                  {modulePermissions.map((perm, idx) => (
-                    <tr key={idx} className="hover:bg-[#FAF9F6]">
-                      <td className="px-4 py-3 font-medium" style={{ color: '#6F4E37' }}>
-                        {perm.module}
-                      </td>
-                      {(['view', 'create', 'edit', 'delete', 'approve'] as const).map((action) => (
-                        <td key={action} className="px-4 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={perm[action]}
-                            onChange={(e) => handleModulePermissionChange(idx, action, e.target.checked)}
-                            className="w-4 h-4 rounded border-2 cursor-pointer"
-                            style={{ accentColor: '#8B6F47' }}
-                          />
-                        </td>
-                      ))}
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleModuleSelectAll(idx)}
-                          className="p-1 rounded hover:bg-[#E8DCC4] transition-colors"
-                          title="Select All"
-                        >
-                          <Check className="w-4 h-4" style={{ color: '#8B6F47' }} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-lg font-semibold mb-4" style={{ color: '#6F4E37' }}>
               Screen Permissions
             </h3>
             <div className="bg-white rounded-lg border-2 overflow-hidden" style={{ borderColor: '#E8DCC4' }}>
