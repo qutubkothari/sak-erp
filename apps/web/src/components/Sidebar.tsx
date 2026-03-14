@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore, getUserDisplayName, getUserRoleLabel, getUserInitials } from '@/stores/auth.store';
 import { openCommandPalette } from '@/components/CommandPalette';
+import { isPathAllowedForUser } from '@/lib/rbac';
 
 const navigation = [
   {
@@ -316,6 +317,42 @@ interface SidebarProps {
   onToggle: () => void;
 }
 
+type NavigationItem = (typeof navigation)[number];
+type NavigationChild = NonNullable<NavigationItem['children']>[number];
+
+function getChildPath(href: string): string {
+  return href.split('?')[0] || href;
+}
+
+function filterNavigationByRouteAccess(
+  items: readonly NavigationItem[],
+  user: StoredUser | null,
+  enforcePermissions: boolean,
+): NavigationItem[] {
+  if (!enforcePermissions) return items.map((item) => ({ ...item }));
+
+  return items.flatMap((item) => {
+    const children = Array.isArray(item.children)
+      ? item.children.filter((child) => isPathAllowedForUser(user, getChildPath(child.href)))
+      : undefined;
+
+    const hasVisibleChildren = Array.isArray(children) && children.length > 0;
+    const canAccessItem = isPathAllowedForUser(user, getChildPath(item.href));
+
+    if (!canAccessItem && !hasVisibleChildren) {
+      return [];
+    }
+
+    return [
+      {
+        ...item,
+        href: canAccessItem ? item.href : children?.[0]?.href || item.href,
+        ...(children ? { children } : {}),
+      },
+    ];
+  });
+}
+
 export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
@@ -370,7 +407,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     ) || (Array.isArray(permissions) && normalizePermissions(permissions).some(p => p.module === 'HR Management' && p.approve));
   })() : false;
 
-  const visibleNavigation = shouldEnforcePermissions
+  const baseNavigation = shouldEnforcePermissions
     ? navigation.filter((item) => {
         // Filter out Manager Approvals if user is not a manager
         if ((item as any).requiresManagerRole && !isManager) {
@@ -385,6 +422,12 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         }
         return true;
       });
+
+  const visibleNavigation = filterNavigationByRouteAccess(
+    baseNavigation,
+    currentUser,
+    shouldEnforcePermissions,
+  );
 
   const finalNavigation =
     shouldHideDashboardForUser(currentUser) || (currentUser !== null && !isAdminLike(currentUser))
