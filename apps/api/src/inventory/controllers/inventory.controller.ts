@@ -42,7 +42,7 @@ export class InventoryController {
 
   @Delete('items/:id')
   async deleteItem(@Request() req: any, @Param('id') id: string) {
-    return this.itemsService.delete(req.user.tenantId, id);
+    return this.itemsService.delete(req.user.tenantId, req.user.userId, id);
   }
 
   // Stock levels
