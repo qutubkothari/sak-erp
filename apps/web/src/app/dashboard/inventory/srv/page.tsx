@@ -45,6 +45,35 @@ type Warehouse = {
   name?: string;
 };
 
+type QcApproveResponse = {
+  jobOrderId?: string;
+  jobOrderNumber?: string;
+  itemCode?: string;
+  itemName?: string;
+  stockAdded?: number;
+  stockAvailable?: number;
+  generatedUids?: string[];
+  message?: string;
+};
+
+type GeneratedUidPrintPayload = {
+  jobOrderNumber: string;
+  itemCode: string;
+  itemName: string;
+  generatedUids: string[];
+  qcDate: string;
+  qcBy: string;
+};
+
+function escapePrintHtml(value: string): string {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function isUuidLike(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
@@ -447,7 +476,7 @@ export default function SrvPage() {
 
   const qcAcceptSrv = useCallback(
     async (jobOrderId: string, acceptedQuantity: number, rejectedQuantity: number, extra?: any) => {
-      await apiClient.post(`/job-orders/${jobOrderId}/qc-approve`, {
+      return apiClient.post<QcApproveResponse>(`/job-orders/${jobOrderId}/qc-approve`, {
         acceptedQuantity,
         rejectedQuantity,
         ...(extra || {}),
@@ -603,6 +632,160 @@ export default function SrvPage() {
       w.print();
     }
   }, [resolveEmployeeLabel, resolveWarehouseLabel]);
+
+  const printGeneratedUids = useCallback((payload: GeneratedUidPrintPayload) => {
+    const generatedUids = Array.isArray(payload.generatedUids)
+      ? payload.generatedUids.map((uid) => String(uid || '').trim()).filter(Boolean)
+      : [];
+
+    if (generatedUids.length === 0) {
+      return;
+    }
+
+    const jobOrderNumber = escapePrintHtml(payload.jobOrderNumber || '-');
+    const itemCode = escapePrintHtml(payload.itemCode || '-');
+    const itemName = escapePrintHtml(payload.itemName || '-');
+    const qcDate = escapePrintHtml(
+      payload.qcDate ? new Date(payload.qcDate).toLocaleDateString() : new Date().toLocaleDateString(),
+    );
+    const qcBy = escapePrintHtml(payload.qcBy || '-');
+    const printedAt = escapePrintHtml(new Date().toLocaleString());
+    const uidCards = generatedUids
+      .map(
+        (uid, index) => `
+          <div class="uid-card">
+            <div class="uid-card-head">
+              <div>
+                <div class="uid-card-title">UID Label</div>
+                <div class="uid-card-subtitle">${itemCode} | ${itemName}</div>
+              </div>
+              <div class="uid-card-seq">${index + 1}/${generatedUids.length}</div>
+            </div>
+            <div class="uid-card-body">
+              <div class="uid-value">${escapePrintHtml(uid)}</div>
+              <div class="uid-meta">JO: ${jobOrderNumber}</div>
+              <div class="uid-meta">QC Date: ${qcDate}</div>
+            </div>
+          </div>
+        `,
+      )
+      .join('');
+    const uidRows = generatedUids
+      .map(
+        (uid, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapePrintHtml(uid)}</td>
+            <td>${itemCode}</td>
+            <td>${itemName}</td>
+            <td>${jobOrderNumber}</td>
+          </tr>
+        `,
+      )
+      .join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>UID Print - ${jobOrderNumber}</title>
+        <style>
+          * { box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; margin: 20px; color: #111827; }
+          .page { max-width: 1100px; margin: 0 auto; }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+          .brand { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: #6b7280; }
+          .title { font-size: 28px; font-weight: 800; margin-top: 6px; }
+          .subtitle { margin-top: 6px; color: #4b5563; }
+          .meta { display: grid; gap: 6px; text-align: right; font-size: 12px; }
+          .summary { margin-top: 20px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+          .summary-card { border: 1px solid #d1d5db; border-radius: 10px; padding: 12px; }
+          .summary-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; }
+          .summary-value { margin-top: 6px; font-size: 14px; font-weight: 700; }
+          .uid-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+          .uid-card { border: 1px dashed #9ca3af; border-radius: 12px; padding: 14px; page-break-inside: avoid; }
+          .uid-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+          .uid-card-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; }
+          .uid-card-subtitle { margin-top: 4px; font-size: 13px; font-weight: 700; }
+          .uid-card-seq { font-size: 11px; color: #6b7280; }
+          .uid-card-body { margin-top: 18px; }
+          .uid-value { font-size: 22px; font-weight: 800; letter-spacing: 0.04em; word-break: break-word; }
+          .uid-meta { margin-top: 6px; font-size: 12px; color: #4b5563; }
+          table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+          th, td { border: 1px solid #d1d5db; padding: 8px 10px; text-align: left; font-size: 12px; }
+          th { background: #f3f4f6; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+          .footer-note { margin-top: 14px; font-size: 11px; color: #6b7280; }
+          @media print {
+            body { margin: 0; }
+            .page { max-width: none; padding: 18px; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="page">
+          <div class="header">
+            <div>
+              <div class="brand">SAK ERP</div>
+              <div class="title">Generated UID Labels</div>
+              <div class="subtitle">Printed immediately after SRV QC acceptance</div>
+            </div>
+            <div class="meta">
+              <div><strong>Printed At:</strong> ${printedAt}</div>
+              <div><strong>QC By:</strong> ${qcBy}</div>
+              <div><strong>Total UIDs:</strong> ${generatedUids.length}</div>
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="summary-card">
+              <div class="summary-label">Job Order</div>
+              <div class="summary-value">${jobOrderNumber}</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Item Code</div>
+              <div class="summary-value">${itemCode}</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Item Name</div>
+              <div class="summary-value">${itemName}</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">QC Date</div>
+              <div class="summary-value">${qcDate}</div>
+            </div>
+          </div>
+
+          <div class="uid-grid">${uidCards}</div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>UID</th>
+                <th>Item Code</th>
+                <th>Item Name</th>
+                <th>Job Order</th>
+              </tr>
+            </thead>
+            <tbody>${uidRows}</tbody>
+          </table>
+
+          <div class="footer-note">Keep this print with the accepted production batch for UID traceability.</div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert(`QC completed, but the UID print window was blocked. Generated UIDs: ${generatedUids.join(', ')}`);
+      return;
+    }
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.print();
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#E8DCC4] p-8">
@@ -1124,7 +1307,7 @@ export default function SrvPage() {
                                       return;
                                     }
 
-                                    await qcAcceptSrv(jobOrderId, accepted, rejected, {
+                                    const qcResult = await qcAcceptSrv(jobOrderId, accepted, rejected, {
                                       metadata: { ...qcMetadata, source: 'SRV' },
                                       items: qcFormData,
                                       checkedBy: qcFormData.reduce((acc, it) => {
@@ -1137,7 +1320,44 @@ export default function SrvPage() {
                                     await loadAll();
                                     await fetchQcSummary(jobOrderId);
                                     setShowQcModal(false);
-                                    alert('✅ QC completed successfully!');
+
+                                    const generatedUids = Array.isArray(qcResult?.generatedUids)
+                                      ? qcResult.generatedUids.map((uid) => String(uid || '').trim()).filter(Boolean)
+                                      : [];
+
+                                    if (generatedUids.length > 0) {
+                                      printGeneratedUids({
+                                        jobOrderNumber:
+                                          String(qcResult?.jobOrderNumber || selectedRow?.job_order_number || jobOrderId).trim() ||
+                                          '-',
+                                        itemCode:
+                                          String(qcResult?.itemCode || selectedRow?.item_code || qcFormData[0]?.itemCode || '').trim() ||
+                                          '-',
+                                        itemName:
+                                          String(qcResult?.itemName || selectedRow?.item_name || qcFormData[0]?.itemName || '').trim() ||
+                                          '-',
+                                        generatedUids,
+                                        qcDate: qcMetadata.qcDate,
+                                        qcBy:
+                                          resolveEmployeeLabel(qcMetadata.qcBy) !== '-'
+                                            ? resolveEmployeeLabel(qcMetadata.qcBy)
+                                            : String(
+                                                [
+                                                  currentUser?.first_name,
+                                                  currentUser?.last_name,
+                                                  currentUser?.firstName,
+                                                  currentUser?.lastName,
+                                                ]
+                                                  .filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index)
+                                                  .join(' '),
+                                              ).trim() || '-',
+                                      });
+                                      alert(
+                                        `QC completed successfully. ${generatedUids.length} UID(s) were generated and opened for print.`,
+                                      );
+                                    } else {
+                                      alert(qcResult?.message || 'QC completed successfully!');
+                                    }
                                   } catch (err: any) {
                                     alert('Failed to QC Accept: ' + (err?.response?.data?.message || err.message || err));
                                   }
