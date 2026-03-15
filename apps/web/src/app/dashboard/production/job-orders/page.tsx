@@ -90,6 +90,8 @@ interface JobOrder {
   priority: string;
   status: string;
   workflowStatus?: string;
+  linkedPrNumber?: string;
+  sivReady?: boolean;
   notes?: string;
   assignedTo?: string;
   assignedToName?: string;
@@ -170,9 +172,11 @@ function JobOrdersPageContent() {
   const todayDate = getTodayDateInputValue();
   const legacy = searchParams.get('legacy') === '1';
   const currentUser = readStoredUser();
+  const currentUserId = String((currentUser as any)?.id || (currentUser as any)?.userId || (currentUser as any)?.sub || '').trim();
   const canCreate = hasModulePermission(currentUser, 'Production', 'create');
   const canEdit = hasModulePermission(currentUser, 'Production', 'edit');
   const canApprove = hasModulePermission(currentUser, 'Production', 'approve');
+  const restrictToAssignedJobs = !!currentUserId && !canCreate && !canApprove;
 
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -205,7 +209,7 @@ function JobOrdersPageContent() {
     salesOrderId: '',
     salesOrderItemId: '',
     quantity: 1,
-    startDate: getTodayDateInputValue(),
+    startDate: `${getTodayDateInputValue()}T09:00`,
     endDate: '',
     priority: 'NORMAL',
     assignedTo: '',
@@ -246,6 +250,8 @@ function JobOrdersPageContent() {
       priority: jo.priority,
       status: jo.status,
       workflowStatus: jo.workflow_status ?? jo.workflowStatus,
+      linkedPrNumber: jo.linked_pr_number ?? jo.linkedPrNumber,
+      sivReady: Boolean(jo.siv_ready ?? jo.sivReady),
       assignedTo: jo.assigned_to || jo.assignedTo,
       assignedToName: jo.assigned_to_name || jo.assignedToName,
       notes: jo.notes,
@@ -350,7 +356,7 @@ function JobOrdersPageContent() {
 
   const fetchJobOrders = async () => {
     try {
-      const data = await apiClient.get('/job-orders');
+      const data = await apiClient.get('/job-orders', restrictToAssignedJobs ? { myAssigned: 'true' } : undefined);
       // Map snake_case to camelCase (list endpoint typically does not include materials/operations)
       const mapped = (data || []).map((jo: any) => mapJobOrderFromApi(jo));
       setJobOrders(mapped);
@@ -741,7 +747,7 @@ function JobOrdersPageContent() {
         salesOrderId: formData.salesOrderId || undefined,
         salesOrderItemId: formData.salesOrderItemId || undefined,
         quantity: formData.quantity,
-        startDate: formData.startDate,
+        startDate: new Date(formData.startDate).toISOString(),
         priority: formData.priority,
         assignedTo: formData.assignedTo || undefined,
         notes: formData.notes,
@@ -749,7 +755,7 @@ function JobOrdersPageContent() {
       
       // Only include endDate if it's not empty
       if (formData.endDate) {
-        payload.endDate = formData.endDate;
+        payload.endDate = new Date(formData.endDate).toISOString();
       }
       
       // Clean materials - include selectedVariantId if present
@@ -776,11 +782,30 @@ function JobOrdersPageContent() {
       }
       
       const response = await apiClient.post('/job-orders', payload);
+      const createdJobOrder = mapJobOrderFromApi(response);
+      const linkedPrNumber = String((response as any)?.linked_pr_number || (response as any)?.linkedPrNumber || '').trim();
+      const sivReady = Boolean((response as any)?.siv_ready ?? (response as any)?.sivReady ?? createdJobOrder.sivReady);
 
       setShowCreateModal(false);
       resetForm();
       fetchJobOrders();
-      alert('Job Order created successfully!');
+
+      if (linkedPrNumber) {
+        alert(`Job Order created successfully!\n\nPurchase Requisition issued: ${linkedPrNumber}`);
+      } else if (sivReady) {
+        const openSiv = await confirmDialog({
+          title: 'Job Order Created',
+          message: 'Materials are available. Open the SIV screen now to print and issue materials?',
+          confirmLabel: 'Open SIV Screen',
+          variant: 'warning',
+        });
+
+        if (openSiv) {
+          router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(createdJobOrder.id)}&joNumber=${encodeURIComponent(createdJobOrder.jobOrderNumber)}`);
+        }
+      } else {
+        alert('Job Order created successfully!');
+      }
     } catch (error: any) {
       
       // Check if it's an inventory shortage error
@@ -1041,7 +1066,7 @@ function JobOrdersPageContent() {
       salesOrderId: '',
       salesOrderItemId: '',
       quantity: 1,
-      startDate: getTodayDateInputValue(),
+      startDate: `${getTodayDateInputValue()}T09:00`,
       endDate: '',
       priority: 'NORMAL',
       assignedTo: '',
@@ -1062,6 +1087,7 @@ function JobOrdersPageContent() {
     const colors: Record<string, string> = {
       DRAFT: 'bg-gray-100 text-gray-800',
       SCHEDULED: 'bg-blue-100 text-blue-800',
+      PR_ISSUED: 'bg-amber-100 text-amber-900',
       IN_PROGRESS: 'bg-yellow-100 text-yellow-800',
       COMPLETED: 'bg-green-100 text-green-800',
       CANCELLED: 'bg-red-100 text-red-800',
@@ -1496,8 +1522,11 @@ function JobOrdersPageContent() {
     if (!jo) return '-';
     const base = String(jo.status || '').trim();
     const baseKey = base.toUpperCase();
+    const workflow = String(jo.workflowStatus || '').trim();
 
-    if (baseKey !== 'COMPLETED') return base || '-';
+    if (baseKey !== 'COMPLETED') return workflow || base || '-';
+
+    if (workflow && workflow.toUpperCase() !== 'COMPLETED') return workflow;
 
     if (!summary?.isQcApplied) return 'Awaiting QC';
     if ((summary?.rejectedUidsCount || 0) > 0) return 'QC Failed';
@@ -1537,7 +1566,7 @@ function JobOrdersPageContent() {
       label: 'Planned Start',
       accessor: (jo) => jo.startDate,
       sortAccessor: (jo) => (jo.startDate ? new Date(jo.startDate).getTime() : 0),
-      cell: (jo) => <span className="text-xs">{jo.startDate ? new Date(jo.startDate).toLocaleDateString() : '-'}</span>,
+      cell: (jo) => <span className="text-xs">{jo.startDate ? new Date(jo.startDate).toLocaleString() : '-'}</span>,
     },
     {
       id: 'actualStartDate',
@@ -1641,7 +1670,11 @@ function JobOrdersPageContent() {
       label: 'Actions',
       sortable: false,
       hideable: false,
-      cell: (jo) => (
+      cell: (jo) => {
+        const isAssignedToCurrentUser = !!currentUserId && String(jo.assignedTo || '').trim() === currentUserId;
+        const canOperateAssignedJob = restrictToAssignedJobs && isAssignedToCurrentUser;
+
+        return (
         <div className="whitespace-nowrap text-sm">
           <button
             type="button"
@@ -1649,6 +1682,13 @@ function JobOrdersPageContent() {
             className="text-blue-600 hover:text-blue-800 mr-3"
           >
             View
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(jo.id)}&joNumber=${encodeURIComponent(jo.jobOrderNumber)}`)}
+            className="text-slate-600 hover:text-slate-800 mr-3"
+          >
+            SIV
           </button>
           {jo.status === 'DRAFT' && canEdit && (
             <button
@@ -1660,7 +1700,7 @@ function JobOrdersPageContent() {
               Schedule
             </button>
           )}
-          {jo.status === 'SCHEDULED' && canEdit && (
+          {jo.status === 'SCHEDULED' && (canEdit || canOperateAssignedJob) && (
             <button
               type="button"
               onClick={() => handleUpdateStatus(jo.id, 'IN_PROGRESS')}
@@ -1670,16 +1710,18 @@ function JobOrdersPageContent() {
               Start
             </button>
           )}
-          {jo.status === 'IN_PROGRESS' && canApprove && (
+          {jo.status === 'IN_PROGRESS' && (canApprove || canOperateAssignedJob) && (
             <>
-              <button
-                type="button"
-                onClick={() => handlePartialCompleteJobOrder(jo)}
-                className="text-yellow-600 hover:text-yellow-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
-                disabled={loading}
-              >
-                Partial
-              </button>
+              {!canOperateAssignedJob && (
+                <button
+                  type="button"
+                  onClick={() => handlePartialCompleteJobOrder(jo)}
+                  className="text-yellow-600 hover:text-yellow-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                  disabled={loading}
+                >
+                  Partial
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => handleCompleteJobOrder(jo.id)}
@@ -1691,7 +1733,8 @@ function JobOrdersPageContent() {
             </>
           )}
         </div>
-      ),
+      );
+      },
     },
   ];
 
@@ -1886,8 +1929,7 @@ function JobOrdersPageContent() {
               <div>
                 <label className="block text-sm font-medium mb-1">Start Date *</label>
                 <input
-                  type="date"
-                  max={todayDate}
+                  type="datetime-local"
                   value={formData.startDate}
                   onChange={(e) => setFormData({...formData, startDate: e.target.value})}
                   className="w-full border rounded px-3 py-2"
@@ -2184,7 +2226,7 @@ function JobOrdersPageContent() {
                 <strong>Quantity:</strong> {selectedJobOrder.quantity}
               </div>
               <div>
-                <strong>Planned Start:</strong> {new Date(selectedJobOrder.startDate).toLocaleDateString()}
+                <strong>Planned Start:</strong> {new Date(selectedJobOrder.startDate).toLocaleString()}
               </div>
               <div>
                 <strong>Actual Start:</strong>{' '}
@@ -2230,6 +2272,12 @@ function JobOrdersPageContent() {
                 <strong>Assigned To:</strong>{' '}
                 {selectedJobOrder.assignedToName || <span className="text-gray-400">Unassigned</span>}
               </div>
+              {selectedJobOrder.linkedPrNumber ? (
+                <div>
+                  <strong>Linked PR:</strong>{' '}
+                  <span className="text-amber-700 font-medium">{selectedJobOrder.linkedPrNumber}</span>
+                </div>
+              ) : null}
               <div>
                 <strong>Status:</strong>{' '}
                 {(() => {
@@ -2267,6 +2315,13 @@ function JobOrdersPageContent() {
               {(() => {
                 return (
                   <div className="col-span-2 flex justify-end">
+                    <button
+                      onClick={() => router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(selectedJobOrder.id)}&joNumber=${encodeURIComponent(selectedJobOrder.jobOrderNumber)}`)}
+                      className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50 mr-2"
+                      title="Open Store Issue Voucher screen for this job order"
+                    >
+                      Open SIV
+                    </button>
                     <button
                       onClick={handleRetryIssueMaterials}
                       disabled={loading || ['COMPLETED', 'CANCELLED'].includes(String(selectedJobOrder.status || '').toUpperCase())}

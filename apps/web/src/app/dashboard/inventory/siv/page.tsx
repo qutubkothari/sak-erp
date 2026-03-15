@@ -13,6 +13,12 @@ type BomComponent = {
   uom: string;
 };
 
+type InventoryItem = {
+  id: string;
+  code?: string;
+  name?: string;
+};
+
 type MaterialLine = {
   id: string;
   item_id?: string;
@@ -66,6 +72,7 @@ export default function SivPage() {
   const [loading, setLoading] = useState(false);
   const [materialRequests, setMaterialRequests] = useState<MaterialReq[]>([]);
   const [sivHistory, setSivHistory] = useState<SivHistoryRow[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [activeSivView, setActiveSivView] = useState<'open' | 'history'>('open');
   const [selectedMaterialJobId, setSelectedMaterialJobId] = useState<string | null>(null);
   const [busyJobId, setBusyJobId] = useState<string | null>(null);
@@ -93,6 +100,12 @@ export default function SivPage() {
   const [uidPickerUids, setUidPickerUids] = useState<any[]>([]);
   const [uidPickerLoading, setUidPickerLoading] = useState(false);
   const [uidPickerSelected, setUidPickerSelected] = useState<string[]>([]);
+  const [manualIssueItemId, setManualIssueItemId] = useState('');
+  const [manualIssueQty, setManualIssueQty] = useState('1');
+  const [manualIssueNotes, setManualIssueNotes] = useState('');
+  const [manualIssueUidInput, setManualIssueUidInput] = useState('');
+  const [manualIssueUids, setManualIssueUids] = useState<string[]>([]);
+  const [manualIssueBusy, setManualIssueBusy] = useState(false);
 
   const openUidPicker = useCallback(async (lineId: string, itemId: string, itemCode: string, maxQty: number) => {
     setUidPickerLineId(lineId);
@@ -145,6 +158,20 @@ export default function SivPage() {
     }
   }, []);
 
+  const loadInventoryItems = useCallback(async () => {
+    try {
+      const rows = await apiClient.get<any[]>('/items');
+      const mapped = (Array.isArray(rows) ? rows : []).map((row: any) => ({
+        id: String(row?.id || '').trim(),
+        code: String(row?.code || '').trim(),
+        name: String(row?.name || '').trim(),
+      })).filter((row) => row.id);
+      setInventoryItems(mapped);
+    } catch {
+      setInventoryItems([]);
+    }
+  }, []);
+
   const fetchLineBom = useCallback(async (lineId: string, itemId: string) => {
     // Toggle collapse if already loaded
     if (lineBomData[lineId] !== undefined) {
@@ -180,7 +207,8 @@ export default function SivPage() {
 
   useEffect(() => {
     loadAll();
-  }, [loadAll]);
+    loadInventoryItems();
+  }, [loadAll, loadInventoryItems]);
 
   useEffect(() => {
     // Read jobId / joNumber from URL on client only (avoids Next.js Suspense requirement for useSearchParams).
@@ -209,6 +237,28 @@ export default function SivPage() {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [focusJobId, materialRequests]);
+
+  useEffect(() => {
+    const targetJobId = selectedMaterialJobId || focusJobId;
+    if (!targetJobId) return;
+
+    const req = materialRequests.find((row) => row.id === targetJobId);
+    if (!req?.materialLines?.length) return;
+
+    const printableLineIds = req.materialLines
+      .filter((line) => Number(line.pending_quantity || 0) > 0)
+      .filter((line) => Number(line.available_quantity || 0) + 1e-9 >= Number(line.pending_quantity || 0))
+      .map((line) => line.id);
+
+    if (printableLineIds.length === 0) return;
+
+    setSelectedLineIdsByJob((prev) => {
+      const current = prev[targetJobId] || [];
+      const next = Array.from(new Set([...current, ...printableLineIds]));
+      if (next.length === current.length) return prev;
+      return { ...prev, [targetJobId]: next };
+    });
+  }, [focusJobId, materialRequests, selectedMaterialJobId]);
 
   // Auto-select by JO number (coming from Smart JO page via ?joNumber= param)
   useEffect(() => {
@@ -286,6 +336,49 @@ export default function SivPage() {
       return rest;
     });
   }, []);
+
+  const addManualIssueUid = useCallback(() => {
+    const uid = normalizeUid(manualIssueUidInput);
+    if (!uid) return;
+    setManualIssueUids((prev) => (prev.includes(uid) ? prev : [...prev, uid]));
+    setManualIssueUidInput('');
+  }, [manualIssueUidInput, normalizeUid]);
+
+  const handleManualIssue = useCallback(async () => {
+    if (!manualIssueItemId) {
+      alert('Select an item for manual SIV.');
+      return;
+    }
+
+    const issueQuantity = Number(manualIssueQty || 0);
+    if (!Number.isFinite(issueQuantity) || issueQuantity <= 0) {
+      alert('Issue quantity must be greater than 0.');
+      return;
+    }
+
+    setManualIssueBusy(true);
+    try {
+      const result = await apiClient.post('/job-orders/store/material-requisitions/manual-issue', {
+        itemId: manualIssueItemId,
+        issueQuantity,
+        notes: manualIssueNotes || undefined,
+        uids: manualIssueUids.length > 0 ? manualIssueUids : undefined,
+      });
+
+      setManualIssueItemId('');
+      setManualIssueQty('1');
+      setManualIssueNotes('');
+      setManualIssueUidInput('');
+      setManualIssueUids([]);
+      await loadAll();
+      setActiveSivView('history');
+      alert(String((result as any)?.message || 'Manual SIV created successfully'));
+    } catch (err: any) {
+      alert('Failed to create manual SIV: ' + String(err?.response?.data?.message || err?.message || err));
+    } finally {
+      setManualIssueBusy(false);
+    }
+  }, [loadAll, manualIssueItemId, manualIssueNotes, manualIssueQty, manualIssueUids]);
 
   const scanUidForJob = useCallback(async (jobId: string) => {
     const raw = normalizeUid(scanInputByJob[jobId] || '');
@@ -694,6 +787,100 @@ export default function SivPage() {
 
         {activeSivView === 'open' && (
           <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-md p-6 border-2 border-[#8B6F47]/20">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-[#36454F]">Create SIV Without Job Order</h2>
+                  <p className="text-sm text-[#6F4E37] mt-1">Use this when stores need to issue material directly without a production job order.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-5">
+                <div className="xl:col-span-2">
+                  <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Item</label>
+                  <select
+                    value={manualIssueItemId}
+                    onChange={(e) => setManualIssueItemId(e.target.value)}
+                    className="w-full border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
+                  >
+                    <option value="">Select item</option>
+                    {inventoryItems.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {[item.code, item.name].filter(Boolean).join(' - ') || item.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Issue Quantity</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={manualIssueQty}
+                    onChange={(e) => setManualIssueQty(e.target.value)}
+                    className="w-full border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Manual UID Scan</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={manualIssueUidInput}
+                      onChange={(e) => setManualIssueUidInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addManualIssueUid();
+                        }
+                      }}
+                      className="flex-1 border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
+                      placeholder="Scan UID"
+                    />
+                    <button
+                      type="button"
+                      onClick={addManualIssueUid}
+                      className="px-3 py-2 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37] text-sm font-medium shadow-sm"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  {manualIssueUids.length > 0 ? (
+                    <div className="mt-2 text-xs text-gray-700">
+                      UIDs: {manualIssueUids.join(', ')}{' '}
+                      <button
+                        type="button"
+                        onClick={() => setManualIssueUids([])}
+                        className="ml-2 text-red-600 hover:underline"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <div className="mt-4">
+                <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Notes</label>
+                <textarea
+                  value={manualIssueNotes}
+                  onChange={(e) => setManualIssueNotes(e.target.value)}
+                  rows={2}
+                  className="w-full border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
+                  placeholder="Reason / receiver / remarks"
+                />
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleManualIssue()}
+                  disabled={!canCreate || manualIssueBusy}
+                  className="px-5 py-3 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37] font-medium shadow-sm disabled:opacity-50"
+                >
+                  {manualIssueBusy ? 'Creating...' : 'Create Manual SIV'}
+                </button>
+              </div>
+            </div>
+
             {openMaterialReqs.length === 0 && (
               <div className="bg-white rounded-lg shadow-md p-8 text-center">
                 <p className="text-gray-600">No pending material requests.</p>
@@ -720,6 +907,12 @@ export default function SivPage() {
                         Pending: {req.pendingQuantity || 0} | Issued: {req.issuedQuantity || 0} | Required:{' '}
                         {req.requiredQuantity || 0}
                       </p>
+                      {(() => {
+                        const readyCount = (req.materialLines || []).filter((line) => Number(line.pending_quantity || 0) > 0 && Number(line.available_quantity || 0) + 1e-9 >= Number(line.pending_quantity || 0)).length;
+                        return readyCount > 0 ? (
+                          <p className="text-xs text-emerald-700 mt-1">Print-ready lines: {readyCount}</p>
+                        ) : null;
+                      })()}
                     </div>
                     <div className="flex gap-3">
                       <button
@@ -1052,7 +1245,7 @@ export default function SivPage() {
               // Group rows by job_order_id
               const groupMap = new Map<string, SivHistoryRow[]>();
               for (const row of sivHistory) {
-                const key = row.job_order_id || 'unknown';
+                const key = row.job_order_id || row.job_order_number || row.id;
                 if (!groupMap.has(key)) groupMap.set(key, []);
                 groupMap.get(key)!.push(row);
               }

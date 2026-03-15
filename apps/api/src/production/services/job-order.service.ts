@@ -115,6 +115,10 @@ type SmartSubAssemblyPlan = {
   toMakeQuantity: number;
 };
 
+type LinkedPurchaseRequisitionInfo = {
+  prNumber: string;
+};
+
 @Injectable()
 export class JobOrderService {
   private readonly logger = new Logger(JobOrderService.name);
@@ -1589,14 +1593,16 @@ export class JobOrderService {
     if (!item) throw new NotFoundException('Item not found');
 
     const normalizedMaterials = await this.normalizeMaterialIds(tenantId, dto.materials || []);
+    const materialAvailability = normalizedMaterials && normalizedMaterials.length > 0
+      ? await this.checkMaterialAvailability(tenantId, normalizedMaterials, dto.quantity)
+      : { available: true, shortages: [] as any[] };
 
     // Only enforce material availability if explicitly requested.
     // (For production planning / Smart Job Orders, shortages are expected and should not block creation.)
     if (dto.validateMaterialsOnCreate && normalizedMaterials && normalizedMaterials.length > 0) {
-      const availability = await this.checkMaterialAvailability(tenantId, normalizedMaterials, dto.quantity);
-      if (!availability.available) {
+      if (!materialAvailability.available) {
         throw new BadRequestException(
-          `Insufficient materials:\n${availability.shortages
+          `Insufficient materials:\n${materialAvailability.shortages
             .map(
               (s) =>
                 `${s.itemCode} - ${s.itemName}: Need ${s.required}, Available ${s.available}, Short ${s.shortage}`,
@@ -1726,7 +1732,31 @@ export class JobOrderService {
       if (matErr) throw new BadRequestException(matErr.message);
     }
 
-    return this.findOne(tenantId, jobOrder.id);
+    let linkedPrNumber: string | null = null;
+    if (!materialAvailability.available && materialAvailability.shortages.length > 0) {
+      linkedPrNumber = await this.createShortagePurchaseRequisition(
+        tenantId,
+        userId,
+        jobOrder,
+        materialAvailability.shortages,
+      );
+
+      if (linkedPrNumber) {
+        const nextNotes = this.appendLinkedPrNote(dto.notes, linkedPrNumber);
+        await this.supabase
+          .from('production_job_orders')
+          .update({ notes: nextNotes })
+          .eq('tenant_id', tenantId)
+          .eq('id', jobOrder.id);
+      }
+    }
+
+    const created = await this.findOne(tenantId, jobOrder.id);
+    return {
+      ...created,
+      linked_pr_number: linkedPrNumber,
+      siv_ready: materialAvailability.available && normalizedMaterials.length > 0,
+    };
   }
 
   async findAll(tenantId: string, filters?: any) {
@@ -1750,6 +1780,10 @@ export class JobOrderService {
 
     if (filters?.salesOrderItemId) {
       query = query.eq('sales_order_item_id', filters.salesOrderItemId);
+    }
+
+    if (filters?.assignedTo) {
+      query = query.eq('assigned_to', filters.assignedTo);
     }
 
     if (filters?.search) {
@@ -1836,6 +1870,7 @@ export class JobOrderService {
     return rows.map((r: any) => {
       const baseStatus = String(r?.status || '').trim();
       const baseKey = baseStatus.toUpperCase();
+      const linkedPrInfo = this.extractLinkedPurchaseRequisitionInfo(r?.notes);
 
       // Default: keep raw status
       let workflowStatus = baseStatus;
@@ -1848,7 +1883,9 @@ export class JobOrderService {
 
       const srv = srvQcByJobOrderId.get(String(r?.id || '').trim()) || { qcCompleted: false, srvApproved: false };
 
-      if (baseKey === 'STORE_ISSUED') {
+      if ((baseKey === 'DRAFT' || baseKey === 'SCHEDULED') && linkedPrInfo) {
+        workflowStatus = baseKey === 'DRAFT' ? 'PR Issued' : baseStatus;
+      } else if (baseKey === 'STORE_ISSUED') {
         // Materials have been issued from store to production floor.
         // QC happens later in SRV — so this stage is "Sent to Store".
         if (srv.qcCompleted || (counts.total > 0 && counts.pending === 0)) workflowStatus = 'QC Completed';
@@ -1863,6 +1900,7 @@ export class JobOrderService {
       return {
         ...r,
         workflow_status: workflowStatus,
+        linked_pr_number: linkedPrInfo?.prNumber || null,
         qc_total_uids: counts.total,
         qc_passed_uids: counts.passed,
         qc_rejected_uids: counts.onHold,
@@ -1894,11 +1932,143 @@ export class JobOrderService {
       .select('*')
       .eq('job_order_id', id);
 
+    const linkedPrInfo = this.extractLinkedPurchaseRequisitionInfo((jobOrder as any)?.notes);
+    const baseStatus = String((jobOrder as any)?.status || '').trim();
+    const workflowStatus = linkedPrInfo && String(baseStatus).toUpperCase() === 'DRAFT'
+      ? 'PR Issued'
+      : baseStatus;
+
     return {
       ...jobOrder,
+      workflow_status: workflowStatus,
+      linked_pr_number: linkedPrInfo?.prNumber || null,
       operations: operations || [],
       materials: materials || [],
     };
+  }
+
+  private extractLinkedPurchaseRequisitionInfo(notes: unknown): LinkedPurchaseRequisitionInfo | null {
+    const text = String(notes || '').trim();
+    if (!text) return null;
+
+    const tokenMatch = text.match(/\[AUTO_PR:([^\]]+)\]/i);
+    if (tokenMatch?.[1]) {
+      return { prNumber: String(tokenMatch[1]).trim() };
+    }
+
+    const labelMatch = text.match(/PR\s+Issued\s*:\s*([A-Z0-9\/-]+)/i);
+    if (labelMatch?.[1]) {
+      return { prNumber: String(labelMatch[1]).trim() };
+    }
+
+    return null;
+  }
+
+  private appendLinkedPrNote(existingNotes: unknown, prNumber: string): string {
+    const current = String(existingNotes || '').trim();
+    if (current.includes(`[AUTO_PR:${prNumber}]`)) return current;
+
+    const addition = `PR Issued: ${prNumber} for shortage items. [AUTO_PR:${prNumber}]`;
+    return current ? `${current}\n${addition}` : addition;
+  }
+
+  private async generatePRNumber(tenantId: string): Promise<string> {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const prefix = `PR-${year}-${month}`;
+
+    const { data } = await this.supabase
+      .from('purchase_requisitions')
+      .select('pr_number')
+      .eq('tenant_id', tenantId)
+      .like('pr_number', `${prefix}%`)
+      .order('pr_number', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!data?.pr_number) return `${prefix}-001`;
+
+    const lastNumber = parseInt(String(data.pr_number).split('-').pop() || '0', 10);
+    return `${prefix}-${String((Number.isFinite(lastNumber) ? lastNumber : 0) + 1).padStart(3, '0')}`;
+  }
+
+  private async createShortagePurchaseRequisition(
+    tenantId: string,
+    userId: string,
+    jobOrder: any,
+    shortages: Array<{
+      itemId: string;
+      itemCode: string;
+      itemName: string;
+      required: number;
+      available: number;
+      shortage: number;
+    }>,
+  ): Promise<string | null> {
+    if (!Array.isArray(shortages) || shortages.length === 0) return null;
+
+    const prNumber = await this.generatePRNumber(tenantId);
+    const requiredDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const { data: pr, error } = await this.supabase
+      .from('purchase_requisitions')
+      .insert({
+        tenant_id: tenantId,
+        pr_number: prNumber,
+        request_date: new Date().toISOString().split('T')[0],
+        department: 'PRODUCTION',
+        purpose: `Shortage for Job Order ${String(jobOrder?.job_order_number || '').trim()}`,
+        requested_by: userId,
+        required_date: requiredDate,
+        status: 'DRAFT',
+        remarks: `Auto-generated from Job Order ${String(jobOrder?.job_order_number || '').trim()} [JOB_ORDER:${String(jobOrder?.id || '').trim()}]`,
+      })
+      .select('id, pr_number')
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+
+    const itemIds = shortages.map((row) => String(row.itemId || '').trim()).filter(Boolean);
+    const { data: itemRows, error: itemRowsError } = await this.supabase
+      .from('items')
+      .select('id, code, name, uom, standard_cost, selling_price')
+      .eq('tenant_id', tenantId)
+      .in('id', itemIds);
+
+    if (itemRowsError) throw new BadRequestException(itemRowsError.message);
+
+    const itemById = new Map<string, any>();
+    for (const row of itemRows || []) {
+      const itemId = String((row as any)?.id || '').trim();
+      if (itemId) itemById.set(itemId, row);
+    }
+
+    const itemsPayload = shortages.map((shortage) => {
+      const item = itemById.get(String(shortage.itemId || '').trim()) || {};
+      const estimatedRate = Number((item as any)?.standard_cost || (item as any)?.selling_price || 0) || 0;
+      return {
+        pr_id: pr.id,
+        item_code: String((item as any)?.code || shortage.itemCode || '').trim(),
+        item_name: String((item as any)?.name || shortage.itemName || '').trim(),
+        description: `Auto-generated shortage for ${String(jobOrder?.job_order_number || '').trim()}`,
+        uom: String((item as any)?.uom || 'Nos').trim() || 'Nos',
+        requested_qty: Math.max(0, Number(shortage.shortage || 0)),
+        estimated_rate: estimatedRate,
+        required_date: requiredDate,
+        remarks: `Required ${Number(shortage.required || 0)}, available ${Number(shortage.available || 0)} for Job Order ${String(jobOrder?.job_order_number || '').trim()}`,
+      };
+    }).filter((row) => row.item_code && row.item_name && row.requested_qty > 0);
+
+    if (itemsPayload.length === 0) return String(pr?.pr_number || prNumber || '').trim() || null;
+
+    const { error: itemsError } = await this.supabase
+      .from('purchase_requisition_items')
+      .insert(itemsPayload as any);
+
+    if (itemsError) throw new BadRequestException(itemsError.message);
+
+    return String(pr?.pr_number || prNumber || '').trim() || null;
   }
 
   async update(tenantId: string, id: string, dto: UpdateJobOrderDto) {
@@ -4125,6 +4295,303 @@ export class JobOrderService {
         notes: String(m?.notes || ''),
       };
     });
+  }
+
+  async createManualStoreIssueVoucher(
+    tenantId: string,
+    payload: { itemId: string; issueQuantity: number; notes?: string; uids?: string[]; userId?: string },
+  ) {
+    const itemId = String(payload?.itemId || '').trim();
+    const requestedIssueQty = Number(payload?.issueQuantity || 0);
+    const movedBy = String(payload?.userId || '').trim();
+    const manualNotes = String(payload?.notes || '').trim();
+    const normalizedUids = Array.from(
+      new Set(
+        (Array.isArray(payload?.uids) ? payload.uids : [])
+          .map((uid) => String(uid || '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (!this.isUuid(itemId)) throw new BadRequestException('Valid itemId is required');
+    if (!Number.isFinite(requestedIssueQty) || requestedIssueQty <= 0) {
+      throw new BadRequestException('issueQuantity must be greater than 0');
+    }
+    if (!movedBy || !this.isUuid(movedBy)) throw new BadRequestException('Valid userId is required');
+
+    const { data: item, error: itemError } = await this.supabase
+      .from('items')
+      .select('id, code, name, category, uid_tracking, uid_strategy, batch_quantity')
+      .eq('tenant_id', tenantId)
+      .eq('id', itemId)
+      .single();
+
+    if (itemError) throw new BadRequestException(itemError.message);
+
+    await this.ensureStockEntriesAtLeastInventoryAvailable(tenantId, itemId);
+
+    const uidTrackingEnabled = (item as any)?.uid_tracking === true && String((item as any)?.uid_strategy || '').toUpperCase() !== 'NONE';
+    const uidStrategy = String((item as any)?.uid_strategy || (uidTrackingEnabled ? 'SERIALIZED' : 'NONE')).toUpperCase();
+    const rawBatchQty = Number((item as any)?.batch_quantity);
+    const qtyPerUid = uidStrategy === 'BATCHED' ? (Number.isFinite(rawBatchQty) && rawBatchQty > 0 ? rawBatchQty : NaN) : 1;
+
+    if (uidTrackingEnabled && uidStrategy === 'BATCHED' && !Number.isFinite(qtyPerUid)) {
+      throw new BadRequestException('Item UID strategy is BATCHED but batch_quantity is missing/invalid in Item Master');
+    }
+
+    const requiresUidMapping = uidTrackingEnabled || normalizedUids.length > 0;
+    if (uidTrackingEnabled && normalizedUids.length === 0) {
+      throw new BadRequestException('This item requires UID mapping. Please scan UIDs before issuing.');
+    }
+
+    const issueQtyFromUids = normalizedUids.length > 0 ? normalizedUids.length * qtyPerUid : 0;
+    if (normalizedUids.length > 0 && Math.abs(issueQtyFromUids - requestedIssueQty) > 1e-9) {
+      const extra = uidStrategy === 'BATCHED' ? ` (batch_quantity=${qtyPerUid})` : '';
+      throw new BadRequestException(`issueQuantity must match scanned UIDs${extra}`);
+    }
+
+    if (requiresUidMapping) {
+      const { data: uidRows, error: uidErr } = await this.supabase
+        .from('uid_registry')
+        .select('uid, status, entity_id')
+        .eq('tenant_id', tenantId)
+        .in('uid', normalizedUids);
+
+      if (uidErr) throw new BadRequestException(uidErr.message);
+
+      const byUid = new Map<string, any>();
+      for (const row of uidRows || []) {
+        const uid = String((row as any)?.uid || '').trim();
+        if (uid) byUid.set(uid, row);
+      }
+
+      const missing = normalizedUids.filter((uid) => !byUid.has(uid));
+      if (missing.length > 0) {
+        throw new BadRequestException(`Unknown UID(s): ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}`);
+      }
+
+      for (const uid of normalizedUids) {
+        const row = byUid.get(uid);
+        const status = String((row as any)?.status || '').trim();
+        const entityId = String((row as any)?.entity_id || '').trim();
+        if (!['ACTIVE', 'GENERATED', 'IN_STOCK'].includes(status)) {
+          throw new BadRequestException(`UID ${uid} cannot be issued (status=${status || 'N/A'})`);
+        }
+        if (entityId !== itemId) {
+          throw new BadRequestException(`UID ${uid} does not belong to the selected item`);
+        }
+      }
+    }
+
+    const { data: stockEntries, error: stockError } = await this.supabase
+      .from('stock_entries')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .gt('available_quantity', 0)
+      .order('created_at', { ascending: true });
+
+    if (stockError) throw new BadRequestException(stockError.message);
+
+    const safeEntries = Array.isArray(stockEntries) ? stockEntries : [];
+    const preferredWarehouseId = requiresUidMapping ? String((safeEntries[0] as any)?.warehouse_id || '').trim() : '';
+    const relevantEntries = requiresUidMapping && preferredWarehouseId
+      ? safeEntries.filter((entry: any) => String(entry?.warehouse_id || '').trim() === preferredWarehouseId)
+      : safeEntries;
+
+    const totalAvailable = relevantEntries.reduce((sum, entry: any) => sum + (Number(entry?.available_quantity) || 0), 0);
+    let uidRegistryCount = 0;
+    if (requiresUidMapping && normalizedUids.length > 0) {
+      const { count } = await this.supabase
+        .from('uid_registry')
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('entity_id', itemId)
+        .in('status', ['GENERATED', 'IN_STOCK']);
+      uidRegistryCount = count || 0;
+    }
+
+    const effectiveAvailable = requiresUidMapping ? Math.max(totalAvailable, uidRegistryCount) : totalAvailable;
+    const issueTargetQty = normalizedUids.length > 0 ? issueQtyFromUids : requestedIssueQty;
+
+    if (requiresUidMapping && effectiveAvailable + 1e-9 < issueTargetQty) {
+      throw new BadRequestException(`Insufficient stock to issue scanned UIDs. Required=${issueTargetQty}, available=${effectiveAvailable}`);
+    }
+
+    const issueNow = Math.max(0, Math.min(issueTargetQty, effectiveAvailable));
+    if (issueNow <= 0) throw new BadRequestException('No stock available to issue for the selected item');
+
+    const voucherNumber = await this.generateMovementNumber(tenantId, 'PRODUCTION_ISSUE');
+    let remainingToConsume = issueNow;
+
+    for (const entry of relevantEntries) {
+      if (remainingToConsume <= 0) break;
+
+      const entryAvailable = Number((entry as any)?.available_quantity || 0);
+      const toConsumeFromEntry = Math.min(entryAvailable, remainingToConsume);
+      if (toConsumeFromEntry <= 0) continue;
+
+      const warehouseId = String((entry as any)?.warehouse_id || '').trim();
+      if (!warehouseId || !this.isUuid(warehouseId)) {
+        throw new BadRequestException(`Stock entry ${(entry as any)?.id} has invalid warehouse_id`);
+      }
+
+      const { error: updateError } = await this.supabase
+        .from('stock_entries')
+        .update({
+          available_quantity: entryAvailable - toConsumeFromEntry,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', (entry as any)?.id);
+
+      if (updateError) throw new BadRequestException(updateError.message);
+
+      try {
+        await this.adjustInventoryStockWithFallback({
+          tenantId,
+          itemId,
+          warehouseId,
+          locationId: null,
+          quantityChange: -toConsumeFromEntry,
+          category: normalizeInventoryCategory((item as any)?.category, 'RAW_MATERIAL'),
+          context: {
+            source: 'MANUAL_SIV',
+            stockEntryId: String((entry as any)?.id || '').trim(),
+            voucherNumber,
+          },
+        });
+      } catch (error) {
+        await this.supabase
+          .from('stock_entries')
+          .update({ available_quantity: entryAvailable, updated_at: new Date().toISOString() })
+          .eq('id', (entry as any)?.id);
+        throw error;
+      }
+
+      if (!requiresUidMapping) {
+        const { error: movementError } = await this.supabase
+          .from('stock_movements')
+          .insert({
+            tenant_id: tenantId,
+            movement_number: voucherNumber,
+            movement_type: 'PRODUCTION_ISSUE',
+            item_id: itemId,
+            from_warehouse_id: warehouseId,
+            quantity: toConsumeFromEntry,
+            reference_type: 'SIV',
+            reference_id: null,
+            reference_number: voucherNumber,
+            notes: manualNotes || `Manual SIV: Issued ${toConsumeFromEntry} of ${String((item as any)?.code || '').trim()} (${String((item as any)?.name || '').trim()})`,
+            moved_by: movedBy,
+            movement_date: new Date().toISOString(),
+          } as any);
+
+        if (movementError) throw new BadRequestException(movementError.message);
+      }
+
+      remainingToConsume -= toConsumeFromEntry;
+    }
+
+    const issuedNow = normalizedUids.length > 0 && normalizedUids.length >= issueTargetQty
+      ? issueTargetQty
+      : Math.max(0, issueNow - remainingToConsume);
+
+    if (requiresUidMapping) {
+      const warehouseId = preferredWarehouseId && this.isUuid(preferredWarehouseId) ? preferredWarehouseId : null;
+      const uidMovementNumbers: string[] = [];
+      const uidsToConsumeCount = Math.min(
+        normalizedUids.length,
+        qtyPerUid > 0 ? Math.floor(issuedNow / qtyPerUid + 1e-9) : normalizedUids.length,
+      );
+      const uidsToRecord = normalizedUids.slice(0, uidsToConsumeCount);
+
+      for (let index = 0; index < uidsToRecord.length; index += 1) {
+        uidMovementNumbers.push(await this.generateMovementNumber(tenantId, 'PRODUCTION_ISSUE'));
+      }
+
+      const rows = uidsToRecord.map((uid, index) => ({
+        tenant_id: tenantId,
+        movement_number: uidMovementNumbers[index],
+        movement_type: 'PRODUCTION_ISSUE',
+        item_id: itemId,
+        uid,
+        from_warehouse_id: warehouseId,
+        quantity: qtyPerUid,
+        reference_type: 'SIV',
+        reference_id: null,
+        reference_number: voucherNumber,
+        notes: manualNotes || `Manual SIV: Issued UID ${uid} for ${String((item as any)?.code || '').trim()}`,
+        moved_by: movedBy,
+        movement_date: new Date().toISOString(),
+      }));
+
+      if (rows.length > 0) {
+        const { error: rowsError } = await this.supabase.from('stock_movements').insert(rows as any);
+        if (rowsError) throw new BadRequestException(rowsError.message);
+      }
+
+      const { data: uidRows, error: uidRowsError } = await this.supabase
+        .from('uid_registry')
+        .select('uid, lifecycle, metadata')
+        .eq('tenant_id', tenantId)
+        .in('uid', uidsToRecord);
+
+      if (uidRowsError) throw new BadRequestException(uidRowsError.message);
+
+      for (const row of uidRows || []) {
+        const uid = String((row as any)?.uid || '').trim();
+        if (!uid) continue;
+
+        const rawLifecycle = (row as any)?.lifecycle;
+        const rawMetadata = (row as any)?.metadata;
+        const currentLifecycle = Array.isArray(rawLifecycle)
+          ? rawLifecycle
+          : rawLifecycle
+            ? JSON.parse(String(rawLifecycle))
+            : [];
+        const currentMetadata = rawMetadata && typeof rawMetadata === 'object'
+          ? rawMetadata
+          : rawMetadata
+            ? JSON.parse(String(rawMetadata))
+            : {};
+
+        await this.supabase
+          .from('uid_registry')
+          .update({
+            status: 'CONSUMED',
+            location: `Issued via ${voucherNumber}`,
+            lifecycle: [
+              ...currentLifecycle,
+              {
+                stage: 'SIV_ISSUED',
+                timestamp: new Date().toISOString(),
+                user: movedBy,
+                voucher_number: voucherNumber,
+                manual: true,
+              },
+            ],
+            metadata: {
+              ...currentMetadata,
+              siv_issued_at: new Date().toISOString(),
+              siv_issued_by: movedBy,
+              siv_reference_number: voucherNumber,
+              siv_manual: true,
+            },
+          } as any)
+          .eq('tenant_id', tenantId)
+          .eq('uid', uid);
+      }
+    }
+
+    return {
+      voucherNumber,
+      itemId,
+      itemCode: String((item as any)?.code || '').trim(),
+      itemName: String((item as any)?.name || '').trim(),
+      issuedNow,
+      uidCount: normalizedUids.length,
+      message: `Manual SIV ${voucherNumber} created successfully`,
+    };
   }
 
   async updateStoreIssueVoucherHistoryRow(

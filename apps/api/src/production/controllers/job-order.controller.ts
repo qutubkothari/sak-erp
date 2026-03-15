@@ -125,7 +125,13 @@ export class JobOrderController {
   @Get()
   async findAll(@Request() req: any, @Query() filters: any) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
-    return this.jobOrderService.findAll(tenantId, filters);
+    const userId = req.user?.id || req.user?.userId || req.user?.sub;
+    const nextFilters = { ...(filters || {}) };
+    if (nextFilters?.myAssigned === 'true' || nextFilters?.myAssigned === true) {
+      nextFilters.assignedTo = userId;
+      delete nextFilters.myAssigned;
+    }
+    return this.jobOrderService.findAll(tenantId, nextFilters);
   }
 
   @Get(':id')
@@ -290,6 +296,22 @@ export class JobOrderController {
         `Failed to issue material (v5): ${error?.message || 'Unknown error'}. Context: jobOrder=${id}, material=${body?.materialId}, qty=${body?.issueQuantity}. Raw: ${JSON.stringify(error?.response || 'no-response-data')}`,
       );
     }
+  }
+
+  @Post('store/material-requisitions/manual-issue')
+  async createManualStoreIssueVoucher(
+    @Request() req: any,
+    @Body() body: { itemId: string; issueQuantity: number; notes?: string; uids?: string[] },
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
+    return this.jobOrderService.createManualStoreIssueVoucher(tenantId, {
+      itemId: body?.itemId,
+      issueQuantity: body?.issueQuantity,
+      notes: body?.notes,
+      uids: Array.isArray(body?.uids) ? body.uids : undefined,
+      userId,
+    });
   }
 
   @Put('store/material-requisitions/history/:movementId')
