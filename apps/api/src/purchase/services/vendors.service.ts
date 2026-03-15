@@ -96,6 +96,21 @@ function fallbackContacts(data: any): VendorContact[] {
   return contact.name || contact.phone || contact.email ? [contact] : [];
 }
 
+function mapDeleteAuditError(error: any, resourceLabel: string): string {
+  const details = String(error?.details || '');
+  const message = String(error?.message || '');
+
+  if (
+    error?.code === '23502' &&
+    (message.includes('activity_logs') || details.includes('activity_logs')) &&
+    (message.includes('user_id') || details.includes('user_id'))
+  ) {
+    return `Failed to delete ${resourceLabel}: database delete audit is misconfigured. Apply fix-delete-audit-trigger.sql and retry.`;
+  }
+
+  return `Failed to delete ${resourceLabel}: ${message || 'Unknown error'}`;
+}
+
 function gstinChecksumValid(gstin: string): boolean {
   const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   let factor = 2;
@@ -312,14 +327,18 @@ export class VendorsService {
     return this.findOne(tenantId, id);
   }
 
-  async delete(tenantId: string, id: string) {
+  async delete(tenantId: string, userId: string, id: string) {
     const { error } = await this.supabase
       .from('vendors')
       .delete()
       .eq('tenant_id', tenantId)
       .eq('id', id);
 
-    if (error) throw new BadRequestException(error.message);
+    void userId;
+
+    if (error) {
+      throw new BadRequestException(mapDeleteAuditError(error, 'vendor'));
+    }
     return { message: 'Vendor deleted successfully' };
   }
 

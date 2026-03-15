@@ -7,6 +7,21 @@ import {
 } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 
+function mapDeleteAuditError(error: any, resourceLabel: string): string {
+  const details = String(error?.details || '');
+  const message = String(error?.message || '');
+
+  if (
+    error?.code === '23502' &&
+    (message.includes('activity_logs') || details.includes('activity_logs')) &&
+    (message.includes('user_id') || details.includes('user_id'))
+  ) {
+    return `Failed to delete ${resourceLabel}: database delete audit is misconfigured. Apply fix-delete-audit-trigger.sql and retry.`;
+  }
+
+  return `Failed to delete ${resourceLabel}: ${message || 'Unknown error'}`;
+}
+
 @Injectable()
 export class ItemsService {
   private supabase = createClient(
@@ -582,7 +597,7 @@ export class ItemsService {
     return data;
   }
 
-  async delete(tenantId: string, id: string) {
+  async delete(tenantId: string, userId: string, id: string) {
     // Soft delete
     const { error } = await this.supabase
       .from('items')
@@ -590,8 +605,10 @@ export class ItemsService {
       .eq('tenant_id', tenantId)
       .eq('id', id);
 
+    void userId;
+
     if (error) {
-      throw new Error(`Failed to delete item: ${error.message}`);
+      throw new Error(mapDeleteAuditError(error, 'item'));
     }
 
     return { message: 'Item deleted successfully' };

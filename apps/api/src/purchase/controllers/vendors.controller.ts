@@ -70,6 +70,6 @@ export class VendorsController {
   @Delete(':id')
   @RequireDelete('vendors')
   async delete(@Request() req: any, @Param('id') id: string) {
-    return this.vendorsService.delete(req.user.tenantId, id);
+    return this.vendorsService.delete(req.user.tenantId, req.user.userId, id);
   }
 }
