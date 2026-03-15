@@ -1,7 +1,8 @@
-import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, Get } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -42,6 +43,13 @@ export class AuthController {
   @ApiOperation({ summary: 'User logout' })
   async logout(@Request() req: any) {
     return this.authService.logout(req.user?.id);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get current user with latest roles and permissions' })
+  async me(@Request() req: any) {
+    return this.authService.validateUser(req.user.id, req.user.tenantId);
   }
 
   @Post('change-password')

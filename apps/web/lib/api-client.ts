@@ -371,6 +371,10 @@ class ApiClient {
     return response;
   }
 
+  async getCurrentUser(): Promise<LoginResponse['user']> {
+    return this.get<LoginResponse['user']>('/auth/me');
+  }
+
   /**
    * Check if user is authenticated
    */

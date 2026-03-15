@@ -3984,9 +3984,11 @@ export class JobOrderService {
         const receiptEntry = latestReceiptByJob.get(String(jo.id)) || null;
         const meta = receiptEntry?.metadata || {};
         const srvApprovedAt = meta?.srv_approved_at || null;
+        const hasPendingReceiptApproval = Boolean(receiptEntry?.id) && !srvApprovedAt && pendingQty <= 0;
 
         return {
           id: String(jo.id),
+          entry_id: hasPendingReceiptApproval ? receiptEntry?.id || null : null,
           job_order_id: String(jo.id),
           job_order_number: jo.job_order_number,
           item_id: jo.item_id,
@@ -3995,14 +3997,14 @@ export class JobOrderService {
           uid: null,
           quantity: pendingQty,
           to_warehouse_id: null,
-          movement_date: meta?.received_at || jo.actual_end_date || jo.created_at || null,
-          received_by: meta?.received_by_name || meta?.received_by || null,
-          approved_by: meta?.srv_approved_by || null,
-          approved_at: meta?.srv_approved_at || null,
+          movement_date: hasPendingReceiptApproval ? meta?.received_at || jo.actual_end_date || jo.created_at || null : jo.actual_end_date || jo.created_at || null,
+          received_by: hasPendingReceiptApproval ? meta?.received_by_name || meta?.received_by || null : null,
+          approved_by: hasPendingReceiptApproval ? meta?.srv_approved_by || null : null,
+          approved_at: hasPendingReceiptApproval ? meta?.srv_approved_at || null : null,
           notes: null,
           // internal/debug fields (ignored by UI)
-          _srv_stock_entry_id: receiptEntry?.id || null,
-          _srv_approved_at: srvApprovedAt,
+          _srv_stock_entry_id: hasPendingReceiptApproval ? receiptEntry?.id || null : null,
+          _srv_approved_at: hasPendingReceiptApproval ? srvApprovedAt : null,
           _produced_qty: producedQty,
           _received_qty: alreadyReceivedQty,
         };
@@ -4485,7 +4487,7 @@ export class JobOrderService {
               {
                 stage: 'SRV_DELETED',
                 timestamp: new Date().toISOString(),
-                srv_entry_id: entryId,
+                srv_entry_id: resolved.id,
                 user: String(userId || '').trim() || null,
               },
             ],
@@ -4504,10 +4506,10 @@ export class JobOrderService {
       .from('stock_entries')
       .delete()
       .eq('tenant_id', tenantId)
-      .eq('id', entryId);
+      .eq('id', resolved.id);
     if (delErr) throw new BadRequestException(delErr.message);
 
-    return { id: entryId, message: 'Deleted' };
+    return { id: resolved.id, message: 'Deleted' };
   }
 
   async receiveStoreReceiptVoucher(
@@ -4650,6 +4652,7 @@ export class JobOrderService {
       const singleUid = receivedUids.length === 1 ? String(receivedUids[0] || '').trim() : '';
       return {
         id: e.id,
+        entry_id: e.id,
         job_order_id: meta?.job_order_id || null,
         job_order_number: meta?.job_order_number || null,
         item_id: e.item_id,

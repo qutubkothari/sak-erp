@@ -16,6 +16,7 @@ function getApiV1BaseUrl(): string | null {
 
 type ReceiptVoucherRow = {
   id: string;
+  entry_id?: string | null;
   job_order_id?: string;
   job_order_number?: string;
   item_id?: string;
@@ -46,6 +47,11 @@ type Warehouse = {
 
 function isUuidLike(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function getSrvRowIdentity(row: ReceiptVoucherRow | null | undefined): string {
+  if (!row) return '';
+  return String(row.entry_id || row.id || '').trim();
 }
 
 export default function SrvPage() {
@@ -342,7 +348,11 @@ export default function SrvPage() {
 
   const openView = useCallback(
     async (row: ReceiptVoucherRow) => {
-      const receiptRow = openSrvs.find((o) => o.id === row.id) || srvHistory.find((h) => h.id === row.id) || row;
+      const rowIdentity = getSrvRowIdentity(row);
+      const receiptRow =
+        openSrvs.find((o) => getSrvRowIdentity(o) === rowIdentity) ||
+        srvHistory.find((h) => getSrvRowIdentity(h) === rowIdentity) ||
+        row;
       setSelectedRow(receiptRow);
 
       const jobOrderId = String(receiptRow.job_order_id || receiptRow.id || '').trim();
@@ -394,7 +404,8 @@ export default function SrvPage() {
 
   const receiveSrv = useCallback(
     async (row: ReceiptVoucherRow, qty: number) => {
-      await apiClient.post(`/job-orders/store/receipt-vouchers/${row.id}/receive`, {
+      const jobOrderId = String(row.job_order_id || row.id || '').trim();
+      await apiClient.post(`/job-orders/store/receipt-vouchers/${jobOrderId}/receive`, {
         receiverName,
         receiverPhone,
         receivedQuantity: qty,
@@ -404,7 +415,8 @@ export default function SrvPage() {
   );
 
   const approveSrv = useCallback(async (row: ReceiptVoucherRow) => {
-    await apiClient.put(`/job-orders/store/receipt-vouchers/${row.id}/approve`, {});
+    const entryOrJobOrderId = String(row.entry_id || row.id || '').trim();
+    await apiClient.put(`/job-orders/store/receipt-vouchers/${entryOrJobOrderId}/approve`, {});
   }, []);
 
   const approveAllPending = useCallback(async () => {
@@ -422,7 +434,7 @@ export default function SrvPage() {
     let failed = 0;
     for (const row of pending) {
       try {
-        await apiClient.put(`/job-orders/store/receipt-vouchers/${row.id}/approve`, {});
+        await apiClient.put(`/job-orders/store/receipt-vouchers/${String(row.entry_id || row.id || '').trim()}/approve`, {});
         succeeded++;
       } catch {
         failed++;
@@ -674,7 +686,7 @@ export default function SrvPage() {
                     </tr>
                   )}
                   {openSrvs.map((row) => (
-                    <tr key={row.id} className="hover:bg-[#E8DCC4]/30">
+                    <tr key={getSrvRowIdentity(row)} className="hover:bg-[#E8DCC4]/30">
                       <td className="px-6 py-4 text-sm font-medium text-[#36454F]">
                         {row.job_order_number || row.job_order_id}
                       </td>
@@ -705,7 +717,7 @@ export default function SrvPage() {
                           </button>
                           {canDelete && (
                           <button
-                            onClick={() => deleteSrv(row.id)}
+                            onClick={() => deleteSrv(String(row.entry_id || row.id || '').trim())}
                             className="text-red-600 hover:text-red-900 font-medium"
                           >
                             Delete
@@ -776,7 +788,7 @@ export default function SrvPage() {
                     </tr>
                   )}
                   {srvHistory.map((row) => (
-                    <tr key={row.id} className="hover:bg-[#E8DCC4]/30">
+                    <tr key={getSrvRowIdentity(row)} className="hover:bg-[#E8DCC4]/30">
                       <td className="px-6 py-4 text-sm font-medium text-[#36454F]">
                         {row.job_order_number || row.job_order_id}
                       </td>
@@ -818,7 +830,7 @@ export default function SrvPage() {
                           </button>
                           {canDelete && (
                           <button
-                            onClick={() => deleteSrv(row.id)}
+                            onClick={() => deleteSrv(String(row.entry_id || row.id || '').trim())}
                             className="text-red-600 hover:text-red-900 font-medium"
                           >
                             Delete
@@ -1085,7 +1097,7 @@ export default function SrvPage() {
                         <button
                           onClick={async () => {
                             try {
-                              await deleteSrv(selectedRow.id);
+                              await deleteSrv(String(selectedRow.entry_id || selectedRow.id || '').trim());
                               setShowViewModal(false);
                               setSelectedRow(null);
                             } catch (err: any) {

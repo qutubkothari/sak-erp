@@ -1,0 +1,111 @@
+const DATE_FORMAT_PATCH_FLAG = Symbol.for('sak-erp.date-format-patched');
+
+type DateLocaleArg = string | string[] | undefined;
+
+type PatchedDateConstructor = DateConstructor & {
+  [DATE_FORMAT_PATCH_FLAG]?: boolean;
+};
+
+const originalToLocaleDateString = Date.prototype.toLocaleDateString;
+const originalToLocaleString = Date.prototype.toLocaleString;
+
+function shouldNormalizeLocale(locales?: DateLocaleArg): boolean {
+  if (locales == null) return true;
+  if (Array.isArray(locales)) {
+    return locales.length === 0 || locales.some((locale) => String(locale || '').trim().toLowerCase() === 'en-in');
+  }
+
+  return String(locales || '').trim().toLowerCase() === 'en-in';
+}
+
+function buildNormalizedDateOptions(
+  options: Intl.DateTimeFormatOptions | undefined,
+  includeTime: boolean,
+): Intl.DateTimeFormatOptions {
+  const normalized: Intl.DateTimeFormatOptions = {
+    ...(options || {}),
+  };
+
+  const hasExplicitDateOptions = Boolean(
+    normalized.dateStyle ||
+      normalized.weekday ||
+      normalized.era ||
+      normalized.day ||
+      normalized.month ||
+      normalized.year,
+  );
+
+  const hasExplicitTimeOptions = Boolean(
+    normalized.timeStyle ||
+      normalized.hour ||
+      normalized.minute ||
+      normalized.second ||
+      normalized.fractionalSecondDigits ||
+      normalized.timeZoneName,
+  );
+
+  if (!hasExplicitDateOptions) {
+    normalized.day = '2-digit';
+    normalized.month = '2-digit';
+    normalized.year = 'numeric';
+  }
+
+  if (!includeTime) {
+    delete normalized.timeStyle;
+    delete normalized.hour;
+    delete normalized.minute;
+    delete normalized.second;
+    delete normalized.fractionalSecondDigits;
+    delete normalized.timeZoneName;
+    delete normalized.hour12;
+    return normalized;
+  }
+
+  if (!hasExplicitTimeOptions && !hasExplicitDateOptions) {
+    normalized.hour = '2-digit';
+    normalized.minute = '2-digit';
+    normalized.second = '2-digit';
+    normalized.hour12 = false;
+  }
+
+  return normalized;
+}
+
+export function installDateFormatDefaults(): void {
+  const patchedDate = Date as PatchedDateConstructor;
+  if (patchedDate[DATE_FORMAT_PATCH_FLAG]) return;
+
+  Date.prototype.toLocaleDateString = function toLocaleDateStringPatched(
+    locales?: DateLocaleArg,
+    options?: Intl.DateTimeFormatOptions,
+  ): string {
+    if (!shouldNormalizeLocale(locales)) {
+      return originalToLocaleDateString.call(this, locales as any, options);
+    }
+
+    return originalToLocaleDateString.call(
+      this,
+      'en-GB',
+      buildNormalizedDateOptions(options, false),
+    );
+  };
+
+  Date.prototype.toLocaleString = function toLocaleStringPatched(
+    locales?: DateLocaleArg,
+    options?: Intl.DateTimeFormatOptions,
+  ): string {
+    if (!shouldNormalizeLocale(locales)) {
+      return originalToLocaleString.call(this, locales as any, options);
+    }
+
+    return originalToLocaleString.call(
+      this,
+      'en-GB',
+      buildNormalizedDateOptions(options, true),
+    );
+  };
+
+  patchedDate[DATE_FORMAT_PATCH_FLAG] = true;
+}
+
+installDateFormatDefaults();

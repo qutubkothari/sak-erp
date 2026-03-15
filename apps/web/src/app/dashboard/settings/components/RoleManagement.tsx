@@ -107,6 +107,24 @@ function buildScreenPermissions(permissions: Permission[]): Permission[] {
   });
 }
 
+function buildModulePermissionsFromScreens(screenPermissions: Permission[]): Permission[] {
+  return MODULES.map((module) => {
+    const moduleScreens = screenPermissions.filter((permission) => permission.module === module);
+
+    return moduleScreens.reduce(
+      (merged, permission) => ({
+        ...merged,
+        view: merged.view || !!permission.view,
+        create: merged.create || !!permission.create,
+        edit: merged.edit || !!permission.edit,
+        delete: merged.delete || !!permission.delete,
+        approve: merged.approve || !!permission.approve,
+      }),
+      makeDefaultModulePermission(module),
+    );
+  });
+}
+
 function getPermissionLabel(permission: Permission): string {
   if (permission.screen) {
     return SCREEN_LABELS.get(permission.screen) || permission.screen;
@@ -372,9 +390,10 @@ function RoleModal({
     setLoading(true);
 
     try {
+      const derivedModulePermissions = buildModulePermissionsFromScreens(screenPermissions);
       const payload = {
         ...formData,
-        permissions: [...modulePermissions, ...screenPermissions],
+        permissions: [...derivedModulePermissions, ...screenPermissions],
       };
 
       if (role) {

@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import '../lib/install-date-format';
 import './globals.css';
 import { Providers } from '@/components/providers';
+import DateLocaleBootstrap from '@/components/DateLocaleBootstrap';
 import ModalEnhancer from '@/components/ModalEnhancer';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -23,6 +25,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <Providers>
+          <DateLocaleBootstrap />
           {children}
           <ModalEnhancer />
         </Providers>

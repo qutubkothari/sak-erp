@@ -2112,13 +2112,6 @@ function SmartJobOrdersItemsPageContent() {
             >
               {loadingPreview ? 'Loading…' : 'Load BOM'}
             </button>
-            <button
-              onClick={handleCreate}
-              disabled={!canPreview || creating}
-              className="px-4 py-2 rounded-lg bg-[#8B6F47] text-white hover:bg-[#6F4E37] disabled:opacity-50"
-            >
-              {creating ? 'Creating…' : 'Create Job Order'}
-            </button>
           </div>
         </div>
 

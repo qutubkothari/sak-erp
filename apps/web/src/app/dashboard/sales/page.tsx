@@ -694,6 +694,11 @@ export default function SalesPage() {
   };
 
   const handleEditWarranty = (warranty: Warranty) => {
+    if (!canEdit) {
+      alert('You do not have permission to edit warranties');
+      return;
+    }
+
     setEditingWarrantyId(warranty.id);
     setWarrantyEditForm({
       status: warranty.status || 'ACTIVE',
@@ -705,6 +710,10 @@ export default function SalesPage() {
   const handleSaveWarranty = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingWarrantyId) return;
+    if (!canEdit) {
+      alert('You do not have permission to edit warranties');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -721,6 +730,11 @@ export default function SalesPage() {
   };
 
   const handleDeleteWarranty = async (warranty: Warranty) => {
+    if (!canDelete) {
+      alert('You do not have permission to delete warranties');
+      return;
+    }
+
     const confirmed = await confirmDialog({
       title: 'Delete Warranty',
       message: `Delete warranty ${warranty.warranty_number}?`,
@@ -3178,20 +3192,24 @@ export default function SalesPage() {
                           >
                             Print
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleEditWarranty(warranty)}
-                            className="text-amber-600 hover:text-amber-900"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteWarranty(warranty)}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            Delete
-                          </button>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => handleEditWarranty(warranty)}
+                              className="text-amber-600 hover:text-amber-900"
+                            >
+                              Edit
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteWarranty(warranty)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

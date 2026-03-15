@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date';
 
 /** Merge Tailwind classes safely */
 export function cn(...inputs: ClassValue[]) {
@@ -20,26 +21,27 @@ export function formatCurrency(amount: number | null | undefined, currency = 'IN
 /** Format a date string to a readable date */
 export function formatDate(
   date: string | Date | null | undefined,
-  opts: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' },
+  opts: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', year: 'numeric' },
 ): string {
+  if (
+    opts.day === '2-digit' &&
+    opts.month === '2-digit' &&
+    opts.year === 'numeric' &&
+    !opts.weekday &&
+    !opts.dateStyle
+  ) {
+    return formatDisplayDate(date);
+  }
+
   if (!date) return '—';
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-IN', opts);
+  return d.toLocaleDateString('en-GB', opts);
 }
 
 /** Format a date-time string to a readable datetime */
 export function formatDateTime(date: string | Date | null | undefined): string {
-  if (!date) return '—';
-  const d = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(d.getTime())) return '—';
-  return d.toLocaleString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDisplayDateTime(date);
 }
 
 /** Clamp a value between min and max */

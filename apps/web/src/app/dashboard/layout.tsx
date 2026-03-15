@@ -6,11 +6,13 @@ import Sidebar from '../../components/Sidebar';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { CommandPalette } from '@/components/CommandPalette';
 import { ConfirmDialogProvider } from '@/components/ui/ConfirmDialog';
+import { useAuthStore } from '@/stores/auth.store';
 import {
   getDefaultLandingPath,
   isPathAllowedForUser,
   readStoredUser,
 } from '../../lib/rbac';
+import { apiClient } from '../../../lib/api-client';
 
 export default function DashboardLayout({
   children,
@@ -20,6 +22,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { setUser } = useAuthStore();
 
   // Persist sidebar state
   useEffect(() => {
@@ -44,6 +47,34 @@ export default function DashboardLayout({
       router.replace(getDefaultLandingPath(user));
     }
   }, [pathname, router]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncCurrentUser = async () => {
+      if (typeof window === 'undefined') return;
+      if (!localStorage.getItem('accessToken')) return;
+
+      try {
+        const currentUser = await apiClient.getCurrentUser();
+        if (cancelled || !currentUser) return;
+
+        setUser(currentUser);
+
+        if (pathname && !isPathAllowedForUser(currentUser, pathname)) {
+          router.replace(getDefaultLandingPath(currentUser));
+        }
+      } catch {
+        // Keep the last cached user if the refresh fails.
+      }
+    };
+
+    syncCurrentUser();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, router, setUser]);
 
   // Don't show breadcrumbs on the root dashboard page
   const showBreadcrumbs = pathname !== '/dashboard';

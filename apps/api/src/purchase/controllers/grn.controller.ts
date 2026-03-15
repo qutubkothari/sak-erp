@@ -218,6 +218,7 @@ export class GrnController {
   }
 
   @Post(':id/qc-accept')
+  @RequireUpdate('grns')
   async qcAccept(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.grnService.qcAccept(req.user.tenantId, id, req.user.userId, body);
   }

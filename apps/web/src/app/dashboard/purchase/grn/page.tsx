@@ -1408,9 +1408,10 @@ function GRNContent() {
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={async () => {
+          {canEditGRN && (
+            <button
+              type="button"
+              onClick={async () => {
               try {
                 const token = localStorage.getItem('accessToken');
                 const response = await fetch(`/api/v1/purchase/grn/${grn.id}`, {
@@ -1489,11 +1490,12 @@ function GRNContent() {
 
               setShowViewModal(true);
               setEditMode(true);
-            }}
-            className="text-blue-600 hover:text-blue-900"
-          >
-            Edit
-          </button>
+              }}
+              className="text-blue-600 hover:text-blue-900"
+            >
+              Edit
+            </button>
+          )}
         </div>
       ),
     },
@@ -2196,8 +2198,9 @@ function GRNContent() {
                   </button>
                 ) : (
                   <>
-                    <button
-                      onClick={() => {
+                    {canEditGRN && (
+                      <button
+                        onClick={() => {
                         // Initialize QC form data with GRN items
                         const qcData = selectedGRN.grn_items.map((item: any) => {
                           const receivedQty = item.received_qty || item.received_quantity || 0;
@@ -2239,90 +2242,95 @@ function GRNContent() {
                           qcBy: '',
                         });
                         setShowQCModal(true);
-                      }}
-                      disabled={selectedGRN.status !== 'DRAFT' || selectedGRN.qc_completed}
-                      className={`px-6 py-2 text-white rounded-lg ${
-                        selectedGRN.status === 'DRAFT' && !selectedGRN.qc_completed
-                          ? 'bg-blue-600 hover:bg-blue-700 cursor-pointer' 
-                          : 'bg-gray-400 cursor-not-allowed'
-                      }`}
-                      title={
-                        selectedGRN.qc_completed
-                          ? 'QC already completed'
-                          : selectedGRN.status !== 'DRAFT'
-                            ? 'QC can be performed only in DRAFT'
-                            : 'Perform QC inspection'
-                      }
-                    >
-                      🔍 QC Accept
-                    </button>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const token = localStorage.getItem('accessToken');
-                          const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/approve`, {
-                            method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                              Authorization: `Bearer ${token}`,
-                            },
-                          });
-
-                          const responseData = await response.json();
-                          
-                          if (response.ok) {
-                            setAlertMessage({ type: 'success', message: 'GRN approved successfully! UIDs generated.' });
-                            setShowViewModal(false);
-                            fetchGRNs();
-                          } else {
-                            setAlertMessage({ type: 'error', message: `Failed to approve GRN: ${responseData.message}` });
-                          }
-                        } catch (error) {
-                          setAlertMessage({ type: 'error', message: 'Failed to approve GRN. Please try again.' });
+                        }}
+                        disabled={selectedGRN.status !== 'DRAFT' || selectedGRN.qc_completed}
+                        className={`px-6 py-2 text-white rounded-lg ${
+                          selectedGRN.status === 'DRAFT' && !selectedGRN.qc_completed
+                            ? 'bg-blue-600 hover:bg-blue-700 cursor-pointer' 
+                            : 'bg-gray-400 cursor-not-allowed'
+                        }`}
+                        title={
+                          selectedGRN.qc_completed
+                            ? 'QC already completed'
+                            : selectedGRN.status !== 'DRAFT'
+                              ? 'QC can be performed only in DRAFT'
+                              : 'Perform QC inspection'
                         }
-                      }}
-                      disabled={selectedGRN.status !== 'DRAFT'}
-                      className={`px-6 py-2 text-white rounded-lg ${
-                        selectedGRN.status === 'DRAFT' 
-                          ? 'bg-green-600 hover:bg-green-700 cursor-pointer' 
-                          : 'bg-gray-400 cursor-not-allowed'
-                      }`}
-                    >
-                      ✓ Approve
-                    </button>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const token = localStorage.getItem('accessToken');
-                          const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/reject`, {
-                            method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                              Authorization: `Bearer ${token}`,
-                            },
-                          });
+                      >
+                        🔍 QC Accept
+                      </button>
+                    )}
+                    {canApproveGRN && (
+                      <>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const token = localStorage.getItem('accessToken');
+                              const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/approve`, {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  Authorization: `Bearer ${token}`,
+                                },
+                              });
 
-                          if (response.ok) {
-                            setAlertMessage({ type: 'success', message: 'GRN rejected successfully!' });
-                            setShowViewModal(false);
-                            fetchGRNs();
-                          } else {
-                            const errorData = await response.json();
-                            setAlertMessage({ type: 'error', message: `Failed to reject GRN: ${errorData.message}` });
-                          }
-                        } catch (error) {
-                          setAlertMessage({ type: 'error', message: 'Failed to reject GRN. Please try again.' });
-                        }
-                      }}
-                      disabled={selectedGRN.status !== 'DRAFT'}
-                      className={`px-6 py-2 text-white rounded-lg ${
-                        selectedGRN.status === 'DRAFT' 
-                          ? 'bg-red-600 hover:bg-red-700 cursor-pointer' 
-                          : 'bg-gray-400 cursor-not-allowed'
-                      }`}
-                    >
-                      ✗ Reject
-                    </button>
+                              const responseData = await response.json();
+                              
+                              if (response.ok) {
+                                setAlertMessage({ type: 'success', message: 'GRN approved successfully! UIDs generated.' });
+                                setShowViewModal(false);
+                                fetchGRNs();
+                              } else {
+                                setAlertMessage({ type: 'error', message: `Failed to approve GRN: ${responseData.message}` });
+                              }
+                            } catch (error) {
+                              setAlertMessage({ type: 'error', message: 'Failed to approve GRN. Please try again.' });
+                            }
+                          }}
+                          disabled={selectedGRN.status !== 'DRAFT'}
+                          className={`px-6 py-2 text-white rounded-lg ${
+                            selectedGRN.status === 'DRAFT' 
+                              ? 'bg-green-600 hover:bg-green-700 cursor-pointer' 
+                              : 'bg-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          ✓ Approve
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const token = localStorage.getItem('accessToken');
+                              const response = await fetch(`/api/v1/purchase/grn/${selectedGRN.id}/reject`, {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  Authorization: `Bearer ${token}`,
+                                },
+                              });
+
+                              if (response.ok) {
+                                setAlertMessage({ type: 'success', message: 'GRN rejected successfully!' });
+                                setShowViewModal(false);
+                                fetchGRNs();
+                              } else {
+                                const errorData = await response.json();
+                                setAlertMessage({ type: 'error', message: `Failed to reject GRN: ${errorData.message}` });
+                              }
+                            } catch (error) {
+                              setAlertMessage({ type: 'error', message: 'Failed to reject GRN. Please try again.' });
+                            }
+                          }}
+                          disabled={selectedGRN.status !== 'DRAFT'}
+                          className={`px-6 py-2 text-white rounded-lg ${
+                            selectedGRN.status === 'DRAFT' 
+                              ? 'bg-red-600 hover:bg-red-700 cursor-pointer' 
+                              : 'bg-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          ✗ Reject
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
               </div>
@@ -2775,6 +2783,7 @@ function GRNContent() {
               >
                 Cancel
               </button>
+              {canEditGRN && (
               <button
                 onClick={async () => {
                   try {
@@ -2837,6 +2846,7 @@ function GRNContent() {
               >
                 ✓ Complete QC Inspection
               </button>
+              )}
             </div>
           </div>
         </div>
