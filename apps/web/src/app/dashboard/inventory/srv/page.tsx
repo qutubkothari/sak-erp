@@ -1060,54 +1060,6 @@ export default function SrvPage() {
                         >
                           🔍 QC Accept
                         </button>
-                        <button
-                          onClick={async () => {
-                            if (qcSummaryLoading) return;
-                            if (srvApproved) {
-                              alert('SRV already approved.');
-                              return;
-                            }
-                            const qty = Number(receivedQty || 0);
-                            if (!Number.isFinite(qty) || qty <= 0) {
-                              alert('Receive Qty must be > 0');
-                              return;
-                            }
-
-                            try {
-                              // Ensure receipt exists (approve is not allowed on a non-received SRV)
-                              const hasReceipt = Boolean((receiptRow as any)?.received_at || receiptRow?.movement_date);
-                              if (!hasReceipt) {
-                                await receiveSrv(selectedRow, qty);
-                                await loadAll();
-                              }
-
-                              await approveSrv(selectedRow);
-                              await loadAll();
-                              alert('✅ SRV approved successfully!');
-                            } catch (err: any) {
-                              alert('Failed to approve SRV: ' + (err?.response?.data?.message || err.message || err));
-                            }
-                          }}
-                          className={`px-6 py-2 text-white rounded-lg ${qcSummaryLoading || srvApproved ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
-                          disabled={qcSummaryLoading || srvApproved}
-                          title={qcSummaryLoading ? 'Checking QC status…' : srvApproved ? 'Already approved' : undefined}
-                        >
-                          ✓ Approve
-                        </button>
-                        <button
-                          onClick={async () => {
-                            try {
-                              await deleteSrv(String(selectedRow.entry_id || selectedRow.id || '').trim());
-                              setShowViewModal(false);
-                              setSelectedRow(null);
-                            } catch (err: any) {
-                              alert('Failed to reject SRV: ' + (err?.response?.data?.message || err.message || err));
-                            }
-                          }}
-                          className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                        >
-                          ✗ Reject
-                        </button>
                       </div>
                       <button
                         onClick={() => {
@@ -1367,6 +1319,7 @@ export default function SrvPage() {
                                       type="file"
                                       accept="image/png,image/jpeg,image/jpg,application/pdf"
                                       multiple
+                                      capture="environment"
                                       onChange={(e) => {
                                         const files = Array.from(e.target.files || []);
                                         files.forEach(file => handleQCFileSelect(file, index));

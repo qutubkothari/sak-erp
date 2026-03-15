@@ -1836,7 +1836,7 @@ function PurchaseOrdersContent() {
       {/* Create Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-[95vw] h-[95vh] flex flex-col overflow-hidden">
+          <div className="bg-white rounded-lg w-full max-w-[98vw] h-[96vh] flex flex-col overflow-hidden shadow-2xl">
             <div className="sticky top-0 z-10 bg-white p-6 border-b border-gray-200 flex items-center justify-between gap-4 flex-shrink-0">
               <h2 className="text-2xl font-bold text-gray-900">
                 {editingMode === 'create'
@@ -1887,7 +1887,7 @@ function PurchaseOrdersContent() {
               <div className="grid grid-cols-2 gap-4">
                 {editingMode === 'create' && (
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">
                       Purchase Requisition (optional)
                     </label>
                     <SearchableSelect
@@ -1914,7 +1914,7 @@ function PurchaseOrdersContent() {
                   </div>
                 )}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">
                     Master Vendor (sets all items)
                   </label>
                   <SearchableSelect
@@ -1932,7 +1932,7 @@ function PurchaseOrdersContent() {
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Status</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Payment Status</label>
                   <select
                     value={formData.paymentStatus}
                     onChange={(e) => setFormData({ ...formData, paymentStatus: e.target.value })}
@@ -1945,7 +1945,7 @@ function PurchaseOrdersContent() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Order Date</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Order Date</label>
                   <input
                     type="date"
                     max={todayDate}
@@ -1955,7 +1955,7 @@ function PurchaseOrdersContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Expected Delivery</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Expected Delivery</label>
                   <input
                     type="date"
                     max={todayDate}
@@ -1967,7 +1967,7 @@ function PurchaseOrdersContent() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Address</label>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Delivery Address</label>
                 <textarea
                   value={formData.deliveryAddress}
                   onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
@@ -1983,7 +1983,7 @@ function PurchaseOrdersContent() {
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Tracking Information</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Tracking Number</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Tracking Number</label>
                       <input
                         type="text"
                         value={formData.trackingNumber}
@@ -1993,7 +1993,7 @@ function PurchaseOrdersContent() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Status</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Delivery Status</label>
                       <select
                         value={formData.deliveryStatus}
                         onChange={(e) => setFormData({ ...formData, deliveryStatus: e.target.value })}
@@ -2007,7 +2007,7 @@ function PurchaseOrdersContent() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Carrier Name</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Carrier Name</label>
                       <input
                         type="text"
                         value={formData.carrierName}
@@ -2017,7 +2017,7 @@ function PurchaseOrdersContent() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Shipped Date</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Shipped Date</label>
                       <input
                         type="date"
                         max={todayDate}
@@ -2027,7 +2027,7 @@ function PurchaseOrdersContent() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Estimated Delivery Date</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Estimated Delivery Date</label>
                       <input
                         type="date"
                         max={todayDate}
@@ -2037,7 +2037,7 @@ function PurchaseOrdersContent() {
                       />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Tracking URL</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Tracking URL</label>
                       <input
                         type="url"
                         value={formData.trackingUrl}
@@ -2052,7 +2052,7 @@ function PurchaseOrdersContent() {
 
               {formData.paymentStatus === 'OTHER' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Notes</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Payment Notes</label>
                   <textarea
                     value={formData.paymentNotes}
                     onChange={(e) => setFormData({ ...formData, paymentNotes: e.target.value })}
@@ -2083,7 +2083,7 @@ function PurchaseOrdersContent() {
                     <div className="space-y-4">
                       {formData.items.map((item, index) => (
                         <div key={index} className="border border-gray-200 rounded-lg p-4">
-                          <div className="grid grid-cols-8 gap-3">
+                          <div className="grid grid-cols-8 gap-4 min-w-[1280px]">
                             <div className="col-span-2 min-w-0">
                               {item.itemId ? (
                                 <div className="flex flex-col gap-2 min-w-0">
@@ -2379,7 +2379,7 @@ function PurchaseOrdersContent() {
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Notes</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
@@ -2482,7 +2482,7 @@ function PurchaseOrdersContent() {
       {/* View Details Modal */}
       {showViewModal && selectedPO && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[92vh] overflow-y-auto shadow-2xl">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
               <h2 className="text-2xl font-bold text-gray-900">Purchase Order Details</h2>
               <button onClick={() => setShowViewModal(false)} className="text-gray-500 hover:text-gray-700">
@@ -2496,11 +2496,11 @@ function PurchaseOrdersContent() {
               {/* Header Info */}
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <p className="text-sm text-gray-600">PO Number</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">PO Number</p>
                   <p className="font-semibold text-lg">{selectedPO.po_number}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">PR Reference</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">PR Reference</p>
                   <p className="font-semibold">{selectedPO.pr?.pr_number || '-'}</p>
                   {selectedPO.is_partial_po && (
                     <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded bg-yellow-100 text-yellow-800">
@@ -2509,40 +2509,40 @@ function PurchaseOrdersContent() {
                   )}
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Status</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Status</p>
                   <span className={`inline-block px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedPO.status)}`}>
                     {selectedPO.status}
                   </span>
                 </div>
                 {selectedPO.edit_count != null && selectedPO.edit_count > 0 && (
                   <div>
-                    <p className="text-sm text-gray-600">Edits</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Edits</p>
                     <p className="font-semibold">{selectedPO.edit_count} time{selectedPO.edit_count !== 1 ? 's' : ''}</p>
                   </div>
                 )}
                 {selectedPO.last_edited_at && (
                   <div>
-                    <p className="text-sm text-gray-600">Last Edited</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Last Edited</p>
                     <p className="font-semibold">{new Date(selectedPO.last_edited_at).toLocaleDateString()} {new Date(selectedPO.last_edited_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                   </div>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <p className="text-sm text-gray-600">Vendor</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Vendor</p>
                   <p className="font-semibold">{(selectedPO as any)?.vendor?.name || (selectedPO as any)?.vendor_name || '-'}</p>
                   <p className="text-sm text-gray-500">{(selectedPO as any)?.vendor?.contact_person || (selectedPO as any)?.vendor_contact_person || ''}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Order Date</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Order Date</p>
                   <p className="font-semibold">{selectedPO.po_date ? new Date(selectedPO.po_date).toLocaleDateString() : '-'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Expected Delivery</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Expected Delivery</p>
                   <p className="font-semibold">{selectedPO.delivery_date ? new Date(selectedPO.delivery_date).toLocaleDateString() : '-'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Total Amount</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Total Amount</p>
                   <p className="font-semibold text-lg">₹{selectedPO.total_amount?.toLocaleString() || 0}</p>
                 </div>
               </div>
@@ -2550,7 +2550,7 @@ function PurchaseOrdersContent() {
               {/* Items Table */}
               <div>
                 <h3 className="text-lg font-semibold mb-3">Items</h3>
-                <div className="border rounded-lg overflow-hidden">
+                <div className="border rounded-lg overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>

@@ -46,6 +46,11 @@ export class VendorsController {
     return this.vendorsService.create(req.user.tenantId, body);
   }
 
+  @Post('verify-gstin')
+  async verifyGstin(@Body() body: any) {
+    return this.vendorsService.verifyGstin(body?.gstin);
+  }
+
   @Get()
   async findAll(@Request() req: any, @Query() query: any) {
     return this.vendorsService.findAll(req.user.tenantId, query);
