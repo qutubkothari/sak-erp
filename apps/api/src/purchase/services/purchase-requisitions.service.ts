@@ -968,7 +968,7 @@ export class PurchaseRequisitionsService {
     );
 
     return {
-      rfq_number: rfqNumber,
+      rfq_number: previews[0]?.rfq_number || null,
       requisition_id: requisitionId,
       preview_count: previews.length,
       previews,

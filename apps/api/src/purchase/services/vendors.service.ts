@@ -144,37 +144,66 @@ export class VendorsService {
     );
   }
 
-  private buildVendorPayload(data: any, existingMetadata?: any) {
-    const metadata = safeObject(existingMetadata);
+  private buildVendorPayload(data: any, existingVendor?: any) {
+    const metadata = safeObject(existingVendor?.metadata);
     const contacts = normalizeContacts(data?.contacts);
-    const vendorContacts = contacts.length > 0 ? contacts : fallbackContacts(data);
+    const existingContacts = normalizeContacts(metadata.contacts);
+    const vendorContacts =
+      contacts.length > 0
+        ? contacts
+        : existingContacts.length > 0
+          ? existingContacts
+          : fallbackContacts(data).length > 0
+            ? fallbackContacts(data)
+            : fallbackContacts(existingVendor);
     const defaultContact = vendorContacts.find((contact) => contact.isDefault) || vendorContacts[0] || null;
     const billingLine2 = String(data?.billingLine2 || '').trim();
+    const useSameAsBilling = data?.sameAsbilling === true || data?.sameAsBilling === true;
+    const nextStreet = String(data?.street ?? existingVendor?.street ?? '').trim() || null;
+    const nextCity = String(data?.city ?? existingVendor?.city ?? '').trim() || null;
+    const nextState = String(data?.state ?? existingVendor?.state ?? '').trim() || null;
+    const nextCountry = String(data?.country ?? existingVendor?.country ?? 'India').trim() || 'India';
+    const nextPincode = String(data?.pincode ?? existingVendor?.pincode ?? '').trim() || null;
+    const nextShippingStreet = useSameAsBilling
+      ? nextStreet
+      : String(data?.shippingStreet ?? existingVendor?.shipping_street ?? '').trim() || null;
+    const nextShippingCity = useSameAsBilling
+      ? nextCity
+      : String(data?.shippingCity ?? existingVendor?.shipping_city ?? '').trim() || null;
+    const nextShippingState = useSameAsBilling
+      ? nextState
+      : String(data?.shippingState ?? existingVendor?.shipping_state ?? '').trim() || null;
+    const nextShippingCountry = useSameAsBilling
+      ? nextCountry
+      : String(data?.shippingCountry ?? existingVendor?.shipping_country ?? nextCountry).trim() || nextCountry;
+    const nextShippingPincode = useSameAsBilling
+      ? nextPincode
+      : String(data?.shippingPincode ?? existingVendor?.shipping_pincode ?? '').trim() || null;
 
     return {
-      code: data.code,
-      name: data.name,
-      legal_name: data.legalName || data.name,
-      tax_id: String(data.taxId || '').trim().toUpperCase() || null,
-      category: data.category,
-      rating: data.rating,
-      payment_terms: data.paymentTerms,
-      credit_limit: data.creditLimit,
+      code: data.code || existingVendor?.code,
+      name: data.name || existingVendor?.name,
+      legal_name: data.legalName || data.name || existingVendor?.legal_name || existingVendor?.name,
+      tax_id: String(data.taxId ?? existingVendor?.tax_id ?? '').trim().toUpperCase() || null,
+      category: data.category ?? existingVendor?.category,
+      rating: data.rating ?? existingVendor?.rating,
+      payment_terms: data.paymentTerms ?? existingVendor?.payment_terms,
+      credit_limit: data.creditLimit ?? existingVendor?.credit_limit,
       contact_person: defaultContact?.name || null,
       email: defaultContact?.email || null,
       phone: defaultContact?.phone || null,
-      address: data.address,
-      street: data.street,
-      city: data.city,
-      state: data.state,
-      country: data.country || 'India',
-      pincode: data.pincode,
-      shipping_street: null,
-      shipping_city: null,
-      shipping_state: null,
-      shipping_country: null,
-      shipping_pincode: null,
-      is_active: data.isActive !== undefined ? data.isActive : true,
+      address: data.address ?? existingVendor?.address,
+      street: nextStreet,
+      city: nextCity,
+      state: nextState,
+      country: nextCountry,
+      pincode: nextPincode,
+      shipping_street: nextShippingStreet,
+      shipping_city: nextShippingCity,
+      shipping_state: nextShippingState,
+      shipping_country: nextShippingCountry,
+      shipping_pincode: nextShippingPincode,
+      is_active: data.isActive !== undefined ? data.isActive : existingVendor?.is_active ?? true,
       metadata: {
         ...metadata,
         contacts: vendorContacts,
@@ -268,7 +297,7 @@ export class VendorsService {
 
   async update(tenantId: string, id: string, data: any) {
     const existing = await this.findOne(tenantId, id);
-    const payload = this.buildVendorPayload(data, existing?.metadata);
+    const payload = this.buildVendorPayload(data, existing);
 
     const { error } = await this.supabase
       .from('vendors')

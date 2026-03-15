@@ -1733,22 +1733,33 @@ export class JobOrderService {
     }
 
     let linkedPrNumber: string | null = null;
-    if (!materialAvailability.available && materialAvailability.shortages.length > 0) {
-      linkedPrNumber = await this.createShortagePurchaseRequisition(
-        tenantId,
-        userId,
-        jobOrder,
-        materialAvailability.shortages,
-      );
+    let linkedPrId: string | null = null;
+    try {
+      if (!materialAvailability.available && materialAvailability.shortages.length > 0) {
+        const linkedPr = await this.createShortagePurchaseRequisition(
+          tenantId,
+          userId,
+          jobOrder,
+          materialAvailability.shortages,
+        );
 
-      if (linkedPrNumber) {
-        const nextNotes = this.appendLinkedPrNote(dto.notes, linkedPrNumber);
-        await this.supabase
-          .from('production_job_orders')
-          .update({ notes: nextNotes })
-          .eq('tenant_id', tenantId)
-          .eq('id', jobOrder.id);
+        linkedPrId = linkedPr?.prId || null;
+        linkedPrNumber = linkedPr?.prNumber || null;
+
+        if (linkedPrNumber) {
+          const nextNotes = this.appendLinkedPrNote(dto.notes, linkedPrNumber);
+          const { error: notesError } = await this.supabase
+            .from('production_job_orders')
+            .update({ notes: nextNotes })
+            .eq('tenant_id', tenantId)
+            .eq('id', jobOrder.id);
+
+          if (notesError) throw new BadRequestException(notesError.message);
+        }
       }
+    } catch (error) {
+      await this.rollbackCreatedJobOrder(tenantId, String(jobOrder.id || '').trim(), linkedPrId);
+      throw error;
     }
 
     const created = await this.findOne(tenantId, jobOrder.id);
@@ -2005,70 +2016,104 @@ export class JobOrderService {
       available: number;
       shortage: number;
     }>,
-  ): Promise<string | null> {
+  ): Promise<{ prId: string | null; prNumber: string | null }> {
     if (!Array.isArray(shortages) || shortages.length === 0) return null;
 
     const prNumber = await this.generatePRNumber(tenantId);
     const requiredDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    const { data: pr, error } = await this.supabase
-      .from('purchase_requisitions')
-      .insert({
-        tenant_id: tenantId,
-        pr_number: prNumber,
-        request_date: new Date().toISOString().split('T')[0],
-        department: 'PRODUCTION',
-        purpose: `Shortage for Job Order ${String(jobOrder?.job_order_number || '').trim()}`,
-        requested_by: userId,
-        required_date: requiredDate,
-        status: 'DRAFT',
-        remarks: `Auto-generated from Job Order ${String(jobOrder?.job_order_number || '').trim()} [JOB_ORDER:${String(jobOrder?.id || '').trim()}]`,
-      })
-      .select('id, pr_number')
-      .single();
+    let createdPrId: string | null = null;
+    try {
+      const { data: pr, error } = await this.supabase
+        .from('purchase_requisitions')
+        .insert({
+          tenant_id: tenantId,
+          pr_number: prNumber,
+          request_date: new Date().toISOString().split('T')[0],
+          department: 'PRODUCTION',
+          purpose: `Shortage for Job Order ${String(jobOrder?.job_order_number || '').trim()}`,
+          requested_by: userId,
+          required_date: requiredDate,
+          status: 'DRAFT',
+          remarks: `Auto-generated from Job Order ${String(jobOrder?.job_order_number || '').trim()} [JOB_ORDER:${String(jobOrder?.id || '').trim()}]`,
+        })
+        .select('id, pr_number')
+        .single();
 
-    if (error) throw new BadRequestException(error.message);
+      if (error) throw new BadRequestException(error.message);
 
-    const itemIds = shortages.map((row) => String(row.itemId || '').trim()).filter(Boolean);
-    const { data: itemRows, error: itemRowsError } = await this.supabase
-      .from('items')
-      .select('id, code, name, uom, standard_cost, selling_price')
-      .eq('tenant_id', tenantId)
-      .in('id', itemIds);
+      createdPrId = String(pr?.id || '').trim() || null;
 
-    if (itemRowsError) throw new BadRequestException(itemRowsError.message);
+      const itemIds = shortages.map((row) => String(row.itemId || '').trim()).filter(Boolean);
+      const { data: itemRows, error: itemRowsError } = await this.supabase
+        .from('items')
+        .select('id, code, name, uom, standard_cost, selling_price')
+        .eq('tenant_id', tenantId)
+        .in('id', itemIds);
 
-    const itemById = new Map<string, any>();
-    for (const row of itemRows || []) {
-      const itemId = String((row as any)?.id || '').trim();
-      if (itemId) itemById.set(itemId, row);
-    }
+      if (itemRowsError) throw new BadRequestException(itemRowsError.message);
 
-    const itemsPayload = shortages.map((shortage) => {
-      const item = itemById.get(String(shortage.itemId || '').trim()) || {};
-      const estimatedRate = Number((item as any)?.standard_cost || (item as any)?.selling_price || 0) || 0;
+      const itemById = new Map<string, any>();
+      for (const row of itemRows || []) {
+        const itemId = String((row as any)?.id || '').trim();
+        if (itemId) itemById.set(itemId, row);
+      }
+
+      const itemsPayload = shortages.map((shortage) => {
+        const item = itemById.get(String(shortage.itemId || '').trim()) || {};
+        const estimatedRate = Number((item as any)?.standard_cost || (item as any)?.selling_price || 0) || 0;
+        return {
+          pr_id: pr.id,
+          item_code: String((item as any)?.code || shortage.itemCode || '').trim(),
+          item_name: String((item as any)?.name || shortage.itemName || '').trim(),
+          description: `Auto-generated shortage for ${String(jobOrder?.job_order_number || '').trim()}`,
+          uom: String((item as any)?.uom || 'Nos').trim() || 'Nos',
+          requested_qty: Math.max(0, Number(shortage.shortage || 0)),
+          estimated_rate: estimatedRate,
+          required_date: requiredDate,
+          remarks: `Required ${Number(shortage.required || 0)}, available ${Number(shortage.available || 0)} for Job Order ${String(jobOrder?.job_order_number || '').trim()}`,
+        };
+      }).filter((row) => row.item_code && row.item_name && row.requested_qty > 0);
+
+      if (itemsPayload.length === 0) {
+        return {
+          prId: createdPrId,
+          prNumber: String(pr?.pr_number || prNumber || '').trim() || null,
+        };
+      }
+
+      const { error: itemsError } = await this.supabase
+        .from('purchase_requisition_items')
+        .insert(itemsPayload as any);
+
+      if (itemsError) throw new BadRequestException(itemsError.message);
+
       return {
-        pr_id: pr.id,
-        item_code: String((item as any)?.code || shortage.itemCode || '').trim(),
-        item_name: String((item as any)?.name || shortage.itemName || '').trim(),
-        description: `Auto-generated shortage for ${String(jobOrder?.job_order_number || '').trim()}`,
-        uom: String((item as any)?.uom || 'Nos').trim() || 'Nos',
-        requested_qty: Math.max(0, Number(shortage.shortage || 0)),
-        estimated_rate: estimatedRate,
-        required_date: requiredDate,
-        remarks: `Required ${Number(shortage.required || 0)}, available ${Number(shortage.available || 0)} for Job Order ${String(jobOrder?.job_order_number || '').trim()}`,
+        prId: createdPrId,
+        prNumber: String(pr?.pr_number || prNumber || '').trim() || null,
       };
-    }).filter((row) => row.item_code && row.item_name && row.requested_qty > 0);
+    } catch (error) {
+      if (createdPrId) {
+        await this.supabase.from('purchase_requisition_items').delete().eq('pr_id', createdPrId);
+        await this.supabase.from('purchase_requisitions').delete().eq('tenant_id', tenantId).eq('id', createdPrId);
+      }
+      throw error;
+    }
+  }
 
-    if (itemsPayload.length === 0) return String(pr?.pr_number || prNumber || '').trim() || null;
+  private async rollbackCreatedJobOrder(tenantId: string, jobOrderId: string, linkedPrId?: string | null) {
+    const normalizedJobOrderId = String(jobOrderId || '').trim();
+    if (!normalizedJobOrderId) return;
 
-    const { error: itemsError } = await this.supabase
-      .from('purchase_requisition_items')
-      .insert(itemsPayload as any);
+    await this.supabase.from('job_order_operations').delete().eq('job_order_id', normalizedJobOrderId);
+    await this.supabase.from('job_order_materials').delete().eq('job_order_id', normalizedJobOrderId);
+    await this.supabase.from('production_job_orders').delete().eq('tenant_id', tenantId).eq('id', normalizedJobOrderId);
 
-    if (itemsError) throw new BadRequestException(itemsError.message);
-
-    return String(pr?.pr_number || prNumber || '').trim() || null;
+    const normalizedPrId = String(linkedPrId || '').trim();
+    if (normalizedPrId) {
+      await this.supabase.from('purchase_requisition_items').delete().eq('pr_id', normalizedPrId);
+      await this.supabase.from('purchase_requisitions').delete().eq('tenant_id', tenantId).eq('id', normalizedPrId);
+    }
   }
 
   async update(tenantId: string, id: string, dto: UpdateJobOrderDto) {
@@ -4411,8 +4456,12 @@ export class JobOrderService {
       uidRegistryCount = count || 0;
     }
 
-    const effectiveAvailable = requiresUidMapping ? Math.max(totalAvailable, uidRegistryCount) : totalAvailable;
+    const effectiveAvailable = totalAvailable;
     const issueTargetQty = normalizedUids.length > 0 ? issueQtyFromUids : requestedIssueQty;
+
+    if (requiresUidMapping && uidRegistryCount + 1e-9 < normalizedUids.length) {
+      throw new BadRequestException(`Insufficient UID stock to issue scanned UIDs. Required=${normalizedUids.length}, available=${uidRegistryCount}`);
+    }
 
     if (requiresUidMapping && effectiveAvailable + 1e-9 < issueTargetQty) {
       throw new BadRequestException(`Insufficient stock to issue scanned UIDs. Required=${issueTargetQty}, available=${effectiveAvailable}`);
