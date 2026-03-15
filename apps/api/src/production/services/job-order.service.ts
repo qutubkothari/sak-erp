@@ -2016,7 +2016,7 @@ export class JobOrderService {
       available: number;
       shortage: number;
     }>,
-  ): Promise<{ prId: string | null; prNumber: string | null }> {
+  ): Promise<{ prId: string | null; prNumber: string | null } | null> {
     if (!Array.isArray(shortages) || shortages.length === 0) return null;
 
     const prNumber = await this.generatePRNumber(tenantId);

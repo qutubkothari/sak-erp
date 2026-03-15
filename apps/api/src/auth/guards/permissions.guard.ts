@@ -103,12 +103,13 @@ export class PermissionsGuard implements CanActivate {
 
       const modulePermission = this.toModulePermission(entry);
       if (!modulePermission?.module || modulePermission.screen) return;
+      const moduleName = modulePermission.module;
 
       (Object.keys(MODULE_ACTION_TO_RESOURCE_ACTIONS) as PermissionActionKey[]).forEach((actionKey) => {
         const resources = Array.from(
           new Set([
-            ...(MODULE_RESOURCE_MAP[modulePermission.module] || []),
-            ...(MODULE_ACTION_RESOURCE_OVERRIDES[actionKey]?.[modulePermission.module] || []),
+            ...(MODULE_RESOURCE_MAP[moduleName] || []),
+            ...(MODULE_ACTION_RESOURCE_OVERRIDES[actionKey]?.[moduleName] || []),
           ]),
         );
         resources.forEach((resource) => {
