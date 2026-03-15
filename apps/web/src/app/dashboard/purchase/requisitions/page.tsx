@@ -44,6 +44,15 @@ interface Requisition {
   purpose?: string;
   requested_by: string;
   created_at: string;
+  workflow_status?: string;
+  workflow_status_detail?: string | null;
+  workflow_status_label?: string;
+  rfq_summary?: {
+    total?: number;
+    sentCount?: number;
+    receivedCount?: number;
+    nextFollowUpDate?: string | null;
+  };
 }
 
 interface PRDetailItem {
@@ -83,6 +92,15 @@ interface PRDetail {
   updated_by?: string;
   edit_count?: number;
   last_edited_at?: string;
+  workflow_status?: string;
+  workflow_status_detail?: string | null;
+  workflow_status_label?: string;
+  rfq_summary?: {
+    total?: number;
+    sentCount?: number;
+    receivedCount?: number;
+    nextFollowUpDate?: string | null;
+  };
   purchase_requisition_items: PRDetailItem[];
 }
 
@@ -94,6 +112,41 @@ interface Vendor {
   is_active: boolean;
 }
 
+interface RfqAttachment {
+  url: string;
+  name: string;
+}
+
+interface RfqRecord {
+  id: string;
+  rfq_number: string;
+  status: string;
+  sent_at?: string;
+  response_deadline?: string;
+  vendor_quote_received_at?: string;
+  follow_up_date?: string | null;
+  follow_up_notes?: string | null;
+  response_remarks?: string | null;
+  response_attachments?: RfqAttachment[];
+  vendor?: {
+    id: string;
+    code?: string;
+    name?: string;
+    email?: string;
+  };
+  rfq_items?: Array<{
+    id: string;
+    pr_item_id: string;
+    item_code?: string;
+    item_name?: string;
+    requested_qty?: number;
+    uom?: string;
+    vendor_quoted_price?: number | null;
+    vendor_quoted_lead_time?: number | null;
+    vendor_notes?: string | null;
+  }>;
+}
+
 const resolveUomFromItem = (item: any): string => {
   return (
     String(item?.uom || '').trim() ||
@@ -103,6 +156,33 @@ const resolveUomFromItem = (item: any): string => {
     String(item?.unit_of_measure || '').trim()
   );
 };
+
+function getPrWorkflowStatus(pr: Pick<Requisition, 'workflow_status' | 'status'> | null | undefined): string {
+  return String(pr?.workflow_status || pr?.status || '').trim().toUpperCase();
+}
+
+function getPrWorkflowLabel(pr: Pick<Requisition, 'workflow_status_label' | 'status'> | null | undefined): string {
+  return String(pr?.workflow_status_label || pr?.status || 'UNKNOWN').trim();
+}
+
+function getPrWorkflowBadgeClass(status: string): string {
+  switch (status) {
+    case 'GOODS_RCVD':
+      return 'bg-emerald-100 text-emerald-800';
+    case 'PO_DONE':
+      return 'bg-green-100 text-green-800';
+    case 'RFQ_RCVD':
+      return 'bg-blue-100 text-blue-800';
+    case 'RFQ_ISSUED':
+      return 'bg-amber-100 text-amber-800';
+    case 'DRAFT':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'REJECTED':
+      return 'bg-red-100 text-red-800';
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+}
 
 function PRContent() {
   const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
@@ -173,6 +253,35 @@ function PRContent() {
   const [rfqPreviewData, setRfqPreviewData] = useState<any>(null);
   const [rfqPreviewIndex, setRfqPreviewIndex] = useState(0);
   const [rfqPreviewLoading, setRfqPreviewLoading] = useState(false);
+  const [rfqHistory, setRfqHistory] = useState<RfqRecord[]>([]);
+  const [loadingRfqHistory, setLoadingRfqHistory] = useState(false);
+  const [showRfqResponses, setShowRfqResponses] = useState(false);
+  const [editingRfqResponse, setEditingRfqResponse] = useState<RfqRecord | null>(null);
+  const [savingRfqResponse, setSavingRfqResponse] = useState(false);
+  const [uploadingRfqAttachments, setUploadingRfqAttachments] = useState(false);
+  const [rfqResponseForm, setRfqResponseForm] = useState<{
+    remarks: string;
+    followUpDate: string;
+    followUpNotes: string;
+    attachments: RfqAttachment[];
+    items: Array<{
+      id?: string;
+      prItemId: string;
+      itemCode: string;
+      itemName: string;
+      requestedQty: number;
+      uom: string;
+      quotedPrice: string;
+      leadTime: string;
+      notes: string;
+    }>;
+  }>({
+    remarks: '',
+    followUpDate: '',
+    followUpNotes: '',
+    attachments: [],
+    items: [],
+  });
 
   const requisitionsTableColumns: Array<ListTableColumn<Requisition>> = [
     {
@@ -196,22 +305,14 @@ function PRContent() {
     {
       id: 'status',
       label: 'Status',
-      accessor: (r) => r.status,
+      accessor: (r) => getPrWorkflowLabel(r),
       cell: (r) => (
         <span
-          className={`px-2 py-1 text-xs font-semibold rounded-full ${
-            r.status === 'APPROVED'
-              ? 'bg-green-100 text-green-800'
-              : r.status === 'SUBMITTED'
-                ? 'bg-blue-100 text-blue-800'
-                : r.status === 'DRAFT'
-                  ? 'bg-yellow-100 text-yellow-800'
-                  : r.status === 'REJECTED'
-                    ? 'bg-red-100 text-red-800'
-                    : 'bg-gray-100 text-gray-800'
-          }`}
+          className={`px-2 py-1 text-xs font-semibold rounded-full ${getPrWorkflowBadgeClass(
+            getPrWorkflowStatus(r),
+          )}`}
         >
-          {r.status}
+          {getPrWorkflowLabel(r)}
         </span>
       ),
     },
@@ -613,6 +714,9 @@ function PRContent() {
     setLoadingDetail(true);
     setShowDetailModal(true);
     setRfqPanelOpen(false);
+    setShowRfqResponses(false);
+    setRfqHistory([]);
+    setEditingRfqResponse(null);
     setRfqItemVendors({});
     setRfqResponseDate('');
     setRfqRemarks('');
@@ -822,6 +926,131 @@ function PRContent() {
     }
   };
 
+  const fetchRfqHistory = async (prId: string) => {
+    try {
+      setLoadingRfqHistory(true);
+      const data = await apiClient.get<RfqRecord[]>(`/purchase/requisitions/${prId}/rfqs`);
+      setRfqHistory(Array.isArray(data) ? data : []);
+    } catch (error) {
+      alert('Failed to load RFQ responses');
+      setRfqHistory([]);
+    } finally {
+      setLoadingRfqHistory(false);
+    }
+  };
+
+  const openRfqResponseEditor = (rfq: RfqRecord) => {
+    setEditingRfqResponse(rfq);
+    setRfqResponseForm({
+      remarks: rfq.response_remarks || '',
+      followUpDate: rfq.follow_up_date || '',
+      followUpNotes: rfq.follow_up_notes || '',
+      attachments: Array.isArray(rfq.response_attachments) ? rfq.response_attachments : [],
+      items: Array.isArray(rfq.rfq_items)
+        ? rfq.rfq_items.map((item) => ({
+            id: item.id,
+            prItemId: item.pr_item_id,
+            itemCode: item.item_code || '',
+            itemName: item.item_name || '',
+            requestedQty: Number(item.requested_qty || 0),
+            uom: item.uom || '-',
+            quotedPrice:
+              item.vendor_quoted_price == null || Number.isNaN(Number(item.vendor_quoted_price))
+                ? ''
+                : String(item.vendor_quoted_price),
+            leadTime:
+              item.vendor_quoted_lead_time == null || Number.isNaN(Number(item.vendor_quoted_lead_time))
+                ? ''
+                : String(item.vendor_quoted_lead_time),
+            notes: item.vendor_notes || '',
+          }))
+        : [],
+    });
+  };
+
+  const uploadRfqResponseFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    try {
+      setUploadingRfqAttachments(true);
+      const token = localStorage.getItem('accessToken');
+      const uploaded: RfqAttachment[] = [];
+
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('bucket', 'documents');
+        fd.append('folder', 'rfq-responses');
+
+        const response = await fetch('/api/v1/upload', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: fd,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData?.message || response.statusText || 'Upload failed');
+        }
+
+        const data = await response.json();
+        const url = String(data?.url || '').trim();
+        if (!url) throw new Error('Upload failed: no URL returned');
+
+        uploaded.push({
+          url,
+          name: file.name,
+        });
+      }
+
+      setRfqResponseForm((prev) => ({
+        ...prev,
+        attachments: [...prev.attachments, ...uploaded],
+      }));
+    } catch (error: any) {
+      alert(`Failed to upload RFQ attachment: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setUploadingRfqAttachments(false);
+    }
+  };
+
+  const saveRfqResponse = async () => {
+    if (!selectedPR || !editingRfqResponse) return;
+
+    try {
+      setSavingRfqResponse(true);
+      await apiClient.post(
+        `/purchase/requisitions/${selectedPR.id}/rfqs/${editingRfqResponse.id}/response`,
+        {
+          remarks: rfqResponseForm.remarks || undefined,
+          followUpDate: rfqResponseForm.followUpDate || undefined,
+          followUpNotes: rfqResponseForm.followUpNotes || undefined,
+          attachments: rfqResponseForm.attachments,
+          items: rfqResponseForm.items.map((item) => ({
+            id: item.id,
+            prItemId: item.prItemId,
+            itemCode: item.itemCode,
+            itemName: item.itemName,
+            requestedQty: item.requestedQty,
+            uom: item.uom,
+            quotedPrice: item.quotedPrice === '' ? null : Number(item.quotedPrice),
+            leadTime: item.leadTime === '' ? null : Number(item.leadTime),
+            notes: item.notes || undefined,
+          })),
+        },
+      );
+
+      await Promise.all([fetchRfqHistory(selectedPR.id), handleViewDetails(selectedPR.id)]);
+      setEditingRfqResponse(null);
+    } catch (error) {
+      alert('Failed to save RFQ response');
+    } finally {
+      setSavingRfqResponse(false);
+    }
+  };
+
   const toggleItemVendor = (itemId: string, vendorId: string) => {
     setRfqItemVendors((prev) => {
       const currentVendors = prev[itemId] || [];
@@ -939,6 +1168,7 @@ function PRContent() {
       setRfqRecipientOverrides({});
       setRfqSubjectOverride('');
       setRfqCustomMessage('');
+      await Promise.all([fetchRequisitions(), handleViewDetails(selectedPR.id)]);
     } catch (error) {
       alert('Failed to send RFQ');
     } finally {
@@ -1558,7 +1788,7 @@ function PRContent() {
         ) : (
           <ListTable
             storageKey="requisitionsTable"
-            rows={requisitions.filter((r) => (!filterStatus ? true : r.status === filterStatus))}
+            rows={requisitions.filter((r) => (!filterStatus ? true : getPrWorkflowStatus(r) === filterStatus))}
             columns={requisitionsTableColumns}
             getRowId={(r) => r.id}
             defaultPageSize={10}
@@ -1572,8 +1802,10 @@ function PRContent() {
               >
                 <option value="">All Status</option>
                 <option value="DRAFT">Draft</option>
-                <option value="SUBMITTED">Submitted</option>
-                <option value="APPROVED">Approved</option>
+                <option value="RFQ_ISSUED">RFQ Issued</option>
+                <option value="RFQ_RCVD">RFQ Rcvd</option>
+                <option value="PO_DONE">PO Done</option>
+                <option value="GOODS_RCVD">Goods Recvd</option>
                 <option value="REJECTED">Rejected</option>
               </select>
             }
@@ -1630,7 +1862,7 @@ function PRContent() {
                           )}
                         </>
                       )}
-                      {selectedPR.status === 'APPROVED' && (
+                      {selectedPR.status !== 'DRAFT' && selectedPR.status !== 'REJECTED' && (
                         <>
                           <button
                             onClick={async () => {
@@ -1648,10 +1880,23 @@ function PRContent() {
                             Send RFQ
                           </button>
                           <button
+                            onClick={async () => {
+                              const next = !showRfqResponses;
+                              setShowRfqResponses(next);
+                              if (next) {
+                                await fetchRfqHistory(selectedPR.id);
+                              }
+                            }}
+                            className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm"
+                          >
+                            RFQ Responses
+                          </button>
+                          <button
                             onClick={() => {
                               setShowDetailModal(false);
                               router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
                             }}
+                            disabled={getPrWorkflowStatus(selectedPR) === 'GOODS_RCVD'}
                             className="px-4 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors text-sm"
                           >
                             Create PO from this PR
@@ -1676,14 +1921,10 @@ function PRContent() {
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Status</p>
-                      <span className={`inline-block px-3 py-1 text-sm font-semibold rounded-full ${
-                        selectedPR.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
-                        selectedPR.status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
-                        selectedPR.status === 'DRAFT' ? 'bg-yellow-100 text-yellow-800' :
-                        selectedPR.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {selectedPR.status}
+                      <span className={`inline-block px-3 py-1 text-sm font-semibold rounded-full ${getPrWorkflowBadgeClass(
+                        getPrWorkflowStatus(selectedPR),
+                      )}`}>
+                        {getPrWorkflowLabel(selectedPR)}
                       </span>
                     </div>
                     <div>
@@ -1713,6 +1954,20 @@ function PRContent() {
                       <div>
                         <p className="text-sm text-gray-600">Approved At</p>
                         <p className="font-semibold">{new Date(selectedPR.approved_at).toLocaleDateString()}</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm text-gray-600">RFQ Sent</p>
+                      <p className="font-semibold">{Number(selectedPR.rfq_summary?.sentCount || 0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">RFQ Received</p>
+                      <p className="font-semibold">{Number(selectedPR.rfq_summary?.receivedCount || 0)}</p>
+                    </div>
+                    {selectedPR.rfq_summary?.nextFollowUpDate && (
+                      <div>
+                        <p className="text-sm text-gray-600">Next Follow-up</p>
+                        <p className="font-semibold">{new Date(selectedPR.rfq_summary.nextFollowUpDate).toLocaleDateString()}</p>
                       </div>
                     )}
                     {selectedPR.edit_count && selectedPR.edit_count > 0 && (
@@ -1830,7 +2085,7 @@ function PRContent() {
 
 
 
-                  {selectedPR.status === 'APPROVED' && rfqPanelOpen && (
+                  {selectedPR.status !== 'DRAFT' && selectedPR.status !== 'REJECTED' && rfqPanelOpen && (
                     <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="text-sm font-bold text-gray-900">Send RFQ to Vendors</h3>
@@ -1888,6 +2143,74 @@ function PRContent() {
                       </div>
                     </div>
                   )}
+
+                  {showRfqResponses && (
+                    <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-lg font-bold text-slate-900">RFQ Responses</h3>
+                        <button
+                          onClick={() => setShowRfqResponses(false)}
+                          className="text-slate-600 hover:text-slate-900 font-medium"
+                        >
+                          Hide
+                        </button>
+                      </div>
+
+                      {loadingRfqHistory ? (
+                        <p className="text-sm text-slate-600">Loading RFQ responses...</p>
+                      ) : rfqHistory.length === 0 ? (
+                        <p className="text-sm text-slate-600">No RFQ responses recorded yet.</p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-white border-b">
+                              <tr>
+                                <th className="px-3 py-2 text-left">RFQ</th>
+                                <th className="px-3 py-2 text-left">Vendor</th>
+                                <th className="px-3 py-2 text-left">Status</th>
+                                <th className="px-3 py-2 text-left">Sent</th>
+                                <th className="px-3 py-2 text-left">Received</th>
+                                <th className="px-3 py-2 text-left">Follow-up</th>
+                                <th className="px-3 py-2 text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rfqHistory.map((rfq) => (
+                                <tr key={rfq.id} className="border-b last:border-b-0">
+                                  <td className="px-3 py-2 font-medium text-slate-900">{rfq.rfq_number}</td>
+                                  <td className="px-3 py-2">
+                                    <div>{rfq.vendor?.name || 'Vendor'}</div>
+                                    <div className="text-xs text-slate-500">{rfq.vendor?.email || '-'}</div>
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                                      String(rfq.status).toUpperCase() === 'RECEIVED'
+                                        ? 'bg-blue-100 text-blue-800'
+                                        : 'bg-amber-100 text-amber-800'
+                                    }`}>
+                                      {String(rfq.status || '').toUpperCase()}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2">{rfq.sent_at ? new Date(rfq.sent_at).toLocaleDateString() : '-'}</td>
+                                  <td className="px-3 py-2">{rfq.vendor_quote_received_at ? new Date(rfq.vendor_quote_received_at).toLocaleDateString() : '-'}</td>
+                                  <td className="px-3 py-2">{rfq.follow_up_date ? new Date(rfq.follow_up_date).toLocaleDateString() : '-'}</td>
+                                  <td className="px-3 py-2 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => openRfqResponseEditor(rfq)}
+                                      className="text-blue-600 hover:text-blue-900 font-medium"
+                                    >
+                                      {String(rfq.status).toUpperCase() === 'RECEIVED' ? 'Edit Response' : 'Record Response'}
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   </div>
                 </>
               ) : (
@@ -1901,6 +2224,202 @@ function PRContent() {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {editingRfqResponse && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[92vh] overflow-hidden flex flex-col">
+              <div className="border-b px-6 py-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900">RFQ Response</h2>
+                  <p className="text-sm text-slate-600 mt-1">
+                    {editingRfqResponse.vendor?.name || 'Vendor'} · {editingRfqResponse.rfq_number}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingRfqResponse(null)}
+                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Response Remarks</label>
+                    <textarea
+                      rows={3}
+                      value={rfqResponseForm.remarks}
+                      onChange={(e) => setRfqResponseForm((prev) => ({ ...prev, remarks: e.target.value }))}
+                      className="w-full border rounded-lg px-3 py-2"
+                      placeholder="Summary from vendor"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Follow-up Date</label>
+                    <input
+                      type="date"
+                      value={rfqResponseForm.followUpDate}
+                      onChange={(e) => setRfqResponseForm((prev) => ({ ...prev, followUpDate: e.target.value }))}
+                      className="w-full border rounded-lg px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Follow-up Notes</label>
+                    <textarea
+                      rows={3}
+                      value={rfqResponseForm.followUpNotes}
+                      onChange={(e) => setRfqResponseForm((prev) => ({ ...prev, followUpNotes: e.target.value }))}
+                      className="w-full border rounded-lg px-3 py-2"
+                      placeholder="Next action / reminder"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between gap-4 mb-2">
+                    <label className="block text-sm font-semibold text-gray-700">Response Attachments</label>
+                    <label className="inline-flex items-center px-4 py-2 rounded-lg bg-slate-700 text-white hover:bg-slate-800 cursor-pointer text-sm">
+                      {uploadingRfqAttachments ? 'Uploading...' : 'Upload Attachments'}
+                      <input
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => uploadRfqResponseFiles(e.target.files)}
+                        disabled={uploadingRfqAttachments}
+                      />
+                    </label>
+                  </div>
+                  {rfqResponseForm.attachments.length === 0 ? (
+                    <p className="text-sm text-gray-500">No attachments uploaded yet.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {rfqResponseForm.attachments.map((attachment, index) => (
+                        <div key={`${attachment.url}-${index}`} className="flex items-center justify-between border rounded-lg px-3 py-2 text-sm bg-gray-50">
+                          <a href={attachment.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-900 truncate pr-3">
+                            {attachment.name}
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setRfqResponseForm((prev) => ({
+                                ...prev,
+                                attachments: prev.attachments.filter((_, itemIndex) => itemIndex !== index),
+                              }))
+                            }
+                            className="text-red-600 hover:text-red-900 font-medium"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px] text-sm border rounded-lg overflow-hidden">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Item</th>
+                        <th className="px-3 py-2 text-right">Requested</th>
+                        <th className="px-3 py-2 text-center">UOM</th>
+                        <th className="px-3 py-2 text-right">Quoted Price</th>
+                        <th className="px-3 py-2 text-right">Lead Time (days)</th>
+                        <th className="px-3 py-2 text-left">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rfqResponseForm.items.map((item, index) => (
+                        <tr key={`${item.prItemId}-${index}`} className="border-t">
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-gray-900">{item.itemCode || '-'}</div>
+                            <div className="text-xs text-gray-500">{item.itemName}</div>
+                          </td>
+                          <td className="px-3 py-2 text-right">{item.requestedQty}</td>
+                          <td className="px-3 py-2 text-center">{item.uom}</td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.quotedPrice}
+                              onChange={(e) =>
+                                setRfqResponseForm((prev) => ({
+                                  ...prev,
+                                  items: prev.items.map((row, rowIndex) =>
+                                    rowIndex === index ? { ...row, quotedPrice: e.target.value } : row,
+                                  ),
+                                }))
+                              }
+                              className="w-full border rounded px-3 py-2 text-right"
+                              placeholder="0.00"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={item.leadTime}
+                              onChange={(e) =>
+                                setRfqResponseForm((prev) => ({
+                                  ...prev,
+                                  items: prev.items.map((row, rowIndex) =>
+                                    rowIndex === index ? { ...row, leadTime: e.target.value } : row,
+                                  ),
+                                }))
+                              }
+                              className="w-full border rounded px-3 py-2 text-right"
+                              placeholder="0"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="text"
+                              value={item.notes}
+                              onChange={(e) =>
+                                setRfqResponseForm((prev) => ({
+                                  ...prev,
+                                  items: prev.items.map((row, rowIndex) =>
+                                    rowIndex === index ? { ...row, notes: e.target.value } : row,
+                                  ),
+                                }))
+                              }
+                              className="w-full border rounded px-3 py-2"
+                              placeholder="Vendor comments"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="border-t px-6 py-4 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingRfqResponse(null)}
+                  className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveRfqResponse}
+                  disabled={savingRfqResponse}
+                  className={`px-6 py-2 rounded-lg transition-colors ${
+                    savingRfqResponse ? 'bg-gray-300 text-gray-600' : 'bg-green-600 text-white hover:bg-green-700'
+                  }`}
+                >
+                  {savingRfqResponse ? 'Saving...' : 'Save RFQ Response'}
+                </button>
+              </div>
             </div>
           </div>
         )}

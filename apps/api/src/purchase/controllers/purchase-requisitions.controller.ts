@@ -114,7 +114,7 @@ export class PurchaseRequisitionsController {
     @Param('id') id: string,
     @Body() body: any,
   ) {
-    return this.prService.sendRFQ(req.user.tenantId, id, body);
+    return this.prService.sendRFQ(req.user.tenantId, id, req.user.userId, body);
   }
 
   @Post(':id/rfq/preview')
@@ -124,6 +124,22 @@ export class PurchaseRequisitionsController {
     @Body() body: any,
   ) {
     return this.prService.previewRFQ(req.user.tenantId, id, body);
+  }
+
+  @Get(':id/rfqs')
+  async findRFQs(@Request() req: any, @Param('id') id: string) {
+    return this.prService.findRFQs(req.user.tenantId, id);
+  }
+
+  @Post(':id/rfqs/:rfqId/response')
+  @RequireUpdate('purchase_requisitions')
+  async recordRFQResponse(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('rfqId') rfqId: string,
+    @Body() body: any,
+  ) {
+    return this.prService.recordRFQResponse(req.user.tenantId, id, rfqId, req.user.userId, body);
   }
 
   @Delete(':id')

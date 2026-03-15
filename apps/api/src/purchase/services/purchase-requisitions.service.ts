@@ -4,6 +4,60 @@ import { EmailService } from '../../email/email.service';
 import { VendorsService } from './vendors.service';
 import { RfqExcelService } from './rfq-excel.service';
 
+const PR_WORKFLOW_STATUS = {
+  DRAFT: 'DRAFT',
+  RFQ_ISSUED: 'RFQ_ISSUED',
+  RFQ_RCVD: 'RFQ_RCVD',
+  PO_DONE: 'PO_DONE',
+  GOODS_RCVD: 'GOODS_RCVD',
+  REJECTED: 'REJECTED',
+} as const;
+
+function normalizeStatus(value: any): string {
+  return String(value || '').trim().toUpperCase();
+}
+
+function safeJsonParse(value: any): Record<string, any> {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string') return {};
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function buildRfqNumber(prNumber: string, recipientKey: string, index: number): string {
+  const sanitizedKey = String(recipientKey || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 8);
+
+  return `RFQ-${String(prNumber || '').trim()}-${sanitizedKey || String(index + 1).padStart(2, '0')}`;
+}
+
+function buildWorkflowStatusLabel(status: string, detail?: string | null): string {
+  switch (status) {
+    case PR_WORKFLOW_STATUS.DRAFT:
+      return 'Draft';
+    case PR_WORKFLOW_STATUS.RFQ_ISSUED:
+      return `RFQ Issued (${detail || 'No'})`;
+    case PR_WORKFLOW_STATUS.RFQ_RCVD:
+      return `RFQ Rcvd (${detail || 'Received'})`;
+    case PR_WORKFLOW_STATUS.PO_DONE:
+      return 'PO Done';
+    case PR_WORKFLOW_STATUS.GOODS_RCVD:
+      return 'Goods Recvd';
+    case PR_WORKFLOW_STATUS.REJECTED:
+      return 'Rejected';
+    default:
+      return status;
+  }
+}
+
 @Injectable()
 export class PurchaseRequisitionsService {
   private supabase: SupabaseClient;
@@ -187,7 +241,7 @@ export class PurchaseRequisitionsService {
       console.warn('PR UOM response backfill failed:', (e as any)?.message || e);
     }
 
-    return requisitions;
+    return this.attachWorkflowMetadata(tenantId, requisitions);
   }
 
   async findOne(tenantId: string, id: string) {
@@ -295,7 +349,8 @@ export class PurchaseRequisitionsService {
       console.warn('PR approver name resolution failed:', (e as any)?.message || e);
     }
 
-    return data;
+    const [withWorkflow] = await this.attachWorkflowMetadata(tenantId, [data as any]);
+    return withWorkflow || data;
   }
 
   async findOneAvailableForPO(tenantId: string, id: string) {
@@ -445,7 +500,7 @@ export class PurchaseRequisitionsService {
     return this.findOne(tenantId, id);
   }
 
-  async sendRFQ(tenantId: string, requisitionId: string, body: any) {
+  async sendRFQ(tenantId: string, requisitionId: string, userId: string, body: any) {
     const vendorIds: string[] = Array.isArray(body?.vendorIds) ? body.vendorIds : [];
     const vendorEmails: string[] = Array.isArray(body?.vendorEmails) ? body.vendorEmails : [];
     const itemVendors: Array<{ itemId: string; vendorIds: string[] }> = Array.isArray(body?.itemVendors) ? body.itemVendors : [];
@@ -477,8 +532,9 @@ export class PurchaseRequisitionsService {
       throw new NotFoundException('Purchase Requisition not found');
     }
 
-    if (pr.status !== 'APPROVED') {
-      throw new BadRequestException('PR must be APPROVED to send RFQ');
+    const baseStatus = normalizeStatus((pr as any)?.status);
+    if (baseStatus === PR_WORKFLOW_STATUS.DRAFT || baseStatus === PR_WORKFLOW_STATUS.REJECTED) {
+      throw new BadRequestException('PR must be approved before sending RFQ');
     }
 
     // Save item-vendor mappings to pr_item_rfq_vendors table
@@ -509,8 +565,6 @@ export class PurchaseRequisitionsService {
       }
     }
 
-    const rfqNumber = `RFQ-${pr.pr_number}`;
-    
     const vendorLookups = await Promise.all(
       vendorIds.map(async (vendorId) => this.vendorsService.findOne(tenantId, vendorId)),
     );
@@ -558,8 +612,110 @@ export class PurchaseRequisitionsService {
     const responseDate = body?.responseDate || body?.response_date;
     const remarks = body?.remarks;
 
+    const persistedRfqByVendorId = new Map<string, any>();
+
+    for (let index = 0; index < recipients.length; index++) {
+      const recipient = recipients[index];
+      if (!recipient?.vendorId) continue;
+
+      const recipientKey = recipient.vendorId || recipient.email || String(index + 1);
+      const rfqNumber = buildRfqNumber(pr.pr_number, recipientKey, index);
+      const vendorItems = (pr.purchase_requisition_items || []).filter((item: any) => {
+        if (itemVendors.length === 0) return true;
+        return itemVendors
+          .filter((iv) => iv.vendorIds.includes(recipient.vendorId as string))
+          .some((iv) => iv.itemId === item.id);
+      });
+
+      const payloadNotes = {
+        ...(safeJsonParse(undefined)),
+        remarks: remarks || null,
+        subject: subjectOverride || null,
+        customMessage: customMessage || null,
+        recipientEmail: recipient.email,
+        responseDate: responseDate || null,
+      };
+
+      const { data: existingRfq } = await this.supabase
+        .from('rfqs')
+        .select('id, notes')
+        .eq('tenant_id', tenantId)
+        .eq('pr_id', requisitionId)
+        .eq('vendor_id', recipient.vendorId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let rfqRecord = existingRfq;
+
+      if (existingRfq?.id) {
+        const mergedNotes = {
+          ...safeJsonParse(existingRfq.notes),
+          ...payloadNotes,
+        };
+
+        const { data: updatedRfq, error: updateRfqError } = await this.supabase
+          .from('rfqs')
+          .update({
+            rfq_number: rfqNumber,
+            sent_at: new Date().toISOString(),
+            response_deadline: responseDate || null,
+            status: 'SENT',
+            notes: JSON.stringify(mergedNotes),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingRfq.id)
+          .select()
+          .single();
+
+        if (updateRfqError) throw new BadRequestException(updateRfqError.message);
+        rfqRecord = updatedRfq;
+
+        await this.supabase.from('rfq_items').delete().eq('rfq_id', existingRfq.id);
+      } else {
+        const { data: createdRfq, error: createRfqError } = await this.supabase
+          .from('rfqs')
+          .insert({
+            tenant_id: tenantId,
+            pr_id: requisitionId,
+            rfq_number: rfqNumber,
+            vendor_id: recipient.vendorId,
+            sent_at: new Date().toISOString(),
+            response_deadline: responseDate || null,
+            status: 'SENT',
+            notes: JSON.stringify(payloadNotes),
+            created_by: userId,
+          })
+          .select()
+          .single();
+
+        if (createRfqError) throw new BadRequestException(createRfqError.message);
+        rfqRecord = createdRfq;
+      }
+
+      if (rfqRecord?.id && vendorItems.length > 0) {
+        const { error: rfqItemsError } = await this.supabase
+          .from('rfq_items')
+          .insert(
+            vendorItems.map((item: any) => ({
+              rfq_id: rfqRecord.id,
+              pr_item_id: item.id,
+              item_code: item.item_code || item.itemCode || null,
+              item_name: item.item_name || item.itemName || null,
+              requested_qty: item.requested_qty ?? item.quantity ?? 0,
+              uom: item.uom || null,
+              vendor_notes: null,
+            })),
+          );
+
+        if (rfqItemsError) throw new BadRequestException(rfqItemsError.message);
+      }
+
+      persistedRfqByVendorId.set(String(recipient.vendorId), rfqRecord);
+    }
+
     const sendResults = await Promise.allSettled(
-      recipients.map(async (recipient) => {
+      recipients.map(async (recipient, index) => {
         // Filter items for this vendor based on itemVendors mappings
         let vendorItems = pr.purchase_requisition_items || [];
         
@@ -615,6 +771,9 @@ export class PurchaseRequisitionsService {
           },
         ];
 
+        const rfqRecord = recipient.vendorId ? persistedRfqByVendorId.get(String(recipient.vendorId)) : null;
+        const rfqNumber = rfqRecord?.rfq_number || buildRfqNumber(pr.pr_number, recipient.vendorId || recipient.email, index);
+
         return this.emailService.sendRFQ(recipient.email, {
           rfq_number: rfqNumber,
           vendor_name: recipient.name,
@@ -642,7 +801,6 @@ export class PurchaseRequisitionsService {
     });
 
     return {
-      rfq_number: rfqNumber,
       requisition_id: requisitionId,
       sent_count: sent.length,
       failed_count: failed.length,
@@ -685,11 +843,10 @@ export class PurchaseRequisitionsService {
       throw new NotFoundException('Purchase Requisition not found');
     }
 
-    if (pr.status !== 'APPROVED') {
-      throw new BadRequestException('PR must be APPROVED to preview RFQ');
+    const baseStatus = normalizeStatus((pr as any)?.status);
+    if (baseStatus === PR_WORKFLOW_STATUS.DRAFT || baseStatus === PR_WORKFLOW_STATUS.REJECTED) {
+      throw new BadRequestException('PR must be approved before previewing RFQ');
     }
-
-    const rfqNumber = `RFQ-${pr.pr_number}`;
 
     const vendorLookups = await Promise.all(
       vendorIds.map(async (vendorId) => this.vendorsService.findOne(tenantId, vendorId)),
@@ -739,7 +896,7 @@ export class PurchaseRequisitionsService {
     const remarks = body?.remarks;
 
     const previews = await Promise.all(
-      recipients.map(async (recipient) => {
+      recipients.map(async (recipient, index) => {
         // Filter items for this vendor based on itemVendors mappings
         let vendorItems = pr.purchase_requisition_items || [];
 
@@ -792,7 +949,7 @@ export class PurchaseRequisitionsService {
         ];
 
         const preview = await this.emailService.buildRFQPreview(recipient.email, {
-          rfq_number: rfqNumber,
+          rfq_number: buildRfqNumber(pr.pr_number, recipient.vendorId || recipient.email, index),
           vendor_name: recipient.name,
           items,
           response_date: responseDate,
@@ -827,6 +984,240 @@ export class PurchaseRequisitionsService {
 
     if (error) throw new BadRequestException(error.message);
     return { message: 'Purchase Requisition deleted successfully' };
+  }
+
+  async findRFQs(tenantId: string, requisitionId: string) {
+    const { data, error } = await this.supabase
+      .from('rfqs')
+      .select(`
+        *,
+        vendor:vendors(id, code, name, email),
+        rfq_items(*)
+      `)
+      .eq('tenant_id', tenantId)
+      .eq('pr_id', requisitionId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw new BadRequestException(error.message);
+
+    return (Array.isArray(data) ? data : []).map((row: any) => {
+      const meta = safeJsonParse(row.notes);
+      return {
+        ...row,
+        meta,
+        follow_up_date: meta.followUpDate || null,
+        follow_up_notes: meta.followUpNotes || null,
+        response_attachments: Array.isArray(meta.responseAttachments) ? meta.responseAttachments : [],
+        response_remarks: meta.responseRemarks || null,
+      };
+    });
+  }
+
+  async recordRFQResponse(
+    tenantId: string,
+    requisitionId: string,
+    rfqId: string,
+    userId: string,
+    body: any,
+  ) {
+    const { data: rfq, error } = await this.supabase
+      .from('rfqs')
+      .select(`
+        *,
+        rfq_items(*)
+      `)
+      .eq('tenant_id', tenantId)
+      .eq('pr_id', requisitionId)
+      .eq('id', rfqId)
+      .single();
+
+    if (error || !rfq) throw new NotFoundException('RFQ not found');
+
+    const existingMeta = safeJsonParse(rfq.notes);
+    const attachments = Array.isArray(body?.attachments)
+      ? body.attachments
+          .map((item: any) => ({
+            url: String(item?.url || '').trim(),
+            name: String(item?.name || '').trim() || 'Attachment',
+          }))
+          .filter((item: any) => item.url)
+      : [];
+
+    const itemPayload = Array.isArray(body?.items) ? body.items : [];
+    const existingItems = Array.isArray(rfq.rfq_items) ? rfq.rfq_items : [];
+
+    for (const item of itemPayload) {
+      const match = existingItems.find(
+        (rfqItem: any) =>
+          (item?.id && String(rfqItem.id) === String(item.id)) ||
+          (item?.prItemId && String(rfqItem.pr_item_id) === String(item.prItemId)),
+      );
+
+      const itemUpdate = {
+        vendor_quoted_price:
+          item?.quotedPrice === '' || item?.quotedPrice == null ? null : Number(item.quotedPrice),
+        vendor_quoted_lead_time:
+          item?.leadTime === '' || item?.leadTime == null ? null : Number(item.leadTime),
+        vendor_notes: String(item?.notes || '').trim() || null,
+      };
+
+      if (match?.id) {
+        const { error: updateItemError } = await this.supabase
+          .from('rfq_items')
+          .update(itemUpdate)
+          .eq('id', match.id);
+
+        if (updateItemError) throw new BadRequestException(updateItemError.message);
+      } else if (item?.prItemId) {
+        const { error: createItemError } = await this.supabase
+          .from('rfq_items')
+          .insert({
+            rfq_id: rfqId,
+            pr_item_id: item.prItemId,
+            item_code: item.itemCode || null,
+            item_name: item.itemName || null,
+            requested_qty: item.requestedQty ?? null,
+            uom: item.uom || null,
+            ...itemUpdate,
+          });
+
+        if (createItemError) throw new BadRequestException(createItemError.message);
+      }
+    }
+
+    const updatedMeta = {
+      ...existingMeta,
+      responseRemarks: String(body?.remarks || '').trim() || null,
+      followUpDate: String(body?.followUpDate || '').trim() || null,
+      followUpNotes: String(body?.followUpNotes || '').trim() || null,
+      responseAttachments: attachments,
+      respondedBy: userId,
+    };
+
+    const { error: updateRfqError } = await this.supabase
+      .from('rfqs')
+      .update({
+        status: 'RECEIVED',
+        vendor_quote_received_at: body?.receivedAt || new Date().toISOString(),
+        notes: JSON.stringify(updatedMeta),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', rfqId);
+
+    if (updateRfqError) throw new BadRequestException(updateRfqError.message);
+
+    const rows = await this.findRFQs(tenantId, requisitionId);
+    return rows.find((row: any) => String(row.id) === String(rfqId)) || { id: rfqId };
+  }
+
+  private async attachWorkflowMetadata(tenantId: string, requisitions: any[]) {
+    if (!Array.isArray(requisitions) || requisitions.length === 0) return requisitions;
+
+    const prIds = requisitions
+      .map((row: any) => String(row?.id || '').trim())
+      .filter(Boolean);
+
+    if (prIds.length === 0) return requisitions;
+
+    const [{ data: rfqRows }, { data: poRows }] = await Promise.all([
+      this.supabase
+        .from('rfqs')
+        .select('id, pr_id, status, sent_at, response_deadline, vendor_quote_received_at, notes')
+        .eq('tenant_id', tenantId)
+        .in('pr_id', prIds),
+      this.supabase
+        .from('purchase_orders')
+        .select('id, pr_id, purchase_order_items(ordered_qty, received_qty)')
+        .eq('tenant_id', tenantId)
+        .in('pr_id', prIds),
+    ]);
+
+    const rfqSummaryByPr = new Map<string, any>();
+    (Array.isArray(rfqRows) ? rfqRows : []).forEach((row: any) => {
+      const prId = String(row?.pr_id || '').trim();
+      if (!prId) return;
+      const current = rfqSummaryByPr.get(prId) || {
+        total: 0,
+        sentCount: 0,
+        receivedCount: 0,
+        nextFollowUpDate: null,
+      };
+      const notes = safeJsonParse(row?.notes);
+      const normalized = normalizeStatus(row?.status);
+      current.total += 1;
+      if (row?.sent_at) current.sentCount += 1;
+      if (normalized === 'RECEIVED' || row?.vendor_quote_received_at) current.receivedCount += 1;
+      const followUpDate = String(notes.followUpDate || '').trim();
+      if (followUpDate && (!current.nextFollowUpDate || followUpDate < current.nextFollowUpDate)) {
+        current.nextFollowUpDate = followUpDate;
+      }
+      rfqSummaryByPr.set(prId, current);
+    });
+
+    const poSummaryByPr = new Map<string, any>();
+    (Array.isArray(poRows) ? poRows : []).forEach((row: any) => {
+      const prId = String(row?.pr_id || '').trim();
+      if (!prId) return;
+      const current = poSummaryByPr.get(prId) || {
+        totalOrderedQty: 0,
+        totalReceivedQty: 0,
+      };
+      const items = Array.isArray(row?.purchase_order_items) ? row.purchase_order_items : [];
+      items.forEach((item: any) => {
+        current.totalOrderedQty += Number(item?.ordered_qty || 0);
+        current.totalReceivedQty += Number(item?.received_qty || 0);
+      });
+      poSummaryByPr.set(prId, current);
+    });
+
+    return requisitions.map((row: any) => {
+      const prId = String(row?.id || '').trim();
+      const baseStatus = normalizeStatus(row?.status);
+      const items = Array.isArray(row?.purchase_requisition_items) ? row.purchase_requisition_items : [];
+      const rfqSummary = rfqSummaryByPr.get(prId) || {
+        total: 0,
+        sentCount: 0,
+        receivedCount: 0,
+        nextFollowUpDate: null,
+      };
+      const poSummary = poSummaryByPr.get(prId) || {
+        totalOrderedQty: 0,
+        totalReceivedQty: 0,
+      };
+
+      const poDone =
+        items.length > 0 &&
+        items.every((item: any) => Number(item?.remaining_qty ?? item?.requested_qty ?? 0) <= 0);
+      const goodsReceived = poSummary.totalOrderedQty > 0 && poSummary.totalReceivedQty >= poSummary.totalOrderedQty;
+
+      let workflowStatus = baseStatus;
+      let workflowDetail: string | null = null;
+
+      if (baseStatus === 'REJECTED') {
+        workflowStatus = PR_WORKFLOW_STATUS.REJECTED;
+      } else if (baseStatus === 'DRAFT' || !baseStatus) {
+        workflowStatus = PR_WORKFLOW_STATUS.DRAFT;
+      } else if (goodsReceived) {
+        workflowStatus = PR_WORKFLOW_STATUS.GOODS_RCVD;
+      } else if (poDone) {
+        workflowStatus = PR_WORKFLOW_STATUS.PO_DONE;
+      } else if (rfqSummary.receivedCount > 0) {
+        workflowStatus = PR_WORKFLOW_STATUS.RFQ_RCVD;
+        workflowDetail = 'Received';
+      } else {
+        workflowStatus = PR_WORKFLOW_STATUS.RFQ_ISSUED;
+        workflowDetail = rfqSummary.sentCount > 0 ? 'Yes' : 'No';
+      }
+
+      return {
+        ...row,
+        workflow_status: workflowStatus,
+        workflow_status_detail: workflowDetail,
+        workflow_status_label: buildWorkflowStatusLabel(workflowStatus, workflowDetail),
+        rfq_summary: rfqSummary,
+        po_summary: poSummary,
+      };
+    });
   }
 
   private async generatePRNumber(tenantId: string): Promise<string> {
