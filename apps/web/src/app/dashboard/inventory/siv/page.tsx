@@ -19,6 +19,16 @@ type InventoryItem = {
   name?: string;
 };
 
+type ManualIssueLine = {
+  id: string;
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  issueQuantity: number;
+  notes?: string;
+  uids: string[];
+};
+
 type MaterialLine = {
   id: string;
   item_id?: string;
@@ -105,6 +115,7 @@ export default function SivPage() {
   const [manualIssueNotes, setManualIssueNotes] = useState('');
   const [manualIssueUidInput, setManualIssueUidInput] = useState('');
   const [manualIssueUids, setManualIssueUids] = useState<string[]>([]);
+  const [manualIssueLines, setManualIssueLines] = useState<ManualIssueLine[]>([]);
   const [manualIssueBusy, setManualIssueBusy] = useState(false);
 
   const openUidPicker = useCallback(async (lineId: string, itemId: string, itemCode: string, maxQty: number) => {
@@ -344,41 +355,104 @@ export default function SivPage() {
     setManualIssueUidInput('');
   }, [manualIssueUidInput, normalizeUid]);
 
-  const handleManualIssue = useCallback(async () => {
+  const resetManualIssueDraft = useCallback(() => {
+    setManualIssueItemId('');
+    setManualIssueQty('1');
+    setManualIssueNotes('');
+    setManualIssueUidInput('');
+    setManualIssueUids([]);
+  }, []);
+
+  const buildManualIssueDraftLine = useCallback((): ManualIssueLine | null => {
     if (!manualIssueItemId) {
-      alert('Select an item for manual SIV.');
-      return;
+      return null;
     }
 
     const issueQuantity = Number(manualIssueQty || 0);
     if (!Number.isFinite(issueQuantity) || issueQuantity <= 0) {
-      alert('Issue quantity must be greater than 0.');
+      throw new Error('Issue quantity must be greater than 0.');
+    }
+
+    if (manualIssueUids.length > 0 && manualIssueUids.length !== issueQuantity) {
+      throw new Error('Manual UID count must match the issue quantity.');
+    }
+
+    const item = inventoryItems.find((row) => row.id === manualIssueItemId);
+    return {
+      id: `${manualIssueItemId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      itemId: manualIssueItemId,
+      itemCode: String(item?.code || '').trim(),
+      itemName: String(item?.name || '').trim(),
+      issueQuantity,
+      notes: String(manualIssueNotes || '').trim() || undefined,
+      uids: [...manualIssueUids],
+    };
+  }, [inventoryItems, manualIssueItemId, manualIssueNotes, manualIssueQty, manualIssueUids]);
+
+  const addManualIssueLine = useCallback(() => {
+    try {
+      const line = buildManualIssueDraftLine();
+      if (!line) {
+        alert('Select an item to add.');
+        return;
+      }
+
+      setManualIssueLines((prev) => [...prev, line]);
+      resetManualIssueDraft();
+    } catch (err: any) {
+      alert(String(err?.message || err));
+    }
+  }, [buildManualIssueDraftLine, resetManualIssueDraft]);
+
+  const removeManualIssueLine = useCallback((lineId: string) => {
+    setManualIssueLines((prev) => prev.filter((line) => line.id !== lineId));
+  }, []);
+
+  const handleManualIssue = useCallback(async () => {
+    const linesToSubmit = [...manualIssueLines];
+
+    try {
+      const draftLine = buildManualIssueDraftLine();
+      if (draftLine) {
+        linesToSubmit.push(draftLine);
+      }
+    } catch (err: any) {
+      alert(String(err?.message || err));
+      return;
+    }
+
+    if (linesToSubmit.length === 0) {
+      alert('Add at least one item for manual SIV.');
       return;
     }
 
     setManualIssueBusy(true);
     try {
-      const result = await apiClient.post('/job-orders/store/material-requisitions/manual-issue', {
-        itemId: manualIssueItemId,
-        issueQuantity,
-        notes: manualIssueNotes || undefined,
-        uids: manualIssueUids.length > 0 ? manualIssueUids : undefined,
-      });
+      const results: any[] = [];
+      for (const line of linesToSubmit) {
+        const result = await apiClient.post('/job-orders/store/material-requisitions/manual-issue', {
+          itemId: line.itemId,
+          issueQuantity: line.issueQuantity,
+          notes: line.notes || undefined,
+          uids: line.uids.length > 0 ? line.uids : undefined,
+        });
+        results.push(result);
+      }
 
-      setManualIssueItemId('');
-      setManualIssueQty('1');
-      setManualIssueNotes('');
-      setManualIssueUidInput('');
-      setManualIssueUids([]);
+      setManualIssueLines([]);
+      resetManualIssueDraft();
       await loadAll();
       setActiveSivView('history');
-      alert(String((result as any)?.message || 'Manual SIV created successfully'));
+      const message = results.length === 1
+        ? String(results[0]?.message || 'Manual SIV created successfully')
+        : `Created ${results.length} manual SIV entries successfully`;
+      alert(message);
     } catch (err: any) {
       alert('Failed to create manual SIV: ' + String(err?.response?.data?.message || err?.message || err));
     } finally {
       setManualIssueBusy(false);
     }
-  }, [loadAll, manualIssueItemId, manualIssueNotes, manualIssueQty, manualIssueUids]);
+  }, [buildManualIssueDraftLine, loadAll, manualIssueLines, resetManualIssueDraft]);
 
   const scanUidForJob = useCallback(async (jobId: string) => {
     const raw = normalizeUid(scanInputByJob[jobId] || '');
@@ -842,7 +916,7 @@ export default function SivPage() {
                       onClick={addManualIssueUid}
                       className="px-3 py-2 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37] text-sm font-medium shadow-sm"
                     >
-                      Add
+                      Add UID
                     </button>
                   </div>
                   {manualIssueUids.length > 0 ? (
@@ -869,7 +943,59 @@ export default function SivPage() {
                   placeholder="Reason / receiver / remarks"
                 />
               </div>
-              <div className="mt-4 flex justify-end">
+              {(manualIssueLines.length > 0 || manualIssueItemId) && (
+                <div className="mt-4 rounded-lg border border-[#8B6F47]/20 bg-[#F8F3E8] p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[#36454F]">Manual SIV Items</h3>
+                      <p className="text-xs text-[#6F4E37] mt-1">Add multiple items here before creating the manual SIV entries.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addManualIssueLine}
+                      disabled={!canCreate || manualIssueBusy}
+                      className="px-4 py-2 bg-[#E8DCC4] text-[#6F4E37] rounded-lg hover:bg-[#D4C4A8] font-medium text-sm disabled:opacity-50"
+                    >
+                      Add Item
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {manualIssueLines.map((line, index) => (
+                      <div key={line.id} className="flex flex-col gap-2 rounded-lg border border-[#8B6F47]/15 bg-white p-3 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <div className="font-medium text-[#36454F]">{index + 1}. {[line.itemCode, line.itemName].filter(Boolean).join(' - ') || line.itemId}</div>
+                          <div className="text-sm text-gray-700 mt-1">Qty: {line.issueQuantity}</div>
+                          {line.uids.length > 0 && <div className="text-xs text-gray-600 mt-1">UIDs: {line.uids.join(', ')}</div>}
+                          {line.notes && <div className="text-xs text-gray-600 mt-1">Notes: {line.notes}</div>}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeManualIssueLine(line.id)}
+                          className="text-sm text-red-600 hover:text-red-800"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    {manualIssueItemId && (
+                      <div className="rounded-lg border border-dashed border-[#8B6F47]/25 p-3 text-sm text-[#6F4E37]">
+                        Current draft item is ready to add.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="mt-4 flex justify-end gap-3">
+                {manualIssueLines.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setManualIssueLines([])}
+                    disabled={manualIssueBusy}
+                    className="px-5 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium disabled:opacity-50"
+                  >
+                    Clear Items
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => void handleManualIssue()}

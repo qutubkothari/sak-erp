@@ -124,6 +124,35 @@ function createInitialFormState(): VendorFormState {
   };
 }
 
+function buildVendorPayload(formData: VendorFormState): VendorFormState {
+  const name = String(formData.name || '').trim();
+  const legalName = String(formData.legalName || '').trim() || name;
+  const taxId = String(formData.taxId || '').trim().toUpperCase();
+  const contacts = formData.contacts
+    .map((contact) => ({
+      name: String(contact.name || '').trim(),
+      phone: String(contact.phone || '').trim(),
+      email: String(contact.email || '').trim(),
+      isDefault: Boolean(contact.isDefault),
+    }))
+    .filter((contact) => contact.name || contact.phone || contact.email);
+
+  return {
+    ...formData,
+    name,
+    legalName,
+    taxId,
+    address: String(formData.address || '').trim(),
+    billingLine2: String(formData.billingLine2 || '').trim(),
+    street: String(formData.street || '').trim(),
+    city: String(formData.city || '').trim(),
+    state: String(formData.state || '').trim(),
+    country: String(formData.country || '').trim() || 'India',
+    pincode: String(formData.pincode || '').trim(),
+    contacts,
+  };
+}
+
 function normalizeVendorContacts(contacts?: Vendor['contacts']): VendorContactForm[] {
   const list = Array.isArray(contacts)
     ? contacts
@@ -208,13 +237,14 @@ export default function VendorsPage() {
     setFormData(createInitialFormState());
   };
 
-  const actuallySaveVendor = async () => {
+  const actuallySaveVendor = async (payload = buildVendorPayload(formData)) => {
+
     try {
       if (editingVendor) {
-        await apiClient.put(`/purchase/vendors/${editingVendor.id}`, formData);
+        await apiClient.put(`/purchase/vendors/${editingVendor.id}`, payload);
         toast.success('Vendor updated successfully');
       } else {
-        await apiClient.post('/purchase/vendors', formData);
+        await apiClient.post('/purchase/vendors', payload);
         toast.success('Vendor created successfully');
       }
 
@@ -232,14 +262,23 @@ export default function VendorsPage() {
       return;
     }
 
+    const payload = buildVendorPayload(formData);
+
+    if (!payload.name) {
+      toast.error('Vendor name is required');
+      return;
+    }
+
+    setFormData(payload);
+
     if (editingVendor) {
-      await actuallySaveVendor();
+      await actuallySaveVendor(payload);
       return;
     }
 
     await checkDuplicates(
-      () => apiClient.post('/purchase/vendors/check-duplicates', formData),
-      () => actuallySaveVendor(),
+      () => apiClient.post('/purchase/vendors/check-duplicates', payload),
+      () => actuallySaveVendor(payload),
     );
   };
 
@@ -351,6 +390,7 @@ export default function VendorsPage() {
       setFormData((prev) => ({
         ...prev,
         taxId: result.gstin || prev.taxId,
+        legalName: prev.legalName.trim() || prev.name.trim(),
         gstVerification: result,
       }));
 

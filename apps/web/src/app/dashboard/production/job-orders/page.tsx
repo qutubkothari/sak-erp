@@ -148,6 +148,22 @@ type JobOrderQcSummary = {
   srvApprovedBy?: string | null;
 };
 
+function formatDateTimeLocalValue(value?: string | null, fallback?: string) {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback || '';
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return fallback || '';
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  const hours = String(parsed.getHours()).padStart(2, '0');
+  const minutes = String(parsed.getMinutes()).padStart(2, '0');
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 export default function JobOrdersPage() {
   return (
     <Suspense
@@ -186,7 +202,9 @@ function JobOrdersPageContent() {
   const [allBoms, setAllBoms] = useState<any[]>([]);
   const [bomSearchTerm, setBomSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [selectedJobOrder, setSelectedJobOrder] = useState<JobOrder | null>(null);
+  const [jobOrderToSchedule, setJobOrderToSchedule] = useState<JobOrder | null>(null);
   const [selectedJobOrderLoading, setSelectedJobOrderLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [completionPreview, setCompletionPreview] = useState<any>(null);
@@ -201,6 +219,10 @@ function JobOrdersPageContent() {
   const [openSalesOrders, setOpenSalesOrders] = useState<SalesOrderOption[]>([]);
   const [salesOrderItems, setSalesOrderItems] = useState<SalesOrderItemOption[]>([]);
   const [qcSummary, setQcSummary] = useState<JobOrderQcSummary | null>(null);
+  const [scheduleForm, setScheduleForm] = useState({
+    assignedTo: '',
+    startDate: `${getTodayDateInputValue()}T09:00`,
+  });
 
   // Form state
   const [formData, setFormData] = useState({
@@ -465,9 +487,27 @@ function JobOrdersPageContent() {
   const fetchUsers = async () => {
     try {
       const data = await apiClient.get('/hr/employees');
-      setUsers(data);
+      setUsers(Array.isArray(data) ? data : (data as any)?.data || []);
     } catch (error) {
     }
+  };
+
+  const openScheduleModal = (jo: JobOrder) => {
+    setJobOrderToSchedule(jo);
+    setScheduleForm({
+      assignedTo: String(jo.assignedTo || '').trim(),
+      startDate: formatDateTimeLocalValue(jo.startDate, `${getTodayDateInputValue()}T09:00`),
+    });
+    setShowScheduleModal(true);
+  };
+
+  const closeScheduleModal = () => {
+    setShowScheduleModal(false);
+    setJobOrderToSchedule(null);
+    setScheduleForm({
+      assignedTo: '',
+      startDate: `${getTodayDateInputValue()}T09:00`,
+    });
   };
 
   // Fetch all BOMs on page load
@@ -895,6 +935,34 @@ function JobOrdersPageContent() {
       }
 
       alert(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleScheduleJobOrder = async () => {
+    if (!jobOrderToSchedule) return;
+
+    const assignedTo = String(scheduleForm.assignedTo || '').trim();
+    const startDate = String(scheduleForm.startDate || '').trim();
+
+    if (!assignedTo || !startDate) {
+      alert('Please select an employee and start date/time');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await apiClient.put(`/job-orders/${jobOrderToSchedule.id}`, {
+        assignedTo,
+        startDate: new Date(startDate).toISOString(),
+        status: 'SCHEDULED',
+      });
+      await fetchJobOrders();
+      closeScheduleModal();
+      alert('Job Order scheduled successfully');
+    } catch (error: any) {
+      alert(error?.response?.data?.message || error?.message || 'Failed to schedule Job Order');
     } finally {
       setLoading(false);
     }
@@ -1693,7 +1761,7 @@ function JobOrdersPageContent() {
           {jo.status === 'DRAFT' && canEdit && (
             <button
               type="button"
-              onClick={() => handleUpdateStatus(jo.id, 'SCHEDULED')}
+              onClick={() => openScheduleModal(jo)}
               className="text-green-600 hover:text-green-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
               disabled={loading}
             >
@@ -1760,6 +1828,76 @@ function JobOrdersPageContent() {
           </div>
         }
       />
+
+      {showScheduleModal && jobOrderToSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-[#36454F]">Schedule Job Order</h2>
+                <p className="text-sm text-gray-500">{jobOrderToSchedule.jobOrderNumber} · {jobOrderToSchedule.itemCode}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeScheduleModal}
+                className="text-gray-500 hover:text-gray-700"
+                disabled={loading}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Assign to Employee *</label>
+                <select
+                  value={scheduleForm.assignedTo}
+                  onChange={(e) => setScheduleForm((prev) => ({ ...prev, assignedTo: e.target.value }))}
+                  className="w-full rounded border px-3 py-2"
+                  disabled={loading}
+                >
+                  <option value="">-- Select Employee --</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.employee_name || user.full_name} {user.employee_code ? `(${user.employee_code})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Start Date and Time *</label>
+                <input
+                  type="datetime-local"
+                  value={scheduleForm.startDate}
+                  onChange={(e) => setScheduleForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                  className="w-full rounded border px-3 py-2"
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeScheduleModal}
+                className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleScheduleJobOrder}
+                className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={loading}
+              >
+                {loading ? 'Scheduling…' : 'Schedule'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Job Order Modal */}
       {showCreateModal && (
