@@ -44,9 +44,11 @@ function buildWorkflowStatusLabel(status: string, detail?: string | null): strin
     case PR_WORKFLOW_STATUS.DRAFT:
       return 'Draft';
     case PR_WORKFLOW_STATUS.RFQ_ISSUED:
-      return `RFQ Issued (${detail || 'No'})`;
+      if (detail === 'No') return 'RFQ Not Sent';
+      if (detail === 'Yes') return 'RFQ Sent';
+      return 'RFQ Sent';
     case PR_WORKFLOW_STATUS.RFQ_RCVD:
-      return `RFQ Rcvd (${detail || 'Received'})`;
+      return 'RFQ Response Received';
     case PR_WORKFLOW_STATUS.PO_DONE:
       return 'PO Done';
     case PR_WORKFLOW_STATUS.GOODS_RCVD:

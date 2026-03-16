@@ -1889,7 +1889,7 @@ function PRContent() {
                             }}
                             className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm"
                           >
-                            RFQ Responses
+                            View / Record RFQ Responses
                           </button>
                           <button
                             onClick={() => {
@@ -2154,6 +2154,10 @@ function PRContent() {
                         >
                           Hide
                         </button>
+                      </div>
+
+                      <div className="mb-3 rounded-lg bg-white border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                        Use <span className="font-semibold">Record Response</span> to enter the vendor quote, lead time, remarks, follow-up date, and attachments for each RFQ.
                       </div>
 
                       {loadingRfqHistory ? (
