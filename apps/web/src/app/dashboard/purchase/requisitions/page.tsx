@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
-import { getTodayDateInputValue } from '@/lib/date';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
@@ -212,7 +211,6 @@ function normalizeDateInputValue(value: string | null | undefined): string {
 function PRContent() {
   const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
-  const todayDate = getTodayDateInputValue();
   const currentUser = readStoredUser();
   const canApprovePR = hasModulePermission(currentUser, 'Purchase Management', 'approve');
   const canCreatePR = hasModulePermission(currentUser, 'Purchase Management', 'create');
@@ -2143,7 +2141,6 @@ function PRContent() {
                           <label className="block text-xs font-semibold text-gray-700 mb-1">Expected Response Date (optional)</label>
                           <input
                             type="date"
-                            max={todayDate}
                             value={rfqResponseDate}
                             onChange={(e) => setRfqResponseDate(e.target.value)}
                             className="w-full px-3 py-2 border rounded-lg text-sm"
