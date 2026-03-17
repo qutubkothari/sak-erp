@@ -27,6 +27,8 @@ const FUTURE_ALLOWED_FIELDS = new Set([
   'required_date',
   'followUpDate',
   'follow_up_date',
+  'responseDate',
+  'response_date',
   'expectedDelivery',
   'expectedDeliveryDate',
   'expected_delivery_date',
