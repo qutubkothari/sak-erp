@@ -60,6 +60,28 @@ function buildWorkflowStatusLabel(status: string, detail?: string | null): strin
   }
 }
 
+function normalizeDateOnly(value: any): string | null {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw;
+  }
+
+  const ddmmyyyy = raw.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
+  if (ddmmyyyy) {
+    const [, day, month, year] = ddmmyyyy;
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString().slice(0, 10);
+}
+
 @Injectable()
 export class PurchaseRequisitionsService {
   private supabase: SupabaseClient;
@@ -1036,6 +1058,7 @@ export class PurchaseRequisitionsService {
     if (error || !rfq) throw new NotFoundException('RFQ not found');
 
     const existingMeta = safeJsonParse(rfq.notes);
+    const normalizedFollowUpDate = normalizeDateOnly(body?.followUpDate || body?.follow_up_date);
     const attachments = Array.isArray(body?.attachments)
       ? body.attachments
           .map((item: any) => ({
@@ -1089,9 +1112,9 @@ export class PurchaseRequisitionsService {
 
     const updatedMeta = {
       ...existingMeta,
-      responseRemarks: String(body?.remarks || '').trim() || null,
-      followUpDate: String(body?.followUpDate || '').trim() || null,
-      followUpNotes: String(body?.followUpNotes || '').trim() || null,
+      responseRemarks: String(body?.remarks || body?.responseRemarks || '').trim() || null,
+      followUpDate: normalizedFollowUpDate,
+      followUpNotes: String(body?.followUpNotes || body?.follow_up_notes || '').trim() || null,
       responseAttachments: attachments,
       respondedBy: userId,
     };

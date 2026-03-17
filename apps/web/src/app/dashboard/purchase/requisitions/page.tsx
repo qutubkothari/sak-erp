@@ -184,6 +184,31 @@ function getPrWorkflowBadgeClass(status: string): string {
   }
 }
 
+function normalizeDateInputValue(value: string | null | undefined): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw;
+  }
+
+  const ddmmyyyy = raw.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
+  if (ddmmyyyy) {
+    const [, day, month, year] = ddmmyyyy;
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function PRContent() {
   const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
@@ -943,7 +968,7 @@ function PRContent() {
     setEditingRfqResponse(rfq);
     setRfqResponseForm({
       remarks: rfq.response_remarks || '',
-      followUpDate: rfq.follow_up_date || '',
+      followUpDate: normalizeDateInputValue(rfq.follow_up_date),
       followUpNotes: rfq.follow_up_notes || '',
       attachments: Array.isArray(rfq.response_attachments) ? rfq.response_attachments : [],
       items: Array.isArray(rfq.rfq_items)
@@ -1019,33 +1044,41 @@ function PRContent() {
   const saveRfqResponse = async () => {
     if (!selectedPR || !editingRfqResponse) return;
 
+    const followUpDate = normalizeDateInputValue(rfqResponseForm.followUpDate);
+    if (rfqResponseForm.followUpDate && !followUpDate) {
+      alert('Enter a valid follow-up date');
+      return;
+    }
+
+    const payload = {
+      remarks: rfqResponseForm.remarks || undefined,
+      followUpDate: followUpDate || undefined,
+      followUpNotes: rfqResponseForm.followUpNotes || undefined,
+      attachments: rfqResponseForm.attachments,
+      items: rfqResponseForm.items.map((item) => ({
+        id: item.id,
+        prItemId: item.prItemId,
+        itemCode: item.itemCode,
+        itemName: item.itemName,
+        requestedQty: item.requestedQty,
+        uom: item.uom,
+        quotedPrice: item.quotedPrice === '' ? null : Number(item.quotedPrice),
+        leadTime: item.leadTime === '' ? null : Number(item.leadTime),
+        notes: item.notes || undefined,
+      })),
+    };
+
     try {
       setSavingRfqResponse(true);
       await apiClient.post(
         `/purchase/requisitions/${selectedPR.id}/rfqs/${editingRfqResponse.id}/response`,
-        {
-          remarks: rfqResponseForm.remarks || undefined,
-          followUpDate: rfqResponseForm.followUpDate || undefined,
-          followUpNotes: rfqResponseForm.followUpNotes || undefined,
-          attachments: rfqResponseForm.attachments,
-          items: rfqResponseForm.items.map((item) => ({
-            id: item.id,
-            prItemId: item.prItemId,
-            itemCode: item.itemCode,
-            itemName: item.itemName,
-            requestedQty: item.requestedQty,
-            uom: item.uom,
-            quotedPrice: item.quotedPrice === '' ? null : Number(item.quotedPrice),
-            leadTime: item.leadTime === '' ? null : Number(item.leadTime),
-            notes: item.notes || undefined,
-          })),
-        },
+        payload,
       );
 
       await Promise.all([fetchRfqHistory(selectedPR.id), handleViewDetails(selectedPR.id)]);
       setEditingRfqResponse(null);
-    } catch (error) {
-      alert('Failed to save RFQ response');
+    } catch (error: any) {
+      alert(error?.message || 'Failed to save RFQ response');
     } finally {
       setSavingRfqResponse(false);
     }
