@@ -4,6 +4,7 @@ import { CreateJobOrderDto, PartialCompleteJobOrderDto, UpdateJobOrderDto, Updat
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+import { hasPermission } from '../../auth/utils/permission-utils';
 
 @Controller('job-orders')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -127,11 +128,21 @@ export class JobOrderController {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id || req.user?.userId || req.user?.sub;
     const nextFilters = { ...(filters || {}) };
-    if (nextFilters?.myAssigned === 'true' || nextFilters?.myAssigned === true) {
+    const canCreateJobOrders = hasPermission(req.user, 'job_orders:create');
+    if (!canCreateJobOrders && userId) {
+      nextFilters.assignedTo = userId;
+      delete nextFilters.myAssigned;
+    } else if (nextFilters?.myAssigned === 'true' || nextFilters?.myAssigned === true) {
       nextFilters.assignedTo = userId;
       delete nextFilters.myAssigned;
     }
     return this.jobOrderService.findAll(tenantId, nextFilters);
+  }
+
+  @Get('assignable-users')
+  async getAssignableUsers(@Request() req: any) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.jobOrderService.getAssignableUsers(tenantId);
   }
 
   @Get(':id')

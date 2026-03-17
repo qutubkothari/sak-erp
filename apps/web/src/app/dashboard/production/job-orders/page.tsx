@@ -35,10 +35,9 @@ interface Workstation {
 
 interface User {
   id: string;
-  employee_name: string;
-  employee_code: string;
-  designation?: string;
-  full_name?: string;
+  displayName: string;
+  employeeCode?: string | null;
+  email?: string | null;
 }
 
 interface Operation {
@@ -192,7 +191,7 @@ function JobOrdersPageContent() {
   const canCreate = hasModulePermission(currentUser, 'Production', 'create');
   const canEdit = hasModulePermission(currentUser, 'Production', 'edit');
   const canApprove = hasModulePermission(currentUser, 'Production', 'approve');
-  const restrictToAssignedJobs = !!currentUserId && !canCreate && !canApprove;
+  const restrictToAssignedJobs = !!currentUserId && !canCreate;
 
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -486,9 +485,10 @@ function JobOrdersPageContent() {
 
   const fetchUsers = async () => {
     try {
-      const data = await apiClient.get('/hr/employees');
+      const data = await apiClient.get('/job-orders/assignable-users');
       setUsers(Array.isArray(data) ? data : (data as any)?.data || []);
     } catch (error) {
+      setUsers([]);
     }
   };
 
@@ -1859,7 +1859,7 @@ function JobOrdersPageContent() {
                   <option value="">-- Select Employee --</option>
                   {users.map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.employee_name || user.full_name} {user.employee_code ? `(${user.employee_code})` : ''}
+                      {user.displayName} {user.employeeCode ? `(${user.employeeCode})` : ''}
                     </option>
                   ))}
                 </select>
@@ -2109,7 +2109,7 @@ function JobOrdersPageContent() {
                   <option value="">-- Unassigned --</option>
                   {users.map(user => (
                     <option key={user.id} value={user.id}>
-                      {user.employee_name || user.full_name} {user.employee_code ? `(${user.employee_code})` : ''}
+                      {user.displayName} {user.employeeCode ? `(${user.employeeCode})` : ''}
                     </option>
                   ))}
                 </select>
@@ -2190,7 +2190,7 @@ function JobOrdersPageContent() {
                           <option value="">Unassigned</option>
                           {users.map(user => (
                             <option key={user.id} value={user.id}>
-                              {user.employee_name} {user.designation && `(${user.designation})`}
+                              {user.displayName} {user.employeeCode ? `(${user.employeeCode})` : ''}
                             </option>
                           ))}
                         </select>

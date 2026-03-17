@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { CreateJobOrderDto, UpdateJobOrderDto, UpdateOperationDto } from '../dto/job-order.dto';
 import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
 import { normalizeInventoryCategory } from '../../inventory/utils/inventory-category';
+import { hasAnyPermissionForResource } from '../../auth/utils/permission-utils';
 
 type JobOrderIssueMaterialsFailure = {
   materialId: string;
@@ -131,6 +132,74 @@ export class JobOrderService {
   private smartCreateJobTtlMs = 1000 * 60 * 60; // 1 hour
 
   constructor(private readonly uidService: UidSupabaseService) {}
+
+  private async loadUsersWithRoles(tenantId: string) {
+    const { data: users, error } = await this.supabase
+      .from('users')
+      .select('id, email, first_name, last_name, full_name, employee_name, employee_code, is_active, role:roles (id, name, permissions)')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .order('first_name', { ascending: true });
+
+    if (error) throw new BadRequestException(error.message);
+
+    const rows = Array.isArray(users) ? users : [];
+    const userIds = rows.map((row: any) => row?.id).filter(Boolean);
+    let userRoles: any[] = [];
+
+    if (userIds.length > 0) {
+      const { data, error: rolesError } = await this.supabase
+        .from('user_roles')
+        .select('user_id, role:roles (id, name, permissions)')
+        .eq('tenant_id', tenantId)
+        .in('user_id', userIds);
+
+      if (!rolesError) {
+        userRoles = Array.isArray(data) ? data : [];
+      }
+    }
+
+    const rolesByUserId = new Map<string, any[]>();
+    userRoles.forEach((entry: any) => {
+      const userId = String(entry?.user_id || '').trim();
+      const role = entry?.role;
+      if (!userId || !role) return;
+      const list = rolesByUserId.get(userId) || [];
+      list.push({ role });
+      rolesByUserId.set(userId, list);
+    });
+
+    return rows.map((row: any) => {
+      const multiRoles = rolesByUserId.get(String(row?.id || '').trim()) || [];
+      const fallbackRoles = row?.role ? [{ role: row.role }] : [];
+      return {
+        ...row,
+        roles: multiRoles.length > 0 ? multiRoles : fallbackRoles,
+      };
+    });
+  }
+
+  async getAssignableUsers(tenantId: string) {
+    const users = await this.loadUsersWithRoles(tenantId);
+
+    return users
+      .filter((user: any) => hasAnyPermissionForResource(user, 'job_orders'))
+      .map((user: any) => ({
+        id: String(user?.id || '').trim(),
+        displayName: String(
+          user?.employee_name ||
+            user?.full_name ||
+            [user?.first_name, user?.last_name].filter(Boolean).join(' ') ||
+            user?.email ||
+            user?.id ||
+            '',
+        ).trim(),
+        employeeCode: String(user?.employee_code || '').trim() || null,
+        email: String(user?.email || '').trim() || null,
+      }))
+      .filter((user: any) => user.id && user.displayName)
+      .sort((a: any, b: any) => a.displayName.localeCompare(b.displayName));
+  }
 
   private pruneSmartCreateJobs(now = Date.now()) {
     for (const [id, job] of this.smartCreateJobs.entries()) {
@@ -2117,7 +2186,16 @@ export class JobOrderService {
   }
 
   async update(tenantId: string, id: string, dto: UpdateJobOrderDto) {
-    const updateData: any = { ...dto };
+    const updateData: any = {};
+
+    if (dto.startDate !== undefined) updateData.start_date = dto.startDate;
+    if (dto.endDate !== undefined) updateData.end_date = dto.endDate;
+    if (dto.priority !== undefined) updateData.priority = dto.priority;
+    if (dto.status !== undefined) updateData.status = dto.status;
+    if (dto.notes !== undefined) updateData.notes = dto.notes;
+    if (dto.salesOrderId !== undefined) updateData.sales_order_id = dto.salesOrderId;
+    if (dto.salesOrderItemId !== undefined) updateData.sales_order_item_id = dto.salesOrderItemId;
+    if (dto.assignedTo !== undefined) updateData.assigned_to = dto.assignedTo;
     
     // Get assigned user name if assignedTo is being updated
     if (dto.assignedTo) {
@@ -2128,6 +2206,7 @@ export class JobOrderService {
         .single();
       updateData.assigned_to_name = assignedUser?.employee_name || assignedUser?.full_name;
     } else if (dto.assignedTo === null) {
+      updateData.assigned_to = null;
       updateData.assigned_to_name = null;
     }
 
