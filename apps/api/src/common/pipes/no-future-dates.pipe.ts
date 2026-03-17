@@ -25,6 +25,8 @@ const getTodayUtcDateOnly = (now: Date = new Date()): string => {
 const FUTURE_ALLOWED_FIELDS = new Set([
   'requiredDate',
   'required_date',
+  'followUpDate',
+  'follow_up_date',
   'expectedDelivery',
   'expectedDeliveryDate',
   'expected_delivery_date',
