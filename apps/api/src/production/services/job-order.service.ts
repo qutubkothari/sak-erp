@@ -133,10 +133,17 @@ export class JobOrderService {
 
   constructor(private readonly uidService: UidSupabaseService) {}
 
+  private formatUserDisplayName(user: any) {
+    const firstName = String(user?.first_name || '').trim();
+    const lastName = String(user?.last_name || '').trim();
+    const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+    return fullName || String(user?.email || user?.id || '').trim() || null;
+  }
+
   private async loadUsersWithRoles(tenantId: string) {
     const { data: users, error } = await this.supabase
       .from('users')
-      .select('id, email, first_name, last_name, full_name, employee_name, employee_code, is_active, role:roles (id, name, permissions)')
+      .select('id, email, first_name, last_name, is_active, role:roles (id, name, permissions)')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .order('first_name', { ascending: true });
@@ -186,15 +193,8 @@ export class JobOrderService {
       .filter((user: any) => hasAnyPermissionForResource(user, 'job_orders'))
       .map((user: any) => ({
         id: String(user?.id || '').trim(),
-        displayName: String(
-          user?.employee_name ||
-            user?.full_name ||
-            [user?.first_name, user?.last_name].filter(Boolean).join(' ') ||
-            user?.email ||
-            user?.id ||
-            '',
-        ).trim(),
-        employeeCode: String(user?.employee_code || '').trim() || null,
+        displayName: String(this.formatUserDisplayName(user) || '').trim(),
+        employeeCode: null,
         email: String(user?.email || '').trim() || null,
       }))
       .filter((user: any) => user.id && user.displayName)
@@ -1686,10 +1686,10 @@ export class JobOrderService {
     if (dto.assignedTo) {
       const { data: assignedUser } = await this.supabase
         .from('users')
-        .select('full_name, employee_name')
+        .select('id, email, first_name, last_name')
         .eq('id', dto.assignedTo)
         .single();
-      assignedToName = assignedUser?.employee_name || assignedUser?.full_name;
+      assignedToName = this.formatUserDisplayName(assignedUser);
     }
 
     // Create job order
@@ -1731,10 +1731,10 @@ export class JobOrderService {
           if (op.assignedUserId) {
             const { data: user } = await this.supabase
               .from('users')
-              .select('full_name')
+              .select('id, email, first_name, last_name')
               .eq('id', op.assignedUserId)
               .single();
-            assignedUserName = user?.full_name;
+            assignedUserName = this.formatUserDisplayName(user);
           }
 
           return {
@@ -2201,10 +2201,10 @@ export class JobOrderService {
     if (dto.assignedTo) {
       const { data: assignedUser } = await this.supabase
         .from('users')
-        .select('full_name, employee_name')
+        .select('id, email, first_name, last_name')
         .eq('id', dto.assignedTo)
         .single();
-      updateData.assigned_to_name = assignedUser?.employee_name || assignedUser?.full_name;
+      updateData.assigned_to_name = this.formatUserDisplayName(assignedUser);
     } else if (dto.assignedTo === null) {
       updateData.assigned_to = null;
       updateData.assigned_to_name = null;
