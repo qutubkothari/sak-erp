@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { CreateJobOrderDto, UpdateJobOrderDto, UpdateOperationDto } from '../dto/job-order.dto';
 import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
 import { normalizeInventoryCategory } from '../../inventory/utils/inventory-category';
-import { hasAnyPermissionForResource } from '../../auth/utils/permission-utils';
+import { hasModuleAccess, hasScreenAccess } from '../../auth/utils/permission-utils';
 
 type JobOrderIssueMaterialsFailure = {
   materialId: string;
@@ -190,7 +190,14 @@ export class JobOrderService {
     const users = await this.loadUsersWithRoles(tenantId);
 
     return users
-      .filter((user: any) => hasAnyPermissionForResource(user, 'job_orders'))
+      .filter(
+        (user: any) =>
+          hasModuleAccess(user, 'Production') ||
+          hasScreenAccess(user, 'production-job-orders') ||
+          hasScreenAccess(user, 'production-create-job-order') ||
+          hasScreenAccess(user, 'production-smart-job-order') ||
+          hasScreenAccess(user, 'production-job-order-vouchers'),
+      )
       .map((user: any) => ({
         id: String(user?.id || '').trim(),
         displayName: String(this.formatUserDisplayName(user) || '').trim(),

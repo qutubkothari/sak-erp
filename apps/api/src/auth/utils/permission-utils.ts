@@ -151,6 +151,38 @@ const pushRolePermissions = (permissions: string[], rawPermissions: unknown) => 
   pushLegacyObjectPermissions(permissions, rawPermissions);
 };
 
+const hasAnyEnabledAction = (permission: ModulePermission | null) => {
+  if (!permission) return false;
+  return !!(permission.view || permission.create || permission.edit || permission.delete || permission.approve);
+};
+
+const getRawPermissionEntries = (user: any): unknown[] => {
+  const entries: unknown[] = [];
+
+  if (Array.isArray(user?.permissions)) {
+    entries.push(...user.permissions);
+  }
+
+  if (user?.role && typeof user.role === 'object' && Array.isArray(user.role.permissions)) {
+    entries.push(...user.role.permissions);
+  }
+
+  if (Array.isArray(user?.roles)) {
+    user.roles.forEach((entry: any) => {
+      const role = entry?.role || entry;
+      if (role && typeof role === 'object' && Array.isArray(role.permissions)) {
+        entries.push(...role.permissions);
+      }
+    });
+  }
+
+  if (user?.metadata && Array.isArray(user.metadata.permissions)) {
+    entries.push(...user.metadata.permissions);
+  }
+
+  return entries;
+};
+
 export const hasAdminBypass = (user: any): boolean => {
   const normalize = (value: unknown) =>
     String(value || '')
@@ -210,4 +242,22 @@ export const hasAnyPermissionForResource = (user: any, resource: string): boolea
   if (hasAdminBypass(user)) return true;
   const prefix = `${resource}:`;
   return getUserPermissions(user).some((permission) => permission.startsWith(prefix));
+};
+
+export const hasModuleAccess = (user: any, moduleName: string): boolean => {
+  if (hasAdminBypass(user)) return true;
+
+  return getRawPermissionEntries(user).some((entry) => {
+    const permission = toModulePermission(entry);
+    return permission?.module === moduleName && !permission.screen && hasAnyEnabledAction(permission);
+  });
+};
+
+export const hasScreenAccess = (user: any, screenName: string): boolean => {
+  if (hasAdminBypass(user)) return true;
+
+  return getRawPermissionEntries(user).some((entry) => {
+    const permission = toModulePermission(entry);
+    return permission?.screen === screenName && hasAnyEnabledAction(permission);
+  });
 };
