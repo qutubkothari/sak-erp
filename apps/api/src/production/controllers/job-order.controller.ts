@@ -4,7 +4,7 @@ import { CreateJobOrderDto, PartialCompleteJobOrderDto, UpdateJobOrderDto, Updat
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
-import { hasPermission } from '../../auth/utils/permission-utils';
+import { hasScreenAccess } from '../../auth/utils/permission-utils';
 
 @Controller('job-orders')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -128,8 +128,11 @@ export class JobOrderController {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id || req.user?.userId || req.user?.sub;
     const nextFilters = { ...(filters || {}) };
-    const canCreateJobOrders = hasPermission(req.user, 'job_orders:create');
-    if (!canCreateJobOrders && userId) {
+    const canSeeAllJobOrders =
+      hasScreenAccess(req.user, 'production-create-job-order') ||
+      hasScreenAccess(req.user, 'production-smart-job-order');
+
+    if (!canSeeAllJobOrders && userId) {
       nextFilters.assignedTo = userId;
       delete nextFilters.myAssigned;
     } else if (nextFilters?.myAssigned === 'true' || nextFilters?.myAssigned === true) {
