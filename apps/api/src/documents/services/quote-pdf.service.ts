@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { DOCUMENT_BRAND_COLORS, DocumentBrandingService } from '../../common/services/document-branding.service';
 
 export type QuoteItemInput = {
   description: string;
@@ -40,8 +41,11 @@ export type QuotePdfInput = {
 
 @Injectable()
 export class QuotePdfService {
-  async renderQuotePdf(input: QuotePdfInput): Promise<Buffer> {
+  constructor(private readonly documentBrandingService: DocumentBrandingService) {}
+
+  async renderQuotePdf(tenantId: string, input: QuotePdfInput): Promise<Buffer> {
     const pdfDoc = await PDFDocument.create();
+    const assets = await this.documentBrandingService.preparePdfBrandingAssets(pdfDoc);
 
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -51,13 +55,20 @@ export class QuotePdfService {
     const PAGE_H = 841.89;
 
     const brand = {
-      dark: rgb(0.05, 0.12, 0.25),
-      accent: rgb(0.85, 0.55, 0.05),
-      light: rgb(0.97, 0.97, 0.98),
-      text: rgb(0.12, 0.12, 0.14),
-      muted: rgb(0.45, 0.45, 0.5),
-      border: rgb(0.87, 0.87, 0.9),
+      dark: DOCUMENT_BRAND_COLORS.primary,
+      accent: DOCUMENT_BRAND_COLORS.accent,
+      light: DOCUMENT_BRAND_COLORS.light,
+      text: DOCUMENT_BRAND_COLORS.text,
+      muted: DOCUMENT_BRAND_COLORS.muted,
+      border: DOCUMENT_BRAND_COLORS.border,
     };
+    const branding = await this.documentBrandingService.getBranding(tenantId, {
+      companyName: input.company?.name,
+      address: input.company?.address,
+      phone: input.company?.phone,
+      email: input.company?.email,
+      website: input.company?.website,
+    });
 
     const currency = (input.currency || 'INR').toUpperCase();
     const taxRate = typeof input.tax_rate === 'number' ? input.tax_rate : 0;
@@ -80,6 +91,27 @@ export class QuotePdfService {
       return `${currency} ${safe.toFixed(2)}`;
     };
 
+    const wrapText = (text: string, maxWidth: number, size: number) => {
+      const words = String(text || '').split(/\s+/).filter(Boolean);
+      if (words.length === 0) return [''];
+
+      const lines: string[] = [];
+      let current = words[0];
+
+      for (let index = 1; index < words.length; index++) {
+        const next = `${current} ${words[index]}`;
+        if (font.widthOfTextAtSize(next, size) <= maxWidth) {
+          current = next;
+        } else {
+          lines.push(current);
+          current = words[index];
+        }
+      }
+
+      lines.push(current);
+      return lines;
+    };
+
     const drawFooter = (page: any, pageIndex: number, pageCount: number) => {
       const text = `Page ${pageIndex + 1} of ${pageCount}`;
       page.drawLine({
@@ -95,8 +127,9 @@ export class QuotePdfService {
         font,
         color: brand.muted,
       });
-      page.drawText(`${input.company.name} • ${input.quote_number}`, {
-        x: PAGE_W - 40 - font.widthOfTextAtSize(`${input.company.name} • ${input.quote_number}`, 9),
+      const footerRef = `${branding.companyName} • ${input.quote_number}`;
+      page.drawText(footerRef, {
+        x: PAGE_W - 40 - font.widthOfTextAtSize(footerRef, 9),
         y: 32,
         size: 9,
         font,
@@ -104,138 +137,92 @@ export class QuotePdfService {
       });
     };
 
-    // --- Cover page ---
-    const cover = pdfDoc.addPage([PAGE_W, PAGE_H]);
-
-    cover.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: brand.light });
-    cover.drawRectangle({ x: 0, y: PAGE_H - 160, width: PAGE_W, height: 160, color: brand.dark });
-    cover.drawRectangle({ x: 0, y: 0, width: 16, height: PAGE_H, color: brand.accent });
-
-    cover.drawText(input.company.name, {
-      x: 40,
-      y: PAGE_H - 70,
-      size: 22,
-      font: fontBold,
-      color: rgb(1, 1, 1),
-    });
-
-    cover.drawText('QUOTATION', {
-      x: 40,
-      y: PAGE_H - 115,
-      size: 40,
-      font: fontBold,
-      color: rgb(1, 1, 1),
-    });
-
-    cover.drawText(input.title, {
-      x: 40,
-      y: PAGE_H - 195,
-      size: 16,
-      font: fontBold,
-      color: brand.text,
-    });
-
-    const coverMetaY = PAGE_H - 245;
-    cover.drawText(`Quote No: ${input.quote_number}`, {
-      x: 40,
-      y: coverMetaY,
-      size: 12,
-      font,
-      color: brand.text,
-    });
-    cover.drawText(`Date: ${input.quote_date_iso.slice(0, 10)}`, {
-      x: 40,
-      y: coverMetaY - 18,
-      size: 12,
-      font,
-      color: brand.text,
-    });
-
-    cover.drawText('Prepared For', {
-      x: 40,
-      y: coverMetaY - 70,
-      size: 12,
-      font: fontBold,
-      color: brand.muted,
-    });
-    cover.drawText(input.customer.name, {
-      x: 40,
-      y: coverMetaY - 92,
-      size: 16,
-      font: fontBold,
-      color: brand.text,
-    });
-
-    if (input.customer.address) {
-      cover.drawText(input.customer.address, {
-        x: 40,
-        y: coverMetaY - 112,
-        size: 11,
-        font,
-        color: brand.text,
-        maxWidth: PAGE_W - 80,
-      });
-    }
-
-    // --- Body pages ---
     const pages: any[] = [];
-    const addBodyPage = () => {
-      const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+    const addBodyPage = async () => {
+      const page = await this.documentBrandingService.createBrandedPage(pdfDoc, assets, [PAGE_W, PAGE_H]);
       pages.push(page);
       return page;
     };
 
     const drawHeader = (page: any) => {
-      page.drawRectangle({ x: 0, y: PAGE_H - 90, width: PAGE_W, height: 90, color: brand.dark });
-      page.drawText(input.company.name, {
+      const headerBottom = this.documentBrandingService.drawStandardHeader({
+        page,
+        topY: PAGE_H - 30,
+        marginX: 40,
+        width: PAGE_W - 80,
+        title: 'QUOTATION',
+        reference: input.quote_number,
+        branding,
+        font,
+        fontBold,
+        assets,
+      });
+
+      page.drawText(input.title || 'Quotation', {
         x: 40,
-        y: PAGE_H - 55,
+        y: headerBottom - 18,
         size: 16,
         font: fontBold,
-        color: rgb(1, 1, 1),
+        color: brand.text,
       });
-      page.drawText(`Quotation • ${input.quote_number}`, {
+
+      const dateLabel = `Date: ${input.quote_date_iso.slice(0, 10)}`;
+      page.drawText(dateLabel, {
+        x: PAGE_W - 40 - font.widthOfTextAtSize(dateLabel, 10),
+        y: headerBottom - 16,
+        size: 10,
+        font,
+        color: brand.muted,
+      });
+
+      const topY = headerBottom - 54;
+      page.drawRectangle({
         x: 40,
-        y: PAGE_H - 75,
-        size: 10,
-        font,
-        color: rgb(1, 1, 1),
+        y: topY - 52,
+        width: PAGE_W - 80,
+        height: 58,
+        color: brand.light,
+        borderColor: brand.border,
+        borderWidth: 1,
       });
 
-      page.drawText(`Date: ${input.quote_date_iso.slice(0, 10)}`, {
-        x: PAGE_W - 40 - font.widthOfTextAtSize(`Date: ${input.quote_date_iso.slice(0, 10)}`, 10),
-        y: PAGE_H - 55,
-        size: 10,
-        font,
-        color: rgb(1, 1, 1),
-      });
-
-      // Customer block
-      const topY = PAGE_H - 125;
       page.drawText('Bill To', {
-        x: 40,
-        y: topY,
+        x: 50,
+        y: topY - 12,
         size: 10,
         font: fontBold,
         color: brand.muted,
       });
       page.drawText(input.customer.name, {
-        x: 40,
-        y: topY - 16,
+        x: 50,
+        y: topY - 28,
         size: 12,
         font: fontBold,
         color: brand.text,
       });
-      if (input.customer.address) {
-        page.drawText(input.customer.address, {
-          x: 40,
-          y: topY - 32,
-          size: 10,
-          font,
-          color: brand.text,
-          maxWidth: PAGE_W - 80,
+
+      const customerLines = [
+        input.customer.address || '',
+        [input.customer.phone ? `Phone: ${input.customer.phone}` : '', input.customer.email ? `Email: ${input.customer.email}` : '']
+          .filter(Boolean)
+          .join('  |  '),
+      ].filter(Boolean);
+
+      let customerY = topY - 42;
+      customerLines.forEach((line) => {
+        wrapText(line, PAGE_W - 100, 9,).forEach((part) => {
+          page.drawText(part, {
+            x: 50,
+            y: customerY,
+            size: 9,
+            font,
+            color: brand.text,
+          });
+          customerY -= 10;
         });
-      }
+      });
+
+      return topY - 74;
     };
 
     const drawTableHeader = (page: any, y: number) => {
@@ -256,10 +243,9 @@ export class QuotePdfService {
     };
 
     const rowHeight = 18;
-    let page = addBodyPage();
-    drawHeader(page);
+    let page = await addBodyPage();
+    let y = drawHeader(page);
 
-    let y = PAGE_H - 190;
     drawTableHeader(page, y);
     y -= 36;
 
@@ -268,11 +254,12 @@ export class QuotePdfService {
 
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
+      const descriptionLines = wrapText(it.description || '-', w - 260, 10).slice(0, 3);
+      const itemRowHeight = Math.max(rowHeight, descriptionLines.length * 12);
 
-      if (y < 170) {
-        page = addBodyPage();
-        drawHeader(page);
-        y = PAGE_H - 190;
+      if (y < 170 + itemRowHeight) {
+        page = await addBodyPage();
+        y = drawHeader(page);
         drawTableHeader(page, y);
         y -= 36;
       }
@@ -280,7 +267,9 @@ export class QuotePdfService {
       page.drawLine({ start: { x: x0, y: y - 4 }, end: { x: x0 + w, y: y - 4 }, thickness: 1, color: brand.border });
 
       page.drawText(String(i + 1), { x: x0 + 8, y, size: 10, font, color: brand.text });
-      page.drawText(it.description || '-', { x: x0 + 40, y, size: 10, font, color: brand.text, maxWidth: w - 260 });
+      descriptionLines.forEach((line, lineIndex) => {
+        page.drawText(line, { x: x0 + 40, y: y - lineIndex * 12, size: 10, font, color: brand.text });
+      });
 
       const qtyText = it.unit ? `${it.quantity} ${it.unit}` : String(it.quantity);
       page.drawText(qtyText, {
@@ -309,10 +298,15 @@ export class QuotePdfService {
         color: brand.text,
       });
 
-      y -= rowHeight;
+      y -= itemRowHeight;
     }
 
     // Totals block (place on last page)
+    if (y < 230) {
+      page = await addBodyPage();
+      y = drawHeader(page);
+    }
+
     const totalsY = Math.max(y - 10, 170);
     page.drawLine({ start: { x: x0, y: totalsY }, end: { x: x0 + w, y: totalsY }, thickness: 1, color: brand.border });
 
@@ -334,90 +328,38 @@ export class QuotePdfService {
     if (discount > 0) drawKV('Discount', `- ${money(discount)}`, 2);
     drawKV('Total', money(total), discount > 0 ? 3 : 2, true);
 
-    const notesTop = totalsY - 110;
+    let notesTop = totalsY - 110;
     if (input.notes) {
       page.drawText('Notes', { x: x0, y: notesTop, size: 10, font: fontBold, color: brand.muted });
-      page.drawText(input.notes, {
-        x: x0,
-        y: notesTop - 16,
-        size: 10,
-        font,
-        color: brand.text,
-        maxWidth: w,
+      wrapText(input.notes, w, 10).forEach((line, index) => {
+        page.drawText(line, {
+          x: x0,
+          y: notesTop - 16 - index * 12,
+          size: 10,
+          font,
+          color: brand.text,
+        });
       });
+      notesTop -= 16 + wrapText(input.notes, w, 10).length * 12;
     }
 
-    const termsTop = notesTop - (input.notes ? 70 : 0);
+    const termsTop = input.notes ? notesTop - 18 : totalsY - 110;
     if (input.terms) {
       page.drawText('Terms', { x: x0, y: termsTop, size: 10, font: fontBold, color: brand.muted });
-      page.drawText(input.terms, {
-        x: x0,
-        y: termsTop - 16,
-        size: 10,
-        font,
-        color: brand.text,
-        maxWidth: w,
+      wrapText(input.terms, w, 10).forEach((line, index) => {
+        page.drawText(line, {
+          x: x0,
+          y: termsTop - 16 - index * 12,
+          size: 10,
+          font,
+          color: brand.text,
+        });
       });
     }
 
-    // --- Back page ---
-    const back = pdfDoc.addPage([PAGE_W, PAGE_H]);
-    back.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: brand.dark });
-    back.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: 120, color: brand.accent });
-
-    back.drawText('Thank you', {
-      x: 40,
-      y: PAGE_H - 180,
-      size: 42,
-      font: fontBold,
-      color: rgb(1, 1, 1),
-    });
-    back.drawText('We look forward to working with you.', {
-      x: 40,
-      y: PAGE_H - 220,
-      size: 14,
-      font,
-      color: rgb(1, 1, 1),
-    });
-
-    const contactY = 160;
-    const contactLines: string[] = [];
-    if (input.company.address) contactLines.push(input.company.address);
-    if (input.company.phone) contactLines.push(`Phone: ${input.company.phone}`);
-    if (input.company.email) contactLines.push(`Email: ${input.company.email}`);
-    if (input.company.website) contactLines.push(`Web: ${input.company.website}`);
-
-    back.drawText(input.company.legal_name || input.company.name, {
-      x: 40,
-      y: contactY + 90,
-      size: 14,
-      font: fontBold,
-      color: rgb(1, 1, 1),
-    });
-
-    for (let i = 0; i < contactLines.length; i++) {
-      back.drawText(contactLines[i], {
-        x: 40,
-        y: contactY + 70 - i * 16,
-        size: 11,
-        font,
-        color: rgb(1, 1, 1),
-        maxWidth: PAGE_W - 80,
-      });
-    }
-
-    back.drawText(`Reference: ${input.quote_number}`, {
-      x: 40,
-      y: 80,
-      size: 10,
-      font,
-      color: rgb(1, 1, 1),
-    });
-
-    // Apply footers (cover excluded)
     const all = pdfDoc.getPages();
     const pageCount = all.length;
-    for (let i = 1; i < pageCount; i++) {
+    for (let i = 0; i < pageCount; i++) {
       drawFooter(all[i], i, pageCount);
     }
 

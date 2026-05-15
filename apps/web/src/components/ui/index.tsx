@@ -8,13 +8,12 @@ interface DataTableProps {
 }
 
 /**
- * DataTable wrapper that provides proper horizontal scrolling
- * without affecting the page layout
+ * DataTable wrapper for compact ERP tables that fit the page width.
  */
 export function DataTable({ children, className = '' }: DataTableProps) {
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className}`}>
-      <div className="overflow-x-auto">
+    <div className={`erp-data-table bg-white rounded-lg shadow-sm border border-gray-200 ${className}`}>
+      <div className="overflow-x-hidden">
         {children}
       </div>
     </div>

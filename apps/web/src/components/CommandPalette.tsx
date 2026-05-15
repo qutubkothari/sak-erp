@@ -43,6 +43,7 @@ const staticItems: CmdItem[] = [
   // Inventory
   { id: 'stock-overview', label: 'Stock Overview', icon: <Package className="h-4 w-4" />, href: '/dashboard/inventory', group: 'Inventory' },
   { id: 'stock-master', label: 'Stock Master', icon: <Package className="h-4 w-4" />, href: '/dashboard/inventory/items', group: 'Inventory' },
+  { id: 'stock-adjustments', label: 'Stock Adjustments', icon: <Package className="h-4 w-4" />, href: '/dashboard/inventory/stock-adjustments', group: 'Inventory' },
   { id: 'siv', label: 'Store Issue Voucher (SIV)', icon: <Package className="h-4 w-4" />, href: '/dashboard/inventory/siv', group: 'Inventory' },
   { id: 'srv', label: 'Store Return Voucher (SRV)', icon: <Package className="h-4 w-4" />, href: '/dashboard/inventory/srv', group: 'Inventory' },
 

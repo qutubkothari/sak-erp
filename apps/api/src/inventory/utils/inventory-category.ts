@@ -1,10 +1,9 @@
 export const INVENTORY_CATEGORIES = [
   'RAW_MATERIAL',
-  'WIP',
-  'FINISHED_GOODS',
-  'DEMO',
-  'SERVICE_SPARES',
-  'CONSUMABLES',
+  'CAPITAL_GOODS',
+  'CONSUMABLE',
+  'PACKING_MATERIAL',
+  'SERVICES',
 ] as const;
 
 export type InventoryCategory = (typeof INVENTORY_CATEGORIES)[number];
@@ -27,37 +26,11 @@ export function normalizeInventoryCategory(
 
   const mapped: Record<string, InventoryCategory> = {
     // Common plural/singular mismatches
-    CONSUMABLE: 'CONSUMABLES',
-    CONSUMABLES: 'CONSUMABLES',
-
-    // Item-master style categories -> inventory stock buckets
-    COMPONENT: 'RAW_MATERIAL',
-    RAW: 'RAW_MATERIAL',
-    RAW_MATERIAL: 'RAW_MATERIAL',
-
-    SUBASSEMBLY: 'WIP',
-    SUB_ASSEMBLY: 'WIP',
-    SUB_ASSEMBLIES: 'WIP',
-
-    ASSEMBLY: 'WIP',
-    ASSEMBLIES: 'WIP',
-
-    FINISHED: 'FINISHED_GOODS',
-    FINISHED_GOOD: 'FINISHED_GOODS',
-    FINISHED_GOODS: 'FINISHED_GOODS',
-
-    SPARE_PART: 'SERVICE_SPARES',
-    SPARE_PARTS: 'SERVICE_SPARES',
-    SERVICE: 'SERVICE_SPARES',
-    SERVICE_SPARES: 'SERVICE_SPARES',
-
-    PACKING_MATERIAL: 'CONSUMABLES',
-    PACKING: 'CONSUMABLES',
-
-    // Free-text groups seen in production data
-    FASTENERS: 'RAW_MATERIAL',
-    ELECTRONICS: 'RAW_MATERIAL',
-    GENERAL: 'RAW_MATERIAL',
+    CONSUMABLES: 'CONSUMABLE',
+    PACKING: 'PACKING_MATERIAL',
+    SERVICE: 'SERVICES',
+    CAPITAL_GOOD: 'CAPITAL_GOODS',
+    RAW_MATERIALS: 'RAW_MATERIAL',
   };
 
   return mapped[key] ?? fallback;

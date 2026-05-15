@@ -1,0 +1,1 @@
+./deploy-hostinger.ps1 -Environment live @args

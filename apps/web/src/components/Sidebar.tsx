@@ -27,7 +27,10 @@ import {
 } from 'lucide-react';
 import { useAuthStore, getUserDisplayName, getUserRoleLabel, getUserInitials } from '@/stores/auth.store';
 import { openCommandPalette } from '@/components/CommandPalette';
+import { buildDocumentBranding } from '@/lib/document-branding';
 import { isPathAllowedForUser } from '@/lib/rbac';
+
+const appBranding = buildDocumentBranding(null);
 
 type NavigationChild = {
   name: string;
@@ -55,14 +58,14 @@ const navigation: NavigationItem[] = [
     requiresManagerRole: true,
   },
   {
-    name: 'Purchase',
+    name: 'Procurement',
     href: '/dashboard/purchase',
     icon: ShoppingCart,
     children: [
       { name: 'Overview', href: '/dashboard/purchase' },
       { name: 'Vendors', href: '/dashboard/purchase/vendors' },
-      { name: 'Requisitions', href: '/dashboard/purchase/requisitions' },
-      { name: 'Orders', href: '/dashboard/purchase/orders' },
+      { name: 'Purchase Requisitions', href: '/dashboard/purchase/requisitions' },
+      { name: 'Purchase Orders', href: '/dashboard/purchase/orders' },
       { name: 'Debit Notes', href: '/dashboard/purchase/debit-notes' },
     ],
   },
@@ -72,6 +75,7 @@ const navigation: NavigationItem[] = [
     icon: Package,
     children: [
       { name: 'Stock Master', href: '/dashboard/inventory/items' },
+      { name: 'Stock Adjustments', href: '/dashboard/inventory/stock-adjustments' },
       { name: 'GRN', href: '/dashboard/purchase/grn' },
       { name: 'SIV', href: '/dashboard/inventory/siv' },
       { name: 'SRV', href: '/dashboard/inventory/srv' },
@@ -93,6 +97,7 @@ const navigation: NavigationItem[] = [
     icon: CreditCard,
     children: [
       { name: 'Accounts Payable', href: '/dashboard/accounts/payables' },
+      { name: 'Supplier Invoices', href: '/dashboard/accounts/supplier-invoices' },
     ],
   },
   {
@@ -140,6 +145,10 @@ const navigation: NavigationItem[] = [
     name: 'Settings',
     icon: Settings,
     href: '/dashboard/settings',
+    children: [
+      { name: 'Settings', href: '/dashboard/settings' },
+      { name: 'Audit Trails', href: '/dashboard/audit-trails' },
+    ],
   },
 ];
 
@@ -150,6 +159,7 @@ type StoredUser = {
   last_name?: string;
   firstName?: string;
   lastName?: string;
+  username?: string;
   email?: string;
 };
 
@@ -296,7 +306,7 @@ function getAllowedNavigationNames(user: StoredUser | null): Set<string> {
   // Map role permission modules -> sidebar sections.
   // Keep this mapping minimal and aligned to RoleManagement MODULES.
   const moduleToNav: Record<string, string[]> = {
-    'Purchase Management': ['Purchase', 'Accounts'],
+    'Purchase Management': ['Procurement', 'Purchase', 'Accounts'],
     'Sales Management': ['Sales'],
     Inventory: ['Inventory', 'UID Tracking'],
     Production: ['Production'],
@@ -498,9 +508,9 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         {!collapsed && (
           <Link href={homeHref} className="flex items-center gap-2">
             <div className="w-8 h-8 bg-[#8B6F47] rounded-lg flex items-center justify-center shadow-md">
-              <span className="text-white font-bold text-sm">S</span>
+              <span className="text-white font-bold text-sm">{appBranding.initials}</span>
             </div>
-            <span className="font-bold text-sm text-[#36454F]">SAK ERP</span>
+            <span className="font-bold text-sm text-[#36454F] truncate max-w-[132px]" title={appBranding.companyName}>{appBranding.companyName}</span>
           </Link>
         )}
         <button

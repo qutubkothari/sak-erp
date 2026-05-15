@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import * as fs from 'fs';
+import * as path from 'path';
 import { EmailConfigService } from './email-config.service';
 import { GmailOAuth2Service } from './gmail-oauth2.service';
+import { DocumentBranding, DocumentBrandingService } from '../common/services/document-branding.service';
 
 @Injectable()
 export class EmailService {
@@ -12,6 +15,7 @@ export class EmailService {
     private configService: ConfigService,
     private emailConfig: EmailConfigService,
     private gmailOAuth2Service: GmailOAuth2Service,
+    private documentBrandingService: DocumentBrandingService,
   ) {
     // Initialize email transporter
     const portRaw = this.configService.get('SMTP_PORT', 587);
@@ -101,18 +105,19 @@ export class EmailService {
   public async applyFromAndReplyTo(
     mailOptions: nodemailer.SendMailOptions,
     fromType: 'admin' | 'sales' | 'support' | 'technical' | 'purchase' | 'hr' | 'noreply' = 'noreply',
+    companyName?: string,
   ): Promise<nodemailer.SendMailOptions> {
     const transportUser = this.getTransportUser();
 
     const configuredFromEmail = await this.emailConfig.getEmailAsync(fromType);
-    const configuredFrom = await this.emailConfig.getFromAddressAsync(fromType);
+    const configuredFrom = await this.emailConfig.getFromAddressAsync(fromType, companyName);
 
     if (!transportUser) {
       // Keep configured sender; the underlying transport will throw a clear error.
       return { ...mailOptions, from: configuredFrom };
     }
 
-    const transportFrom = `"${this.emailConfig.getCompanyName()}" <${transportUser}>`;
+    const transportFrom = `"${this.emailConfig.getCompanyName(companyName)}" <${transportUser}>`;
 
     // If the configured From isn't the same as the authenticated user, many SMTP providers reject it.
     // In that case, send from the authenticated user and set Reply-To to the configured department inbox.
@@ -130,29 +135,157 @@ export class EmailService {
     };
   }
 
+  private async resolveBranding(data?: any): Promise<DocumentBranding> {
+    const tenantId = this.extractTenantId(data);
+
+    return this.documentBrandingService.getBranding(tenantId, {
+      companyName: this.readString(data?.company_name) || this.readString(data?.companyName),
+      address: this.readString(data?.company_address) || this.readString(data?.companyAddress),
+      phone: this.readString(data?.company_phone) || this.readString(data?.companyPhone),
+      email: this.readString(data?.company_email) || this.readString(data?.companyEmail),
+      website: this.readString(data?.company_website) || this.readString(data?.companyWebsite),
+      taxId: this.readString(data?.company_tax_id) || this.readString(data?.companyTaxId),
+      logoUrl: this.readString(data?.company_logo_url) || this.readString(data?.companyLogoUrl),
+    });
+  }
+
+  private extractTenantId(data?: any): string | undefined {
+    const tenantId = data?.tenant_id ?? data?.tenantId;
+    return typeof tenantId === 'string' && tenantId.trim() ? tenantId.trim() : undefined;
+  }
+
+  private readString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  private getEmailSignature(branding: DocumentBranding): string {
+    return this.emailConfig.getEmailSignature({
+      companyName: branding.companyName,
+      address: branding.address,
+      phone: branding.phone,
+      email: branding.email,
+    });
+  }
+
+  private renderEmailHeader(
+    title: string,
+    reference: string,
+    branding: DocumentBranding,
+    accentColor: string,
+    subtitle?: string,
+  ): string {
+    const logoSrc = this.getEmailLogoSrc(branding);
+    const addressHtml = branding.addressLines.map((line) => `<div>${this.escapeHtml(line)}</div>`).join('');
+    const contactHtml = branding.contactLine ? `<div class="brand-contact">${this.escapeHtml(branding.contactLine)}</div>` : '';
+    const subtitleHtml = subtitle ? `<p class="doc-subtitle">${this.escapeHtml(subtitle)}</p>` : '';
+    const logoHtml = logoSrc
+      ? `<div class="brand-logo-wrap"><img class="brand-logo" src="${logoSrc}" alt="${this.escapeHtml(branding.companyName)} logo" /></div>`
+      : `<div class="brand-badge" style="background:${accentColor};">${this.escapeHtml(branding.initials)}</div>`;
+
+    return `
+      <div class="brand-shell">
+        <div class="brand-card">
+          ${logoHtml}
+          <div class="brand-copy">
+            <div class="brand-name">${this.escapeHtml(branding.companyName)}</div>
+            <div class="brand-address">${addressHtml}</div>
+            ${contactHtml}
+          </div>
+        </div>
+        <div class="doc-card" style="background:${accentColor};">
+          <div class="doc-title">${this.escapeHtml(title)}</div>
+          <div class="doc-reference">${this.escapeHtml(reference || '')}</div>
+          ${subtitleHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  private getEmailStyles(accentColor: string, accentTint: string): string {
+    return `
+      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 24px; background: #f5f7fb; }
+      .mail-wrap { max-width: 920px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; }
+      .brand-shell { padding: 20px 20px 0; }
+      .brand-card { display: flex; gap: 16px; align-items: flex-start; padding: 18px; border: 1px solid #d1d5db; border-bottom: none; }
+      .brand-logo-wrap { width: 120px; min-width: 120px; height: 56px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+      .brand-logo { max-width: 120px; max-height: 56px; width: auto; height: auto; display: block; }
+      .brand-badge { width: 52px; height: 52px; border-radius: 12px; color: white; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; flex-shrink: 0; }
+      .brand-copy { min-width: 0; }
+      .brand-name { font-size: 18px; font-weight: 700; color: #111827; }
+      .brand-address { margin-top: 4px; color: #4b5563; font-size: 13px; }
+      .brand-contact { margin-top: 6px; color: #6b7280; font-size: 12px; }
+      .doc-card { color: white; padding: 18px 20px; }
+      .doc-title { font-size: 28px; font-weight: 800; }
+      .doc-reference { margin-top: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.03em; }
+      .doc-subtitle { margin: 8px 0 0; font-size: 13px; opacity: 0.92; }
+      .content { padding: 20px; }
+      .info-box, .alert-box, .certificate-box { padding: 15px; margin: 15px 0; border-left: 4px solid ${accentColor}; background: ${accentTint}; }
+      .certificate-box { border: 2px solid ${accentColor}; }
+      .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+      .table th, .table td { border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: top; }
+      .table th { background: #f4f4f4; font-weight: bold; }
+      .total { text-align: right; font-size: 18px; font-weight: bold; color: ${accentColor}; }
+      .footer { background: #f9fafb; padding: 15px 20px; text-align: center; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; }
+      .critical { background: #FEE2E2; color: #991B1B; font-weight: bold; }
+      .high { background: #FED7AA; color: #9A3412; }
+      ul, ol { padding-left: 20px; }
+      p { margin: 0 0 14px; }
+      a { color: ${accentColor}; }
+    `;
+  }
+
+  private getEmailLogoSrc(branding: DocumentBranding): string | undefined {
+    if (branding.logoUrl && /^https?:\/\//i.test(branding.logoUrl)) {
+      return this.escapeHtml(branding.logoUrl);
+    }
+
+    const assetPath = this.resolveEmailLogoAsset();
+    if (!assetPath) return undefined;
+
+    try {
+      const buffer = fs.readFileSync(assetPath);
+      return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private resolveEmailLogoAsset(): string | undefined {
+    const candidates = [
+      path.join(process.cwd(), 'assets', 'po-logo-script.jpg'),
+      path.join(process.cwd(), 'apps', 'api', 'assets', 'po-logo-script.jpg'),
+      path.join(process.cwd(), 'assets', 'po-logo-mark.jpg'),
+      path.join(process.cwd(), 'apps', 'api', 'assets', 'po-logo-mark.jpg'),
+    ];
+
+    return candidates.find((candidate) => fs.existsSync(candidate));
+  }
+
   async sendRFQ(to: string, rfqData: any) {
     const subject = String(rfqData?.subject || '').trim() || `Request for Quotation - ${rfqData.rfq_number}`;
+    const branding = await this.resolveBranding(rfqData);
     let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject,
-      html: this.generateRFQTemplate(rfqData) + this.emailConfig.getEmailSignature(),
+      html: this.generateRFQTemplate(rfqData, branding) + this.getEmailSignature(branding),
       attachments: rfqData.attachments || [],
     };
 
-    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase');
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase', branding.companyName);
     return this.sendMail(mailOptions);
   }
 
   async buildRFQPreview(to: string, rfqData: any) {
     const subject = String(rfqData?.subject || '').trim() || `Request for Quotation - ${rfqData.rfq_number}`;
+    const branding = await this.resolveBranding(rfqData);
     let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject,
-      html: this.generateRFQTemplate(rfqData) + this.emailConfig.getEmailSignature(),
+      html: this.generateRFQTemplate(rfqData, branding) + this.getEmailSignature(branding),
       attachments: rfqData.attachments || [],
     };
 
-    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase');
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase', branding.companyName);
 
     return {
       to: mailOptions.to,
@@ -166,27 +299,29 @@ export class EmailService {
 
   async sendPO(to: string, poData: any) {
     const subject = String(poData?.subject || '').trim() || `Purchase Order - ${poData.po_number}`;
+    const branding = await this.resolveBranding(poData);
     let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject,
-      html: this.generatePOTemplate(poData) + this.emailConfig.getEmailSignature(),
+      html: this.generatePOTemplate(poData, branding) + this.getEmailSignature(branding),
       attachments: poData.attachments || [],
     };
 
-    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase');
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase', branding.companyName);
     return this.sendMail(mailOptions);
   }
 
   async buildPOPreview(to: string, poData: any) {
     const subject = String(poData?.subject || '').trim() || `Purchase Order - ${poData.po_number}`;
+    const branding = await this.resolveBranding(poData);
     let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject,
-      html: this.generatePOTemplate(poData) + this.emailConfig.getEmailSignature(),
+      html: this.generatePOTemplate(poData, branding) + this.getEmailSignature(branding),
       attachments: poData.attachments || [],
     };
 
-    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase');
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase', branding.companyName);
 
     return {
       to: mailOptions.to,
@@ -199,49 +334,53 @@ export class EmailService {
   }
 
   async sendPOTrackingReminder(to: string, poData: any) {
+    const branding = await this.resolveBranding(poData);
     let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject: `Tracking Information Request - PO ${poData.po_number}`,
-      html: this.generateTrackingReminderTemplate(poData) + this.emailConfig.getEmailSignature(),
+      html: this.generateTrackingReminderTemplate(poData, branding) + this.getEmailSignature(branding),
     };
 
-    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase');
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'purchase', branding.companyName);
     return this.sendMail(mailOptions);
   }
 
   async sendSO(to: string, soData: any) {
+    const branding = await this.resolveBranding(soData);
     let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject: `Sales Order Confirmation - ${soData.so_number}`,
-      html: this.generateSOTemplate(soData) + this.emailConfig.getEmailSignature(),
+      html: this.generateSOTemplate(soData, branding) + this.getEmailSignature(branding),
       attachments: soData.attachments || [],
     };
 
-    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'sales');
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'sales', branding.companyName);
     return this.sendMail(mailOptions);
   }
 
   async sendDispatchNote(to: string, dispatchData: any) {
+    const branding = await this.resolveBranding(dispatchData);
     let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject: `Dispatch Note - ${dispatchData.dispatch_number}`,
-      html: this.generateDispatchTemplate(dispatchData) + this.emailConfig.getEmailSignature(),
+      html: this.generateDispatchTemplate(dispatchData, branding) + this.getEmailSignature(branding),
       attachments: dispatchData.attachments || [],
     };
 
-    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'sales');
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'sales', branding.companyName);
     return this.sendMail(mailOptions);
   }
 
   async sendIssueCertificate(to: string, certificateData: any) {
+    const branding = await this.resolveBranding(certificateData);
     let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject: `Issue Certificate - ${certificateData.certificate_number}`,
-      html: this.generateCertificateTemplate(certificateData) + this.emailConfig.getEmailSignature(),
+      html: this.generateCertificateTemplate(certificateData, branding) + this.getEmailSignature(branding),
       attachments: certificateData.attachments || [],
     };
 
-    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'sales');
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'sales', branding.companyName);
     return this.sendMail(mailOptions);
   }
 
@@ -296,7 +435,7 @@ export class EmailService {
     throw new Error(`Failed to send email via all configured transports. ${errors.join(' | ')}`);
   }
 
-  private generateRFQTemplate(rfqData: any): string {
+  private generateRFQTemplate(rfqData: any, branding: DocumentBranding): string {
     const vendorName = this.escapeHtml(rfqData?.vendor_name || 'Vendor');
     const responseDate = this.escapeHtml(rfqData?.response_date || 'As soon as possible');
     const remarks = this.escapeHtml(rfqData?.remarks || '-');
@@ -309,21 +448,12 @@ export class EmailService {
       <html>
         <head>
           <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .header { background: #8B6F47; color: white; padding: 20px; text-align: center; }
-            .content { padding: 20px; }
-            .info-box { background: #f9f9f9; padding: 15px; margin: 15px 0; border-left: 4px solid #8B6F47; }
-            .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            .table th, .table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-            .table th { background: #f4f4f4; font-weight: bold; }
-            .footer { background: #f4f4f4; padding: 15px; text-align: center; font-size: 12px; }
+            ${this.getEmailStyles('#8B6F47', '#f9f6f1')}
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>Request for Quotation</h1>
-            <p>${this.escapeHtml(rfqData?.rfq_number || '')}</p>
-          </div>
+          <div class="mail-wrap">
+          ${this.renderEmailHeader('Request for Quotation', this.escapeHtml(rfqData?.rfq_number || ''), branding, '#8B6F47', 'Vendor quotation request generated from ERP')}
           <div class="content">
             <p>Dear ${vendorName},</p>
             <p>We would like to request a quotation for the following items:</p>
@@ -374,17 +504,18 @@ export class EmailService {
             </ul>
             
             <p>Thank you for your cooperation.</p>
-            <p>Best regards,<br>${this.configService.get('COMPANY_NAME', 'SAK Solutions')}</p>
+            <p>Best regards,<br>${this.escapeHtml(branding.companyName)}</p>
           </div>
           <div class="footer">
             <p>This is an automated email. Please do not reply directly to this email.</p>
+          </div>
           </div>
         </body>
       </html>
     `;
   }
 
-  private generatePOTemplate(poData: any): string {
+  private generatePOTemplate(poData: any, branding: DocumentBranding): string {
     const vendorName = this.escapeHtml(poData?.vendor_name || 'Vendor');
     const deliveryAddress = poData?.delivery_address ? this.escapeHtml(poData.delivery_address) : '';
     const remarks = poData?.remarks ? this.escapeHtml(poData.remarks) : '';
@@ -397,22 +528,12 @@ export class EmailService {
       <html>
         <head>
           <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .header { background: #8B6F47; color: white; padding: 20px; text-align: center; }
-            .content { padding: 20px; }
-            .info-box { background: #f9f9f9; padding: 15px; margin: 15px 0; border-left: 4px solid #8B6F47; }
-            .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            .table th, .table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-            .table th { background: #f4f4f4; font-weight: bold; }
-            .total { text-align: right; font-size: 18px; font-weight: bold; color: #8B6F47; }
-            .footer { background: #f4f4f4; padding: 15px; text-align: center; font-size: 12px; }
+            ${this.getEmailStyles('#8B6F47', '#f9f6f1')}
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>Purchase Order</h1>
-            <p>${this.escapeHtml(poData?.po_number || '')}</p>
-          </div>
+          <div class="mail-wrap">
+          ${this.renderEmailHeader('Purchase Order', this.escapeHtml(poData?.po_number || ''), branding, '#8B6F47', 'Purchase order issued from ERP')}
           <div class="content">
             <p>Dear ${vendorName},</p>
             <p>Please supply the following items as per the details below:</p>
@@ -472,17 +593,18 @@ export class EmailService {
             ${remarks ? `<p><strong>Remarks:</strong> ${remarks}</p>` : ''}
             
             <p>Please acknowledge receipt of this PO and confirm the delivery schedule.</p>
-            <p>Best regards,<br>${this.configService.get('COMPANY_NAME', 'SAK Solutions')}</p>
+            <p>Best regards,<br>${this.escapeHtml(branding.companyName)}</p>
           </div>
           <div class="footer">
             <p>This is an automated email. For queries, please contact our purchase department.</p>
+          </div>
           </div>
         </body>
       </html>
     `;
   }
 
-  private generateTrackingReminderTemplate(poData: any): string {
+  private generateTrackingReminderTemplate(poData: any, branding: DocumentBranding): string {
     const daysOverdue = Math.floor((new Date().getTime() - new Date(poData.delivery_date).getTime()) / (1000 * 60 * 60 * 24));
     
     return `
@@ -490,18 +612,12 @@ export class EmailService {
       <html>
         <head>
           <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .header { background: #FFA500; color: white; padding: 20px; text-align: center; }
-            .content { padding: 20px; }
-            .alert-box { background: #FFF3CD; padding: 15px; margin: 15px 0; border-left: 4px solid #FFA500; }
-            .footer { background: #f4f4f4; padding: 15px; text-align: center; font-size: 12px; }
+            ${this.getEmailStyles('#FFA500', '#FFF8E7')}
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>Tracking Information Request</h1>
-            <p>PO: ${poData.po_number}</p>
-          </div>
+          <div class="mail-wrap">
+          ${this.renderEmailHeader('Tracking Information Request', this.escapeHtml(`PO: ${poData.po_number || ''}`), branding, '#FFA500', 'Follow-up on vendor shipment tracking')}
           <div class="content">
             <p>Dear ${poData.vendor_name},</p>
             
@@ -530,38 +646,29 @@ export class EmailService {
             
             <p>Please update us at your earliest convenience.</p>
             <p>Thank you for your cooperation.</p>
-            <p>Best regards,<br>${this.configService.get('COMPANY_NAME', 'SAK Solutions')}</p>
+            <p>Best regards,<br>${this.escapeHtml(branding.companyName)}</p>
           </div>
           <div class="footer">
             <p>This is an automated reminder. Please provide tracking information to avoid delays.</p>
+          </div>
           </div>
         </body>
       </html>
     `;
   }
 
-  private generateSOTemplate(soData: any): string {
+  private generateSOTemplate(soData: any, branding: DocumentBranding): string {
     return `
       <!DOCTYPE html>
       <html>
         <head>
           <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .header { background: #28a745; color: white; padding: 20px; text-align: center; }
-            .content { padding: 20px; }
-            .info-box { background: #f9f9f9; padding: 15px; margin: 15px 0; border-left: 4px solid #28a745; }
-            .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            .table th, .table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-            .table th { background: #f4f4f4; font-weight: bold; }
-            .total { text-align: right; font-size: 18px; font-weight: bold; color: #28a745; }
-            .footer { background: #f4f4f4; padding: 15px; text-align: center; font-size: 12px; }
+            ${this.getEmailStyles('#28a745', '#f1fbf4')}
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>Sales Order Confirmation</h1>
-            <p>${soData.so_number}</p>
-          </div>
+          <div class="mail-wrap">
+          ${this.renderEmailHeader('Sales Order Confirmation', this.escapeHtml(soData.so_number || ''), branding, '#28a745', 'Sales order confirmation from ERP')}
           <div class="content">
             <p>Dear ${soData.customer_name},</p>
             <p>Thank you for your order! We are pleased to confirm the following:</p>
@@ -606,37 +713,29 @@ export class EmailService {
             
             <p>We will notify you once your order is dispatched.</p>
             <p>Thank you for your business!</p>
-            <p>Best regards,<br>${this.configService.get('COMPANY_NAME', 'SAK Solutions')}</p>
+            <p>Best regards,<br>${this.escapeHtml(branding.companyName)}</p>
           </div>
           <div class="footer">
             <p>For any queries, please contact our sales team.</p>
+          </div>
           </div>
         </body>
       </html>
     `;
   }
 
-  private generateDispatchTemplate(dispatchData: any): string {
+  private generateDispatchTemplate(dispatchData: any, branding: DocumentBranding): string {
     return `
       <!DOCTYPE html>
       <html>
         <head>
           <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .header { background: #007bff; color: white; padding: 20px; text-align: center; }
-            .content { padding: 20px; }
-            .info-box { background: #e7f3ff; padding: 15px; margin: 15px 0; border-left: 4px solid #007bff; }
-            .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            .table th, .table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-            .table th { background: #f4f4f4; font-weight: bold; }
-            .footer { background: #f4f4f4; padding: 15px; text-align: center; font-size: 12px; }
+            ${this.getEmailStyles('#007bff', '#eef6ff')}
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>Dispatch Note</h1>
-            <p>${dispatchData.dispatch_number}</p>
-          </div>
+          <div class="mail-wrap">
+          ${this.renderEmailHeader('Dispatch Note', this.escapeHtml(dispatchData.dispatch_number || ''), branding, '#007bff', 'Dispatch confirmation from ERP')}
           <div class="content">
             <p>Dear ${dispatchData.customer_name},</p>
             <p>Your order has been dispatched!</p>
@@ -674,37 +773,29 @@ export class EmailService {
             
             <p>Please inspect the goods upon delivery and report any discrepancies immediately.</p>
             <p>Thank you for your business!</p>
-            <p>Best regards,<br>${this.configService.get('COMPANY_NAME', 'SAK Solutions')}</p>
+            <p>Best regards,<br>${this.escapeHtml(branding.companyName)}</p>
           </div>
           <div class="footer">
             <p>For support, please contact our customer service team.</p>
+          </div>
           </div>
         </body>
       </html>
     `;
   }
 
-  private generateCertificateTemplate(certificateData: any): string {
+  private generateCertificateTemplate(certificateData: any, branding: DocumentBranding): string {
     return `
       <!DOCTYPE html>
       <html>
         <head>
           <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .header { background: #6f4e37; color: white; padding: 20px; text-align: center; }
-            .content { padding: 20px; }
-            .certificate-box { border: 3px solid #6f4e37; padding: 20px; margin: 20px 0; background: #fafafa; }
-            .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            .table th, .table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-            .table th { background: #f4f4f4; font-weight: bold; }
-            .footer { background: #f4f4f4; padding: 15px; text-align: center; font-size: 12px; }
+            ${this.getEmailStyles('#6f4e37', '#f8f4ef')}
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>Issue Certificate</h1>
-            <p>${certificateData.certificate_number}</p>
-          </div>
+          <div class="mail-wrap">
+          ${this.renderEmailHeader('Issue Certificate', this.escapeHtml(certificateData.certificate_number || ''), branding, '#6f4e37', 'Certificate issued from ERP')}
           <div class="content">
             <p>Dear ${certificateData.customer_name},</p>
             <p>This certifies that the following products have been issued and delivered:</p>
@@ -742,10 +833,11 @@ export class EmailService {
             <p><strong>Warranty Information:</strong> ${certificateData.warranty_info || 'Standard warranty terms apply as per sales agreement.'}</p>
             
             <p>Please retain this certificate for warranty claims and service requests.</p>
-            <p>Best regards,<br>${this.configService.get('COMPANY_NAME', 'SAK Solutions')}</p>
+            <p>Best regards,<br>${this.escapeHtml(branding.companyName)}</p>
           </div>
           <div class="footer">
             <p>This is an official certificate. Please keep it safe for future reference.</p>
+          </div>
           </div>
         </body>
       </html>
@@ -759,53 +851,45 @@ export class EmailService {
     html: string; 
     attachments?: any[];
     from?: 'admin' | 'sales' | 'support' | 'technical' | 'purchase' | 'hr' | 'noreply';
+    tenantId?: string;
   }) {
+    const branding = await this.resolveBranding({ tenant_id: options.tenantId });
     let mailOptions: nodemailer.SendMailOptions = {
       to: options.to,
       subject: options.subject,
-      html: options.html + this.emailConfig.getEmailSignature(),
+      html: options.html + this.getEmailSignature(branding),
       attachments: options.attachments || [],
     };
 
-    mailOptions = await this.applyFromAndReplyTo(mailOptions, options.from || 'noreply');
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, options.from || 'noreply', branding.companyName);
 
     return this.sendMail(mailOptions);
   }
 
-  async sendLowStockAlert(to: string, lowStockItems: any[]) {
+  async sendLowStockAlert(to: string, lowStockItems: any[], tenantId?: string) {
+    const branding = await this.resolveBranding({ tenant_id: tenantId });
     let mailOptions: nodemailer.SendMailOptions = {
       to,
       subject: `⚠️ Low Stock Alert - ${lowStockItems.length} Items Need Attention`,
-      html: this.generateLowStockTemplate(lowStockItems) + this.emailConfig.getEmailSignature(),
+      html: this.generateLowStockTemplate(lowStockItems, branding) + this.getEmailSignature(branding),
     };
 
-    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'noreply');
+    mailOptions = await this.applyFromAndReplyTo(mailOptions, 'noreply', branding.companyName);
     return this.sendMail(mailOptions);
   }
 
-  private generateLowStockTemplate(lowStockItems: any[]): string {
+  private generateLowStockTemplate(lowStockItems: any[], branding: DocumentBranding): string {
     return `
       <!DOCTYPE html>
       <html>
         <head>
           <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .header { background: #DC2626; color: white; padding: 20px; text-align: center; }
-            .content { padding: 20px; }
-            .alert-box { background: #FEF2F2; border-left: 4px solid #DC2626; padding: 15px; margin: 15px 0; }
-            .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            .table th, .table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-            .table th { background: #f4f4f4; font-weight: bold; }
-            .critical { background: #FEE2E2; color: #991B1B; font-weight: bold; }
-            .high { background: #FED7AA; color: #9A3412; }
-            .footer { background: #f4f4f4; padding: 15px; text-align: center; font-size: 12px; }
+            ${this.getEmailStyles('#DC2626', '#FEF2F2')}
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>⚠️ Low Stock Alert</h1>
-            <p>${lowStockItems.length} items require immediate attention</p>
-          </div>
+          <div class="mail-wrap">
+          ${this.renderEmailHeader('Low Stock Alert', this.escapeHtml(`${lowStockItems.length} items require attention`), branding, '#DC2626', 'Automated inventory alert from ERP')}
           <div class="content">
             <div class="alert-box">
               <strong>Action Required:</strong> The following items have reached or fallen below their reorder levels. Please take immediate action to replenish stock.
@@ -847,8 +931,9 @@ export class EmailService {
             <p>Access the ERP system to view detailed information and take action.</p>
           </div>
           <div class="footer">
-            <p>This is an automated alert from ${this.configService.get('COMPANY_NAME', 'SAK Solutions')} ERP System</p>
+            <p>This is an automated alert from ${this.escapeHtml(branding.companyName)} ERP System</p>
             <p>Generated at ${new Date().toLocaleString()}</p>
+          </div>
           </div>
         </body>
       </html>

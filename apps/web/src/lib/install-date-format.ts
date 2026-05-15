@@ -26,14 +26,12 @@ function buildNormalizedDateOptions(
     ...(options || {}),
   };
 
-  const hasExplicitDateOptions = Boolean(
-    normalized.dateStyle ||
-      normalized.weekday ||
-      normalized.era ||
-      normalized.day ||
-      normalized.month ||
-      normalized.year,
-  );
+  delete normalized.dateStyle;
+  delete normalized.weekday;
+  delete normalized.era;
+  normalized.day = '2-digit';
+  normalized.month = '2-digit';
+  normalized.year = '2-digit';
 
   const hasExplicitTimeOptions = Boolean(
     normalized.timeStyle ||
@@ -43,12 +41,6 @@ function buildNormalizedDateOptions(
       normalized.fractionalSecondDigits ||
       normalized.timeZoneName,
   );
-
-  if (!hasExplicitDateOptions) {
-    normalized.day = '2-digit';
-    normalized.month = '2-digit';
-    normalized.year = 'numeric';
-  }
 
   if (!includeTime) {
     delete normalized.timeStyle;
@@ -61,7 +53,7 @@ function buildNormalizedDateOptions(
     return normalized;
   }
 
-  if (!hasExplicitTimeOptions && !hasExplicitDateOptions) {
+  if (!hasExplicitTimeOptions) {
     normalized.hour = '2-digit';
     normalized.minute = '2-digit';
     normalized.second = '2-digit';

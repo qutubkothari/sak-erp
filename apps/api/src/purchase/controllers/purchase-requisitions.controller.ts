@@ -16,6 +16,95 @@ import { DuplicateDetectionService } from '../../common/services/duplicate-detec
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
+type ModulePermission = {
+  module?: string;
+  screen?: string;
+  view?: boolean;
+  create?: boolean;
+  edit?: boolean;
+  delete?: boolean;
+  approve?: boolean;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function toModulePermission(value: unknown): ModulePermission | null {
+  if (!isRecord(value)) return null;
+
+  const hasModule = typeof value.module === 'string' && value.module.trim().length > 0;
+  const hasScreen = typeof value.screen === 'string' && value.screen.trim().length > 0;
+
+  if (!hasModule && !hasScreen) {
+    return null;
+  }
+
+  return {
+    module: hasModule ? String(value.module) : undefined,
+    screen: hasScreen ? String(value.screen) : undefined,
+    view: !!value.view,
+    create: !!value.create,
+    edit: !!value.edit,
+    delete: !!value.delete,
+    approve: !!value.approve,
+  };
+}
+
+function normalizeRoleName(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_')
+    .replace(/[^A-Z0-9_]/g, '');
+}
+
+function hasAdminBypass(user: any): boolean {
+  const adminRoleNames = new Set(['SUPER_ADMIN', 'ADMIN', 'ADMINISTRATOR', 'OWNER']);
+
+  const directRole = user?.role;
+  if (typeof directRole === 'string' && adminRoleNames.has(normalizeRoleName(directRole))) {
+    return true;
+  }
+
+  if (isRecord(directRole) && adminRoleNames.has(normalizeRoleName(directRole.name))) {
+    return true;
+  }
+
+  const roleEntries = Array.isArray(user?.roles) ? user.roles : [];
+  return roleEntries.some((entry: any) => {
+    const roleObj = entry?.role || entry;
+    return adminRoleNames.has(normalizeRoleName(roleObj?.name));
+  });
+}
+
+function hasPurchaseApproveAccess(user: any): boolean {
+  if (!user) return false;
+  if (hasAdminBypass(user)) return true;
+
+  const rawPermissions: unknown[] = [];
+
+  if (Array.isArray(user?.roles)) {
+    user.roles.forEach((entry: any) => {
+      const roleObj = entry?.role || entry;
+      if (Array.isArray(roleObj?.permissions)) {
+        rawPermissions.push(...roleObj.permissions);
+      }
+    });
+  }
+
+  if (Array.isArray(user?.role?.permissions)) {
+    rawPermissions.push(...user.role.permissions);
+  }
+
+  return rawPermissions.some((entry) => {
+    const permission = toModulePermission(entry);
+    if (!permission?.approve) return false;
+
+    return permission.module === 'Purchase Management' || permission.screen === 'purchase-requisitions';
+  });
+}
+
 @Controller('purchase/requisitions')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PurchaseRequisitionsController {
@@ -72,7 +161,15 @@ export class PurchaseRequisitionsController {
 
   @Get()
   async findAll(@Request() req: any, @Query() query: any) {
-    return this.prService.findAll(req.user.tenantId, query);
+    const canViewAll = hasPurchaseApproveAccess(req.user);
+    const effectiveQuery = canViewAll
+      ? query
+      : {
+          ...query,
+          requestedBy: req.user.userId,
+        };
+
+    return this.prService.findAll(req.user.tenantId, effectiveQuery);
   }
 
   @Get(':id')

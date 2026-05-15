@@ -202,7 +202,7 @@ function SmartJobOrdersPageContent() {
     setItemsError('');
     setItemsLoading(true);
     try {
-      const response = await apiClient.get('/inventory/items');
+      const response = await apiClient.get('/inventory/items?onlyVerified=true');
       const list = Array.isArray(response) ? (response as RawItem[]) : [];
       const normalized: FinishedItem[] = list
         .map((raw) => ({

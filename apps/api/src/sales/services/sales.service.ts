@@ -4,6 +4,7 @@ import { Request } from 'express';
 import { EmailService } from '../../email/email.service';
 import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
 import { normalizeInventoryCategory } from '../../inventory/utils/inventory-category';
+import { normalizeEmail, normalizeIndianMobile, normalizePersonName, toTitleCase, toUpperCode } from '../../common/utils/data-quality';
 
 @Injectable()
 export class SalesService {
@@ -56,19 +57,19 @@ export class SalesService {
     const customer = {
       tenant_id: tenantId,
       customer_code: customerCode,
-      customer_name: customerData.customer_name,
+      customer_name: toTitleCase(customerData.customer_name),
       customer_type: customerData.customer_type || 'REGULAR',
-      contact_person: customerData.contact_person,
-      email: customerData.email,
-      phone: customerData.phone,
-      mobile: customerData.mobile,
-      gst_number: customerData.gst_number,
-      pan_number: customerData.pan_number,
-      billing_address: customerData.billing_address,
-      shipping_address: customerData.shipping_address,
-      city: customerData.city,
-      state: customerData.state,
-      country: customerData.country || 'India',
+      contact_person: normalizePersonName(customerData.contact_person || '', 'Customer contact person') || null,
+      email: customerData.email ? normalizeEmail(customerData.email) : null,
+      phone: customerData.phone ? normalizeIndianMobile(customerData.phone) : null,
+      mobile: customerData.mobile ? normalizeIndianMobile(customerData.mobile) : null,
+      gst_number: toUpperCode(customerData.gst_number) || null,
+      pan_number: toUpperCode(customerData.pan_number) || null,
+      billing_address: toTitleCase(customerData.billing_address),
+      shipping_address: toTitleCase(customerData.shipping_address),
+      city: toTitleCase(customerData.city),
+      state: toTitleCase(customerData.state),
+      country: toTitleCase(customerData.country || 'India') || 'India',
       pincode: customerData.pincode,
       credit_limit: customerData.credit_limit || 0,
       credit_days: customerData.credit_days || 30,
@@ -105,19 +106,19 @@ export class SalesService {
     if (fetchError || !existing) throw new NotFoundException('Customer not found');
 
     const updatePayload: any = {
-      customer_name: customerData.customer_name,
+      customer_name: toTitleCase(customerData.customer_name),
       customer_type: customerData.customer_type,
-      contact_person: customerData.contact_person,
-      email: customerData.email,
-      phone: customerData.phone,
-      mobile: customerData.mobile,
-      gst_number: customerData.gst_number,
-      pan_number: customerData.pan_number,
-      billing_address: customerData.billing_address,
-      shipping_address: customerData.shipping_address,
-      city: customerData.city,
-      state: customerData.state,
-      country: customerData.country,
+      contact_person: normalizePersonName(customerData.contact_person || '', 'Customer contact person') || null,
+      email: customerData.email ? normalizeEmail(customerData.email) : null,
+      phone: customerData.phone ? normalizeIndianMobile(customerData.phone) : null,
+      mobile: customerData.mobile ? normalizeIndianMobile(customerData.mobile) : null,
+      gst_number: toUpperCode(customerData.gst_number) || null,
+      pan_number: toUpperCode(customerData.pan_number) || null,
+      billing_address: toTitleCase(customerData.billing_address),
+      shipping_address: toTitleCase(customerData.shipping_address),
+      city: toTitleCase(customerData.city),
+      state: toTitleCase(customerData.state),
+      country: toTitleCase(customerData.country),
       pincode: customerData.pincode,
       credit_limit: customerData.credit_limit,
       credit_days: customerData.credit_days,
@@ -970,6 +971,7 @@ export class SalesService {
     );
 
     const soData = {
+      tenant_id: tenantId,
       so_number: (so as any).so_number,
       customer_name: customer?.customer_name || '',
       order_date: (so as any).order_date,
@@ -1882,6 +1884,8 @@ export class SalesService {
     dispatchData: any
   ) {
     try {
+      const { tenantId } = req.user as any;
+
       // Get customer details
       const { data: customer } = await this.supabase
         .from('customers')
@@ -1928,6 +1932,7 @@ export class SalesService {
 
       // Prepare certificate data
       const certificateData = {
+        tenant_id: tenantId,
         certificate_number: `CERT-${dispatchRecord.dn_number}`,
         customer_name: customer.customer_name,
         issue_date: dispatchRecord.dispatch_date,

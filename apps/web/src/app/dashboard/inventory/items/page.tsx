@@ -1,28 +1,37 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { CheckCircle, XCircle } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import DrawingManager from '../../../../components/DrawingManager';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
-import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { hasModulePermission, isAdminLike, readStoredUser } from '@/lib/rbac';
+import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 
 interface Item {
   id: string;
   code: string;
   name: string;
   description?: string;
+  oem_part_no?: string;
+  oem_name?: string;
   category: string;
   product_category?: string;
   uom: string;
   hsn_code?: string;
   standard_cost?: number;
   selling_price?: number;
+  purchase_currency?: string;
+  foreign_unit_price?: number;
   reorder_level?: number;
   reorder_quantity?: number;
   lead_time_days?: number;
   is_active: boolean;
+  is_verified?: boolean;
+  verified_at?: string | null;
+  verified_by?: string | null;
   created_at: string;
   total_stock?: number;
   uid_tracking?: boolean;
@@ -40,6 +49,7 @@ interface Vendor {
   id: string;
   code: string;
   name: string;
+  is_verified?: boolean;
 }
 
 interface ItemVendor {
@@ -53,34 +63,54 @@ interface ItemVendor {
 type ItemsTableColumnKey =
   | 'code'
   | 'name'
+  | 'oem_part_no'
   | 'category'
-  | 'product_category'
   | 'uom'
   | 'hsn_code'
   | 'uid_tracking'
   | 'drawing_required'
   | 'total_stock'
   | 'standard_cost'
-  | 'selling_price'
   | 'is_active';
 
 const ITEMS_TABLE_COLUMNS: Array<{ key: ItemsTableColumnKey; label: string }> = [
-  { key: 'code', label: 'Code' },
+  { key: 'code', label: 'SAS Part Number' },
   { key: 'name', label: 'Name' },
+  { key: 'oem_part_no', label: 'OEM Part No.' },
   { key: 'category', label: 'Category' },
-  { key: 'product_category', label: 'Product Category' },
   { key: 'uom', label: 'UOM' },
   { key: 'hsn_code', label: 'HSN' },
   { key: 'uid_tracking', label: 'UID' },
   { key: 'drawing_required', label: 'Drawing' },
   { key: 'total_stock', label: 'Stock' },
   { key: 'standard_cost', label: 'Cost' },
-  { key: 'selling_price', label: 'Price' },
   { key: 'is_active', label: 'Status' },
 ];
 
 const ITEMS_TABLE_COLUMNS_STORAGE_KEY = 'itemsTableColumns:v1';
 const ITEMS_TABLE_PAGE_SIZE_STORAGE_KEY = 'itemsTablePageSize:v1';
+const ITEM_CATEGORY_OPTIONS = [
+  { value: 'RAW_MATERIAL', label: 'Raw Material' },
+  { value: 'CAPITAL_GOODS', label: 'Capital Goods' },
+  { value: 'CONSUMABLE', label: 'Consumable' },
+  { value: 'PACKING_MATERIAL', label: 'Packing Material' },
+  { value: 'SERVICES', label: 'Services' },
+];
+
+const ITEM_CATEGORY_ALIASES: Record<string, string> = {
+  RAW_MATERIALS: 'RAW_MATERIAL',
+  SERVICE: 'SERVICES',
+};
+
+function normalizeItemCategory(category: unknown): string {
+  const value = String(category ?? '').trim().toUpperCase().replace(/\s+/g, '_');
+  return ITEM_CATEGORY_ALIASES[value] || value;
+}
+
+function formatItemCategory(category: unknown): string {
+  const normalized = normalizeItemCategory(category);
+  return ITEM_CATEGORY_OPTIONS.find((option) => option.value === normalized)?.label || normalized.replace(/_/g, ' ');
+}
 
 export default function ItemsPage() {
   const router = useRouter();
@@ -88,13 +118,13 @@ export default function ItemsPage() {
   const canCreate = hasModulePermission(currentUser, 'Inventory', 'create');
   const canEdit = hasModulePermission(currentUser, 'Inventory', 'edit');
   const canDelete = hasModulePermission(currentUser, 'Inventory', 'delete');
+  const canVerify = isAdminLike(currentUser) && hasModulePermission(currentUser, 'Inventory', 'approve');
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
-  const [productCategoryFilter, setProductCategoryFilter] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
   const [showDrawingManager, setShowDrawingManager] = useState(false);
   const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<Item | null>(null);
@@ -116,10 +146,39 @@ export default function ItemsPage() {
   // Drawing upload state
   const [drawingFile, setDrawingFile] = useState<File | null>(null);
   const [uploadingDrawing, setUploadingDrawing] = useState(false);
+  const drawingFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Item view modal
+  const [viewingItem, setViewingItem] = useState<Item | null>(null);
+
+  // Stock trail drill-down
+  const [stockTrail, setStockTrail] = useState<{ open: boolean; item: Item | null; loading: boolean; data: any }>({ open: false, item: null, loading: false, data: null });
+
+  const openStockTrail = async (item: Item) => {
+    setStockTrail({ open: true, item, loading: true, data: null });
+    try {
+      const data = await apiClient.get<any>(`/items/${item.id}/stock-trail`);
+      setStockTrail(prev => ({ ...prev, loading: false, data }));
+    } catch (err: any) {
+      setStockTrail(prev => ({ ...prev, loading: false, data: { error: String(err?.message || err) } }));
+    }
+  };
+  const [drawingAttachmentMessage, setDrawingAttachmentMessage] = useState<{
+    type: 'success' | 'warning' | 'info';
+    text: string;
+  } | null>(null);
   
   // Bulk inventory state
   const [showBulkInventory, setShowBulkInventory] = useState(false);
   const [bulkInventoryItems, setBulkInventoryItems] = useState<Array<{itemId: string, itemCode: string, itemName: string, quantity: string, location: string}>>([]);
+  
+  // Excel import state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<any[]>([]);
+  const [importResult, setImportResult] = useState<{success: number; failed: number; errors: string[]} | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -131,6 +190,8 @@ export default function ItemsPage() {
 
   // Column visibility
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
+  const topTableScrollRef = useRef<HTMLDivElement | null>(null);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Record<ItemsTableColumnKey, boolean>>(() => {
     return ITEMS_TABLE_COLUMNS.reduce(
       (acc, col) => {
@@ -155,6 +216,8 @@ export default function ItemsPage() {
   const [formData, setFormData] = useState({
     code: '',
     name: '',
+    oem_part_no: '',
+    oem_name: '',
     description: '',
     category: 'RAW_MATERIAL',
     product_category: '',
@@ -162,6 +225,8 @@ export default function ItemsPage() {
     hsn_code: '',
     standard_cost: '',
     selling_price: '',
+    purchase_currency: 'INR',
+    foreign_unit_price: '',
     reorder_level: '',
     reorder_quantity: '',
     lead_time_days: '',
@@ -228,8 +293,8 @@ export default function ItemsPage() {
   const fetchVendors = async () => {
     try {
       // Vendors live under the purchase module routes
-      const data = await apiClient.get('/purchase/vendors');
-      setVendors(Array.isArray(data) ? data : []);
+      const data = await apiClient.get('/purchase/vendors?isActive=true');
+      setVendors(Array.isArray(data) ? data.filter((vendor: Vendor) => vendor.is_verified === true) : []);
     } catch (error) {
       setVendors([]);
     }
@@ -254,17 +319,6 @@ export default function ItemsPage() {
     'PCS', 'KG', 'GRAM', 'LITER', 'METER', 'CM', 'MM',
     'BOX', 'SET', 'PACK', 'ROLL', 'SHEET', 'FEET', 'INCH'
   ];
-
-  // Dynamically get unique product categories from items
-  const productCategoryOptions = useMemo(() => {
-    const uniqueCategories = new Set<string>();
-    items.forEach(item => {
-      if (item.product_category && item.product_category.trim()) {
-        uniqueCategories.add(item.product_category);
-      }
-    });
-    return Array.from(uniqueCategories).sort();
-  }, [items]);
 
   useEffect(() => {
     fetchItems();
@@ -379,7 +433,7 @@ export default function ItemsPage() {
           }
         }
 
-        alert('Item updated successfully!');
+        alert(drawingLink ? `Item updated successfully! Attachment uploaded: ${drawingLink.fileName}` : 'Item updated successfully!');
       } else {
         const result = await apiClient.post('/inventory/items', payload);
 
@@ -415,7 +469,7 @@ export default function ItemsPage() {
           }
         }
         
-        alert('Item created successfully!');
+        alert(drawingLink ? `Item created successfully! Attachment uploaded: ${drawingLink.fileName}` : 'Item created successfully!');
       }
 
       setShowForm(false);
@@ -423,7 +477,7 @@ export default function ItemsPage() {
       resetForm();
       fetchItems();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save item');
+      alert(error.message || error.response?.data?.message || 'Failed to save item');
     }
   };
 
@@ -465,9 +519,15 @@ export default function ItemsPage() {
       const payload = {
         ...formData,
         ...drawingData,
+        category: normalizeItemCategory(formData.category),
+        product_category: null,
         hsn_code: (formData.hsn_code || '').replace(/[^0-9]/g, ''),
         standard_cost: formData.standard_cost ? parseFloat(formData.standard_cost) : null,
-        selling_price: formData.selling_price ? parseFloat(formData.selling_price) : null,
+        selling_price: null,
+        purchase_currency: formData.purchase_currency || 'INR',
+        foreign_unit_price: (formData.purchase_currency && formData.purchase_currency !== 'INR' && formData.foreign_unit_price)
+          ? parseFloat(formData.foreign_unit_price)
+          : null,
         reorder_level: formData.reorder_level ? parseInt(formData.reorder_level) : null,
         reorder_quantity: formData.reorder_quantity ? parseInt(formData.reorder_quantity) : null,
         lead_time_days: formData.lead_time_days ? parseInt(formData.lead_time_days) : null,
@@ -490,7 +550,7 @@ export default function ItemsPage() {
         () => actuallyCreateItem(payload, drawingLink),
       );
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save item');
+      alert(error.message || error.response?.data?.message || 'Failed to save item');
     }
   };
 
@@ -518,14 +578,18 @@ export default function ItemsPage() {
     setFormData({
       code: item.code,
       name: item.name,
+      oem_part_no: item.oem_part_no || '',
+      oem_name: item.oem_name || '',
       description: item.description || '',
-      category: item.category,
-      product_category: item.product_category || '',
+      category: normalizeItemCategory(item.category),
+      product_category: '',
       uom: item.uom,
       // Some older records/imports can have whitespace; trim so HTML pattern validation doesn't block saving
       hsn_code: (item.hsn_code ? String(item.hsn_code) : '').replace(/[^0-9]/g, ''),
       standard_cost: item.standard_cost?.toString() || '',
       selling_price: item.selling_price?.toString() || '',
+      purchase_currency: item.purchase_currency || 'INR',
+      foreign_unit_price: item.foreign_unit_price?.toString() || '',
       reorder_level: item.reorder_level?.toString() || '',
       reorder_quantity: item.reorder_quantity?.toString() || '',
       lead_time_days: item.lead_time_days?.toString() || '',
@@ -543,6 +607,8 @@ export default function ItemsPage() {
       drawing_file_name: (item as any).drawing_file_name || '',
     });
     setDrawingFile(null);
+    setDrawingAttachmentMessage(null);
+    if (drawingFileInputRef.current) drawingFileInputRef.current.value = '';
     setShowForm(true);
     fetchItemVendors(item.id);
 
@@ -588,8 +654,8 @@ export default function ItemsPage() {
         parent_item_id: selectedParentItem.id,
         is_variant: true,
         is_default_variant: newVariant.is_default,
-        category: selectedParentItem.category,
-        product_category: selectedParentItem.product_category || null,
+        category: normalizeItemCategory(selectedParentItem.category),
+        product_category: null,
         uom: selectedParentItem.uom,
         hsn_code: selectedParentItem.hsn_code || '',
         is_active: true,
@@ -786,6 +852,31 @@ export default function ItemsPage() {
     }
   };
 
+  const handleVerification = async (item: Item, shouldVerify: boolean) => {
+    if (!canVerify) {
+      alert('Only admin users with approval permission can verify items');
+      return;
+    }
+
+    const confirmed = await confirmDialog({
+      title: shouldVerify ? 'Verify Item' : 'Remove Item Verification',
+      message: shouldVerify
+        ? `Allow ${item.name} to be used in purchases, production, and inventory movements?`
+        : `Block ${item.name} from new usage until verified again?`,
+      confirmLabel: shouldVerify ? 'Verify' : 'Unverify',
+      variant: shouldVerify ? 'info' : 'warning',
+    });
+    if (!confirmed) return;
+
+    try {
+      await apiClient.put(`/items/${item.id}/${shouldVerify ? 'verify' : 'unverify'}`, {});
+      alert(shouldVerify ? 'Item verified successfully!' : 'Item verification removed!');
+      fetchItems();
+    } catch (error: any) {
+      alert(error?.message || 'Failed to update item verification');
+    }
+  };
+
   const handleDrawingUpload = async (file: File) => {
     if (!file) return null;
     
@@ -813,10 +904,96 @@ export default function ItemsPage() {
     }
   };
 
+  const formatFileSize = (size: number) => {
+    if (!size) return '0 KB';
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const clearDrawingSelection = () => {
+    setDrawingFile(null);
+    setDrawingAttachmentMessage(null);
+    if (drawingFileInputRef.current) drawingFileInputRef.current.value = '';
+  };
+
+  const handleDrawingFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0] || null;
+    if (!selectedFile) return;
+
+    const isSameAsSelected =
+      drawingFile &&
+      drawingFile.name === selectedFile.name &&
+      drawingFile.size === selectedFile.size &&
+      drawingFile.lastModified === selectedFile.lastModified;
+    const isSameAsSaved = !drawingFile && formData.drawing_file_name === selectedFile.name;
+
+    if (isSameAsSelected || isSameAsSaved) {
+      setDrawingAttachmentMessage({
+        type: 'warning',
+        text: `${selectedFile.name} is already attached. Duplicate upload skipped.`,
+      });
+      event.target.value = '';
+      return;
+    }
+
+    setDrawingFile(selectedFile);
+    setDrawingAttachmentMessage({
+      type: 'success',
+      text: `${selectedFile.name} added (${formatFileSize(selectedFile.size)}). It will upload when you save the item.`,
+    });
+  };
+
+  const downloadItemTemplate = () => {
+    const headers = ['code','name','category','uom','hsn_code','standard_cost','selling_price','description','drawing_required','min_stock_level','reorder_level'];
+    const example = ['ITM-001','Sample Item','Raw Material','NOS','12345678','100','120','Example item description','OPTIONAL','10','20'];
+    const csv = [headers.join(','), example.join(',')].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'items_import_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const parseImportFile = (file: File) => {
+    setImportFile(file);
+    setImportResult(null);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) { setImportPreview([]); return; }
+      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"+$/g, ''));
+      const rows = lines.slice(1).map(line => {
+        const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+        return Object.fromEntries(headers.map((h, i) => [h, vals[i] || '']));
+      });
+      setImportPreview(rows);
+    };
+    reader.readAsText(file);
+  };
+
+  const submitImport = async () => {
+    if (!importPreview.length) return;
+    setImportLoading(true);
+    setImportResult(null);
+    try {
+      const result = await apiClient.post('/items/bulk', { items: importPreview });
+      const r = result as any;
+      setImportResult({ success: r.success || 0, failed: r.failed || 0, errors: r.errors || [] });
+      if ((r.success || 0) > 0) fetchItems();
+    } catch (e: any) {
+      setImportResult({ success: 0, failed: importPreview.length, errors: [e.message || 'Import failed'] });
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   const initBulkInventory = () => {
     // Initialize with all active items with zero quantity
     const bulkItems = items
-      .filter(item => item.is_active)
+      .filter(item => item.is_active && item.is_verified === true)
       .map(item => ({
         itemId: item.id,
         itemCode: item.code,
@@ -892,6 +1069,8 @@ export default function ItemsPage() {
     setFormData({
       code: '',
       name: '',
+      oem_part_no: '',
+      oem_name: '',
       description: '',
       category: 'RAW_MATERIAL',
       product_category: '',
@@ -899,6 +1078,8 @@ export default function ItemsPage() {
       hsn_code: '',
       standard_cost: '',
       selling_price: '',
+      purchase_currency: 'INR',
+      foreign_unit_price: '',
       reorder_level: '',
       reorder_quantity: '',
       lead_time_days: '',
@@ -916,19 +1097,17 @@ export default function ItemsPage() {
       drawing_file_name: '',
     });
     setDrawingFile(null);
+    setDrawingAttachmentMessage(null);
+    if (drawingFileInputRef.current) drawingFileInputRef.current.value = '';
     setItemVendors([]);
     setShowVendorForm(false);
   };
 
   const filteredItems = items.filter(item => {
-    const matchesSearch = 
-      item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = !typeFilter || item.category === typeFilter;
-    const matchesProductCategory = !productCategoryFilter || item.product_category === productCategoryFilter;
+    const matchesType = !typeFilter || normalizeItemCategory(item.category) === typeFilter;
     // When showDeleted is true, show only inactive items. When false, show only active items.
     const matchesActiveStatus = showDeleted ? !item.is_active : item.is_active;
-    return matchesSearch && matchesType && matchesProductCategory && matchesActiveStatus;
+    return matchesType && matchesActiveStatus;
   });
 
   // Sorting
@@ -961,7 +1140,8 @@ export default function ItemsPage() {
     ? items
         .filter(item => 
           (item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           item.name.toLowerCase().includes(searchTerm.toLowerCase())) &&
+           item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           (item.oem_part_no || '').toLowerCase().includes(searchTerm.toLowerCase())) &&
           (showDeleted ? !item.is_active : item.is_active)
         )
         .slice(0, 10)
@@ -1000,6 +1180,18 @@ export default function ItemsPage() {
     (count, col) => count + (visibleColumns[col.key] ? 1 : 0),
     0
   );
+  const itemsTableWidth = Math.max(1180, visibleColumnsCount * 150 + 280);
+
+  const syncTableScroll = (source: 'top' | 'table') => {
+    const topScroll = topTableScrollRef.current;
+    const tableScroll = tableScrollRef.current;
+    if (!topScroll || !tableScroll) return;
+    if (source === 'top') {
+      tableScroll.scrollLeft = topScroll.scrollLeft;
+    } else {
+      topScroll.scrollLeft = tableScroll.scrollLeft;
+    }
+  };
 
   // Handle pagination
   const goToPage = (page: number) => {
@@ -1009,7 +1201,7 @@ export default function ItemsPage() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, typeFilter, productCategoryFilter, showDeleted]);
+  }, [searchTerm, typeFilter, showDeleted]);
 
   const normalizedItemUom = String(formData.uom || '')
     .trim()
@@ -1029,6 +1221,184 @@ export default function ItemsPage() {
     }
   }, [formData.uid_strategy, formData.batch_uom, isVolumeUom]);
 
+  const itemsTableColumns: Array<ListTableColumn<Item>> = [
+    {
+      id: 'code',
+      label: 'SAS Part Number',
+      accessor: (item) => item.code,
+      cell: (item) => <span className="block truncate font-medium text-gray-900" title={item.code}>{item.code}</span>,
+      minWidth: 160,
+    },
+    {
+      id: 'name',
+      label: 'Name',
+      accessor: (item) => item.name,
+      searchAccessor: (item) => `${item.name || ''} ${item.description || ''}`.trim(),
+      cell: (item) => <span className="block truncate text-gray-900" title={item.name}>{item.name}</span>,
+      minWidth: 220,
+    },
+    {
+      id: 'oem_part_no',
+      label: 'OEM Part No.',
+      accessor: (item) => item.oem_part_no || '-',
+      cell: (item) => <span className="block truncate text-gray-600" title={item.oem_part_no || '-'}>{item.oem_part_no || '-'}</span>,
+      minWidth: 160,
+    },
+    {
+      id: 'category',
+      label: 'Category',
+      accessor: (item) => formatItemCategory(item.category),
+      cell: (item) => <span className="block truncate text-gray-600" title={formatItemCategory(item.category)}>{item.category ? formatItemCategory(item.category) : 'N/A'}</span>,
+      minWidth: 170,
+    },
+    {
+      id: 'uom',
+      label: 'UOM',
+      accessor: (item) => item.uom || '',
+      minWidth: 110,
+    },
+    {
+      id: 'hsn_code',
+      label: 'HSN',
+      accessor: (item) => item.hsn_code || '-',
+      minWidth: 130,
+    },
+    {
+      id: 'uid_tracking',
+      label: 'UID',
+      accessor: (item) => (item.uid_tracking !== false ? 'YES' : 'NO'),
+      cell: (item) => (
+        <span className={`inline-flex px-2 py-1 text-xs rounded-full ${item.uid_tracking !== false ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+          {item.uid_tracking !== false ? 'YES' : 'NO'}
+        </span>
+      ),
+      align: 'center',
+      minWidth: 110,
+    },
+    {
+      id: 'drawing_required',
+      label: 'Drawing',
+      accessor: (item) => item.drawing_required || 'OPTIONAL',
+      cell: (item) => {
+        const drawingRequired = item.drawing_required || 'OPTIONAL';
+        return (
+          <span className={`inline-flex max-w-[120px] truncate px-2 py-1 text-xs rounded-full ${drawingRequired === 'COMPULSORY' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`} title={drawingRequired}>
+            {drawingRequired}
+          </span>
+        );
+      },
+      align: 'center',
+      minWidth: 140,
+    },
+    {
+      id: 'total_stock',
+      label: 'Stock',
+      accessor: (item) => item.total_stock ?? 0,
+      align: 'right',
+      cell: (item) => (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); void openStockTrail(item); }}
+          title="Click to view stock trail"
+          className={`font-semibold underline decoration-dotted cursor-pointer hover:opacity-70 ${item.total_stock && item.total_stock > 0 ? 'text-green-700' : 'text-gray-400'}`}
+        >
+          {item.total_stock ?? 0}
+        </button>
+      ),
+      minWidth: 120,
+    },
+    {
+      id: 'standard_cost',
+      label: 'Cost',
+      accessor: (item) => item.standard_cost || 0,
+      align: 'right',
+      cell: (item) => <span className="whitespace-nowrap text-gray-600">{item.standard_cost ? `₹${item.standard_cost.toFixed(2)}` : '-'}</span>,
+      minWidth: 140,
+    },
+    {
+      id: 'is_active',
+      label: 'Status',
+      accessor: (item) => (item.is_active ? 'Active' : 'Inactive'),
+      cell: (item) => (
+        <span className={`inline-flex px-2 py-1 text-xs rounded-full ${item.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+          {item.is_active ? 'Active' : 'Inactive'}
+        </span>
+      ),
+      align: 'center',
+      minWidth: 120,
+    },
+    {
+      id: 'verification',
+      label: 'Verification',
+      accessor: (item) => (item.is_verified ? 'Verified' : 'Pending'),
+      cell: (item) => (
+        <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${item.is_verified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+          {item.is_verified ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+          {item.is_verified ? 'Verified' : 'Pending'}
+        </span>
+      ),
+      align: 'center',
+      minWidth: 140,
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      sortable: false,
+      hideable: false,
+      align: 'right',
+      minWidth: 250,
+      cell: (item) => (
+        <div className="flex items-center justify-end gap-3 whitespace-nowrap text-xs font-medium">
+          <button type="button" onClick={() => setViewingItem(item)} className="text-blue-600 hover:text-blue-900">
+            View
+          </button>
+          {item.is_active ? (
+            <>
+              {canEdit && (
+                <button type="button" onClick={() => handleEdit(item)} className="text-amber-600 hover:text-amber-900">
+                  Edit
+                </button>
+              )}
+              {canVerify && (
+                <button
+                  type="button"
+                  onClick={() => handleVerification(item, !item.is_verified)}
+                  className={item.is_verified ? 'text-gray-600 hover:text-gray-900' : 'text-emerald-700 hover:text-emerald-900'}
+                >
+                  {item.is_verified ? 'Unverify' : 'Verify'}
+                </button>
+              )}
+              {!item.is_variant && (
+                <button type="button" onClick={() => openVariantManager(item)} className="text-[#8B6F47] hover:text-[#6F4E37]" title="Manage variants/brands">
+                  Variants
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedItemForDrawing(item);
+                  setShowDrawingManager(true);
+                }}
+                className="text-blue-600 hover:text-blue-900"
+              >
+                Drawings
+              </button>
+              {canDelete && (
+                <button type="button" onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">
+                  Delete
+                </button>
+              )}
+            </>
+          ) : (
+            <button type="button" onClick={() => handleRestore(item.id)} className="text-green-600 hover:text-green-900">
+              Restore
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -1038,488 +1408,104 @@ export default function ItemsPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Stock Master</h1>
-        <div className="flex gap-3">
-          <button
-            onClick={() => setShowCategoryManager(true)}
-            className="bg-[#8B6F47] text-white px-6 py-2 rounded-lg hover:bg-[#6F4E37] font-medium flex items-center gap-2"
-          >
-            🏷️ Manage Categories
-          </button>
-          <div className="relative">
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 px-3 py-4 lg:px-4">
+      <div className="w-full max-w-none">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-amber-900">Stock Master</h1>
+            <p className="text-sm text-amber-700">Create and manage item masters, inventory attributes, drawings, and variants</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap justify-end gap-3">
             <button
-              onClick={() => setShowColumnsMenu((v) => !v)}
-              className="bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300 font-medium"
+              onClick={() => setShowCategoryManager(true)}
+              className="rounded-md bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#6F4E37]"
             >
-              Columns
+              Manage Categories
             </button>
-            {showColumnsMenu && (
-              <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-20 p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="font-semibold text-gray-800">Show Columns</div>
-                  <button
-                    onClick={() => setShowColumnsMenu(false)}
-                    className="text-gray-500 hover:text-gray-700"
-                    aria-label="Close columns"
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="max-h-64 overflow-y-auto pr-1">
-                  {ITEMS_TABLE_COLUMNS.map((col) => (
-                    <label key={col.key} className="flex items-center gap-2 py-1 text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={!!visibleColumns[col.key]}
-                        onChange={() => toggleColumn(col.key)}
-                        className="h-4 w-4"
-                      />
-                      {col.label}
-                    </label>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between pt-2 mt-2 border-t border-gray-100">
-                  <button
-                    onClick={resetColumns}
-                    className="text-sm text-gray-600 hover:text-gray-800"
-                  >
-                    Reset
-                  </button>
-                  <button
-                    onClick={() => setShowColumnsMenu(false)}
-                    className="text-sm bg-amber-600 text-white px-3 py-1 rounded hover:bg-amber-700"
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
+            <button
+              onClick={initBulkInventory}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Bulk Inventory
+            </button>
+            {canCreate && (
+              <>
+                <button
+                  onClick={downloadItemTemplate}
+                  className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                >
+                  ⬇ CSV Template
+                </button>
+                <button
+                  onClick={() => { setShowImportModal(true); setImportPreview([]); setImportResult(null); setImportFile(null); }}
+                  className="rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
+                >
+                  ⬆ Import Items
+                </button>
+              </>
+            )}
+            {canCreate && (
+              <button
+                onClick={() => {
+                  setEditingItem(null);
+                  resetForm();
+                  setShowForm(true);
+                }}
+                className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+              >
+                + Add Item
+              </button>
             )}
           </div>
-          <button
-            onClick={initBulkInventory}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
-          >
-            📦 Bulk Inventory
-          </button>
-          {canCreate && (
-          <button
-            onClick={() => {
-              setEditingItem(null);
-              resetForm();
-              setShowForm(true);
-            }}
-            className="bg-amber-600 text-white px-6 py-2 rounded-lg hover:bg-amber-700 font-medium"
-          >
-            + Add Item
-          </button>
-          )}
         </div>
-      </div>
 
-      {/* Filters */}
-      <div className="mb-6 bg-white p-4 rounded-lg shadow flex gap-4">
-        <button
-          onClick={() => setShowDeleted(!showDeleted)}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            showDeleted 
-              ? 'bg-red-600 text-white hover:bg-red-700' 
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          {showDeleted ? '🗑️ Showing Deleted' : '📋 Show Deleted'}
-        </button>
-        <div className="relative flex-1">
-          <input
-            type="text"
-            placeholder="Search by code or name..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setShowAutocomplete(e.target.value.length >= 2);
-            }}
-            onFocus={() => setShowAutocomplete(searchTerm.length >= 2)}
-            onBlur={() => setTimeout(() => setShowAutocomplete(false), 200)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-          />
-          {showAutocomplete && autocompleteSuggestions.length > 0 && (
-            <div className="absolute z-[9999] w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-              {autocompleteSuggestions.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    setSearchTerm(item.code);
-                    setShowAutocomplete(false);
-                  }}
-                  className="px-4 py-2 hover:bg-amber-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                >
-                  <div className="font-medium text-gray-900">{item.code}</div>
-                  <div className="text-sm text-gray-500">{item.name}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-        >
-          <option value="">All Types</option>
-          {categories.map(cat => (
-            <option key={cat.id} value={cat.name}>{cat.name.replace(/_/g, ' ')}</option>
-          ))}
-        </select>
-        <select
-          value={productCategoryFilter}
-          onChange={(e) => setProductCategoryFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-        >
-          <option value="">All Product Categories</option>
-          {productCategoryOptions.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Items Table */}
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              {visibleColumns.code && (
-                <th 
-                  onClick={() => handleSort('code')}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  <div className="flex items-center gap-1">
-                    Code
-                    {sortColumn === 'code' && (
-                      <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-              )}
-              {visibleColumns.name && (
-                <th 
-                  onClick={() => handleSort('name')}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  <div className="flex items-center gap-1">
-                    Name
-                    {sortColumn === 'name' && (
-                      <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-              )}
-              {visibleColumns.category && (
-                <th
-                  onClick={() => handleSort('category')}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  <div className="flex items-center gap-1">
-                    Category
-                    {sortColumn === 'category' && (
-                      <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-              )}
-              {visibleColumns.product_category && (
-                <th
-                  onClick={() => handleSort('product_category')}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  <div className="flex items-center gap-1">
-                    Product Category
-                    {sortColumn === 'product_category' && (
-                      <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-              )}
-              {visibleColumns.uom && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">UOM</th>
-              )}
-              {visibleColumns.hsn_code && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">HSN</th>
-              )}
-              {visibleColumns.uid_tracking && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">UID</th>
-              )}
-              {visibleColumns.drawing_required && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drawing</th>
-              )}
-              {visibleColumns.total_stock && (
-                <th 
-                  onClick={() => handleSort('total_stock')}
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  <div className="flex items-center justify-end gap-1">
-                    Stock
-                    {sortColumn === 'total_stock' && (
-                      <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-              )}
-              {visibleColumns.standard_cost && (
-                <th 
-                  onClick={() => handleSort('standard_cost')}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  <div className="flex items-center gap-1">
-                    Cost
-                    {sortColumn === 'standard_cost' && (
-                      <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-              )}
-              {visibleColumns.selling_price && (
-                <th 
-                  onClick={() => handleSort('selling_price')}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  <div className="flex items-center gap-1">
-                    Price
-                    {sortColumn === 'selling_price' && (
-                      <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-              )}
-              {visibleColumns.is_active && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-              )}
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {paginatedItems.length === 0 ? (
-              <tr>
-                <td colSpan={visibleColumnsCount + 1} className="px-6 py-12 text-center text-gray-500">
-                  <p className="text-lg">No items found</p>
-                  <p className="text-sm mt-2">Create your first item to get started</p>
-                </td>
-              </tr>
-            ) : (
-              paginatedItems.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  {visibleColumns.code && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.code}</td>
-                  )}
-                  {visibleColumns.name && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.name}</td>
-                  )}
-                  {visibleColumns.category && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.category ? item.category.replace(/_/g, ' ') : 'N/A'}
-                    </td>
-                  )}
-                  {visibleColumns.product_category && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.product_category || '-'}
-                    </td>
-                  )}
-                  {visibleColumns.uom && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.uom}</td>
-                  )}
-                  {visibleColumns.hsn_code && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.hsn_code || '-'}
-                    </td>
-                  )}
-                  {visibleColumns.uid_tracking && (
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded-full ${
-                        item.uid_tracking !== false
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {item.uid_tracking !== false ? 'YES' : 'NO'}
-                      </span>
-                    </td>
-                  )}
-                  {visibleColumns.drawing_required && (
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded-full ${
-                        (item.drawing_required || 'OPTIONAL') === 'COMPULSORY'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {item.drawing_required || 'OPTIONAL'}
-                      </span>
-                    </td>
-                  )}
-                  {visibleColumns.total_stock && (
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold">
-                      <span className={item.total_stock && item.total_stock > 0 ? 'text-green-700' : 'text-gray-400'}>
-                        {item.total_stock ?? 0}
-                      </span>
-                    </td>
-                  )}
-                  {visibleColumns.standard_cost && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.standard_cost ? `₹${item.standard_cost.toFixed(2)}` : '-'}
-                    </td>
-                  )}
-                  {visibleColumns.selling_price && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.selling_price ? `₹${item.selling_price.toFixed(2)}` : '-'}
-                    </td>
-                  )}
-                  {visibleColumns.is_active && (
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded-full ${
-                        item.is_active 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {item.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                  )}
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    {item.is_active ? (
-                      <>
-                        {canEdit && (
-                        <button
-                          onClick={() => handleEdit(item)}
-                          className="text-amber-600 hover:text-amber-900 mr-3"
-                        >
-                          Edit
-                        </button>
-                        )}
-                        {!item.is_variant && (
-                          <button
-                            onClick={() => openVariantManager(item)}
-                            className="text-[#8B6F47] hover:text-[#6F4E37] mr-3"
-                            title="Manage variants/brands"
-                          >
-                            🏷️ Variants
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            setSelectedItemForDrawing(item);
-                            setShowDrawingManager(true);
-                          }}
-                          className="text-blue-600 hover:text-blue-900 mr-3"
-                        >
-                          Drawings
-                        </button>
-                        {canDelete && (
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          Delete
-                        </button>
-                        )}
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => handleRestore(item.id)}
-                        className="text-green-600 hover:text-green-900 font-medium"
-                      >
-                        ↻ Restore
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-        
-        {/* Pagination Controls */}
-        {totalItems > 0 && (
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-700">
-                Showing {startIndex + 1} to {Math.min(endIndex, totalItems)} of {totalItems} items
-              </span>
-              <select
-                value={itemsPerPage}
-                onChange={(e) => {
-                  setItemsPerPage(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="px-2 py-1 border border-gray-300 rounded text-sm"
+        <div className="mb-4 rounded-lg bg-white p-4 shadow-md">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <label className="flex items-end">
+              <button
+                type="button"
+                onClick={() => setShowDeleted(!showDeleted)}
+                className={`w-full rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+                  showDeleted
+                    ? 'bg-red-600 text-white hover:bg-red-700'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
               >
-                <option value={10}>10 per page</option>
-                <option value={25}>25 per page</option>
-                <option value={50}>50 per page</option>
-                <option value={100}>100 per page</option>
+                {showDeleted ? 'Showing Deleted' : 'Show Deleted'}
+              </button>
+            </label>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700">Type</label>
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-amber-500"
+              >
+                <option value="">All Types</option>
+                {ITEM_CATEGORY_OPTIONS.map((cat) => (
+                  <option key={cat.value} value={cat.value}>{cat.label}</option>
+                ))}
               </select>
             </div>
-            
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => goToPage(1)}
-                disabled={currentPage === 1}
-                className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                First
-              </button>
-              <button
-                onClick={() => goToPage(currentPage - 1)}
-                disabled={currentPage === 1}
-                className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Previous
-              </button>
-              
-              {/* Page Numbers */}
-              <div className="flex gap-1">
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum;
-                  if (totalPages <= 5) {
-                    pageNum = i + 1;
-                  } else if (currentPage <= 3) {
-                    pageNum = i + 1;
-                  } else if (currentPage >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    pageNum = currentPage - 2 + i;
-                  }
-                  
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => goToPage(pageNum)}
-                      className={`px-3 py-1 border rounded text-sm ${
-                        currentPage === pageNum
-                          ? 'bg-amber-600 text-white border-amber-600'
-                          : 'border-gray-300 hover:bg-gray-100'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
-              </div>
-              
-              <button
-                onClick={() => goToPage(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next
-              </button>
-              <button
-                onClick={() => goToPage(totalPages)}
-                disabled={currentPage === totalPages}
-                className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Last
-              </button>
-            </div>
           </div>
-        )}
+        </div>
+
+        <ListTable
+          storageKey="stockMasterTable:poStyle:v1"
+          rows={filteredItems}
+          columns={itemsTableColumns}
+          getRowId={(item) => item.id}
+          defaultPageSize={10}
+          pageSizeOptions={[10, 25, 50, 100]}
+          searchPlaceholder="Search by code, name, OEM part no., HSN, category…"
+          exportFilename={`stock-master-${new Date().toISOString().slice(0, 10)}`}
+          emptyState={
+            <div className="p-12 text-center">
+              <div className="mb-2 text-lg font-semibold text-gray-700">No items found</div>
+              <p className="text-sm text-gray-500">Create your first item to get started</p>
+            </div>
+          }
+        />
       </div>
 
       {/* Create/Edit Form Modal */}
@@ -1535,7 +1521,7 @@ export default function ItemsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Item Code *
+                      SAS Part Number *
                     </label>
                     <input
                       type="text"
@@ -1558,6 +1544,31 @@ export default function ItemsPage() {
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                       placeholder="e.g., Steel Sheet"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      OEM Part No.
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.oem_part_no}
+                      onChange={(e) => setFormData({ ...formData, oem_part_no: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                      placeholder="e.g., Robu-866205"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      OEM Name
+                    </label>
+                    <input
+                      type="text"
+                      value={(formData as any).oem_name || ''}
+                      onChange={(e) => setFormData({ ...formData, oem_name: e.target.value } as any)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                      placeholder="e.g., Bosch, Siemens"
                     />
                   </div>
                 </div>
@@ -1586,25 +1597,8 @@ export default function ItemsPage() {
                       onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                     >
-                      {categories.map(cat => (
-                        <option key={cat.id} value={cat.name}>{cat.name.replace(/_/g, ' ')}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Product Category *
-                    </label>
-                    <select
-                      required
-                      value={formData.product_category}
-                      onChange={(e) => setFormData({ ...formData, product_category: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                    >
-                      <option value="">Select product category</option>
-                      {productCategoryOptions.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
+                      {ITEM_CATEGORY_OPTIONS.map((cat) => (
+                        <option key={cat.value} value={cat.value}>{cat.label}</option>
                       ))}
                     </select>
                   </div>
@@ -1660,20 +1654,40 @@ export default function ItemsPage() {
                       placeholder="0.00"
                     />
                   </div>
+                </div>
 
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Selling Price (₹)
+                      Purchase Currency
                     </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={formData.selling_price}
-                      onChange={(e) => setFormData({ ...formData, selling_price: e.target.value })}
+                    <select
+                      value={formData.purchase_currency}
+                      onChange={(e) => setFormData({ ...formData, purchase_currency: e.target.value, foreign_unit_price: '' })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                      placeholder="0.00"
-                    />
+                    >
+                      {['INR', 'USD', 'EUR', 'CNY', 'GBP', 'AED', 'JPY'].map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
                   </div>
+
+                  {formData.purchase_currency && formData.purchase_currency !== 'INR' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Unit Price ({formData.purchase_currency})
+                      </label>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        value={formData.foreign_unit_price}
+                        onChange={(e) => setFormData({ ...formData, foreign_unit_price: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        placeholder="0.00"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Exchange rate applied at GRN time</p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-3 gap-4">
@@ -1967,15 +1981,38 @@ export default function ItemsPage() {
                         Upload Drawing/Spec
                       </label>
                       <input
+                        ref={drawingFileInputRef}
                         type="file"
                         accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf"
-                        onChange={(e) => setDrawingFile(e.target.files?.[0] || null)}
+                        onChange={handleDrawingFileSelect}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
                       />
+                      {drawingAttachmentMessage && (
+                        <div className={`mt-2 rounded-md border px-3 py-2 text-sm ${
+                          drawingAttachmentMessage.type === 'warning'
+                            ? 'border-amber-200 bg-amber-50 text-amber-800'
+                            : drawingAttachmentMessage.type === 'success'
+                              ? 'border-green-200 bg-green-50 text-green-800'
+                              : 'border-blue-200 bg-blue-50 text-blue-800'
+                        }`}>
+                          {drawingAttachmentMessage.text}
+                        </div>
+                      )}
                       {(formData.drawing_file_name || drawingFile) && (
-                        <p className="text-xs text-green-600 mt-1">
-                          📎 {drawingFile?.name || formData.drawing_file_name}
-                        </p>
+                        <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                          <span className="min-w-0 truncate">
+                            Attachment ready: {drawingFile?.name || formData.drawing_file_name}
+                          </span>
+                          {drawingFile && (
+                            <button
+                              type="button"
+                              onClick={clearDrawingSelection}
+                              className="shrink-0 text-xs font-semibold text-red-600 hover:text-red-800"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
                       )}
 
                       {!drawingFile && formData.drawing_url && (
@@ -2309,7 +2346,7 @@ export default function ItemsPage() {
                 <h3 className="font-semibold text-lg mb-3">➕ Add New Variant</h3>
                 <div className="grid grid-cols-4 gap-3 mb-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Item Code *</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">SAS Part Number *</label>
                     <input
                       type="text"
                       value={newVariant.code}
@@ -2357,7 +2394,7 @@ export default function ItemsPage() {
                   ➕ Add Variant
                 </button>
                 <p className="text-xs text-gray-500 mt-2">
-                  💡 Inherits category ({selectedParentItem.category}), product category ({selectedParentItem.product_category || 'N/A'}), UOM ({selectedParentItem.uom}), and HSN ({selectedParentItem.hsn_code}) from parent
+                  💡 Inherits category ({formatItemCategory(selectedParentItem.category)}), UOM ({selectedParentItem.uom}), and HSN ({selectedParentItem.hsn_code}) from parent
                 </p>
               </div>
 
@@ -2461,7 +2498,7 @@ export default function ItemsPage() {
             <div className="flex-1 overflow-y-auto p-6">
               <div className="space-y-1">
                 <div className="grid grid-cols-5 gap-4 text-sm font-semibold text-gray-700 pb-2 border-b">
-                  <div>Item Code</div>
+                  <div>SAS Part Number</div>
                   <div className="col-span-2">Item Name</div>
                   <div>Quantity</div>
                   <div>Location</div>
@@ -2522,6 +2559,385 @@ export default function ItemsPage() {
               >
                 Add Inventory
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Items Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+            <div className="p-5 border-b flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Import Items from CSV</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Upload a CSV file with item data. Required columns: <code className="bg-gray-100 px-1 rounded">code, name, category, uom</code>
+                </p>
+              </div>
+              <button onClick={() => setShowImportModal(false)} className="text-gray-400 hover:text-gray-700 text-2xl">×</button>
+            </div>
+
+            <div className="overflow-auto flex-1 p-5 space-y-4">
+              {/* Download template hint */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 flex justify-between items-center">
+                <div className="text-sm text-emerald-800">
+                  <strong>Step 1:</strong> Download the template CSV, fill in your items, then upload below.
+                </div>
+                <button onClick={downloadItemTemplate}
+                  className="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-semibold hover:bg-emerald-700 whitespace-nowrap ml-4">
+                  ⬇ Download Template
+                </button>
+              </div>
+
+              {/* File upload */}
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                <input
+                  ref={importFileRef}
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) parseImportFile(f); }}
+                />
+                <div className="text-4xl mb-2">📄</div>
+                <p className="text-sm text-gray-600 mb-3">
+                  {importFile ? <span className="font-semibold text-teal-700">{importFile.name}</span> : 'Select a CSV file to import'}
+                </p>
+                <button onClick={() => importFileRef.current?.click()}
+                  className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700">
+                  {importFile ? 'Change File' : 'Choose CSV File'}
+                </button>
+              </div>
+
+              {/* Preview */}
+              {importPreview.length > 0 && !importResult && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Preview ({importPreview.length} rows)</h3>
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          {Object.keys(importPreview[0]).map(h => (
+                            <th key={h} className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {importPreview.slice(0, 10).map((row, i) => (
+                          <tr key={i} className="hover:bg-gray-50">
+                            {Object.values(row).map((val: any, j) => (
+                              <td key={j} className="px-3 py-1.5 text-gray-700 whitespace-nowrap">{val || '—'}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {importPreview.length > 10 && (
+                      <div className="px-4 py-2 text-xs text-gray-400 border-t">
+                        …and {importPreview.length - 10} more rows
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Result */}
+              {importResult && (
+                <div className={`rounded-lg border px-4 py-3 ${importResult.failed === 0 ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <div className="font-semibold text-sm mb-1">
+                    ✅ {importResult.success} imported successfully
+                    {importResult.failed > 0 && <span className="text-red-600"> · ❌ {importResult.failed} failed</span>}
+                  </div>
+                  {importResult.errors.length > 0 && (
+                    <ul className="text-xs text-red-700 space-y-0.5 mt-2 max-h-24 overflow-y-auto">
+                      {importResult.errors.slice(0, 10).map((e, i) => <li key={i}>• {e}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t flex justify-end gap-3">
+              <button onClick={() => setShowImportModal(false)}
+                className="px-5 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+                {importResult ? 'Close' : 'Cancel'}
+              </button>
+              {importPreview.length > 0 && !importResult && (
+                <button onClick={submitImport} disabled={importLoading}
+                  className="px-5 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-60">
+                  {importLoading ? 'Importing…' : `Import ${importPreview.length} Items`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Item View Modal */}
+      {viewingItem && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-10 overflow-auto">
+          <div className="w-full max-w-3xl rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 bg-[#F7F1E6] px-6 py-4 rounded-t-2xl">
+              <div>
+                <h2 className="text-xl font-bold text-[#36454F]">{viewingItem.code}</h2>
+                <p className="text-sm text-[#6F4E37] mt-0.5">{viewingItem.name}</p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => { setViewingItem(null); handleEdit(viewingItem); }}
+                    className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+                  >
+                    Edit
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setViewingItem(null)}
+                  className="rounded-md px-2 py-1 text-sm font-semibold text-gray-500 hover:bg-white hover:text-gray-700"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="px-6 py-5 space-y-6">
+              {/* Status badges */}
+              <div className="flex flex-wrap gap-2">
+                <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${viewingItem.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                  {viewingItem.is_active ? 'Active' : 'Inactive'}
+                </span>
+                <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${viewingItem.is_verified ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
+                  {viewingItem.is_verified ? 'Verified' : 'Pending Verification'}
+                </span>
+                {viewingItem.uid_tracking && (
+                  <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-800">
+                    UID Tracked: {viewingItem.uid_strategy || 'SERIALIZED'}
+                  </span>
+                )}
+                {viewingItem.is_variant && (
+                  <span className="inline-flex items-center rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-800">
+                    Variant{viewingItem.variant_name ? `: ${viewingItem.variant_name}` : ''}
+                  </span>
+                )}
+              </div>
+
+              {/* Core details */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Item Details</h3>
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
+                  {[
+                    { label: 'SAS Part Number', value: viewingItem.code },
+                    { label: 'Item Name', value: viewingItem.name },
+                    { label: 'OEM Part No.', value: viewingItem.oem_part_no || '—' },
+                    { label: 'OEM Name', value: viewingItem.oem_name || '—' },
+                    { label: 'Category', value: viewingItem.category ? formatItemCategory(viewingItem.category) : '—' },
+                    { label: 'UOM', value: viewingItem.uom || '—' },
+                    { label: 'HSN Code', value: viewingItem.hsn_code || '—' },
+                    { label: 'Drawing Required', value: viewingItem.drawing_required || '—' },
+                  ].map(({ label, value }) => (
+                    <div key={label}>
+                      <dt className="text-xs text-gray-500">{label}</dt>
+                      <dd className="mt-0.5 text-sm font-medium text-[#36454F] break-words">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {viewingItem.description && (
+                  <div className="mt-3">
+                    <dt className="text-xs text-gray-500">Description</dt>
+                    <dd className="mt-0.5 text-sm text-[#36454F]">{viewingItem.description}</dd>
+                  </div>
+                )}
+              </div>
+
+              {/* Pricing & stock */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Pricing & Stock</h3>
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+                  {[
+                    { label: 'Standard Cost', value: viewingItem.standard_cost != null ? `₹${viewingItem.standard_cost.toFixed(2)}` : '—' },
+                    { label: 'Purchase Currency', value: viewingItem.purchase_currency || 'INR' },
+                    ...(viewingItem.purchase_currency && viewingItem.purchase_currency !== 'INR' && viewingItem.foreign_unit_price != null
+                      ? [{ label: `Foreign Price (${viewingItem.purchase_currency})`, value: viewingItem.foreign_unit_price.toFixed(4) }]
+                      : []),
+                    { label: 'Current Stock', value: String(viewingItem.total_stock ?? 0) },
+                    { label: 'Reorder Level', value: viewingItem.reorder_level != null ? String(viewingItem.reorder_level) : '—' },
+                    { label: 'Reorder Qty', value: viewingItem.reorder_quantity != null ? String(viewingItem.reorder_quantity) : '—' },
+                    { label: 'Lead Time (Days)', value: viewingItem.lead_time_days != null ? String(viewingItem.lead_time_days) : '—' },
+                  ].map(({ label, value }) => (
+                    <div key={label}>
+                      <dt className="text-xs text-gray-500">{label}</dt>
+                      <dd className="mt-0.5 text-sm font-medium text-[#36454F]">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+
+              {/* UID tracking */}
+              {viewingItem.uid_tracking && (
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">UID Tracking</h3>
+                  <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
+                    {[
+                      { label: 'Strategy', value: viewingItem.uid_strategy || 'SERIALIZED' },
+                      { label: 'Batch UOM', value: viewingItem.batch_uom || '—' },
+                      { label: 'Batch Quantity', value: viewingItem.batch_quantity != null ? String(viewingItem.batch_quantity) : '—' },
+                    ].map(({ label, value }) => (
+                      <div key={label}>
+                        <dt className="text-xs text-gray-500">{label}</dt>
+                        <dd className="mt-0.5 text-sm font-medium text-[#36454F]">{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              )}
+
+              {/* Audit */}
+              <div className="border-t border-gray-100 pt-4">
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 text-xs text-gray-500">
+                  <div>
+                    <dt>Created</dt>
+                    <dd className="mt-0.5 font-medium text-gray-700">{viewingItem.created_at ? new Date(viewingItem.created_at.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(viewingItem.created_at) ? viewingItem.created_at : `${viewingItem.created_at}Z`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</dd>
+                  </div>
+                  {viewingItem.is_verified && viewingItem.verified_at && (
+                    <div>
+                      <dt>Verified On</dt>
+                      <dd className="mt-0.5 font-medium text-gray-700">{new Date(viewingItem.verified_at.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(viewingItem.verified_at) ? viewingItem.verified_at : `${viewingItem.verified_at}Z`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stock Trail Modal */}
+      {stockTrail.open && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-10 overflow-auto">
+          <div className="w-full max-w-5xl rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 bg-[#F7F1E6] px-6 py-4 rounded-t-2xl">
+              <div>
+                <h2 className="text-xl font-bold text-[#36454F]">Stock Trail</h2>
+                {stockTrail.item && (
+                  <p className="text-sm text-[#6F4E37] mt-1">
+                    {[stockTrail.item.code, stockTrail.item.name].filter(Boolean).join(' — ')}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setStockTrail({ open: false, item: null, loading: false, data: null })}
+                className="rounded-md px-2 py-1 text-sm font-semibold text-gray-500 hover:bg-white hover:text-gray-700"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="px-6 py-5">
+              {stockTrail.loading ? (
+                <div className="py-10 text-center text-gray-500">Loading stock trail...</div>
+              ) : stockTrail.data?.error ? (
+                <div className="py-6 text-center text-red-600">{stockTrail.data.error}</div>
+              ) : (
+                <>
+                  {/* Current stock by warehouse */}
+                  {Array.isArray(stockTrail.data?.currentStock) && stockTrail.data.currentStock.length > 0 && (
+                    <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                      {stockTrail.data.currentStock.map((s: any, i: number) => {
+                        const wh = s.warehouses;
+                        return (
+                          <div key={i} className="rounded-lg border border-[#8B6F47]/20 bg-[#FFF9F0] px-4 py-3">
+                            <div className="text-xs text-gray-500 uppercase tracking-wide">{wh?.name || wh?.code || 'Warehouse'}</div>
+                            <div className="mt-1 text-lg font-bold text-[#36454F]">{Number(s.available_quantity ?? s.quantity ?? 0)}</div>
+                            <div className="text-xs text-gray-400">{Number(s.allocated_quantity ?? 0) > 0 ? `${Number(s.allocated_quantity)} allocated` : 'available'}</div>
+                          </div>
+                        );
+                      })}
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                        <div className="text-xs text-emerald-700 uppercase tracking-wide">Trail Balance</div>
+                        <div className="mt-1 text-lg font-bold text-emerald-800">{Number(stockTrail.data?.currentBalance ?? 0)}</div>
+                        <div className="text-xs text-emerald-600">{(stockTrail.data?.trails?.length ?? 0)} events</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Movement trail table */}
+                  {Array.isArray(stockTrail.data?.trails) && stockTrail.data.trails.length === 0 ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 py-10 text-center text-gray-500">
+                      No stock movement records found for this item.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-lg border border-gray-200">
+                      <table className="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Vendor / Note</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Warehouse</th>
+                            <th className="px-4 py-3 text-right text-xs font-semibold text-emerald-700 uppercase">In (+)</th>
+                            <th className="px-4 py-3 text-right text-xs font-semibold text-red-700 uppercase">Out (−)</th>
+                            <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Balance</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 bg-white">
+                          {(stockTrail.data?.trails ?? []).map((t: any, i: number) => {
+                            const isIn = t.qty_in > 0;
+                            const isOut = t.qty_out > 0;
+                            const typeLabel: Record<string, string> = {
+                              GRN_RECEIPT: 'GRN Receipt',
+                              ADJUSTMENT: 'Adjustment',
+                              PRODUCTION_ISSUE: 'Production Issue',
+                              PRODUCTION_RETURN: 'Prod. Return',
+                              PRODUCTION_RECEIPT: 'Prod. Receipt',
+                              SALES_ISSUE: 'Sales Issue',
+                              DEMO_ISSUE: 'Demo Issue',
+                              DEMO_RETURN: 'Demo Return',
+                              SERVICE_ISSUE: 'Service Issue',
+                              TRANSFER: 'Transfer',
+                              SCRAP: 'Scrap',
+                            };
+                            const label = typeLabel[t.type] || t.type;
+                            const dtStr = t.date
+                              ? (() => {
+                                  const normalized = t.date.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(t.date) ? t.date : `${t.date}Z`;
+                                  const d = new Date(normalized);
+                                  return isNaN(d.getTime()) ? t.date : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+                                })()
+                              : '-';
+                            return (
+                              <tr key={i} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 whitespace-nowrap text-gray-700">{dtStr}</td>
+                                <td className="px-4 py-3">
+                                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                    isIn ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                                  }`}>{label}</span>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap font-medium text-[#36454F]">{t.reference || '-'}</td>
+                                <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate" title={t.vendor || t.notes || ''}>
+                                  {t.vendor || t.notes || '-'}
+                                </td>
+                                <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{t.warehouse || '-'}</td>
+                                <td className="px-4 py-3 text-right font-semibold text-emerald-700">
+                                  {isIn ? `+${t.qty_in}` : ''}
+                                </td>
+                                <td className="px-4 py-3 text-right font-semibold text-red-700">
+                                  {isOut ? `−${t.qty_out}` : ''}
+                                </td>
+                                <td className="px-4 py-3 text-right font-bold text-[#36454F]">{t.balance}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>

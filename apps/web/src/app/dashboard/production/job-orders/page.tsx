@@ -1,13 +1,16 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
-import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { hasModulePermission, hasScreenPermission, readStoredUser } from '@/lib/rbac';
 import { getTodayDateInputValue } from '@/lib/date';
+import { buildDocumentBranding, escapeHtml, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
+
+const AUTO_REFRESH_MS = 30000;
 
 interface Item {
   id: string;
@@ -90,6 +93,7 @@ interface JobOrder {
   status: string;
   workflowStatus?: string;
   linkedPrNumber?: string;
+  linkedPrWorkflowStatus?: string;
   sivReady?: boolean;
   notes?: string;
   assignedTo?: string;
@@ -165,17 +169,7 @@ function formatDateTimeLocalValue(value?: string | null, fallback?: string) {
 
 export default function JobOrdersPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="p-6 min-h-screen bg-gradient-to-br from-[#FAF9F6] to-[#E8DCC4]">
-          <div className="max-w-6xl mx-auto">
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="text-lg font-semibold text-[#36454F]">Loading Job Orders…</div>
-            </div>
-          </div>
-        </div>
-      }
-    >
+    <Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading job orders...</div>}>
       <JobOrdersPageContent />
     </Suspense>
   );
@@ -183,16 +177,22 @@ export default function JobOrdersPage() {
 
 function JobOrdersPageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const todayDate = getTodayDateInputValue();
-  const legacy = searchParams.get('legacy') === '1';
   const currentUser = readStoredUser();
-  const currentUserId = String((currentUser as any)?.id || (currentUser as any)?.userId || (currentUser as any)?.sub || '').trim();
-  const canCreate = hasModulePermission(currentUser, 'Production', 'create');
-  const canEdit = hasModulePermission(currentUser, 'Production', 'edit');
-  const canApprove = hasModulePermission(currentUser, 'Production', 'approve');
-  const restrictToAssignedJobs = !!currentUserId && !canCreate;
-
+  const storedUserId = typeof window !== 'undefined' ? String(localStorage.getItem('userId') || '').trim() : '';
+  const currentUserId = String(
+    (currentUser as any)?.id || (currentUser as any)?.userId || (currentUser as any)?.sub || storedUserId || '',
+  ).trim();
+  const todayDate = getTodayDateInputValue();
+  const canCreate = hasModulePermission(currentUser as any, 'Production', 'create');
+  const canEdit = hasModulePermission(currentUser as any, 'Production', 'edit');
+  const canApprove = hasModulePermission(currentUser as any, 'Production', 'approve');
+  const canApproveInventoryJobs =
+    hasModulePermission(currentUser as any, 'Inventory', 'approve') ||
+    hasScreenPermission(currentUser as any, '/dashboard/inventory/siv', 'approve') ||
+    hasScreenPermission(currentUser as any, '/dashboard/inventory/srv', 'approve') ||
+    hasScreenPermission(currentUser as any, '/dashboard/inventory/store-vouchers', 'approve');
+  const canSeeAllJobOrders = canCreate || canApprove || canApproveInventoryJobs;
+  const restrictToAssignedJobs = !!currentUserId && !canSeeAllJobOrders;
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [workstations, setWorkstations] = useState<Workstation[]>([]);
@@ -215,6 +215,23 @@ function JobOrdersPageContent() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [stockErrorModal, setStockErrorModal] = useState<{show: boolean, shortages: any[]}>({show: false, shortages: []});
   const [itemStockSummaryById, setItemStockSummaryById] = useState<Record<string, ItemStockSummary>>({});
+  function mapPurchaseWorkflowStatus(workflowStatus?: string | null): string {
+    const workflow = String(workflowStatus || '').trim().toUpperCase();
+
+    switch (workflow) {
+      case 'PO_DONE':
+        return 'Order Issued';
+      case 'GOODS_RCVD':
+        return 'Goods Received';
+      case 'REJECTED':
+        return 'Requisition Rejected';
+      case 'RFQ_ISSUED':
+      case 'RFQ_RCVD':
+      case 'DRAFT':
+      default:
+        return 'Requisition Issued';
+    }
+  }
   const [openSalesOrders, setOpenSalesOrders] = useState<SalesOrderOption[]>([]);
   const [salesOrderItems, setSalesOrderItems] = useState<SalesOrderItemOption[]>([]);
   const [qcSummary, setQcSummary] = useState<JobOrderQcSummary | null>(null);
@@ -241,6 +258,17 @@ function JobOrdersPageContent() {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [baseMaterialQuantities, setBaseMaterialQuantities] = useState<{ [key: string]: number }>({});
 
+  const resolveAssignedUserName = (jobOrder: Pick<JobOrder, 'assignedTo' | 'assignedToName'>) => {
+    const explicitName = String(jobOrder.assignedToName || '').trim();
+    if (explicitName) return explicitName;
+
+    const assignedUserId = String(jobOrder.assignedTo || '').trim();
+    if (!assignedUserId) return '';
+
+    const matchedUser = users.find((user) => String(user.id || '').trim() === assignedUserId);
+    return String(matchedUser?.displayName || assignedUserId).trim();
+  };
+
   useEffect(() => {
     fetchJobOrders();
     fetchItems();
@@ -249,6 +277,18 @@ function JobOrdersPageContent() {
     fetchAllBoms();
     fetchOpenSalesOrders();
   }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      fetchJobOrders({ silent: true });
+      if (selectedJobOrder?.id) {
+        refreshSelectedJobOrder(selectedJobOrder.id);
+      }
+    }, AUTO_REFRESH_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [restrictToAssignedJobs, selectedJobOrder?.id]);
 
   const mapJobOrderFromApi = (jo: any): JobOrder => {
     const operationsRaw = Array.isArray(jo?.operations) ? jo.operations : [];
@@ -272,6 +312,7 @@ function JobOrdersPageContent() {
       status: jo.status,
       workflowStatus: jo.workflow_status ?? jo.workflowStatus,
       linkedPrNumber: jo.linked_pr_number ?? jo.linkedPrNumber,
+      linkedPrWorkflowStatus: jo.linked_pr_workflow_status ?? jo.linkedPrWorkflowStatus,
       sivReady: Boolean(jo.siv_ready ?? jo.sivReady),
       assignedTo: jo.assigned_to || jo.assignedTo,
       assignedToName: jo.assigned_to_name || jo.assignedToName,
@@ -375,14 +416,197 @@ function JobOrdersPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [materials]);
 
-  const fetchJobOrders = async () => {
+  const fetchJobOrders = async (options?: { silent?: boolean }) => {
     try {
+      if (!options?.silent) {
+        setLoading(true);
+      }
       const data = await apiClient.get('/job-orders', restrictToAssignedJobs ? { myAssigned: 'true' } : undefined);
       // Map snake_case to camelCase (list endpoint typically does not include materials/operations)
       const mapped = (data || []).map((jo: any) => mapJobOrderFromApi(jo));
       setJobOrders(mapped);
     } catch (error) {
+    } finally {
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
+  };
+
+  const refreshSelectedJobOrder = async (jobOrderId: string) => {
+    try {
+      const [detailsResult, qcSummaryResult] = await Promise.allSettled([
+        apiClient.get(`/job-orders/${jobOrderId}`),
+        apiClient.get<JobOrderQcSummary>(`/job-orders/${jobOrderId}/qc-summary`),
+      ]);
+
+      if (detailsResult.status === 'fulfilled') {
+        setSelectedJobOrder(mapJobOrderFromApi(detailsResult.value));
+      }
+
+      if (qcSummaryResult.status === 'fulfilled') {
+        setQcSummary(qcSummaryResult.value ?? null);
+      }
+    } catch {
+    }
+  };
+
+  const handlePrintSelectedJobOrder = async () => {
+    if (!selectedJobOrder) return;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Popup blocked. Please allow popups to print the Job Order.');
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write('<!doctype html><html><head><title>Preparing Job Order...</title></head><body style="font-family: Arial, sans-serif; padding: 16px;">Preparing Job Order…</body></html>');
+    printWindow.document.close();
+
+    const company = await apiClient.get<any>('/tenant/current').catch(() => null);
+    const branding = buildDocumentBranding(company);
+    const generatedOn = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+    const formatDate = (value?: string | null) => {
+      if (!value) return '-';
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime())
+        ? '-'
+        : parsed.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+    };
+    const workflowRows = [
+      ['Status', getJobOrderDisplayStatus(selectedJobOrder, qcSummary)],
+      ['Material Requisition', Array.isArray(selectedJobOrder.materials) && selectedJobOrder.materials.some((mat) => Number(mat.requiredQuantity || 0) > Number(mat.issuedQuantity || 0)) ? 'Pending' : 'Completed'],
+      ['Purchase', selectedJobOrder.linkedPrNumber ? mapPurchaseWorkflowStatus(selectedJobOrder.linkedPrWorkflowStatus) || 'Requisition Issued' : 'Not Linked'],
+      ['QC', qcSummary?.isQcApplied ? `Applied (${qcSummary?.passedUidsCount ?? 0} passed / ${qcSummary?.rejectedUidsCount ?? 0} on-hold)` : 'Pending'],
+    ];
+    const operationsHtml = (selectedJobOrder.operations || [])
+      .map(
+        (operation, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(operation.operationName || '-')}</td>
+            <td>${escapeHtml(operation.workstationName || '-')}</td>
+            <td>${escapeHtml(operation.assignedUserName || '-')}</td>
+            <td style="text-align:right;">${escapeHtml(String(operation.expectedDurationHours || 0))} h</td>
+            <td>${escapeHtml(operation.status || 'NOT_STARTED')}</td>
+          </tr>
+        `,
+      )
+      .join('');
+    const materialsHtml = (selectedJobOrder.materials || [])
+      .map(
+        (material) => `
+          <tr>
+            <td>${escapeHtml(material.itemCode || '-')} - ${escapeHtml(material.itemName || '-')}</td>
+            <td style="text-align:right;">${escapeHtml(String(material.requiredQuantity || 0))}</td>
+            <td style="text-align:right;">${escapeHtml(String(material.issuedQuantity || 0))}</td>
+            <td>${escapeHtml(material.status || '-')}</td>
+          </tr>
+        `,
+      )
+      .join('');
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <script>window.onload = window.print</script>
+        <title>JO - ${escapeHtml(selectedJobOrder.jobOrderNumber)}</title>
+        <style>
+          * { box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; padding: 20px; color: #111827; }
+          .page { max-width: 980px; margin: 0 auto; }
+          .title-row { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom: 14px; }
+          .title { font-size: 20px; font-weight: 800; color: #1f4f99; }
+          .subtitle { color:#475467; margin-top:4px; }
+          .badge { display:inline-block; padding:6px 10px; background:#1f4f99; color:#fff; border-radius:999px; font-size:11px; font-weight:700; }
+          .grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:12px; margin-bottom:16px; }
+          .card { border:1px solid #d5dbe7; border-radius:10px; padding:10px 12px; }
+          .label { font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#667085; }
+          .value { margin-top:4px; font-size:13px; font-weight:700; color:#111827; }
+          .section-title { margin-top:16px; background:#1f4f99; color:#fff; padding:8px 10px; font-size:13px; font-weight:700; }
+          table { width:100%; border-collapse: collapse; }
+          th, td { border:1px solid #d5dbe7; padding:8px; vertical-align:top; }
+          th { background:#eef3ff; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:#1f4f99; }
+          .notes { margin-top:12px; border:1px dashed #c6cfde; border-radius:10px; padding:10px 12px; }
+          @media print { body { margin: 0; padding: 14px; } .page { max-width:none; } }
+        </style>
+      </head>
+      <body>
+        <div class="page">
+          ${renderStandardLetterheadHtml(branding, generatedOn)}
+
+          <div class="title-row">
+            <div>
+              <div class="title">Job Order</div>
+              <div class="subtitle">Production execution document</div>
+            </div>
+            <div class="badge">${escapeHtml(selectedJobOrder.jobOrderNumber)}</div>
+          </div>
+
+          <div class="grid">
+            <div class="card"><div class="label">Item</div><div class="value">${escapeHtml(selectedJobOrder.itemCode)} - ${escapeHtml(selectedJobOrder.itemName)}</div></div>
+            <div class="card"><div class="label">Quantity</div><div class="value">${escapeHtml(String(selectedJobOrder.quantity || 0))}</div></div>
+            <div class="card"><div class="label">Priority</div><div class="value">${escapeHtml(selectedJobOrder.priority || '-')}</div></div>
+            <div class="card"><div class="label">Assigned To</div><div class="value">${escapeHtml(resolveAssignedUserName(selectedJobOrder) || '-')}</div></div>
+            <div class="card"><div class="label">Planned Start</div><div class="value">${escapeHtml(formatDate(selectedJobOrder.startDate))}</div></div>
+            <div class="card"><div class="label">Planned End</div><div class="value">${escapeHtml(formatDate(selectedJobOrder.endDate))}</div></div>
+            <div class="card"><div class="label">Actual Start</div><div class="value">${escapeHtml(formatDate(selectedJobOrder.actualStartDate))}</div></div>
+            <div class="card"><div class="label">Actual End</div><div class="value">${escapeHtml(formatDate(selectedJobOrder.actualEndDate))}</div></div>
+          </div>
+
+          <div class="section-title">Workflow Summary</div>
+          <table>
+            <thead>
+              <tr><th>Stage</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              ${workflowRows.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`).join('')}
+            </tbody>
+          </table>
+
+          <div class="section-title">Operations</div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width:52px;">#</th>
+                <th>Operation</th>
+                <th>Workstation</th>
+                <th>Assigned To</th>
+                <th style="width:90px; text-align:right;">Duration</th>
+                <th style="width:120px;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${operationsHtml || '<tr><td colspan="6">No operations available.</td></tr>'}
+            </tbody>
+          </table>
+
+          <div class="section-title">Materials</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th style="width:90px; text-align:right;">Required</th>
+                <th style="width:90px; text-align:right;">Issued</th>
+                <th style="width:140px;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${materialsHtml || '<tr><td colspan="4">No material lines available.</td></tr>'}
+            </tbody>
+          </table>
+
+          ${selectedJobOrder.notes ? `<div class="notes"><div class="label">Notes</div><div class="value" style="font-size:12px; font-weight:500;">${escapeHtml(selectedJobOrder.notes)}</div></div>` : ''}
+        </div>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
   };
 
   const fetchItems = async () => {
@@ -1700,10 +1924,10 @@ function JobOrdersPageContent() {
     {
       id: 'assignedTo',
       label: 'Assigned To',
-      accessor: (jo) => jo.assignedToName || jo.assignedTo,
+      accessor: (jo) => resolveAssignedUserName(jo),
       cell: (jo) => (
         <span className="text-xs text-gray-700">
-          {jo.assignedToName || '-'}
+          {resolveAssignedUserName(jo) || '-'}
         </span>
       ),
     },
@@ -1743,65 +1967,65 @@ function JobOrdersPageContent() {
         const canOperateAssignedJob = restrictToAssignedJobs && isAssignedToCurrentUser;
 
         return (
-        <div className="whitespace-nowrap text-sm">
-          <button
-            type="button"
-            onClick={() => openJobOrderDetails(jo)}
-            className="text-blue-600 hover:text-blue-800 mr-3"
-          >
-            View
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(jo.id)}&joNumber=${encodeURIComponent(jo.jobOrderNumber)}`)}
-            className="text-slate-600 hover:text-slate-800 mr-3"
-          >
-            SIV
-          </button>
-          {jo.status === 'DRAFT' && canEdit && (
+          <div className="whitespace-nowrap text-sm">
             <button
               type="button"
-              onClick={() => openScheduleModal(jo)}
-              className="text-green-600 hover:text-green-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
-              disabled={loading}
+              onClick={() => openJobOrderDetails(jo)}
+              className="text-blue-600 hover:text-blue-800 mr-3"
             >
-              Schedule
+              View
             </button>
-          )}
-          {jo.status === 'SCHEDULED' && (canEdit || canOperateAssignedJob) && (
             <button
               type="button"
-              onClick={() => handleUpdateStatus(jo.id, 'IN_PROGRESS')}
-              className="text-yellow-600 hover:text-yellow-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
-              disabled={loading}
+              onClick={() => router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(jo.id)}&joNumber=${encodeURIComponent(jo.jobOrderNumber)}`)}
+              className="text-slate-600 hover:text-slate-800 mr-3"
             >
-              Start
+              SIV
             </button>
-          )}
-          {jo.status === 'IN_PROGRESS' && (canApprove || canOperateAssignedJob) && (
-            <>
-              {!canOperateAssignedJob && (
-                <button
-                  type="button"
-                  onClick={() => handlePartialCompleteJobOrder(jo)}
-                  className="text-yellow-600 hover:text-yellow-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
-                  disabled={loading}
-                >
-                  Partial
-                </button>
-              )}
+            {jo.status === 'DRAFT' && canEdit && (
               <button
                 type="button"
-                onClick={() => handleCompleteJobOrder(jo.id)}
-                className="text-green-600 hover:text-green-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                onClick={() => openScheduleModal(jo)}
+                className="text-green-600 hover:text-green-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
                 disabled={loading}
               >
-                Complete
+                Schedule
               </button>
-            </>
-          )}
-        </div>
-      );
+            )}
+            {jo.status === 'SCHEDULED' && (canEdit || canOperateAssignedJob) && (
+              <button
+                type="button"
+                onClick={() => handleUpdateStatus(jo.id, 'IN_PROGRESS')}
+                className="text-yellow-600 hover:text-yellow-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                disabled={loading}
+              >
+                Start
+              </button>
+            )}
+            {jo.status === 'IN_PROGRESS' && (canApprove || canOperateAssignedJob) && (
+              <>
+                {!canOperateAssignedJob && (
+                  <button
+                    type="button"
+                    onClick={() => handlePartialCompleteJobOrder(jo)}
+                    className="text-yellow-600 hover:text-yellow-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={loading}
+                  >
+                    Partial
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleCompleteJobOrder(jo.id)}
+                  className="text-green-600 hover:text-green-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                  disabled={loading}
+                >
+                  Complete
+                </button>
+              </>
+            )}
+          </div>
+        );
       },
     },
   ];
@@ -2347,9 +2571,18 @@ function JobOrdersPageContent() {
           <div className="bg-white rounded-lg p-6 max-w-6xl w-full mx-4 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold">Job Order: {selectedJobOrder.jobOrderNumber}</h2>
-              <button onClick={() => setSelectedJobOrder(null)} className="text-gray-500 hover:text-gray-700">
-                ✕
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => void handlePrintSelectedJobOrder()}
+                  className="px-4 py-2 bg-[#1f4f99] text-white rounded hover:bg-[#173b73] disabled:opacity-50"
+                  disabled={selectedJobOrderLoading}
+                >
+                  Print JO
+                </button>
+                <button onClick={() => setSelectedJobOrder(null)} className="text-gray-500 hover:text-gray-700">
+                  ✕
+                </button>
+              </div>
             </div>
 
             {/* Job Order Details */}
@@ -2408,12 +2641,27 @@ function JobOrdersPageContent() {
               </div>
               <div>
                 <strong>Assigned To:</strong>{' '}
-                {selectedJobOrder.assignedToName || <span className="text-gray-400">Unassigned</span>}
+                {resolveAssignedUserName(selectedJobOrder) || <span className="text-gray-400">Unassigned</span>}
               </div>
               {selectedJobOrder.linkedPrNumber ? (
                 <div>
                   <strong>Linked PR:</strong>{' '}
                   <span className="text-amber-700 font-medium">{selectedJobOrder.linkedPrNumber}</span>
+                </div>
+              ) : null}
+              {selectedJobOrder.linkedPrNumber ? (
+                <div>
+                  {(() => {
+                    const purchaseStatusLabel = mapPurchaseWorkflowStatus(selectedJobOrder.linkedPrWorkflowStatus) || 'Requisition Issued';
+                    return (
+                      <>
+                        <strong>Purchase Status:</strong>{' '}
+                        <span className={`px-2 py-1 text-xs rounded ${getStatusColor(purchaseStatusLabel)}`}>
+                          {purchaseStatusLabel}
+                        </span>
+                      </>
+                    );
+                  })()}
                 </div>
               ) : null}
               <div>
@@ -2451,31 +2699,32 @@ function JobOrdersPageContent() {
               </div>
 
               {(() => {
+                const isAssignedToCurrentUser = !!currentUserId && String(selectedJobOrder.assignedTo || '').trim() === currentUserId;
+                const canOperateAssignedJob = restrictToAssignedJobs && isAssignedToCurrentUser;
+                const canCompleteSelectedJob = selectedJobOrder.status === 'IN_PROGRESS' && (canApprove || canOperateAssignedJob);
+
                 return (
                   <div className="col-span-2 flex justify-end">
-                    <button
-                      onClick={() => router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(selectedJobOrder.id)}&joNumber=${encodeURIComponent(selectedJobOrder.jobOrderNumber)}`)}
-                      className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50 mr-2"
-                      title="Open Store Issue Voucher screen for this job order"
-                    >
-                      Open SIV
-                    </button>
-                    <button
-                      onClick={handleRetryIssueMaterials}
-                      disabled={loading || ['COMPLETED', 'CANCELLED'].includes(String(selectedJobOrder.status || '').toUpperCase())}
-                      className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-800 disabled:opacity-50 mr-2"
-                      title="Re-run material issuing for this job order"
-                    >
-                      Retry Issue Materials
-                    </button>
-                    <button
-                      onClick={handleRepairSmartAndIssue}
-                      disabled={loading || ['COMPLETED', 'CANCELLED'].includes(String(selectedJobOrder.status || '').toUpperCase())}
-                      className="px-4 py-2 bg-indigo-700 text-white rounded hover:bg-indigo-800 disabled:opacity-50 mr-2"
-                      title="Auto-create missing sub-assemblies (with QC auto-approval) then re-issue materials"
-                    >
-                      Repair Smart + Issue
-                    </button>
+                    {canCompleteSelectedJob && !canOperateAssignedJob && (
+                      <button
+                        onClick={() => handlePartialCompleteJobOrder(selectedJobOrder)}
+                        disabled={loading}
+                        className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50 mr-2"
+                        title="Record partial production before final completion"
+                      >
+                        Partial
+                      </button>
+                    )}
+                    {canCompleteSelectedJob && (
+                      <button
+                        onClick={() => handleCompleteJobOrder(selectedJobOrder.id)}
+                        disabled={loading}
+                        className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 mr-2"
+                        title="Preview stock impact and complete this job order"
+                      >
+                        Complete
+                      </button>
+                    )}
                   </div>
                 );
               })()}
@@ -2507,6 +2756,8 @@ function JobOrdersPageContent() {
                       const mats = Array.isArray(selectedJobOrder.materials) ? selectedJobOrder.materials : [];
                       const mrPending = mats.some((m) => Number(m.requiredQuantity || 0) - Number(m.issuedQuantity || 0) > 1e-9);
                       const mrStatus = mrPending ? 'Pending' : 'Completed';
+                      const hasLinkedPurchaseRequisition = Boolean(String(selectedJobOrder.linkedPrNumber || '').trim());
+                      const purchaseStatus = mapPurchaseWorkflowStatus(selectedJobOrder.linkedPrWorkflowStatus) || 'Requisition Issued';
 
                       const confirmCompleteStatus = hasCompleted ? (qcApplied ? 'Completed' : 'Awaiting QC') : 'In-Progress';
                       const qcFailStatus = !qcApplied ? 'Pending' : rejected > 0 ? 'QC Failed' : '—';
@@ -2514,6 +2765,9 @@ function JobOrdersPageContent() {
 
                       const rows: Array<{ action: string; status: string }> = [
                         { action: 'Job Created Successfully', status: 'In-Progress' },
+                        ...(hasLinkedPurchaseRequisition
+                          ? [{ action: 'Purchase', status: purchaseStatus }]
+                          : []),
                         { action: 'Material Requisition (SIV)', status: mrStatus },
                         { action: 'Preview- Confirm & Complete', status: confirmCompleteStatus },
                         { action: 'Complete QC - Fail', status: qcFailStatus },
@@ -2711,11 +2965,10 @@ function JobOrdersPageContent() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">To Consume</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Current Stock</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Reserved</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">New Stock</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Required</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Already Issued</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Will Consume</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Remarks</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -2725,25 +2978,28 @@ function JobOrdersPageContent() {
                             <div className="font-medium text-gray-900">{material.itemCode}</div>
                             <div className="text-gray-500 text-xs">{material.itemName}</div>
                           </td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">{material.toConsume > 0 ? `-${material.toConsume}` : material.toConsume}</td>
-                          <td className="px-4 py-3 text-sm text-right">{material.currentStock}</td>
-                          <td className="px-4 py-3 text-sm text-right text-yellow-600">{material.reservedStock}</td>
-                          <td className="px-4 py-3 text-sm text-right font-medium">
-                            {material.newStock >= 0 ? (
-                              <span className="text-gray-900">{material.newStock}</span>
+                          <td className="px-4 py-3 text-sm text-right">{material.requiredQty}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">{material.alreadyIssued}</td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900">{material.toConsume}</td>
+                          <td className="px-4 py-3 text-sm">
+                            {material.toConsume > 0 ? (
+                              <div className="space-y-1">
+                                <div className="text-gray-900">
+                                  {material.itemCode} will be consumed on completion.
+                                </div>
+                                {material.autoBuildQuantity > 0 ? (
+                                  <div className="text-xs font-medium text-blue-700">
+                                    Auto-build {material.autoBuildQuantity} before consumption.
+                                  </div>
+                                ) : null}
+                                {!material.sufficient ? (
+                                  <div className="text-xs font-medium text-red-700">
+                                    Short by {Math.max(0, material.toConsume - material.currentStock)}.
+                                  </div>
+                                ) : null}
+                              </div>
                             ) : (
-                              <span className="text-red-600 font-bold">{material.newStock}</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {material.sufficient ? (
-                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                                ✓ OK
-                              </span>
-                            ) : (
-                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                                ⚠ Insufficient
-                              </span>
+                              <span className="text-xs font-medium text-green-700">Nothing pending to consume.</span>
                             )}
                           </td>
                         </tr>

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 interface Option {
   value: string;
@@ -34,8 +35,22 @@ export default function SearchableSelect({
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const updateDropdownPos = useCallback(() => {
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.bottom,
+        left: rect.left,
+        width: rect.width,
+      });
+    }
+  }, []);
 
   const selectedOption = options.find((opt) => opt.value === value);
   const displayValue = selectedOption
@@ -52,7 +67,10 @@ export default function SearchableSelect({
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      if (
+        containerRef.current && !containerRef.current.contains(event.target as Node) &&
+        (!dropdownRef.current || !dropdownRef.current.contains(event.target as Node))
+      ) {
         setIsOpen(false);
         setSearchTerm('');
       }
@@ -64,9 +82,28 @@ export default function SearchableSelect({
 
   useEffect(() => {
     if (isOpen) {
+      updateDropdownPos();
+      const handleScrollResize = () => updateDropdownPos();
+      window.addEventListener('scroll', handleScrollResize, true);
+      window.addEventListener('resize', handleScrollResize);
+      return () => {
+        window.removeEventListener('scroll', handleScrollResize, true);
+        window.removeEventListener('resize', handleScrollResize);
+      };
+    }
+  }, [isOpen, updateDropdownPos]);
+
+  useEffect(() => {
+    if (isOpen) {
       setHighlightedIndex(0);
     }
   }, [searchTerm, isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      itemRefs.current[highlightedIndex]?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightedIndex, isOpen]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return;
@@ -123,6 +160,7 @@ export default function SearchableSelect({
         }}
         onFocus={() => {
           if (disabled) return;
+          updateDropdownPos();
           setIsOpen(true);
         }}
         onKeyDown={handleKeyDown}
@@ -135,9 +173,12 @@ export default function SearchableSelect({
         autoComplete="off"
       />
       
-      {isOpen && !disabled && (
+      {isOpen && !disabled && dropdownPos && createPortal(
         <div
-          className={`absolute z-[9999] w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto ${dropdownClassName}`}
+          ref={dropdownRef}
+          className={`fixed z-[99999] bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto ${dropdownClassName}`}
+          style={{ top: dropdownPos.top + 2, left: dropdownPos.left, width: dropdownPos.width }}
+          onMouseDown={(e) => e.preventDefault()}
         >
           {filteredOptions.length === 0 ? (
             <div className="px-3 py-2 text-sm text-gray-500">No items found</div>
@@ -145,6 +186,7 @@ export default function SearchableSelect({
             filteredOptions.map((option, index) => (
               <div
                 key={option.value}
+                ref={(el) => { itemRefs.current[index] = el; }}
                 onClick={() => selectOption(option)}
                 onMouseEnter={() => setHighlightedIndex(index)}
                 className={`px-3 py-2 cursor-pointer text-sm ${
@@ -160,7 +202,8 @@ export default function SearchableSelect({
               </div>
             ))
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

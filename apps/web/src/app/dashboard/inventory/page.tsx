@@ -133,6 +133,9 @@ function InventoryPageContent() {
 
   useEffect(() => {
     fetchData();
+    if (activeTab === 'alerts') {
+      apiClient.post('/inventory/alerts/check-low-stock', {}).then(() => fetchData()).catch(() => {});
+    }
   }, [activeTab]);
 
   const fetchData = async () => {

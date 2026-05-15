@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from '../../components/Sidebar';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { CommandPalette } from '@/components/CommandPalette';
+import DashboardReminders from '@/components/DashboardReminders';
 import { ConfirmDialogProvider } from '@/components/ui/ConfirmDialog';
 import { useAuthStore } from '@/stores/auth.store';
 import {
@@ -53,7 +54,10 @@ export default function DashboardLayout({
 
     const syncCurrentUser = async () => {
       if (typeof window === 'undefined') return;
-      if (!localStorage.getItem('accessToken')) return;
+      if (!localStorage.getItem('accessToken')) {
+        router.replace('/login');
+        return;
+      }
 
       try {
         const currentUser = await apiClient.getCurrentUser();
@@ -65,7 +69,13 @@ export default function DashboardLayout({
           router.replace(getDefaultLandingPath(currentUser));
         }
       } catch {
-        // Keep the last cached user if the refresh fails.
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('userId');
+        localStorage.removeItem('tenant');
+        localStorage.removeItem('tenantId');
+        if (!cancelled) router.replace('/login');
       }
     };
 
@@ -85,6 +95,7 @@ export default function DashboardLayout({
       <CommandPalette />
       {/* Confirm dialog portal */}
       <ConfirmDialogProvider />
+      <DashboardReminders />
 
       <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
       <main

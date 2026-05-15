@@ -61,6 +61,9 @@ export function getUserDisplayName(user: StoredUser | null): string {
   if (typeof first === 'string' && first.trim()) {
     return [first, typeof last === 'string' ? last : ''].filter(Boolean).join(' ').trim();
   }
+  if (typeof (user as Record<string, unknown>).username === 'string') {
+    return String((user as Record<string, unknown>).username);
+  }
   return typeof user.email === 'string' ? user.email : 'User';
 }
 

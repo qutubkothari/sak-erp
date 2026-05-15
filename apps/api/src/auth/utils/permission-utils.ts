@@ -21,7 +21,7 @@ const MODULE_RESOURCE_MAP: Record<string, string[]> = {
   'BOM & Engineering': ['bom'],
   Documents: ['documents'],
   Reports: ['reports'],
-  Settings: ['users', 'roles'],
+  Settings: ['users', 'roles', 'activity_logs'],
 };
 
 const SCREEN_RESOURCE_MAP: Record<string, string[]> = {
@@ -47,6 +47,7 @@ const SCREEN_RESOURCE_MAP: Record<string, string[]> = {
   'bom-overview': ['bom'],
   'bom-routing': ['bom'],
   'settings-overview': ['users', 'roles'],
+  'audit-trails': ['activity_logs'],
   'debug-tools': ['users', 'roles'],
 };
 

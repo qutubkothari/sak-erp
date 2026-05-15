@@ -2,6 +2,16 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { EmailService } from '../../email/email.service';
 
+function formatShortDate(value?: string): string {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const year = String(date.getUTCFullYear()).slice(2);
+  return `${day}/${month}/${year}`;
+}
+
 @Injectable()
 export class DebitNoteService {
   private supabase: SupabaseClient;
@@ -224,32 +234,43 @@ export class DebitNoteService {
     return data;
   }
 
-  // Get vendor-wise payables summary
+  // Helper: compute outstanding balance for a GRN row
+  private grnOutstanding(grn: any): number {
+    const gross = parseFloat(grn.gross_amount || 0);
+    const tax = parseFloat(grn.tax_amount || 0);
+    const debit = parseFloat(grn.debit_note_amount || 0);
+    const netPayable = grn.net_payable_amount != null
+      ? parseFloat(grn.net_payable_amount)
+      : gross + tax - debit;
+    const paid = parseFloat(grn.paid_amount || 0);
+    return Math.max(0, netPayable - paid);
+  }
+
+  // Get vendor-wise payables summary (only GRNs with outstanding balance)
   async getVendorPayables(tenantId: string) {
-    // First, fetch all GRNs with completed status and payable amount > 0
     const { data: grnsData, error: grnsError } = await this.supabase
       .from('grns')
-      .select(`
-        id,
-        vendor_id,
-        gross_amount,
-        debit_note_amount,
-        net_payable_amount
-      `)
+      .select('id, vendor_id, status, gross_amount, tax_amount, debit_note_amount, net_payable_amount, paid_amount, payment_status, invoice_number')
       .eq('tenant_id', tenantId)
-      .eq('status', 'COMPLETED')
-      .gt('net_payable_amount', 0);
+      .not('status', 'in', '("REJECTED","CANCELLED")')
+      .not('status', 'eq', 'DRAFT');
 
-    if (grnsError) throw grnsError;
-
-    if (!grnsData || grnsData.length === 0) {
-      return [];
+    if (grnsError) {
+      console.error('[AP] getVendorPayables grnsError:', grnsError);
+      throw grnsError;
     }
+    if (!grnsData || grnsData.length === 0) return [];
 
-    // Get unique vendor IDs
-    const vendorIds = [...new Set(grnsData.map((grn: any) => grn.vendor_id))];
+    console.log('[AP] total grns fetched:', grnsData.length);
 
-    // Fetch vendor details
+    // Keep only GRNs with an outstanding balance — invoice_approved filter is applied client-side
+    const outstandingGrns = grnsData.filter((grn: any) => this.grnOutstanding(grn) > 0.009);
+    console.log('[AP] outstandingGrns after balance filter:', outstandingGrns.length);
+    if (outstandingGrns.length === 0) return [];
+
+    const vendorIds = [...new Set(outstandingGrns.map((grn: any) => grn.vendor_id).filter(Boolean))];
+    if (vendorIds.length === 0) return [];
+
     const { data: vendorsData, error: vendorsError } = await this.supabase
       .from('vendors')
       .select('id, name, code')
@@ -258,7 +279,6 @@ export class DebitNoteService {
 
     if (vendorsError) throw vendorsError;
 
-    // Create vendor map for quick lookup
     const vendorMap = new Map();
     vendorsData?.forEach((vendor: any) => {
       vendorMap.set(vendor.id, {
@@ -268,22 +288,32 @@ export class DebitNoteService {
         total_gross: 0,
         total_debit: 0,
         total_payable: 0,
+        total_paid: 0,
+        total_outstanding: 0,
         grn_count: 0,
       });
     });
 
-    // Aggregate GRN data by vendor
-    grnsData.forEach((grn: any) => {
+    outstandingGrns.forEach((grn: any) => {
       const vendor = vendorMap.get(grn.vendor_id);
-      if (vendor) {
-        vendor.total_gross += parseFloat(grn.gross_amount || 0);
-        vendor.total_debit += parseFloat(grn.debit_note_amount || 0);
-        vendor.total_payable += parseFloat(grn.net_payable_amount || 0);
-        vendor.grn_count += 1;
-      }
+      if (!vendor) return;
+      const gross = parseFloat(grn.gross_amount || 0);
+      const tax = parseFloat(grn.tax_amount || 0);
+      const debit = parseFloat(grn.debit_note_amount || 0);
+      const netPayable = grn.net_payable_amount != null
+        ? parseFloat(grn.net_payable_amount)
+        : gross + tax - debit;
+      const paid = parseFloat(grn.paid_amount || 0);
+      const outstanding = Math.max(0, netPayable - paid);
+      vendor.total_gross += gross;
+      vendor.total_debit += debit;
+      vendor.total_payable += netPayable;
+      vendor.total_paid += paid;
+      vendor.total_outstanding += outstanding;
+      vendor.grn_count += 1;
     });
 
-    return Array.from(vendorMap.values());
+    return Array.from(vendorMap.values()).filter((v: any) => v.total_outstanding > 0.009);
   }
 
   // Send debit note email to supplier
@@ -353,7 +383,7 @@ export class DebitNoteService {
           
           <div class="summary">
             <strong>Summary:</strong><br>
-            Date: ${new Date(debitNote.debit_note_date).toLocaleDateString()}<br>
+            Date: ${formatShortDate(debitNote.debit_note_date)}<br>
             GRN Reference: ${debitNote.grn.grn_number}<br>
             Reason: ${debitNote.reason}
           </div>
@@ -412,10 +442,6 @@ export class DebitNoteService {
           ${debitNote.notes ? `<p><strong>Additional Notes:</strong><br>${debitNote.notes}</p>` : ''}
           
           <p>If you have any questions regarding this debit note, please contact us immediately.</p>
-          
-          <p>Best regards,<br>
-          <strong>Accounts Department</strong><br>
-          SAK Manufacturing</p>
         </div>
         
         <div class="footer">
@@ -432,6 +458,7 @@ export class DebitNoteService {
       to: debitNote.vendor.email,
       subject,
       html: htmlContent,
+      tenantId: tenantId,
     });
 
     // Update debit note status to SENT
@@ -442,7 +469,7 @@ export class DebitNoteService {
     return { message: 'Debit note sent successfully' };
   }
 
-  // Record payment against a GRN
+  // Record a payment entry against a GRN (supports multiple partial payments)
   async recordPayment(
     tenantId: string,
     grnId: string,
@@ -452,80 +479,265 @@ export class DebitNoteService {
       payment_reference?: string;
       payment_date?: string;
       payment_notes?: string;
+      tds_amount?: number;
+      short_payment_amount?: number;
+      short_payment_reason?: string;
+      close_invoice?: boolean;
+      created_by?: string;
     },
   ) {
-    // Get GRN with current payment info
+    // Fetch GRN — look across all statuses (not just COMPLETED) to avoid false 404
     const { data: grn, error: grnError } = await this.supabase
       .from('grns')
-      .select('id, net_payable_amount, paid_amount, payment_status')
+      .select('id, gross_amount, tax_amount, debit_note_amount, net_payable_amount, paid_amount, tds_amount, short_payment_amount, payment_status')
       .eq('id', grnId)
       .eq('tenant_id', tenantId)
-      .single();
+      .maybeSingle();
 
-    if (grnError || !grn) {
-      throw new NotFoundException('GRN not found');
+    if (grnError) throw new Error(`Database error: ${grnError.message}`);
+    if (!grn) throw new NotFoundException(`GRN not found (id: ${grnId})`);
+
+    // Compute effective net payable (fallback if column is null)
+    const gross = parseFloat(grn.gross_amount || 0);
+    const tax = parseFloat(grn.tax_amount || 0);
+    const debit = parseFloat(grn.debit_note_amount || 0);
+    const netPayable = grn.net_payable_amount != null
+      ? parseFloat(grn.net_payable_amount)
+      : gross + tax - debit;
+
+    const currentPaid = parseFloat(grn.paid_amount || 0);
+    const currentTds = parseFloat(grn.tds_amount || 0);
+    const currentShort = parseFloat(grn.short_payment_amount || 0);
+    const tdsAmount = parseFloat(String(paymentData.tds_amount || 0));
+    const shortAmount = parseFloat(String(paymentData.short_payment_amount || 0));
+    const entryAmount = parseFloat(String(paymentData.amount));
+
+    // Total effective settlement = cash paid + TDS + short payment (including already recorded)
+    const totalSettlement = currentPaid + entryAmount + tdsAmount + shortAmount;
+    const outstanding = Math.max(0, netPayable - currentPaid - currentTds - currentShort);
+
+    if (entryAmount <= 0) throw new Error('Payment amount must be greater than 0');
+    if (entryAmount + tdsAmount + shortAmount > outstanding + 0.009) {
+      throw new Error(
+        `Total settlement (₹${(entryAmount + tdsAmount + shortAmount).toFixed(2)}) exceeds outstanding balance (₹${outstanding.toFixed(2)})`,
+      );
     }
 
-    const currentPaid = grn.paid_amount || 0;
-    const newPaidAmount = currentPaid + paymentData.amount;
-    const netPayable = grn.net_payable_amount || 0;
+    // Insert payment entry record
+    const { error: entryError } = await this.supabase
+      .from('grn_payment_entries')
+      .insert({
+        tenant_id: tenantId,
+        grn_id: grnId,
+        payment_date: paymentData.payment_date || new Date().toISOString().split('T')[0],
+        amount: entryAmount,
+        payment_method: paymentData.payment_method,
+        payment_reference: paymentData.payment_reference || null,
+        tds_amount: tdsAmount,
+        short_payment_amount: shortAmount,
+        short_payment_reason: paymentData.short_payment_reason || null,
+        payment_notes: paymentData.payment_notes || null,
+        created_by: paymentData.created_by || null,
+      });
 
-    // Determine payment status
+    if (entryError) throw new Error(`Failed to insert payment entry: ${entryError.message}`);
+
+    // Recalculate aggregates from all entries
+    const { data: allEntries, error: entriesError } = await this.supabase
+      .from('grn_payment_entries')
+      .select('amount, tds_amount, short_payment_amount')
+      .eq('grn_id', grnId)
+      .eq('tenant_id', tenantId);
+
+    if (entriesError) throw new Error(`Failed to fetch entries: ${entriesError.message}`);
+
+    const totalPaid = (allEntries || []).reduce((s: number, e: any) => s + parseFloat(e.amount || 0), 0);
+    const totalTds = (allEntries || []).reduce((s: number, e: any) => s + parseFloat(e.tds_amount || 0), 0);
+    const totalShort = (allEntries || []).reduce((s: number, e: any) => s + parseFloat(e.short_payment_amount || 0), 0);
+    const totalSettled = totalPaid + totalTds + totalShort;
+
     let paymentStatus = 'UNPAID';
-    if (newPaidAmount >= netPayable) {
+    if (totalSettled >= netPayable - 0.009 || paymentData.close_invoice) {
       paymentStatus = 'PAID';
-    } else if (newPaidAmount > 0) {
+    } else if (totalPaid > 0) {
       paymentStatus = 'PARTIAL';
     }
 
-    console.log('=== PAYMENT CALCULATION DEBUG ===');
-    console.log('GRN ID:', grnId);
-    console.log('Current Paid:', currentPaid);
-    console.log('Payment Amount:', paymentData.amount);
-    console.log('New Paid Amount:', newPaidAmount);
-    console.log('Net Payable:', netPayable);
-    console.log('Calculated Status:', paymentStatus);
-    console.log('Status Logic: newPaidAmount >= netPayable?', newPaidAmount >= netPayable);
-
-    // Update GRN
+    // Update GRN aggregate columns
     const { error: updateError } = await this.supabase
       .from('grns')
       .update({
-        paid_amount: newPaidAmount,
+        paid_amount: totalPaid,
+        tds_amount: totalTds,
+        short_payment_amount: totalShort,
         payment_status: paymentStatus,
         payment_method: paymentData.payment_method,
-        payment_reference: paymentData.payment_reference,
+        payment_reference: paymentData.payment_reference || null,
         payment_date: paymentData.payment_date || new Date().toISOString().split('T')[0],
-        payment_notes: paymentData.payment_notes,
-        updated_at: new Date().toISOString(),
+        payment_notes: paymentData.payment_notes || null,
       })
       .eq('id', grnId)
       .eq('tenant_id', tenantId);
 
     if (updateError) {
-      console.error('UPDATE ERROR:', updateError);
-      throw new Error(`Failed to record payment: ${updateError.message}`);
+      console.error('[recordPayment] GRN update error:', updateError.message);
+      throw new Error(`Failed to update GRN: ${updateError.message}`);
     }
 
-    console.log(`✓ Payment of ${paymentData.amount} recorded for GRN ${grnId}`);
-    console.log(`✓ Status updated to: ${paymentStatus}`);
-
-    // Verify the update by fetching the record again
-    const { data: verifyGrn } = await this.supabase
-      .from('grns')
-      .select('paid_amount, payment_status')
-      .eq('id', grnId)
-      .single();
-    
-    console.log('=== VERIFICATION ===');
-    console.log('Database paid_amount:', verifyGrn?.paid_amount);
-    console.log('Database payment_status:', verifyGrn?.payment_status);
-
+    const remaining = Math.max(0, netPayable - totalSettled);
     return {
       message: 'Payment recorded successfully',
-      paid_amount: newPaidAmount,
-      remaining_amount: Math.max(0, netPayable - newPaidAmount),
+      paid_amount: totalPaid,
+      tds_amount: totalTds,
+      short_payment_amount: totalShort,
+      total_settled: totalSettled,
+      remaining_amount: remaining,
       payment_status: paymentStatus,
     };
+  }
+
+  // Get all payment entries for a GRN
+  async getPaymentEntries(tenantId: string, grnId: string) {
+    const { data, error } = await this.supabase
+      .from('grn_payment_entries')
+      .select('*')
+      .eq('grn_id', grnId)
+      .eq('tenant_id', tenantId)
+      .order('payment_date', { ascending: true });
+
+    if (error) {
+      console.error('[getPaymentEntries] error:', error.message);
+      return [];
+    }
+    return data || [];
+  }
+
+  // Get full payable detail for a single GRN (used by frontend detail modal)
+  async getGrnPayableDetail(tenantId: string, grnId: string) {
+    const { data: grn, error } = await this.supabase
+      .from('grns')
+      .select('*, purchase_order:purchase_orders(id, po_number, po_date), vendor:vendors(id, name, code)')
+      .eq('id', grnId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[getGrnPayableDetail] grn fetch error:', error.message);
+      throw new Error(error.message);
+    }
+    if (!grn) throw new NotFoundException(`GRN not found (id: ${grnId})`);  
+
+    const entries = await this.getPaymentEntries(tenantId, grnId);
+
+    // Fetch advance payments for this GRN's PO
+    const poId = grn.po_id || grn.purchase_order?.id;
+    let advanceEntries: any[] = [];
+    if (poId) {
+      const { data: advances } = await this.supabase
+        .from('po_advance_payments')
+        .select('*')
+        .eq('po_id', poId)
+        .eq('tenant_id', tenantId)
+        .order('payment_date', { ascending: true });
+      advanceEntries = (advances || []).map((a: any) => ({
+        ...a,
+        entry_type: 'ADVANCE',
+        amount: parseFloat(a.amount || 0),
+        tds_amount: 0,
+        short_payment_amount: 0,
+      }));
+    }
+
+    const gross = parseFloat(grn.gross_amount || 0);
+    const tax = parseFloat(grn.tax_amount || 0);
+    const debit = parseFloat(grn.debit_note_amount || 0);
+    const netPayable = grn.net_payable_amount != null
+      ? parseFloat(grn.net_payable_amount)
+      : gross + tax - debit;
+    const totalPaid = entries.reduce((s: number, e: any) => s + parseFloat(e.amount || 0), 0);
+    const totalTds = entries.reduce((s: number, e: any) => s + parseFloat(e.tds_amount || 0), 0);
+    const totalShort = entries.reduce((s: number, e: any) => s + parseFloat(e.short_payment_amount || 0), 0);
+    const totalAdvance = advanceEntries.reduce((s: number, e: any) => s + e.amount, 0);
+    const outstanding = Math.max(0, netPayable - totalPaid - totalTds - totalShort - totalAdvance);
+
+    const allEntries = [
+      ...advanceEntries.map(e => ({ ...e, entry_type: 'ADVANCE' })),
+      ...entries.map(e => ({ ...e, entry_type: e.entry_type || 'PAYMENT' })),
+    ].sort((a, b) => new Date(a.payment_date).getTime() - new Date(b.payment_date).getTime());
+
+    return {
+      ...grn,
+      net_payable_amount: netPayable,
+      computed_paid: totalPaid,
+      computed_tds: totalTds,
+      computed_short: totalShort,
+      computed_advance: totalAdvance,
+      outstanding_amount: outstanding,
+      payment_entries: allEntries,
+    };
+  }
+
+  async recordAdvancePayment(
+    tenantId: string,
+    poId: string,
+    paymentData: {
+      amount: number;
+      payment_method: string;
+      payment_reference?: string;
+      payment_date?: string;
+      payment_notes?: string;
+      created_by?: string;
+    },
+  ) {
+    const amount = parseFloat(String(paymentData.amount));
+    if (!amount || amount <= 0) throw new Error('Advance amount must be greater than 0');
+
+    const { data: po } = await this.supabase
+      .from('purchase_orders')
+      .select('id, po_number, vendor_id, grand_total')
+      .eq('id', poId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (!po) throw new Error('Purchase Order not found');
+
+    const { error } = await this.supabase.from('po_advance_payments').insert({
+      tenant_id: tenantId,
+      po_id: poId,
+      vendor_id: po.vendor_id,
+      amount,
+      payment_method: paymentData.payment_method,
+      payment_reference: paymentData.payment_reference || null,
+      payment_date: paymentData.payment_date || new Date().toISOString().split('T')[0],
+      payment_notes: paymentData.payment_notes || null,
+      created_by: paymentData.created_by || null,
+    });
+
+    if (error) throw new Error(`Failed to record advance payment: ${error.message}`);
+
+    return { message: 'Advance payment recorded successfully', po_number: po.po_number, amount };
+  }
+
+  async getAdvancePayments(tenantId: string, poId: string) {
+    const { data, error } = await this.supabase
+      .from('po_advance_payments')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('po_id', poId)
+      .order('payment_date', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  async getAllAdvancePayments(tenantId: string) {
+    const { data, error } = await this.supabase
+      .from('po_advance_payments')
+      .select(`*, purchase_order:purchase_orders(id, po_number, grand_total), vendor:vendors(id, name, code)`)
+      .eq('tenant_id', tenantId)
+      .order('payment_date', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data || [];
   }
 }

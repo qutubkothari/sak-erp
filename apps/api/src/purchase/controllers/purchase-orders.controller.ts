@@ -16,7 +16,18 @@ import { Response } from 'express';
 import { PurchaseOrdersService } from '../services/purchase-orders.service';
 import { WorldClassPoPdfService } from '../services/world-class-po-pdf.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { DocumentBrandingService } from '../../common/services/document-branding.service';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
+
+const PAYMENT_TERMS_LABELS: Record<string, string> = {
+  NET_30: 'Net 30 Days',
+  NET_45: 'Net 45 Days',
+  NET_60: 'Net 60 Days',
+  NET_90: 'Net 90 Days',
+  ADVANCE: 'Advance Payment',
+  COD: 'Cash on Delivery',
+  IMMEDIATE: 'Immediate Payment',
+};
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
@@ -26,6 +37,7 @@ export class PurchaseOrdersController {
   constructor(
     private readonly poService: PurchaseOrdersService,
     private readonly worldClassPoPdfService: WorldClassPoPdfService,
+    private readonly documentBrandingService: DocumentBrandingService,
     private readonly duplicateDetectionService: DuplicateDetectionService,
   ) {}
 
@@ -111,19 +123,19 @@ export class PurchaseOrdersController {
     if (nextStatus === 'APPROVED' || nextStatus === 'REJECTED') {
       throw new ForbiddenException('Use the dedicated approval endpoint for approve or reject actions');
     }
-    return this.poService.updateStatus(req.user.tenantId, id, body.status);
+    return this.poService.updateStatus(req.user.tenantId, id, body.status, req.user.userId);
   }
 
   @Post(':id/approve')
   @RequireApprove('purchase_orders')
   async approve(@Request() req: any, @Param('id') id: string) {
-    return this.poService.updateStatus(req.user.tenantId, id, 'APPROVED');
+    return this.poService.updateStatus(req.user.tenantId, id, 'APPROVED', req.user.userId);
   }
 
   @Post(':id/reject')
   @RequireApprove('purchase_orders')
   async reject(@Request() req: any, @Param('id') id: string) {
-    return this.poService.updateStatus(req.user.tenantId, id, 'REJECTED');
+    return this.poService.updateStatus(req.user.tenantId, id, 'REJECTED', req.user.userId);
   }
 
   @Post(':id/tracking')
@@ -173,36 +185,45 @@ export class PurchaseOrdersController {
         const n = typeof value === 'number' ? value : Number(value);
         return Number.isFinite(n) ? n : 0;
       };
+      const branding = await this.documentBrandingService.getBranding(req.user.tenantId);
+      const vendorBillingLine2 = po.vendor?.billing_line2 || po.vendor?.metadata?.billingLine2 || '';
 
       const pdfData = {
         // Header
         poNumber: po.po_number,
         poDate: po.po_date || po.order_date,
         quotationRef: po.quotation_ref,
-        prNumber: po.pr_number,
+        prNumber: po.pr?.pr_number || po.pr_number || undefined,
 
         // Vendor Details
-        vendorName: po.vendor?.name || po.vendor_name || 'N/A',
-        vendorCode: po.vendor?.code || po.vendor_code,
-        vendorAddress: po.vendor?.address,
+        vendorName: (po.vendor?.name || po.vendor_name || 'N/A') + ((po.vendor?.code || po.vendor_code) ? ` - ${po.vendor?.code || po.vendor_code}` : ''),
+        vendorCode: undefined,
+        vendorAddress: vendorBillingLine2,
+        vendorStreet: po.vendor?.street || po.vendor?.address || '',
         vendorCity: po.vendor?.city,
         vendorState: po.vendor?.state,
         vendorPincode: po.vendor?.pincode,
-        vendorGSTIN: po.vendor?.gstin,
+        vendorGSTIN: po.vendor?.tax_id || po.vendor?.gstin,
         vendorPAN: po.vendor?.pan,
         vendorEmail: po.vendor?.email,
         vendorPhone: po.vendor?.phone,
         vendorContactPerson: po.vendor?.contact_person,
 
         // Company Details (Delivery Address - Works)
-        companyName: 'SAIF AUTOMATIONS SERVICES LLP',
-        companyAddress: '1st Floor, Nasscom CoE-IOT, Sunrise Incubations Hub, Hill 3, Rushikonda',
-        companyCity: 'Visakhapatnam',
-        companyState: 'Andhra Pradesh',
-        companyPincode: '530045',
-        companyGSTIN: '37ADSFS6370G1ZG',
-        companyEmail: 'saif.automations@gmail.com',
-        companyPhone: '0891-6662153',
+        companyName: branding.companyName,
+        companyAddress: branding.address,
+        companyCity: '',
+        companyState: '',
+        companyPincode: '',
+        companyGSTIN: branding.taxId,
+        companyEmail: branding.email,
+        companyPhone: branding.phone,
+        companyWebsite: branding.website,
+
+        // Delivery Contact (Consignee POC)
+        deliveryAddress: po.delivery_address,
+        deliveryContactPerson: po.delivery_contact_person || null,
+        deliveryPhone: po.delivery_contact_phone || null,
 
         // Items
         items: (po.purchase_order_items || po.items || []).map((row: any, index: number) => {
@@ -220,7 +241,7 @@ export class PurchaseOrdersController {
 
           const baseAmount = quantity > 0 && unitPrice > 0 ? quantity * unitPrice : storedAmount;
           const discountAmount = Math.max(0, safeNumber(row.discount_amount ?? row.discountAmount) || baseAmount * (discountPercent / 100));
-          const taxableAmount = Math.max(0, safeNumber(row.taxable_amount ?? row.taxableAmount) || (baseAmount - discountAmount));
+          const taxableAmount = Math.max(0, baseAmount - discountAmount);
 
           // Compute GST amounts from taxable + tax% when not present.
           const computedTaxTotal = Math.max(0, taxableAmount * (taxPercent / 100));
@@ -246,7 +267,7 @@ export class PurchaseOrdersController {
             description: row.description || row.specifications,
             hsn_code: row?.item?.hsn_code || row.hsn_code || row.hsn,
             quantity,
-            uom: row.uom || 'Nos',
+            uom: row.uom || row?.item?.uom || 'Nos',
             unit_price: unitPrice,
             discount_percent: discountPercent,
             discount_amount: discountAmount,
@@ -267,23 +288,67 @@ export class PurchaseOrdersController {
         // Financial Summary (will be recomputed below if missing)
         subtotal: safeNumber(po.subtotal ?? po.total_amount ?? 0),
         totalDiscount: safeNumber(po.total_discount ?? 0),
-        taxableAmount: safeNumber(po.taxable_amount ?? po.total_amount ?? 0),
+        taxableAmount: safeNumber(po.taxable_amount ?? 0),
         cgstTotal: safeNumber(po.cgst_total ?? 0),
         sgstTotal: safeNumber(po.sgst_total ?? 0),
         igstTotal: safeNumber(po.igst_total ?? 0),
-        grandTotal: safeNumber(po.grand_total ?? po.total_amount ?? 0),
+        grandTotal: safeNumber(po.grand_total || po.total_amount || 0),
 
         // Terms (derive from line items; header fields are no longer the source of truth)
-        paymentTerms: undefined,
+        paymentTerms: PAYMENT_TERMS_LABELS[po.payment_terms] || po.payment_terms || undefined,
         deliveryDate: po.expected_delivery || po.delivery_date,
         terms: {
-          payment_terms: undefined,
+          payment_terms: PAYMENT_TERMS_LABELS[po.payment_terms] || po.payment_terms || undefined,
           delivery_terms: undefined,
+          freight_terms: undefined,
         },
-        remarks: po.notes || po.remarks,
+        freightAmount: safeNumber((po as any).freight_amount ?? 0),
+        freightGstApplicable: false,
+        freightGstPercent: 0,
+        freightGstAmount: 0,
+        additionalExpenses: safeNumber((po as any).other_charges ?? 0),
+        customsDuty: safeNumber((po as any).customs_duty ?? 0),
+        remarks: (() => {
+          let r = String(po.notes || po.remarks || '');
+          r = r.replace(/PR-\d{4}-\d{2}-\d+\s*/g, '');        // strip PR numbers like PR-2026-05-004
+          r = r.replace(/Priority\s*:\s*\S+/gi, '');           // strip Priority: MEDIUM etc
+          r = r.replace(/Department\s*:\s*[^\n]*/gi, '');      // strip Department: ...
+          r = r.replace(/Generated from PR\s*:.*?(\n|$)/gi, ''); // strip Generated from PR: ...
+          r = r.replace(/\n{2,}/g, '\n').trim();               // collapse blank lines
+          return r || undefined;
+        })(),
 
         currency: 'INR',
+        projectName: po.project_name || '',
+        preparedBy: po.created_by_name || '',
+        reviewedBy: '',
+        approvedBy: po.approved_by_name || '',
       };
+
+      // Parse terms_and_conditions JSON for project/freight if stored there
+      try {
+        const tc = po.terms_and_conditions;
+        if (tc && typeof tc === 'string' && tc.startsWith('{')) {
+          const tcJson = JSON.parse(tc);
+          if (!(pdfData as any).projectName && tcJson.project) (pdfData as any).projectName = tcJson.project;
+          if (tcJson.freight) (pdfData as any).terms.freight_terms = tcJson.freight;
+          if (tcJson.freightAmount) (pdfData as any).freightAmount = safeNumber(tcJson.freightAmount);
+          if (tcJson.freightGstApplicable) (pdfData as any).freightGstApplicable = tcJson.freightGstApplicable === true;
+          if (tcJson.freightGstPercent) (pdfData as any).freightGstPercent = safeNumber(tcJson.freightGstPercent);
+          if (tcJson.freightGstAmount) (pdfData as any).freightGstAmount = safeNumber(tcJson.freightGstAmount);
+          if (tcJson.additionalExpenses) (pdfData as any).additionalExpenses = safeNumber(tcJson.additionalExpenses);
+          if (tcJson.approvedByName && !(pdfData as any).approvedBy) (pdfData as any).approvedBy = String(tcJson.approvedByName);
+        } else if (tc && typeof tc === 'object') {
+          if (!(pdfData as any).projectName && (tc as any).project) (pdfData as any).projectName = (tc as any).project;
+          if ((tc as any).freight) (pdfData as any).terms.freight_terms = (tc as any).freight;
+          if ((tc as any).freightAmount) (pdfData as any).freightAmount = safeNumber((tc as any).freightAmount);
+          if ((tc as any).freightGstApplicable) (pdfData as any).freightGstApplicable = (tc as any).freightGstApplicable === true;
+          if ((tc as any).freightGstPercent) (pdfData as any).freightGstPercent = safeNumber((tc as any).freightGstPercent);
+          if ((tc as any).freightGstAmount) (pdfData as any).freightGstAmount = safeNumber((tc as any).freightGstAmount);
+          if ((tc as any).additionalExpenses) (pdfData as any).additionalExpenses = safeNumber((tc as any).additionalExpenses);
+          if ((tc as any).approvedByName && !(pdfData as any).approvedBy) (pdfData as any).approvedBy = String((tc as any).approvedByName);
+        }
+      } catch {}
 
       // Pull terms from line items (unique values). If multiple values exist, join them.
       try {
@@ -295,8 +360,10 @@ export class PurchaseOrdersController {
 
         if (itemPaymentTerms.length > 0) {
           const joined = itemPaymentTerms.join(', ');
-          (pdfData as any).paymentTerms = joined;
-          (pdfData as any).terms = { ...(pdfData as any).terms, payment_terms: joined };
+          if (!(pdfData as any).paymentTerms) {
+            (pdfData as any).paymentTerms = joined;
+            (pdfData as any).terms = { ...(pdfData as any).terms, payment_terms: joined };
+          }
         }
 
         if (itemDeliveryTerms.length > 0) {
@@ -319,9 +386,9 @@ export class PurchaseOrdersController {
         const computedTaxTotal = computedCgst + computedSgst + computedIgst;
         const computedGrand = computedTaxable + computedTaxTotal;
 
-        // Prefer stored values only if they look populated; otherwise fill from computed values.
-        if (!safeNumber((pdfData as any).subtotal) && computedSubtotal > 0) (pdfData as any).subtotal = computedSubtotal;
-        if (!safeNumber((pdfData as any).taxableAmount) && computedTaxable > 0) (pdfData as any).taxableAmount = computedTaxable;
+        // Always use computed values for subtotal and taxableAmount.
+        if (computedSubtotal > 0) (pdfData as any).subtotal = computedSubtotal;
+        if (computedTaxable > 0) (pdfData as any).taxableAmount = computedTaxable;
 
         if (!safeNumber((pdfData as any).totalDiscount) && computedDiscount > 0) (pdfData as any).totalDiscount = computedDiscount;
 
@@ -342,8 +409,59 @@ export class PurchaseOrdersController {
         // Ignore computation issues; PDF will fall back to stored totals.
       }
 
+      // IGST vs CGST/SGST: if vendor state code differs from company state (Andhra Pradesh = 37), use IGST
+      // Note: companyGSTIN may not be populated yet at this point; use AP state code directly.
+      try {
+        const AP_STATE_CODE = '37';
+        const vendorGstin = String((pdfData as any).vendorGSTIN || '');
+        const vendorStateCode = vendorGstin.substring(0, 2);
+        const isInterState = vendorStateCode.length === 2 && vendorStateCode !== AP_STATE_CODE;
+        if (isInterState) {
+          (pdfData as any).items = ((pdfData as any).items || []).map((item: any) => {
+            const combinedRate = safeNumber(item.cgst_rate) + safeNumber(item.sgst_rate);
+            const combinedAmount = safeNumber(item.cgst_amount) + safeNumber(item.sgst_amount);
+            return { ...item, igst_rate: combinedRate || item.igst_rate, igst_amount: combinedAmount || item.igst_amount, cgst_rate: 0, cgst_amount: 0, sgst_rate: 0, sgst_amount: 0 };
+          });
+          (pdfData as any).igstTotal = ((pdfData as any).cgstTotal || 0) + ((pdfData as any).sgstTotal || 0) || (pdfData as any).igstTotal;
+          (pdfData as any).cgstTotal = 0;
+          (pdfData as any).sgstTotal = 0;
+        }
+      } catch {}
+
       // Generate PDF
-      const pdfBuffer = await this.worldClassPoPdfService.generatePOPdf(pdfData);
+      const rawPdfBuffer = await this.worldClassPoPdfService.generatePOPdf(req.user.tenantId, pdfData);
+
+      // Append PO-line selected drawings as extra pages. Optional item drawings are opt-in.
+      let pdfBuffer = rawPdfBuffer;
+      try {
+        const poItems: any[] = po.purchase_order_items || po.items || [];
+        const drawings = await this.poService.fetchDrawingsForPOItems(req.user.tenantId, poItems);
+        if (drawings.length > 0) {
+          pdfBuffer = await this.worldClassPoPdfService.appendDrawings(pdfBuffer, drawings);
+        }
+      } catch (drawErr: any) {
+        console.warn('[PO PDF] Drawing append failed (non-fatal):', drawErr?.message);
+      }
+
+      // Append PO-level attachments (Documents / Attachments section)
+      try {
+        const poAttachments: any[] = Array.isArray((po as any).attachments) ? (po as any).attachments : [];
+        if (poAttachments.length > 0) {
+          const attachmentFiles = poAttachments
+            .filter((att: any) => att?.url)
+            .map((att: any) => {
+              const fileName = att.name || (att.url as string).split('/').pop() || '';
+              const ext = fileName.split('.').pop()?.toLowerCase() || '';
+              return { file_url: att.url, file_name: fileName, file_type: ext };
+            });
+          if (attachmentFiles.length > 0) {
+            pdfBuffer = await this.worldClassPoPdfService.appendDrawings(pdfBuffer, attachmentFiles);
+          }
+        }
+      } catch (attachErr: any) {
+        console.warn('[PO PDF] Attachment append failed (non-fatal):', attachErr?.message);
+      }
+
       const filename = this.worldClassPoPdfService.generateFilename(po.po_number);
 
       // Send PDF response
@@ -351,6 +469,9 @@ export class PurchaseOrdersController {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Content-Length': pdfBuffer.length,
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        Pragma: 'no-cache',
+        Expires: '0',
       });
 
       return res.send(pdfBuffer);

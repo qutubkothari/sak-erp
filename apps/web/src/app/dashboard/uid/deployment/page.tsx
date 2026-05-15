@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { getTodayDateInputValue } from '@/lib/date';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
@@ -52,10 +53,12 @@ interface PaginatedResponse<T> {
 }
 
 export default function UIDDeploymentPage() {
+  const router = useRouter();
   const todayDate = getTodayDateInputValue();
   const canCreateDeployment = hasModulePermission(readStoredUser(), 'Inventory', 'create');
   const [deployments, setDeployments] = useState<UIDDeployment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUID, setSelectedUID] = useState<UIDDeployment | null>(null);
@@ -230,13 +233,21 @@ export default function UIDDeploymentPage() {
       if (search.trim()) params.set('search', search.trim());
 
       const res = await apiClient.get<PaginatedResponse<UIDDeployment>>(`/uid/deployment/status?${params.toString()}`);
-      setDeployments(res.data);
-      setTotalCount(res.total);
-    } catch (error) {
+      setDeployments(Array.isArray(res.data) ? res.data : []);
+      setTotalCount(Number(res.total || 0));
+      setError('');
+    } catch (error: any) {
+      const message = error?.message || 'Failed to load UID deployments';
+      setError(message);
+      setDeployments([]);
+      setTotalCount(0);
+      if (message.toLowerCase().includes('unauthorized') || message.includes('401')) {
+        router.replace('/login');
+      }
     } finally {
       setLoading(false);
     }
-  }, [itemsPerPage, sortField, sortOrder]);
+  }, [itemsPerPage, router, sortField, sortOrder]);
 
   const viewHistory = async (uid: UIDDeployment) => {
     try {
@@ -244,7 +255,8 @@ export default function UIDDeploymentPage() {
       const history = await apiClient.get<DeploymentHistory[]>(`/uid/deployment/${uid.uid_id}/history`);
       setDeploymentHistory(history);
       setShowHistoryModal(true);
-    } catch (error) {
+    } catch (error: any) {
+      alert(error?.message || 'Failed to load deployment history');
     }
   };
 
@@ -347,6 +359,12 @@ export default function UIDDeploymentPage() {
           <h1 className="text-4xl font-bold text-gray-900 mb-2">🗺️ Product Deployment Tracking</h1>
           <p className="text-gray-600">Track product locations through distribution channels</p>
         </div>
+
+        {error && (
+          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {error}
+          </div>
+        )}
 
         {/* Search and Stats */}
         <div className="grid grid-cols-4 gap-6 mb-8">

@@ -71,12 +71,10 @@ export class CategoriesService {
   async seed(tenantId: string) {
     const defaultCategories = [
       'RAW_MATERIAL',
-      'COMPONENT',
-      'SUBASSEMBLY',
-      'FINISHED_GOODS',
+      'CAPITAL_GOODS',
       'CONSUMABLE',
       'PACKING_MATERIAL',
-      'SPARE_PART',
+      'SERVICES',
     ];
 
     const { data: existing } = await this.supabase

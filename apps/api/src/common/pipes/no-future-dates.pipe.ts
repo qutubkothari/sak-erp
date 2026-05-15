@@ -32,6 +32,8 @@ const FUTURE_ALLOWED_FIELDS = new Set([
   'expectedDelivery',
   'expectedDeliveryDate',
   'expected_delivery_date',
+  'deliveryDate',
+  'delivery_date',
   'estimatedDeliveryDate',
   'estimated_delivery_date',
   'responseDeadline',

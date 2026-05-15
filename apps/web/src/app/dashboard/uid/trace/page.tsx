@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import { buildDocumentBranding } from '../../../../lib/document-branding';
 
 interface LifecycleEvent {
   stage: string;
@@ -47,16 +48,33 @@ interface UIDTrace {
     gstin: string;
   } | null;
   purchase_order?: {
+    id?: string;
     po_number: string;
     order_date: string;
     total_amount: number;
+    quotation_ref?: string | null;
+  } | null;
+  purchase_requisition?: {
+    id?: string;
+    pr_number: string;
+    parent_pr_number?: string | null;
   } | null;
   grn?: {
+    id?: string;
     grn_number: string;
     grn_date: string;
     invoice_number?: string | null;
     invoice_date?: string | null;
   } | null;
+  job_order?: {
+    id?: string;
+    job_order_number: string;
+    status?: string | null;
+    quantity?: number | null;
+    start_date?: string | null;
+    completion_date?: string | null;
+  } | null;
+  documents: TraceDocumentLink[];
   quality_checkpoints: Array<{
     stage: string;
     status: string;
@@ -73,6 +91,11 @@ interface UIDTrace {
 }
 
 interface TraceabilityRow {
+  grn_id?: string | null;
+  po_id?: string | null;
+  pr_id?: string | null;
+  parent_pr_id?: string | null;
+  job_order_id?: string | null;
   uid: string;
   part_code: string;
   part_name: string;
@@ -82,8 +105,18 @@ interface TraceabilityRow {
   supplier_gst: string | null;
   invoice_number: string | null;
   invoice_date: string | null;
+  invoice_file_url?: string | null;
+  invoice_file_name?: string | null;
+  invoice_file_type?: string | null;
   grn_number: string | null;
   grn_date: string | null;
+  po_number?: string | null;
+  po_date?: string | null;
+  po_total_amount?: number | null;
+  po_quotation_ref?: string | null;
+  po_attachments?: Array<Record<string, any>> | null;
+  pr_number?: string | null;
+  parent_pr_number?: string | null;
   work_order_number: string | null;
   work_order_status: string | null;
   work_order_quantity: number | null;
@@ -97,14 +130,120 @@ interface TraceabilityRow {
   report_generated_at: string;
 }
 
+type TraceDocumentLink = {
+  id: string;
+  label: string;
+  name: string;
+  href: string;
+  type: 'file' | 'api' | 'page';
+};
+
+const isExternalUrl = (url: string) => /^(https?:|data:|blob:)/i.test(url);
+
+const normalizeDocumentUrl = (url: string) => {
+  if (!url) return '';
+  if (isExternalUrl(url) || url.startsWith('/')) return url;
+  return `/${url}`;
+};
+
 function TraceProductContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
+  const branding = buildDocumentBranding(null);
   const [searchUID, setSearchUID] = useState(searchParams?.get('uid') || '');
   const [traceData, setTraceData] = useState<UIDTrace | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [traceabilityRows, setTraceabilityRows] = useState<TraceabilityRow[]>([]);
+
+  const buildDocumentLinks = (row: TraceabilityRow): TraceDocumentLink[] => {
+    const links: TraceDocumentLink[] = [];
+    const seen = new Set<string>();
+    const addLink = (link: TraceDocumentLink) => {
+      const key = `${link.label}:${link.href}:${link.name}`;
+      if (!link.href || seen.has(key)) return;
+      seen.add(key);
+      links.push(link);
+    };
+
+    if (row.po_id && row.po_number) {
+      addLink({
+        id: `po-pdf-${row.po_id}`,
+        label: 'Purchase Order PDF',
+        name: row.po_number,
+        href: `/api/v1/purchase/orders/${row.po_id}/pdf/world-class`,
+        type: 'api',
+      });
+    }
+
+    if (row.invoice_file_url) {
+      addLink({
+        id: `invoice-${row.grn_id || row.grn_number || 'file'}`,
+        label: 'Vendor Invoice',
+        name: row.invoice_file_name || row.invoice_number || 'Invoice file',
+        href: normalizeDocumentUrl(row.invoice_file_url),
+        type: 'file',
+      });
+    }
+
+    (row.po_attachments || []).forEach((attachment, index) => {
+      const url = String(attachment?.url || attachment?.fileUrl || attachment?.href || '').trim();
+      if (!url) return;
+      addLink({
+        id: `po-attachment-${index}`,
+        label: 'PO Attachment',
+        name: String(attachment?.name || attachment?.fileName || attachment?.label || `Attachment ${index + 1}`),
+        href: normalizeDocumentUrl(url),
+        type: 'file',
+      });
+    });
+
+    if (row.grn_number) {
+      addLink({
+        id: `grn-page-${row.grn_id || row.grn_number}`,
+        label: 'GRN Record',
+        name: row.grn_number,
+        href: `/dashboard/purchase/grn?search=${encodeURIComponent(row.grn_number)}`,
+        type: 'page',
+      });
+    }
+
+    if (row.pr_number) {
+      addLink({
+        id: `pr-page-${row.pr_id || row.pr_number}`,
+        label: 'PR Record',
+        name: row.pr_number,
+        href: `/dashboard/purchase/requisitions?search=${encodeURIComponent(row.pr_number)}`,
+        type: 'page',
+      });
+    }
+
+    if (row.work_order_number) {
+      addLink({
+        id: `job-order-page-${row.job_order_id || row.work_order_number}`,
+        label: 'Job Order Record',
+        name: row.work_order_number,
+        href: `/dashboard/production/job-orders?search=${encodeURIComponent(row.work_order_number)}`,
+        type: 'page',
+      });
+    }
+
+    return links;
+  };
+
+  const openDocument = async (document: TraceDocumentLink) => {
+    if (document.type !== 'api') {
+      window.open(document.href, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    const token = localStorage.getItem('accessToken');
+    const response = await fetch(document.href, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!response.ok) throw new Error('Unable to open document');
+    const blob = await response.blob();
+    window.open(URL.createObjectURL(blob), '_blank', 'noopener,noreferrer');
+  };
 
   const resolveVendorDetails = async (row: TraceabilityRow) => {
     const gstin = row.supplier_gst || '-';
@@ -150,14 +289,7 @@ function TraceProductContent() {
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/v1/uid/traceability?uid=${encodeURIComponent(searchUID)}&limit=100&offset=0`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) throw new Error('UID not found');
-
-      const payload = await response.json();
+      const payload = await apiClient.get<any>(`/uid/traceability?uid=${encodeURIComponent(searchUID)}&limit=100&offset=0`);
       const rows: TraceabilityRow[] = payload?.data || [];
 
       if (!rows.length) {
@@ -193,15 +325,42 @@ function TraceProductContent() {
         components: [],
         parent_products: [],
         vendor: vendorDetails,
-        purchase_order: null,
+        purchase_order: first.po_number
+          ? {
+              id: first.po_id || undefined,
+              po_number: first.po_number,
+              order_date: first.po_date || first.report_generated_at,
+              total_amount: Number(first.po_total_amount || 0),
+              quotation_ref: first.po_quotation_ref,
+            }
+          : null,
+        purchase_requisition: first.pr_number
+          ? {
+              id: first.pr_id || undefined,
+              pr_number: first.pr_number,
+              parent_pr_number: first.parent_pr_number,
+            }
+          : null,
         grn: first.grn_number
           ? {
+              id: first.grn_id || undefined,
               grn_number: first.grn_number,
               grn_date: first.grn_date || first.report_generated_at,
               invoice_number: first.invoice_number,
               invoice_date: first.invoice_date,
             }
           : null,
+        job_order: first.work_order_number
+          ? {
+              id: first.job_order_id || undefined,
+              job_order_number: first.work_order_number,
+              status: first.work_order_status,
+              quantity: first.work_order_quantity,
+              start_date: first.work_order_start_date,
+              completion_date: first.work_order_completion_date,
+            }
+          : null,
+        documents: buildDocumentLinks(first),
         quality_checkpoints: [],
         customer: null,
       };
@@ -225,6 +384,11 @@ function TraceProductContent() {
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  const formatDateOnly = (dateString?: string | null) => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleDateString('en-IN');
   };
 
   const getStageIcon = (stage: string) => {
@@ -270,7 +434,7 @@ function TraceProductContent() {
               value={searchUID}
               onChange={(e) => setSearchUID(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && searchTrace()}
-              placeholder="Enter UID (e.g., UID-SAIF-KOL-FG-000123-A1)"
+              placeholder={`Enter UID (e.g., UID-${branding.initials}-KOL-FG-000123-A1)`}
               className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
             <button
@@ -435,12 +599,37 @@ function TraceProductContent() {
                       </div>
                       <div>
                         <p className="text-sm text-gray-500">Order Date</p>
-                        <p className="text-gray-700">{new Date(traceData.purchase_order.order_date).toLocaleDateString('en-IN')}</p>
+                        <p className="text-gray-700">{formatDateOnly(traceData.purchase_order.order_date)}</p>
                       </div>
                       <div>
                         <p className="text-sm text-gray-500">Total Amount</p>
                         <p className="text-gray-700">₹{traceData.purchase_order.total_amount.toLocaleString('en-IN')}</p>
                       </div>
+                      {traceData.purchase_order.quotation_ref && (
+                        <div>
+                          <p className="text-sm text-gray-500">Quotation Ref</p>
+                          <p className="text-gray-700">{traceData.purchase_order.quotation_ref}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Purchase Requisition Details */}
+                {traceData.purchase_requisition && (
+                  <div className="bg-white rounded-lg shadow-lg p-6">
+                    <h2 className="text-xl font-bold text-gray-800 mb-4">📝 Purchase Requisition</h2>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-sm text-gray-500">PR Number</p>
+                        <p className="font-bold text-gray-800">{traceData.purchase_requisition.pr_number}</p>
+                      </div>
+                      {traceData.purchase_requisition.parent_pr_number && (
+                        <div>
+                          <p className="text-sm text-gray-500">Parent PR Number</p>
+                          <p className="text-gray-700">{traceData.purchase_requisition.parent_pr_number}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -456,7 +645,7 @@ function TraceProductContent() {
                       </div>
                       <div>
                         <p className="text-sm text-gray-500">Receipt Date</p>
-                        <p className="text-gray-700">{new Date(traceData.grn.grn_date).toLocaleDateString('en-IN')}</p>
+                        <p className="text-gray-700">{formatDateOnly(traceData.grn.grn_date)}</p>
                       </div>
                       {(traceData.grn.invoice_number || traceData.grn.invoice_date) && (
                         <div>
@@ -476,6 +665,59 @@ function TraceProductContent() {
                     </div>
                   </div>
                 )}
+
+                {/* Job Order Details */}
+                {traceData.job_order && (
+                  <div className="bg-white rounded-lg shadow-lg p-6">
+                    <h2 className="text-xl font-bold text-gray-800 mb-4">🏭 Job Order</h2>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-sm text-gray-500">Job Order Number</p>
+                        <p className="font-bold text-gray-800">{traceData.job_order.job_order_number}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-sm text-gray-500">Status</p>
+                          <p className="text-gray-700">{traceData.job_order.status || '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500">Quantity</p>
+                          <p className="text-gray-700">{traceData.job_order.quantity ?? '-'}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">Start Date</p>
+                        <p className="text-gray-700">{formatDateOnly(traceData.job_order.start_date)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">Completion Date</p>
+                        <p className="text-gray-700">{formatDateOnly(traceData.job_order.completion_date)}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Available Documents */}
+                <div className="bg-white rounded-lg shadow-lg p-6">
+                  <h2 className="text-xl font-bold text-gray-800 mb-4">🔗 Documents & Records</h2>
+                  {traceData.documents.length > 0 ? (
+                    <div className="space-y-2">
+                      {traceData.documents.map((document) => (
+                        <button
+                          key={document.id}
+                          type="button"
+                          onClick={() => openDocument(document).catch((err) => setError(err.message || 'Unable to open document'))}
+                          className="w-full text-left border border-gray-200 rounded-lg px-3 py-2 hover:border-orange-300 hover:bg-orange-50 transition-colors"
+                        >
+                          <span className="block text-xs font-semibold uppercase tracking-wide text-gray-500">{document.label}</span>
+                          <span className="block font-semibold text-orange-700 break-words">{document.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-sm">No linked documents found</p>
+                  )}
+                </div>
 
                 {/* Quality Checkpoints */}
                 <div className="bg-white rounded-lg shadow-lg p-6">

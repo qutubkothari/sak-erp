@@ -5,12 +5,15 @@ import './globals.css';
 import { Providers } from '@/components/providers';
 import DateLocaleBootstrap from '@/components/DateLocaleBootstrap';
 import ModalEnhancer from '@/components/ModalEnhancer';
+import VersionRefreshNotice from '@/components/VersionRefreshNotice';
+import { buildDocumentBranding } from '@/lib/document-branding';
 
 const inter = Inter({ subsets: ['latin'] });
+const appBranding = buildDocumentBranding(null);
 
 export const metadata: Metadata = {
-  title: 'SAK Solutions - Manufacturing ERP',
-  description: 'Comprehensive Manufacturing ERP System with Multi-Tenant, Multi-Plant, Multi-Language Support',
+  title: `${appBranding.companyName} - Manufacturing ERP`,
+  description: `${appBranding.companyName} manufacturing ERP system with multi-tenant, multi-plant, and traceability support`,
   icons: {
     icon: '/favicon.svg',
   },
@@ -22,10 +25,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en-GB">
       <body className={inter.className}>
         <Providers>
           <DateLocaleBootstrap />
+          <VersionRefreshNotice />
           {children}
           <ModalEnhancer />
         </Providers>

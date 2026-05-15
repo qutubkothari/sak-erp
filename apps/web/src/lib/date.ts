@@ -16,7 +16,7 @@ export function getTodayDateInputValue(now: Date = new Date()): string {
 export function formatDisplayDate(value: string | Date | null | undefined): string {
   const date = toValidDate(value);
   if (!date) return '—';
-  return date.toLocaleDateString('en-GB');
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
 export function formatDisplayDateTime(value: string | Date | null | undefined): string {
@@ -25,10 +25,55 @@ export function formatDisplayDateTime(value: string | Date | null | undefined): 
   return date.toLocaleString('en-GB', {
     day: '2-digit',
     month: '2-digit',
-    year: 'numeric',
+    year: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
     hour12: false,
   });
+}
+
+export function formatDateInputDisplay(value: string | Date | null | undefined): string {
+  const date = toValidDate(value);
+  if (!date) return '';
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+function parseDatePartsToInputValue(dayText: string, monthText: string, yearText: string): string {
+  const day = Number(dayText);
+  const month = Number(monthText);
+  const year = yearText.length === 2 ? 2000 + Number(yearText) : Number(yearText);
+
+  const parsed = new Date(year, month - 1, day);
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return '';
+  }
+
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+export function parseDisplayDateToInputValue(value: string | null | undefined): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) return raw;
+
+  const compactShortMatch = raw.match(/^(\d{2})(\d{2})(\d{2})$/);
+  if (compactShortMatch) {
+    return parseDatePartsToInputValue(compactShortMatch[1], compactShortMatch[2], compactShortMatch[3]);
+  }
+
+  const compactLongMatch = raw.match(/^(\d{2})(\d{2})(\d{4})$/);
+  if (compactLongMatch) {
+    return parseDatePartsToInputValue(compactLongMatch[1], compactLongMatch[2], compactLongMatch[3]);
+  }
+
+  const displayMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  if (!displayMatch) return '';
+  return parseDatePartsToInputValue(displayMatch[1], displayMatch[2], displayMatch[3]);
 }

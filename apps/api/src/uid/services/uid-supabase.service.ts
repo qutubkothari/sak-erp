@@ -7,6 +7,8 @@ export class UidSupabaseService {
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_KEY!,
   );
+  private uidRegistryColumnSupport = new Map<string, Promise<boolean>>();
+  private tenantCodeCache = new Map<string, Promise<string>>();
 
   get client() {
     return this.supabase;
@@ -29,6 +31,263 @@ export class UidSupabaseService {
     }
 
     return [];
+  }
+
+  private isTransientSupabaseError(error: any): boolean {
+    const message = String(error?.message || error?.details || error || '').toLowerCase();
+    const code = String(error?.code || error?.status || '').toLowerCase();
+
+    return (
+      code === '502' ||
+      code === '503' ||
+      code === '504' ||
+      message.includes('502') ||
+      message.includes('503') ||
+      message.includes('504') ||
+      message.includes('bad gateway') ||
+      message.includes('gateway timeout') ||
+      message.includes('cloudflare')
+    );
+  }
+
+  private async waitForRetry(delayMs: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  private async retryTransientSupabase<T>(
+    operationName: string,
+    operation: () => Promise<T>,
+    maxAttempts = 3,
+  ): Promise<T> {
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+
+        if (!this.isTransientSupabaseError(error) || attempt >= maxAttempts) {
+          throw error;
+        }
+
+        const delayMs = attempt * 250;
+        console.warn(
+          `[UidSupabaseService] ${operationName} failed with transient Supabase error on attempt ${attempt}/${maxAttempts}. Retrying in ${delayMs}ms...`,
+          String((error as any)?.message || error),
+        );
+        await this.waitForRetry(delayMs);
+      }
+    }
+
+    throw lastError;
+  }
+
+  private async detectUidRegistryColumnSupport(columnName: string): Promise<boolean> {
+    const { error } = await this.supabase
+      .from('uid_registry')
+      .select(`uid,${columnName}`)
+      .limit(1);
+
+    if (!error) {
+      return true;
+    }
+
+    const message = String((error as any)?.message || '');
+    if (
+      /column uid_registry\.[a-z0-9_]+ does not exist/i.test(message) ||
+      /Could not find the '.*' column of 'uid_registry'/i.test(message)
+    ) {
+      return false;
+    }
+
+    console.warn(`Unable to verify uid_registry.${columnName} support: ${message}`);
+    return true;
+  }
+
+  private async supportsUidRegistryColumn(columnName: string): Promise<boolean> {
+    let pending = this.uidRegistryColumnSupport.get(columnName);
+
+    if (!pending) {
+      pending = this.detectUidRegistryColumnSupport(columnName);
+      this.uidRegistryColumnSupport.set(columnName, pending);
+    }
+
+    return pending;
+  }
+
+  private normalizeTenantCode(value: unknown): string {
+    const normalized = String(value || '')
+      .replace(/[^A-Za-z0-9]+/g, '')
+      .toUpperCase()
+      .trim();
+
+    if (!normalized) {
+      return '';
+    }
+
+    if (normalized.length >= 2) {
+      return normalized.slice(0, 4);
+    }
+
+    return `${normalized}X`;
+  }
+
+  private deriveTenantCodeFromName(name: unknown): string {
+    const parts = String(name || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    const initials = parts
+      .map((part) => part.replace(/[^A-Za-z0-9]+/g, '').charAt(0).toUpperCase())
+      .filter(Boolean)
+      .join('')
+      .slice(0, 4);
+
+    return this.normalizeTenantCode(initials || String(name || '').slice(0, 4));
+  }
+
+  async resolveTenantCode(tenantId?: string, fallbackCode?: string): Promise<string> {
+    const normalizedTenantId = String(tenantId || '').trim();
+    const normalizedFallback = this.normalizeTenantCode(fallbackCode);
+
+    if (!normalizedTenantId) {
+      return normalizedFallback || 'TEN';
+    }
+
+    let pending = this.tenantCodeCache.get(normalizedTenantId);
+
+    if (!pending) {
+      pending = (async () => {
+        const { data, error } = await this.supabase
+          .from('tenants')
+          .select('code, name')
+          .eq('id', normalizedTenantId)
+          .single();
+
+        if (error) {
+          console.warn(`[UidSupabaseService] Failed to resolve tenant code for ${normalizedTenantId}: ${error.message}`);
+          return normalizedFallback || 'TEN';
+        }
+
+        const resolved =
+          this.normalizeTenantCode((data as any)?.code) ||
+          this.deriveTenantCodeFromName((data as any)?.name) ||
+          normalizedFallback ||
+          'TEN';
+
+        return resolved;
+      })();
+
+      this.tenantCodeCache.set(normalizedTenantId, pending);
+    }
+
+    return pending;
+  }
+
+  private buildUidCreateMetadata(createDto: any): Record<string, any> | undefined {
+    const metadata = createDto?.metadata && typeof createDto.metadata === 'object' && !Array.isArray(createDto.metadata)
+      ? { ...createDto.metadata }
+      : {};
+
+    if (createDto?.reference) {
+      metadata.reference = createDto.reference;
+    }
+
+    if (createDto?.description) {
+      metadata.description = createDto.description;
+    }
+
+    if (createDto?.item_id) {
+      metadata.item_id = createDto.item_id;
+    }
+
+    if (createDto?.tenantCode) {
+      metadata.tenant_code = createDto.tenantCode;
+    }
+
+    if (createDto?.plantCode) {
+      metadata.plant_code = createDto.plantCode;
+    }
+
+    if (createDto?.entityType) {
+      metadata.requested_entity_type = createDto.entityType;
+    }
+
+    return Object.keys(metadata).length > 0 ? metadata : undefined;
+  }
+
+  private async buildUidCreateInsertPayload(req: any, uid: string, createDto: any) {
+    const location = createDto?.location || 'Warehouse';
+    const reference = createDto?.reference || 'Initial';
+    const entityType = createDto?.entity_type || createDto?.entityType;
+    const entityId = createDto?.entity_id || createDto?.item_id;
+    const metadata = this.buildUidCreateMetadata(createDto);
+
+    const rawPayload: Record<string, any> = {
+      entity_type: entityType,
+      entity_id: entityId,
+      lifecycle: JSON.stringify([
+        {
+          stage: 'CREATED',
+          timestamp: new Date().toISOString(),
+          location,
+          reference,
+          user: req.user.email,
+        },
+      ]),
+    };
+
+    if (metadata) {
+      rawPayload.metadata = metadata;
+    }
+
+    for (const [key, value] of Object.entries(createDto || {})) {
+      if (value === undefined) {
+        continue;
+      }
+
+      if (
+        key === 'tenantCode' ||
+        key === 'plantCode' ||
+        key === 'entityType' ||
+        key === 'entity_type' ||
+        key === 'entity_id' ||
+        key === 'item_id' ||
+        key === 'reference' ||
+        key === 'description' ||
+        key === 'lifecycle' ||
+        key === 'tenant_id' ||
+        key === 'uid' ||
+        key === 'metadata'
+      ) {
+        continue;
+      }
+
+      if (!/^[a-z][a-z0-9_]*$/.test(key)) {
+        continue;
+      }
+
+      rawPayload[key] = value;
+    }
+
+    const payload: Record<string, any> = {
+      tenant_id: req.user.tenantId,
+      uid,
+    };
+
+    for (const [key, value] of Object.entries(rawPayload)) {
+      if (value === undefined) {
+        continue;
+      }
+
+      if (await this.supportsUidRegistryColumn(key)) {
+        payload[key] = value;
+      }
+    }
+
+    return payload;
   }
 
   private async resolveVendorFromLineage(tenantId: string, uidRecord: any): Promise<{
@@ -257,20 +516,25 @@ export class UidSupabaseService {
     plantCode: string,
     entityType: string,
   ): Promise<string> {
-    // Use database function for atomic UID generation
-    const { data, error } = await this.supabase.rpc('generate_next_uid', {
-      p_tenant_code: tenantCode,
-      p_plant_code: plantCode,
-      p_entity_type: entityType,
+    return this.retryTransientSupabase('generate_next_uid', async () => {
+      const { data, error } = await this.supabase.rpc('generate_next_uid', {
+        p_tenant_code: tenantCode,
+        p_plant_code: plantCode,
+        p_entity_type: entityType,
+      });
+
+      if (error) {
+        if (this.isTransientSupabaseError(error)) {
+          throw error;
+        }
+
+        console.error('Error calling generate_next_uid:', error);
+        // Fallback to old method if function doesn't exist yet
+        return this.generateUIDLegacy(tenantCode, plantCode, entityType);
+      }
+
+      return data;
     });
-
-    if (error) {
-      console.error('Error calling generate_next_uid:', error);
-      // Fallback to old method if function doesn't exist yet
-      return this.generateUIDLegacy(tenantCode, plantCode, entityType);
-    }
-
-    return data;
   }
 
   /**
@@ -281,65 +545,68 @@ export class UidSupabaseService {
     plantCode: string,
     entityType: string,
   ): Promise<string> {
-    // Get next sequence
-    const { data: existing } = await this.supabase
-      .from('uid_registry')
-      .select('uid')
-      .like('uid', `UID-${tenantCode}-${plantCode}-${entityType}-%`)
-      .order('created_at', { ascending: false })
-      .limit(1);
+    return this.retryTransientSupabase('generateUIDLegacy', async () => {
+      const { data: existing, error } = await this.supabase
+        .from('uid_registry')
+        .select('uid')
+        .like('uid', `UID-${tenantCode}-${plantCode}-${entityType}-%`)
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-    let sequence = 1;
-    if (existing && existing.length > 0) {
-      const lastUID = existing[0].uid;
-      const parts = lastUID.split('-');
-      sequence = parseInt(parts[4]) + 1;
-    }
+      if (error) {
+        throw error;
+      }
 
-    const seqStr = sequence.toString().padStart(6, '0');
-    const checksum = this.generateChecksum(
-      `${tenantCode}${plantCode}${entityType}${seqStr}`,
-    );
+      let sequence = 1;
+      if (existing && existing.length > 0) {
+        const lastUID = existing[0].uid;
+        const parts = lastUID.split('-');
+        sequence = parseInt(parts[4]) + 1;
+      }
 
-    return `UID-${tenantCode}-${plantCode}-${entityType}-${seqStr}-${checksum}`;
+      const seqStr = sequence.toString().padStart(6, '0');
+      const checksum = this.generateChecksum(
+        `${tenantCode}${plantCode}${entityType}${seqStr}`,
+      );
+
+      return `UID-${tenantCode}-${plantCode}-${entityType}-${seqStr}-${checksum}`;
+    });
   }
 
   /**
    * Create UID record
    */
   async createUID(req: any, createDto: any) {
-    const tenantId = req.user.tenantId;
+    const tenantId = String(createDto?.tenant_id || req?.user?.tenantId || '').trim();
+    const tenantCode = await this.resolveTenantCode(tenantId, createDto?.tenantCode);
+    const normalizedCreateDto = {
+      ...createDto,
+      tenant_id: tenantId || createDto?.tenant_id,
+      tenantCode,
+    };
 
     // Generate UID
     const uid = await this.generateUID(
-      createDto.tenantCode || 'SAIF',
-      createDto.plantCode || 'KOL',
-      createDto.entityType || 'RM',
+      tenantCode,
+      normalizedCreateDto.plantCode || 'KOL',
+      normalizedCreateDto.entityType || 'RM',
     );
 
-    const { data, error } = await this.supabase
-      .from('uid_registry')
-      .insert([
-        {
-          ...createDto,
-          tenant_id: tenantId,
-          uid,
-          lifecycle: JSON.stringify([
-            {
-              stage: 'CREATED',
-              timestamp: new Date().toISOString(),
-              location: createDto.location || 'Warehouse',
-              reference: createDto.reference || 'Initial',
-              user: req.user.email,
-            },
-          ]),
-        },
-      ])
-      .select()
-      .single();
+    const payload = await this.buildUidCreateInsertPayload(req, uid, normalizedCreateDto);
 
-    if (error) throw new Error(error.message);
-    return data;
+    return this.retryTransientSupabase('uid_registry insert', async () => {
+      const { data, error } = await this.supabase
+        .from('uid_registry')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return data;
+    });
   }
 
   /**
@@ -461,7 +728,7 @@ export class UidSupabaseService {
     // Then fetch related data separately
     let supplier = null;
     let purchaseOrder = null;
-    let grn = null;
+    let grn: any = null;
 
     if (uidData.supplier_id) {
       console.log('Looking up vendor with ID:', uidData.supplier_id, 'for tenant:', tenantId);
@@ -787,15 +1054,28 @@ export class UidSupabaseService {
       purchase_order = data;
     }
 
-    // Get GRN details
+    // Get GRN and invoice details
     let grn = null;
     if (uidRecord.grn_id) {
       const { data } = await this.supabase
-        .from('grn')
-        .select('grn_number, received_date, received_quantity')
+        .from('grns')
+        .select('grn_number, receipt_date, invoice_number, invoice_date, invoice_file_url, invoice_file_name, invoice_file_type, invoice_file_size')
         .eq('id', uidRecord.grn_id)
         .single();
       grn = data;
+    }
+
+    let metadata: any = {};
+    try {
+      metadata = typeof uidRecord.metadata === 'string'
+        ? JSON.parse(uidRecord.metadata)
+        : uidRecord.metadata || {};
+    } catch {
+      metadata = {};
+    }
+
+    if (grn && !grn.invoice_number && metadata?.invoice_number) {
+      grn.invoice_number = metadata.invoice_number;
     }
 
     // Parse lifecycle
@@ -1135,14 +1415,15 @@ export class UidSupabaseService {
     let query = this.supabase
       .from('uid_registry')
       .select(`
-        uid, 
+        uid,
         entity_id,
-        entity_type, 
-        status, 
-        location, 
-        batch_number, 
-        quality_status, 
+        entity_type,
+        status,
+        location,
+        batch_number,
+        quality_status,
         client_part_number,
+        grn_id,
         created_at
       `, { count: 'exact' })
       .eq('tenant_id', tenantId);
@@ -1232,6 +1513,23 @@ export class UidSupabaseService {
             const item = itemsMap.get(itemLookupId);
             if (item) {
               uid.items = item;
+            }
+          });
+        }
+      }
+      // Batch-fetch GRN numbers
+      const grnIds = [...new Set(data.map((uid: any) => uid.grn_id).filter(Boolean))];
+      if (grnIds.length > 0) {
+        const { data: grns } = await this.supabase
+          .from('grns')
+          .select('id, grn_number')
+          .in('id', grnIds);
+
+        if (grns) {
+          const grnMap = new Map(grns.map((g: any) => [g.id, g]));
+          data.forEach((uid: any) => {
+            if (uid.grn_id) {
+              uid.grn = grnMap.get(uid.grn_id) || null;
             }
           });
         }

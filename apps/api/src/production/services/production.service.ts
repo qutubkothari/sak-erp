@@ -255,16 +255,17 @@ export class ProductionService {
     const mockReq = {
       user: { tenantId, email: 'system@production.auto' },
     };
+    const tenantCode = await this.uidService.resolveTenantCode(tenantId);
 
     const finishedUid = await this.uidService.generateUID(
-      'SAIF',
+      tenantCode,
       order.plant_code || 'KOL',
       'FG', // Finished Good
     );
 
     // Create UID registry entry for finished product
     await this.uidService.createUID(mockReq, {
-      tenantCode: 'SAIF',
+      tenant_id: tenantId,
       plantCode: order.plant_code || 'KOL',
       entityType: 'FG',
       entity_type: 'FG',

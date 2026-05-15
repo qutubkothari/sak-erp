@@ -243,6 +243,10 @@ export class GrnService {
     if (!data.invoiceDate) {
       throw new BadRequestException('Invoice Date is required');
     }
+
+    if (!data.invoiceFileUrl) {
+      throw new BadRequestException('Vendor invoice upload is required');
+    }
     
     // Allow multiple GRNs for the same PO (partial deliveries)
     // No duplicate check needed - POs can have multiple GRNs
@@ -341,13 +345,32 @@ export class GrnService {
       const { data: insertedItems, error: itemsError } = await this.supabase
         .from('grn_items')
         .insert(items)
-        .select('id, item_id, item_code, accepted_qty, rejected_qty, received_qty, batch_number, rate');
+        .select('id, item_id, item_code, item_name, accepted_qty, rejected_qty, received_qty, batch_number, rate');
 
       if (itemsError) throw new BadRequestException(itemsError.message);
 
       const safeInsertedItems = Array.isArray(insertedItems) ? insertedItems : [];
-      // Note: We intentionally do not auto-mark qc_completed on GRN create.
-      // QC should be completed explicitly via qcAccept (or as part of an approval workflow).
+      for (const grnItem of safeInsertedItems) {
+        const receivedQty = this.toNumber((grnItem as any).received_qty);
+        if (receivedQty > 0) {
+          await this.generateUIDsForItem(
+            tenantId,
+            userId,
+            {
+              ...grn,
+              vendor_id: data.vendorId,
+              po_id: data.poId,
+              invoice_number: data.invoiceNumber || null,
+              warehouse,
+            },
+            {
+              ...grnItem,
+              accepted_qty: receivedQty,
+              accepted_quantity: receivedQty,
+            },
+          );
+        }
+      }
 
       // Update PO items received_qty
       for (const item of data.items) {
@@ -375,6 +398,7 @@ export class GrnService {
 
     // Calculate totals
     await this.updateGRNTotals(grn.id);
+    await this.updateGRNFinancialAmounts(tenantId, grn.id);
 
     return this.findOne(tenantId, grn.id);
   }
@@ -391,7 +415,7 @@ export class GrnService {
         purchase_order:purchase_orders(id, po_number, po_date),
         vendor:vendors(id, code, name, contact_person),
         warehouse:warehouses(id, code, name),
-        grn_items(id, accepted_qty, rejected_qty, received_qty, uid_count)
+        grn_items(id, item_id, accepted_qty, rejected_qty, received_qty, uid_count)
       `)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false});
@@ -419,6 +443,10 @@ export class GrnService {
       throw new BadRequestException(error.message);
     }
     
+    if (filters?.pendingQc === 'true') {
+      return (data || []).filter((grn: any) => !grn.qc_completed);
+    }
+
     return data || [];
   }
 
@@ -441,10 +469,33 @@ export class GrnService {
   }
 
   async update(tenantId: string, id: string, data: any) {
+    const { data: existingGrn, error: existingGrnError } = await this.supabase
+      .from('grns')
+      .select('receipt_date')
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .single();
+
+    if (existingGrnError) {
+      throw new NotFoundException('GRN not found');
+    }
+
+    if (!data.invoiceNumber || !data.invoiceNumber.trim()) {
+      throw new BadRequestException('Invoice Number is required');
+    }
+
+    if (!data.invoiceDate) {
+      throw new BadRequestException('Invoice Date is required');
+    }
+
+    if (!data.invoiceFileUrl) {
+      throw new BadRequestException('Vendor invoice upload is required');
+    }
+
     // Fetch existing GRN items to keep PO received_qty consistent
     const { data: existingItems, error: existingItemsError } = await this.supabase
       .from('grn_items')
-      .select('po_item_id, received_qty, received_quantity')
+      .select('po_item_id, received_qty')
       .eq('grn_id', id);
 
     if (existingItemsError) {
@@ -455,7 +506,7 @@ export class GrnService {
     for (const row of existingItems ?? []) {
       const poItemId = String((row as any).po_item_id || '').trim();
       if (!poItemId) continue;
-      const oldQty = this.toNumber((row as any).received_qty ?? (row as any).received_quantity);
+      const oldQty = this.toNumber((row as any).received_qty);
       if (oldQty <= 0) continue;
       oldReceivedByPoItemId.set(poItemId, (oldReceivedByPoItemId.get(poItemId) ?? 0) + oldQty);
     }
@@ -487,7 +538,7 @@ export class GrnService {
     const { error } = await this.supabase
       .from('grns')
       .update({
-        receipt_date: data.grnDate || null,
+        receipt_date: data.grnDate || (existingGrn as any)?.receipt_date || null,
         invoice_number: data.invoiceNumber || null,
         invoice_date: data.invoiceDate || null,
         invoice_file_url: data.invoiceFileUrl || null,
@@ -505,29 +556,69 @@ export class GrnService {
 
     // Update items if provided
     if (data.items) {
-      await this.supabase
+      const itemIds = Array.from(
+        new Set(
+          data.items
+            .map((item: any) => String(item.itemId || '').trim())
+            .filter(Boolean),
+        ),
+      );
+      const uidCountByItemId = new Map<string, number>();
+
+      if (itemIds.length > 0) {
+        const { data: uidRows, error: uidRowsError } = await this.supabase
+          .from('uid_registry')
+          .select('entity_id')
+          .eq('tenant_id', tenantId)
+          .eq('grn_id', id)
+          .in('entity_id', itemIds);
+
+        if (uidRowsError) throw new BadRequestException(uidRowsError.message);
+
+        for (const uidRow of uidRows ?? []) {
+          const itemId = String((uidRow as any).entity_id || '').trim();
+          if (!itemId) continue;
+          uidCountByItemId.set(itemId, (uidCountByItemId.get(itemId) ?? 0) + 1);
+        }
+      }
+
+      const { error: deleteItemsError } = await this.supabase
         .from('grn_items')
         .delete()
         .eq('grn_id', id);
+
+      if (deleteItemsError) throw new BadRequestException(deleteItemsError.message);
 
       if (data.items.length > 0) {
         const items = data.items.map((item: any) => ({
           grn_id: id,
           item_id: item.itemId,
           po_item_id: item.poItemId,
-          ordered_quantity: item.orderedQuantity,
-          received_quantity: item.receivedQuantity,
-          accepted_quantity: item.acceptedQuantity,
-          rejected_quantity: item.rejectedQuantity,
-          unit_price: item.unitPrice,
+          item_code: item.itemCode,
+          item_name: item.itemName,
+          description: item.description,
+          uom: item.uom,
+          ordered_qty: item.orderedQty ?? item.orderedQuantity,
+          received_qty: item.receivedQty ?? item.receivedQuantity,
+          accepted_qty: item.acceptedQty ?? item.acceptedQuantity ?? 0,
+          rejected_qty: item.rejectedQty ?? item.rejectedQuantity ?? 0,
+          rejection_reason: item.rejectionReason || null,
+          inspection_status: item.inspectionStatus || 'PENDING',
+          inspection_remarks: item.inspectionRemarks || null,
           batch_number: item.batchNumber || null,
+          manufacturing_date: item.manufacturingDate || null,
           expiry_date: item.expiryDate || null,
-          notes: item.notes || null,
+          rate: item.rate ?? item.unitPrice,
+          amount: this.toNumber(item.receivedQty ?? item.receivedQuantity) * this.toNumber(item.rate ?? item.unitPrice),
+          uid_count: uidCountByItemId.get(String(item.itemId || '').trim()) ?? this.toNumber(item.uidCount ?? item.uid_count),
+          remarks: item.remarks || item.notes || null,
         }));
 
-        await this.supabase
+        const { error: insertItemsError } = await this.supabase
           .from('grn_items')
           .insert(items);
+
+        if (insertItemsError) throw new BadRequestException(insertItemsError.message);
       }
 
       // Update PO received_qty based on delta (old GRN quantities removed, new added)
@@ -546,6 +637,9 @@ export class GrnService {
           .eq('id', poItemId);
       }
     }
+
+    // Recalculate financial amounts after item update
+    await this.updateGRNFinancialAmounts(tenantId, id);
 
     return this.findOne(tenantId, id);
   }
@@ -778,6 +872,7 @@ export class GrnService {
       else if (item.category?.includes('ASSEMBLY')) entityType = 'SA';
 
       console.log(`Starting loop to generate ${uidsToGenerate} UIDs, entityType: ${entityType}`);
+      const tenantCode = await this.uidService.resolveTenantCode(tenantId);
       
       // Generate UIDs based on strategy
       for (let i = 0; i < uidsToGenerate; i++) {
@@ -785,7 +880,7 @@ export class GrnService {
         
         // Generate UID using the UID service
         const uid = await this.uidService.generateUID(
-          'SAIF', // tenant code - you may want to fetch this from tenant table
+          tenantCode,
           'MFG',  // plant code
           entityType,
         );
@@ -1020,6 +1115,13 @@ export class GrnService {
     
     try {
       const now = new Date().toISOString();
+      const uidPrintItems: Array<{
+        itemId: string;
+        itemCode: string;
+        itemName: string;
+        acceptedQty: number;
+        generatedUids: string[];
+      }> = [];
       
       // Update each GRN item with QC results
       for (const item of body.items) {
@@ -1080,7 +1182,7 @@ export class GrnService {
 
           const { data: grn } = await this.supabase
             .from('grns')
-            .select('warehouse_id, grn_number')
+            .select('warehouse_id, grn_number, vendor_id, po_id, invoice_number, warehouse:warehouses(name)')
             .eq('id', grnItem.grn_id)
             .single();
 
@@ -1105,6 +1207,35 @@ export class GrnService {
               item_code: grnItem.item_code,
             },
           });
+
+          const generatedUids = await this.generateUIDsForItem(
+            tenantId,
+            userId,
+            {
+              id: grnItem.grn_id,
+              grn_number: grn.grn_number,
+              vendor_id: (grn as any).vendor_id || null,
+              po_id: (grn as any).po_id || null,
+              invoice_number: (grn as any).invoice_number || body?.metadata?.invoiceNumber || null,
+              warehouse: (grn as any).warehouse || { name: 'Warehouse' },
+            },
+            {
+              ...grnItem,
+              accepted_qty: item.acceptedQty,
+              accepted_quantity: item.acceptedQty,
+              item_name: item.itemName || null,
+            },
+          );
+
+          if (Array.isArray(generatedUids) && generatedUids.length > 0) {
+            uidPrintItems.push({
+              itemId: String(grnItem.item_id || item.itemId || '').trim(),
+              itemCode: String(grnItem.item_code || item.itemCode || '').trim(),
+              itemName: String(item.itemName || '').trim(),
+              acceptedQty: Number(item.acceptedQty || 0),
+              generatedUids: generatedUids.map((uid) => String(uid || '').trim()).filter(Boolean),
+            });
+          }
         }
 
         // Handle rejections - update rejection amount and status
@@ -1165,7 +1296,11 @@ export class GrnService {
       }
 
       console.log('=== QC ACCEPT COMPLETE ===');
-      return { message: 'QC acceptance recorded successfully', qcCompleted: allCompleted };
+      return {
+        message: 'QC acceptance recorded successfully',
+        qcCompleted: allCompleted,
+        generatedUidPrintItems: uidPrintItems,
+      };
     } catch (error) {
       console.error('QC ACCEPT ERROR:', error);
       throw new BadRequestException(`QC acceptance failed: ${error.message}`);
@@ -1421,13 +1556,37 @@ export class GrnService {
           .from('stock_entries')
           .select('id')
           .eq('tenant_id', stockData.tenant_id)
-          .eq('metadata->>grn_item_id', grnItemIdForDedup)
+          .filter('metadata->>grn_item_id', 'eq', grnItemIdForDedup)
           .limit(1);
 
         if (existingError) {
           console.error('⚠️ Could not check existing stock entry for grn_item_id:', grnItemIdForDedup, existingError);
         } else if (Array.isArray(existing) && existing.length > 0) {
           console.log('ℹ️ Stock entry already exists for grn_item_id, skipping:', grnItemIdForDedup);
+          return;
+        }
+      }
+
+      // Secondary idempotency: dedup by grn_reference + item_id to catch cases where
+      // grn_item_id is absent (e.g. QC acceptance path) — prevents double stock entries.
+      const grnRefForDedup =
+        stockData?.metadata && typeof stockData.metadata === 'object'
+          ? ((stockData.metadata as any).grn_reference as string | undefined) ||
+            ((stockData.metadata as any).grn_number as string | undefined)
+          : undefined;
+      if (grnRefForDedup && stockData?.item_id) {
+        const { data: existingByRef, error: existingByRefError } = await this.supabase
+          .from('stock_entries')
+          .select('id')
+          .eq('tenant_id', stockData.tenant_id)
+          .eq('item_id', stockData.item_id)
+          .filter('metadata->>grn_reference', 'eq', grnRefForDedup)
+          .limit(1);
+
+        if (existingByRefError) {
+          console.error('⚠️ Could not check existing stock entry for grn_reference:', grnRefForDedup, existingByRefError);
+        } else if (Array.isArray(existingByRef) && existingByRef.length > 0) {
+          console.log('ℹ️ Stock entry already exists for grn_reference + item_id, skipping:', grnRefForDedup, stockData.item_id);
           return;
         }
       }
@@ -1765,20 +1924,79 @@ export class GrnService {
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const prefix = `GRN-${year}-${month}`;
 
+    // Fetch ALL GRN numbers to find the global max sequence (never resets on month rollover)
     const { data } = await this.supabase
       .from('grns')
       .select('grn_number')
       .eq('tenant_id', tenantId)
-      .like('grn_number', `${prefix}%`)
-      .order('grn_number', { ascending: false })
-      .limit(1)
-      .single();
+      .like('grn_number', 'GRN-%');
 
-    if (!data) {
-      return `${prefix}-001`;
+    let maxSeq = 0;
+    for (const row of (data || [])) {
+      const match = /^GRN-\d{4}-\d{2}-(\d+)$/.exec(row.grn_number || '');
+      if (match) {
+        const seq = parseInt(match[1], 10);
+        if (seq > maxSeq) maxSeq = seq;
+      }
     }
 
-    const lastNumber = parseInt(data.grn_number.split('-').pop() || '0');
-    return `${prefix}-${String(lastNumber + 1).padStart(3, '0')}`;
+    return `${prefix}-${String(maxSeq + 1).padStart(3, '0')}`;
+  }
+
+  async updateInvoiceAmounts(tenantId: string, grnId: string, data: any) {
+    const grossAmount = parseFloat(data.gross_amount ?? 0);
+    const taxAmount = parseFloat(data.tax_amount ?? 0);
+    const netPayable = parseFloat(data.net_payable_amount ?? (grossAmount + taxAmount));
+    const notes = data.notes ?? null;
+
+    const { error } = await this.supabase
+      .from('grns')
+      .update({
+        gross_amount: grossAmount,
+        tax_amount: taxAmount,
+        net_payable_amount: netPayable,
+        // Reset approval when amounts are edited
+        invoice_approved: false,
+        invoice_approved_by: null,
+        invoice_approved_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', grnId)
+      .eq('tenant_id', tenantId);
+
+    if (error) throw new BadRequestException(error.message);
+    return this.findOne(tenantId, grnId);
+  }
+
+  async approveInvoice(tenantId: string, grnId: string, userId: string, data: any) {
+    const { error } = await this.supabase
+      .from('grns')
+      .update({
+        invoice_approved: true,
+        invoice_approved_by: userId,
+        invoice_approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', grnId)
+      .eq('tenant_id', tenantId);
+
+    if (error) throw new BadRequestException(error.message);
+    return this.findOne(tenantId, grnId);
+  }
+
+  async unapproveInvoice(tenantId: string, grnId: string) {
+    const { error } = await this.supabase
+      .from('grns')
+      .update({
+        invoice_approved: false,
+        invoice_approved_by: null,
+        invoice_approved_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', grnId)
+      .eq('tenant_id', tenantId);
+
+    if (error) throw new BadRequestException(error.message);
+    return this.findOne(tenantId, grnId);
   }
 }

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Shield, Check } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
-import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { hasModulePermission, readStoredUser, isAdminLike } from '@/lib/rbac';
 import { MODULES, SCREEN_DEFINITIONS, type PermissionEntry } from '@/lib/permission-config';
 
 type Permission = PermissionEntry;
@@ -134,9 +134,10 @@ function getPermissionLabel(permission: Permission): string {
 
 export default function RoleManagement() {
   const currentUser = readStoredUser();
-  const canCreateSettings = hasModulePermission(currentUser, 'Settings', 'create');
-  const canEditSettings = hasModulePermission(currentUser, 'Settings', 'edit');
-  const canDeleteSettings = hasModulePermission(currentUser, 'Settings', 'delete');
+  const isAdmin = isAdminLike(currentUser);
+  const canCreateSettings = isAdmin && hasModulePermission(currentUser, 'Settings', 'create');
+  const canEditSettings = isAdmin && hasModulePermission(currentUser, 'Settings', 'edit');
+  const canDeleteSettings = isAdmin && hasModulePermission(currentUser, 'Settings', 'delete');
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);

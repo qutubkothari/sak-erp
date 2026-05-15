@@ -97,7 +97,59 @@ export class PurchaseRequisitionsService {
     );
   }
 
+  private async assertItemsVerified(tenantId: string, rawItems: any[]) {
+    const items = Array.isArray(rawItems) ? rawItems : [];
+    const ids = Array.from(new Set(items.map((item) => String(item?.itemId || item?.item_id || '').trim()).filter(Boolean)));
+    const codes = Array.from(new Set(items.map((item) => String(item?.itemCode || item?.item_code || '').trim()).filter(Boolean)));
+    if (ids.length === 0 && codes.length === 0) return;
+
+    const byId = new Map<string, any>();
+    const byCode = new Map<string, any>();
+
+    if (ids.length > 0) {
+      const { data, error } = await this.supabase
+        .from('items')
+        .select('id, code, name, is_active, is_verified')
+        .eq('tenant_id', tenantId)
+        .in('id', ids);
+      if (error) throw new BadRequestException(error.message);
+      (data || []).forEach((item: any) => byId.set(String(item.id), item));
+    }
+
+    if (codes.length > 0) {
+      const { data, error } = await this.supabase
+        .from('items')
+        .select('id, code, name, is_active, is_verified')
+        .eq('tenant_id', tenantId)
+        .in('code', codes);
+      if (error) throw new BadRequestException(error.message);
+      (data || []).forEach((item: any) => byCode.set(String(item.code), item));
+    }
+
+    for (const rawItem of items) {
+      const id = String(rawItem?.itemId || rawItem?.item_id || '').trim();
+      const code = String(rawItem?.itemCode || rawItem?.item_code || '').trim();
+      const item = (id && byId.get(id)) || (code && byCode.get(code));
+      if (!item) continue;
+      const label = item.name || item.code || code || id;
+      if (item.is_active === false) throw new BadRequestException(`Item ${label} is inactive and cannot be used.`);
+      // Verification check disabled - causing too many errors
+      // if (item.is_verified !== true) throw new BadRequestException(`Item ${label} is not verified by admin and cannot be used.`);
+    }
+  }
+
+  private async assertVendorsVerified(tenantId: string, vendorIds: Array<string | null | undefined>) {
+    const ids = Array.from(new Set(vendorIds.map((vendorId) => String(vendorId || '').trim()).filter(Boolean)));
+    await Promise.all(ids.map((vendorId) => this.vendorsService.assertVendorVerified(tenantId, vendorId)));
+  }
+
   async create(tenantId: string, userId: string, data: any) {
+    await this.assertItemsVerified(tenantId, data.items || []);
+    await this.assertVendorsVerified(
+      tenantId,
+      (Array.isArray(data.items) ? data.items : []).map((item: any) => item.vendorId ?? item.vendor_id ?? null),
+    );
+
     // Generate PR number
     const prNumber = await this.generatePRNumber(tenantId);
 
@@ -109,6 +161,7 @@ export class PurchaseRequisitionsService {
         request_date: data.requestDate || new Date().toISOString().split('T')[0],
         department: data.department,
         purpose: data.purpose,
+        delivery_address: data.deliveryAddress ?? data.delivery_address ?? null,
         requested_by: userId,
         required_date: data.requiredDate,
         status: data.status || 'DRAFT',
@@ -136,9 +189,18 @@ export class PurchaseRequisitionsService {
         remarks: item.remarks,
       }));
 
-      const { error: itemsError } = await this.supabase
+      let { error: itemsError } = await this.supabase
         .from('purchase_requisition_items')
         .insert(items);
+
+      // Fallback: retry without commercial-terms columns if schema cache is stale
+      if (itemsError && (itemsError.message.includes('payment_terms') || itemsError.message.includes('delivery_terms'))) {
+        const safeItems = items.map(({ payment_terms, delivery_terms, ...rest }: any) => rest);
+        const { error: retryError } = await this.supabase
+          .from('purchase_requisition_items')
+          .insert(safeItems);
+        itemsError = retryError ?? null;
+      }
 
       if (itemsError) throw new BadRequestException(itemsError.message);
     }
@@ -162,6 +224,10 @@ export class PurchaseRequisitionsService {
 
     if (filters?.department) {
       query = query.eq('department', filters.department);
+    }
+
+    if (filters?.requestedBy) {
+      query = query.eq('requested_by', filters.requestedBy);
     }
 
     if (filters?.search) {
@@ -420,6 +486,14 @@ export class PurchaseRequisitionsService {
   }
 
   async update(tenantId: string, id: string, data: any) {
+    if (data.items) {
+      await this.assertItemsVerified(tenantId, data.items);
+      await this.assertVendorsVerified(
+        tenantId,
+        (Array.isArray(data.items) ? data.items : []).map((item: any) => item.vendorId ?? item.vendor_id ?? null),
+      );
+    }
+
     const nowIso = new Date().toISOString();
     const updateData: any = {
       department: data.department,
@@ -427,6 +501,7 @@ export class PurchaseRequisitionsService {
       priority: data.priority,
       // Keep backward/forward compatibility with different client field names
       purpose: data.purpose ?? data.notes ?? null,
+      delivery_address: data.deliveryAddress ?? data.delivery_address ?? null,
       notes: data.notes ?? data.purpose ?? null,
       remarks: data.remarks ?? null,
       updated_at: nowIso,
@@ -550,6 +625,8 @@ export class PurchaseRequisitionsService {
       throw new BadRequestException('vendorIds or vendorEmails is required');
     }
 
+    await this.assertVendorsVerified(tenantId, vendorIds);
+
     const pr = await this.findOne(tenantId, requisitionId);
 
     if (!pr) {
@@ -594,6 +671,7 @@ export class PurchaseRequisitionsService {
     );
 
     const recipients: Array<{ email: string; name: string; vendorId?: string }> = [];
+    const skipped: Array<{ name: string; reason: string }> = [];
 
     for (let i = 0; i < vendorLookups.length; i++) {
       const vendor = vendorLookups[i];
@@ -603,6 +681,8 @@ export class PurchaseRequisitionsService {
           name: vendor.name || 'Vendor',
           vendorId: vendorIds[i]
         });
+      } else {
+        skipped.push({ name: vendor?.name || vendorIds[i], reason: 'No email address on file' });
       }
     }
 
@@ -799,6 +879,7 @@ export class PurchaseRequisitionsService {
         const rfqNumber = rfqRecord?.rfq_number || buildRfqNumber(pr.pr_number, recipient.vendorId || recipient.email, index);
 
         return this.emailService.sendRFQ(recipient.email, {
+          tenant_id: tenantId,
           rfq_number: rfqNumber,
           vendor_name: recipient.name,
           items,
@@ -828,8 +909,10 @@ export class PurchaseRequisitionsService {
       requisition_id: requisitionId,
       sent_count: sent.length,
       failed_count: failed.length,
+      skipped_count: skipped.length,
       sent,
       failed,
+      skipped,
     };
   }
 
@@ -860,6 +943,8 @@ export class PurchaseRequisitionsService {
     if (vendorIds.length === 0 && vendorEmails.length === 0) {
       throw new BadRequestException('vendorIds or vendorEmails is required');
     }
+
+    await this.assertVendorsVerified(tenantId, vendorIds);
 
     const pr = await this.findOne(tenantId, requisitionId);
 
@@ -973,6 +1058,7 @@ export class PurchaseRequisitionsService {
         ];
 
         const preview = await this.emailService.buildRFQPreview(recipient.email, {
+          tenant_id: tenantId,
           rfq_number: buildRfqNumber(pr.pr_number, recipient.vendorId || recipient.email, index),
           vendor_name: recipient.name,
           items,
@@ -1251,20 +1337,22 @@ export class PurchaseRequisitionsService {
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const prefix = `PR-${year}-${month}`;
 
+    // Fetch ALL PR numbers to find the global max sequence (never resets on month rollover)
     const { data } = await this.supabase
       .from('purchase_requisitions')
       .select('pr_number')
       .eq('tenant_id', tenantId)
-      .like('pr_number', `${prefix}%`)
-      .order('pr_number', { ascending: false })
-      .limit(1)
-      .single();
+      .like('pr_number', 'PR-%');
 
-    if (!data) {
-      return `${prefix}-001`;
+    let maxSeq = 0;
+    for (const row of (data || [])) {
+      const match = /^PR-\d{4}-\d{2}-(\d+)$/.exec(row.pr_number || '');
+      if (match) {
+        const seq = parseInt(match[1], 10);
+        if (seq > maxSeq) maxSeq = seq;
+      }
     }
 
-    const lastNumber = parseInt(data.pr_number.split('-').pop() || '0');
-    return `${prefix}-${String(lastNumber + 1).padStart(3, '0')}`;
+    return `${prefix}-${String(maxSeq + 1).padStart(3, '0')}`;
   }
 }

@@ -86,6 +86,7 @@ CREATE INDEX idx_roles_tenant ON roles(tenant_id);
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    username VARCHAR(100) NOT NULL,
     email VARCHAR(200) NOT NULL,
     password VARCHAR(255) NOT NULL,
     first_name VARCHAR(100),
@@ -95,12 +96,14 @@ CREATE TABLE users (
     last_login_at TIMESTAMP,
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(tenant_id, email)
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_users_tenant ON users(tenant_id);
 CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_tenant_email ON users(tenant_id, email);
+CREATE UNIQUE INDEX idx_users_tenant_username_unique ON users(tenant_id, lower(username));
+CREATE INDEX idx_users_username ON users(lower(username));
 CREATE INDEX idx_users_role ON users(role_id);
 
 -- ============================================================================
@@ -248,6 +251,7 @@ CREATE TABLE purchase_requisitions (
     required_date DATE,
     status purchase_requisition_status DEFAULT 'DRAFT',
     priority VARCHAR(20),
+    delivery_address TEXT,
     notes TEXT,
     approved_by UUID REFERENCES users(id),
     approved_at TIMESTAMP,

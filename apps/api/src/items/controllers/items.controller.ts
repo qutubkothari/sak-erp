@@ -9,12 +9,16 @@ import {
   Query,
   UseGuards,
   Request,
+  Res,
+  Header,
 } from '@nestjs/common';
+import { Response } from 'express';
+import * as ExcelJS from 'exceljs';
 import { ItemsService } from '../services/items.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
-import { RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('items')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -41,10 +45,11 @@ export class ItemsController {
   }
 
   @Get()
-  async findAll(@Request() req: any, @Query('search') search?: string, @Query('includeInactive') includeInactive?: string) {
+  async findAll(@Request() req: any, @Query('search') search?: string, @Query('includeInactive') includeInactive?: string, @Query('onlyVerified') onlyVerified?: string) {
     const includeInactiveBool = includeInactive === 'true';
-    console.log('[ItemsController] findAll called:', { tenantId: req.user.tenantId, search, includeInactive, includeInactiveBool });
-    const result = await this.itemsService.findAll(req.user.tenantId, search, includeInactiveBool);
+    const onlyVerifiedBool = onlyVerified === 'true';
+    console.log('[ItemsController] findAll called:', { tenantId: req.user.tenantId, search, includeInactive, includeInactiveBool, onlyVerifiedBool });
+    const result = await this.itemsService.findAll(req.user.tenantId, search, includeInactiveBool, onlyVerifiedBool);
     console.log('[ItemsController] findAll result:', { count: result.length });
     return result;
   }
@@ -74,6 +79,18 @@ export class ItemsController {
   @RequireUpdate('items')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.itemsService.update(req.user.tenantId, id, body);
+  }
+
+  @Put(':id/verify')
+  @RequireApprove('items')
+  async verify(@Request() req: any, @Param('id') id: string) {
+    return this.itemsService.setVerification(req.user.tenantId, req.user.userId, id, true);
+  }
+
+  @Put(':id/unverify')
+  @RequireApprove('items')
+  async unverify(@Request() req: any, @Param('id') id: string) {
+    return this.itemsService.setVerification(req.user.tenantId, req.user.userId, id, false);
   }
 
   @Delete(':id')
@@ -133,6 +150,11 @@ export class ItemsController {
     return this.itemsService.getItemStock(itemId, req.user.tenantId);
   }
 
+  @Get(':id/stock-trail')
+  async getStockTrail(@Request() req: any, @Param('id') id: string) {
+    return this.itemsService.getStockTrail(req.user.tenantId, id);
+  }
+
   @Get(':id/variants')
   async getItemVariants(
     @Request() req: any,
@@ -147,5 +169,72 @@ export class ItemsController {
     @Param('id') itemId: string
   ) {
     return this.itemsService.getDefaultVariant(req.user.tenantId, itemId);
+  }
+
+  @Get('export/excel')
+  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  @Header('Content-Disposition', 'attachment; filename="items.xlsx"')
+  async exportExcel(@Request() req: any, @Res() res: Response) {
+    const items = await this.itemsService.findAll(req.user.tenantId, '', true, false);
+    
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Items');
+    
+    worksheet.columns = [
+      { header: 'ID', key: 'id', width: 36 },
+      { header: 'Item Code', key: 'item_code', width: 20 },
+      { header: 'Item Name', key: 'item_name', width: 30 },
+      { header: 'Description', key: 'description', width: 40 },
+      { header: 'Category', key: 'category', width: 20 },
+      { header: 'UOM', key: 'uom', width: 10 },
+      { header: 'HSN Code', key: 'hsn_code', width: 15 },
+      { header: 'Drawing Number', key: 'drawing_number', width: 20 },
+      { header: 'OEM Part No', key: 'oem_part_no', width: 20 },
+      { header: 'OEM Name', key: 'oem_name', width: 25 },
+      { header: 'Is Verified', key: 'is_verified', width: 12 },
+      { header: 'Is Active', key: 'is_active', width: 12 },
+      { header: 'Purchase Currency', key: 'purchase_currency', width: 15 },
+      { header: 'Foreign Unit Price', key: 'foreign_unit_price', width: 15 },
+      { header: 'Standard Price', key: 'standard_price', width: 15 },
+      { header: 'Reorder Level', key: 'reorder_level', width: 12 },
+      { header: 'Reorder Qty', key: 'reorder_qty', width: 12 },
+      { header: 'Max Stock', key: 'max_stock', width: 12 },
+      { header: 'Min Stock', key: 'min_stock', width: 12 },
+      { header: 'GST %', key: 'gst_percentage', width: 10 },
+      { header: 'Created At', key: 'created_at', width: 20 },
+      { header: 'Updated At', key: 'updated_at', width: 20 },
+    ];
+    
+    items.forEach((item: any) => {
+      worksheet.addRow({
+        id: item.id,
+        item_code: item.item_code,
+        item_name: item.item_name,
+        description: item.description,
+        category: item.category?.name || item.category_name || '',
+        uom: item.uom,
+        hsn_code: item.hsn_code,
+        drawing_number: item.drawing_number,
+        oem_part_no: item.oem_part_no || '',
+        oem_name: item.oem_name || '',
+        is_verified: item.is_verified ? 'Yes' : 'No',
+        is_active: item.is_active ? 'Yes' : 'No',
+        purchase_currency: item.purchase_currency,
+        foreign_unit_price: item.foreign_unit_price,
+        standard_price: item.standard_price,
+        reorder_level: item.reorder_level,
+        reorder_qty: item.reorder_qty,
+        max_stock: item.max_stock,
+        min_stock: item.min_stock,
+        gst_percentage: item.gst_percentage,
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+      });
+    });
+    
+    worksheet.getRow(1).font = { bold: true };
+    
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.send(buffer);
   }
 }

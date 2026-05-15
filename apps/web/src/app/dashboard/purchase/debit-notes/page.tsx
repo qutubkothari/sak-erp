@@ -4,18 +4,22 @@ import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
+import { buildDocumentBranding, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
 interface DebitNote {
   id: string;
   debit_note_number: string;
   debit_note_date: string;
+  gross_amount?: number;
+  gst_percentage?: number;
+  tax_amount?: number;
   total_amount: number;
   status: string;
   reason: string;
   notes?: string;
-  grn: { id: string; grn_number: string };
-  vendor: { id: string; name: string; code: string };
+  grn: { id: string; grn_number: string; receipt_date?: string };
+  vendor: { id: string; name: string; code: string; contact_person?: string; email?: string };
   creator: { name: string };
   approver?: { name: string };
   approval_date?: string;
@@ -27,11 +31,13 @@ interface DebitNoteItem {
   rejected_qty: number;
   unit_price: number;
   amount: number;
+  gst_percentage?: number;
+  tax_amount?: number;
   rejection_reason: string;
   return_status: string;
   return_date?: string;
   disposal_notes?: string;
-  item: { id: string; code: string; name: string; unit: string };
+  item: { id: string; code: string; name: string; unit?: string; uom?: string };
 }
 
 export default function DebitNotesPage() {
@@ -172,6 +178,261 @@ export default function DebitNotesPage() {
       case 'REWORKED': return 'bg-blue-100 text-blue-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  const formatCurrency = (value?: number) => {
+    return `₹${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const escapeHtml = (value: unknown) => {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+
+  const handlePrintDebitNote = async (debitNote: DebitNote) => {
+    const printFrame = document.createElement('iframe');
+    printFrame.setAttribute('title', `Print ${debitNote.debit_note_number}`);
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    printFrame.style.visibility = 'hidden';
+    document.body.appendChild(printFrame);
+
+    const printWindow = printFrame.contentWindow;
+    if (!printWindow) {
+      document.body.removeChild(printFrame);
+      alert('Unable to prepare the print layout. Please try again.');
+      return;
+    }
+
+    let branding = buildDocumentBranding(null);
+    try {
+      const company = await apiClient.get<any>('/tenant/current').catch(() => null);
+      branding = buildDocumentBranding(company);
+    } catch {
+      branding = buildDocumentBranding(null);
+    }
+
+    const rows = (debitNote.debit_note_items || []).map((item, index) => {
+      const gstPercentage = Number(item.gst_percentage ?? debitNote.gst_percentage ?? 0);
+      const taxAmount = Number(item.tax_amount || 0);
+      const totalAmount = Number(item.amount || 0) + taxAmount;
+      const unitLabel = item.item?.unit || item.item?.uom || '';
+
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td>
+            <div class="item-name">${escapeHtml(item.item?.name || '-')}</div>
+            <div class="item-code">${escapeHtml(item.item?.code || '')}</div>
+          </td>
+          <td class="num">${escapeHtml(item.rejected_qty)} ${escapeHtml(unitLabel)}</td>
+          <td class="num">${formatCurrency(item.unit_price)}</td>
+          <td class="num">${formatCurrency(item.amount)}</td>
+          <td class="num">${escapeHtml(gstPercentage)}%</td>
+          <td class="num">${formatCurrency(taxAmount)}</td>
+          <td class="num strong">${formatCurrency(totalAmount)}</td>
+          <td>${escapeHtml(item.rejection_reason || '-')}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const grossAmount = Number(debitNote.gross_amount ?? debitNote.total_amount ?? 0);
+    const gstPercentage = Number(debitNote.gst_percentage ?? 0);
+    const taxAmount = Number(debitNote.tax_amount ?? 0);
+    const generatedOn = new Date().toLocaleDateString('en-IN');
+
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(debitNote.debit_note_number)} - Print</title>
+          <style>
+            :root { color-scheme: light; }
+            * { box-sizing: border-box; }
+            body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 20px; color: #1f2937; background: #fff; }
+            .letterhead {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              border-bottom: 2px solid #1e3a8a;
+              padding-bottom: 12px;
+              margin-bottom: 16px;
+            }
+            .logo-section { display: flex; align-items: center; gap: 12px; }
+            .logo-box {
+              width: 52px;
+              height: 52px;
+              background: #1e3a8a;
+              color: white;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-weight: 700;
+              border-radius: 8px;
+            }
+            .logo { width: 52px; height: 52px; object-fit: contain; border-radius: 8px; }
+            .company-name { font-size: 18px; font-weight: 700; margin: 0; color: #1e3a8a; }
+            .company-meta { font-size: 10.5pt; margin: 2px 0 0 0; color: #111; }
+            .generated-on { text-align:right; font-size:10.5pt; color:#1e3a8a; line-height:1.5; }
+            .generated-on-label { font-weight:700; text-transform:uppercase; letter-spacing:0.06em; }
+            .generated-on-value { font-weight:700; color:#111827; }
+            .page { padding: 28px 32px 40px; }
+            .doc-header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; border-bottom: 3px solid #b91c1c; padding-bottom: 18px; }
+            .doc-title { max-width: 48%; }
+            .doc-title h1 { margin: 0; font-size: 28px; letter-spacing: 0.04em; color: #b91c1c; }
+            .doc-title p { margin: 6px 0 0; color: #6b7280; }
+            .meta { min-width: 280px; }
+            .meta-grid { display: grid; grid-template-columns: 120px 1fr; gap: 6px 12px; font-size: 13px; }
+            .label { color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px; }
+            .section { margin-top: 20px; }
+            .section h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: #374151; }
+            .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+            .card { border: 1px solid #d1d5db; border-radius: 10px; padding: 14px; min-height: 112px; }
+            .card p { margin: 0; line-height: 1.55; }
+            .reason { border-left: 4px solid #dc2626; background: #fef2f2; padding: 12px 14px; border-radius: 8px; line-height: 1.6; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th, td { border: 1px solid #d1d5db; padding: 10px 8px; vertical-align: top; font-size: 12px; }
+            th { background: #f3f4f6; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #374151; }
+            .num { text-align: right; white-space: nowrap; }
+            .strong { font-weight: 700; }
+            .item-name { font-weight: 700; }
+            .item-code { color: #6b7280; font-size: 11px; margin-top: 2px; }
+            .totals { margin-top: 16px; margin-left: auto; width: 320px; border: 1px solid #d1d5db; border-radius: 10px; overflow: hidden; }
+            .totals-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
+            .totals-row:last-child { border-bottom: 0; background: #fef2f2; font-weight: 700; color: #991b1b; }
+            .status { display: inline-block; padding: 5px 10px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-weight: 700; font-size: 11px; letter-spacing: 0.04em; }
+            .footer { margin-top: 28px; display: flex; justify-content: space-between; gap: 24px; font-size: 12px; color: #6b7280; }
+            .signature { min-width: 240px; }
+            .signature-line { border-top: 1px solid #9ca3af; margin-top: 36px; padding-top: 8px; color: #374151; }
+            @media print {
+              body { margin: 0; }
+              .page { padding: 18px 20px 24px; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            ${renderStandardLetterheadHtml(branding, generatedOn)}
+
+            <div class="doc-header">
+              <div class="doc-title">
+                <h1>Debit Note</h1>
+                <p>Supplier debit note for rejected materials</p>
+              </div>
+              <div class="meta">
+                <div class="meta-grid">
+                  <div class="label">DN Number</div><div>${escapeHtml(debitNote.debit_note_number)}</div>
+                  <div class="label">DN Date</div><div>${escapeHtml(new Date(debitNote.debit_note_date).toLocaleDateString())}</div>
+                  <div class="label">GRN</div><div>${escapeHtml(debitNote.grn?.grn_number || '-')}</div>
+                  <div class="label">Status</div><div><span class="status">${escapeHtml(debitNote.status || '-')}</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="section card-grid">
+              <div class="card">
+                <h2>Vendor</h2>
+                <p>
+                  <strong>${escapeHtml(debitNote.vendor?.name || '-')}</strong><br />
+                  ${escapeHtml(debitNote.vendor?.code || '')}<br />
+                  ${escapeHtml(debitNote.vendor?.contact_person || '')}<br />
+                  ${escapeHtml(debitNote.vendor?.email || '')}
+                </p>
+              </div>
+              <div class="card">
+                <h2>Document Info</h2>
+                <p>
+                  Created by: <strong>${escapeHtml(debitNote.creator?.name || '-')}</strong><br />
+                  ${debitNote.approver?.name ? `Approved by: <strong>${escapeHtml(debitNote.approver.name)}</strong><br />` : ''}
+                  ${debitNote.approval_date ? `Approval date: ${escapeHtml(new Date(debitNote.approval_date).toLocaleDateString())}<br />` : ''}
+                  ${debitNote.grn?.receipt_date ? `GRN date: ${escapeHtml(new Date(debitNote.grn.receipt_date).toLocaleDateString())}` : ''}
+                </p>
+              </div>
+            </div>
+
+            <div class="section">
+              <h2>Reason</h2>
+              <div class="reason">${escapeHtml(debitNote.reason || '-')}</div>
+            </div>
+
+            ${debitNote.notes ? `
+              <div class="section">
+                <h2>Notes</h2>
+                <div class="reason" style="border-left-color:#9ca3af;background:#f9fafb;">${escapeHtml(debitNote.notes)}</div>
+              </div>
+            ` : ''}
+
+            <div class="section">
+              <h2>Rejected Items</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width: 40px;">#</th>
+                    <th>Item</th>
+                    <th class="num">Rejected Qty</th>
+                    <th class="num">Unit Price</th>
+                    <th class="num">Amount</th>
+                    <th class="num">GST %</th>
+                    <th class="num">Tax</th>
+                    <th class="num">Total</th>
+                    <th>Rejection Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows || '<tr><td colspan="9" style="text-align:center;color:#6b7280;">No rejected items</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="totals">
+              <div class="totals-row"><span>Gross Amount</span><span>${formatCurrency(grossAmount)}</span></div>
+              <div class="totals-row"><span>GST (${escapeHtml(gstPercentage)}%)</span><span>${formatCurrency(taxAmount)}</span></div>
+              <div class="totals-row"><span>Total Debit Amount</span><span>${formatCurrency(debitNote.total_amount)}</span></div>
+            </div>
+
+            <div class="footer">
+              <div>
+                This document records rejected material against the referenced GRN and may be adjusted against supplier payment as per agreed commercial terms.
+              </div>
+              <div class="signature">
+                <div class="signature-line">Authorized Signatory</div>
+              </div>
+            </div>
+          </div>
+          <script>
+            window.onload = function () {
+              setTimeout(function () {
+                try { window.print(); } catch (e) {}
+              }, 150);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    const cleanup = () => {
+      window.setTimeout(() => {
+        if (document.body.contains(printFrame)) {
+          document.body.removeChild(printFrame);
+        }
+      }, 1000);
+    };
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+
+    printWindow.onafterprint = cleanup;
+    printWindow.focus();
   };
 
   const tableColumns: Array<ListTableColumn<DebitNote>> = [
@@ -431,6 +692,12 @@ export default function DebitNotesPage() {
                 Close
               </button>
               <div className="flex gap-3">
+                <button
+                  onClick={() => handlePrintDebitNote(selectedDebitNote)}
+                  className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                >
+                  Print Debit Note
+                </button>
                 {selectedDebitNote.status === 'DRAFT' && canApproveDebitNotes && (
                   <button
                     onClick={() => approveDebitNote(selectedDebitNote.id)}

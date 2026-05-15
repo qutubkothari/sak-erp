@@ -223,6 +223,24 @@ export class GrnController {
     return this.grnService.qcAccept(req.user.tenantId, id, req.user.userId, body);
   }
 
+  @Put(':id/invoice-amounts')
+  @RequireUpdate('grns')
+  async updateInvoiceAmounts(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.grnService.updateInvoiceAmounts(req.user.tenantId, id, body);
+  }
+
+  @Post(':id/approve-invoice')
+  @RequireApprove('grns')
+  async approveInvoice(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.grnService.approveInvoice(req.user.tenantId, id, req.user.userId, body);
+  }
+
+  @Post(':id/unapprove-invoice')
+  @RequireApprove('grns')
+  async unapproveInvoice(@Request() req: any, @Param('id') id: string) {
+    return this.grnService.unapproveInvoice(req.user.tenantId, id);
+  }
+
   @Post(':id/rebuild-stock')
   async rebuildStock(@Request() req: any, @Param('id') id: string) {
     return this.grnService.rebuildStockEntries(req.user.tenantId, id);

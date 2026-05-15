@@ -15,9 +15,11 @@ function isLikelyModalOverlay(element: Element): boolean {
 
 function enhanceOverlay(overlay: HTMLElement) {
   if (overlay.dataset.modalEnhanced === 'true') return;
+  if (overlay.dataset.noModalEnhancer === 'true') return;
 
   const panel = overlay.firstElementChild as HTMLElement | null;
   if (!panel) return;
+  if (panel.dataset.noModalEnhancer === 'true') return;
 
   overlay.dataset.modalEnhanced = 'true';
   overlay.classList.add('modal-overlay');

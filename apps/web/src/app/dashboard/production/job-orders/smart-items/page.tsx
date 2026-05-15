@@ -398,6 +398,7 @@ function SmartJobOrdersItemsPageContent() {
   const [createJobId, setCreateJobId] = useState('');
   const [createJobStatus, setCreateJobStatus] = useState<SmartCreateAsyncStatus | null>(null);
   const [showCreateProgress, setShowCreateProgress] = useState(false);
+  const [showPurchaseRequisitionNotice, setShowPurchaseRequisitionNotice] = useState(false);
 
   // Sub-assembly individual/batch JO creation
   const [subAssemblyQtyModal, setSubAssemblyQtyModal] = useState<{
@@ -455,11 +456,7 @@ function SmartJobOrdersItemsPageContent() {
           } catch (e) {
           }
           
-          // Show success notification and redirect to Job Orders list after a brief delay
-          setTimeout(() => {
-            alert('✅ Job Order(s) created successfully!');
-            router.push('/dashboard/production/job-orders');
-          }, 1500);
+          navigateAfterCreate(result, showPurchaseRequisitionNotice);
         }
 
         if (status.status === 'FAILED') {
@@ -493,7 +490,7 @@ function SmartJobOrdersItemsPageContent() {
       clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [createJobId]);
+  }, [createJobId, showPurchaseRequisitionNotice]);
 
   const canPreview = Boolean(itemId) && Number(quantity) > 0;
 
@@ -699,7 +696,7 @@ function SmartJobOrdersItemsPageContent() {
         .filter((i) => i !== null) as FinishedItem[];
 
       // Fetch ALL items for component selection dropdowns
-      const allItemsResponse = await apiClient.get('/inventory/items');
+      const allItemsResponse = await apiClient.get('/inventory/items?onlyVerified=true');
       const allItemsList = Array.isArray(allItemsResponse) ? allItemsResponse : [];
       
       const allItemsNormalized: FinishedItem[] = allItemsList
@@ -1081,41 +1078,34 @@ function SmartJobOrdersItemsPageContent() {
   //   // eslint-disable-next-line react-hooks/exhaustive-deps
   // }, [itemId, quantity, salesOrderId, salesOrderItemId]);
 
-  const createPurchaseRequisitionForShortages = async (
-    groupedShortages: Array<{ itemCode: string; itemName: string; shortageQuantity: number }>,
-    context: string,
-  ) => {
-    if (!preview || groupedShortages.length === 0) return null;
+  const getLinkedPurchaseRequisition = (result: SmartCreateResponse | null) => {
+    const jobOrder = (result as any)?.jobOrder || (result as any)?.job_order || null;
+    const prId = String(jobOrder?.linked_pr_id || jobOrder?.linkedPrId || '').trim();
+    const prNumber = String(jobOrder?.linked_pr_number || jobOrder?.linkedPrNumber || '').trim();
 
-    setCreatingPR(true);
-    try {
-      const prItems = groupedShortages.map((row) => ({
-        itemCode: row.itemCode,
-        itemName: row.itemName,
-        requestedQty: Math.ceil(row.shortageQuantity),
-        description: `For Job Order: ${preview.finishedItem.code} (${context})`,
-        uom: 'PCS',
-      }));
+    return {
+      prId,
+      prNumber,
+      hasLinkedPr: Boolean(prId || prNumber),
+    };
+  };
 
-      const today = new Date();
-      const requiredDate = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
-      
-      const prData = {
-        requestDate: today.toISOString().split('T')[0],
-        requiredDate: requiredDate.toISOString().split('T')[0],
-        purpose: `Auto-generated PR for Job Order shortage: ${preview.finishedItem.code} (${context})`,
-        items: prItems,
-      };
+  const navigateAfterCreate = (result: SmartCreateResponse | null, shouldShowPurchaseRequisitionNotice: boolean) => {
+    const linkedPr = getLinkedPurchaseRequisition(result);
 
-      const result = await apiClient.post('/purchase/requisitions', prData);
-      const prId = result?.id || result?.pr_id;
-      return { prId };
-    } catch (err: any) {
-      alert(`❌ Failed to create Purchase Requisition: ${err?.message || 'Unknown error'}`);
-      return null;
-    } finally {
-      setCreatingPR(false);
-    }
+    setTimeout(() => {
+      if (shouldShowPurchaseRequisitionNotice && linkedPr.hasLinkedPr) {
+        alert(
+          `✅ Job Order created successfully!\n\nPurchase Requisition issued${
+            linkedPr.prNumber ? `: ${linkedPr.prNumber}` : '.'
+          }`,
+        );
+      } else {
+        alert('✅ Job Order(s) created successfully!');
+      }
+
+      router.push('/dashboard/production/job-orders');
+    }, 1500);
   };
 
   const handlePurchaseShortageItems = async () => {
@@ -1124,11 +1114,11 @@ function SmartJobOrdersItemsPageContent() {
     const groupedShortages = groupShortagesByItem(preview.nodes || [], autoMakeItemIds);
     if (groupedShortages.length === 0) return;
 
-    const result = await createPurchaseRequisitionForShortages(groupedShortages, 'Shortage');
-    if (result?.prId) {
-      window.open(`/dashboard/purchase/requisitions?prId=${result.prId}`, '_blank');
-    } else {
-      window.open('/dashboard/purchase/requisitions', '_blank');
+    setCreatingPR(true);
+    try {
+      await handleCreate();
+    } finally {
+      setCreatingPR(false);
     }
   };
 
@@ -1144,21 +1134,7 @@ function SmartJobOrdersItemsPageContent() {
 
     const hasShortages = groupedShortages.length > 0;
     const requestedQty = Number(quantity) || 0;
-
-    if (hasShortages) {
-      const shortageList = groupedShortages
-        .map((row) => {
-          return `${row.itemCode} - ${row.itemName}: Need ${formatQuantity(row.requiredQuantity)}, Have ${formatQuantity(row.availableQuantity)}, Short ${formatQuantity(row.shortageQuantity)}`;
-        })
-        .join('\n');
-
-      alert(
-        `❌ Cannot create Job Order before material issue.\n\n` +
-        `Please issue required materials first from Inventory → SIV.\n\n` +
-        `Shortage details:\n${shortageList}`,
-      );
-      return;
-    }
+    setShowPurchaseRequisitionNotice(hasShortages);
 
     const effectiveQuantity = requestedQty;
 
@@ -1226,11 +1202,7 @@ function SmartJobOrdersItemsPageContent() {
           setShowCreateSummary(true);
           createdSuccessfully = true;
           
-          // Show success and redirect to Job Orders list
-          setTimeout(() => {
-            alert('✅ Job Order(s) created successfully!');
-            router.push('/dashboard/production/job-orders');
-          }, 1500);
+          navigateAfterCreate(result, hasShortages);
         } catch (e2: any) {
           alert(`❌ Failed to create Smart Job Order: ${e2?.message || msg}`);
         }
@@ -1514,6 +1486,7 @@ function SmartJobOrdersItemsPageContent() {
     };
 
     const shortageMemo = new Map<string, boolean>();
+    const shortageQuantityMemo = new Map<string, number>();
     const hasShortageInBom = (id: string): boolean => {
       const cached = shortageMemo.get(id);
       if (cached !== undefined) return cached;
@@ -1542,6 +1515,31 @@ function SmartJobOrdersItemsPageContent() {
       return false;
     };
 
+    const getShortageQuantityInBom = (id: string): number => {
+      const cached = shortageQuantityMemo.get(id);
+      if (cached !== undefined) return cached;
+
+      let totalShortage = 0;
+
+      const directItems = itemNodesByBomId.get(id) || [];
+      for (const item of directItems) {
+        const key = nodeKey(item);
+        const selectedItemId = selectedItemByNodeKey[key] || item.itemId;
+        const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
+        const available = stockState?.available ?? item.availableQuantity;
+        const shortage = Math.max(0, Number(item.requiredQuantity || 0) - Number(available || 0));
+        totalShortage += shortage;
+      }
+
+      const childBoms = childBomIdsByParent.get(id) || [];
+      for (const childId of childBoms) {
+        totalShortage += getShortageQuantityInBom(childId);
+      }
+
+      shortageQuantityMemo.set(id, totalShortage);
+      return totalShortage;
+    };
+
     const getBgColor = (lvl: number) => {
       if (lvl === 0) return 'bg-amber-100 hover:bg-amber-200';
       if (lvl === 1) return 'bg-amber-50 hover:bg-amber-100';
@@ -1557,6 +1555,7 @@ function SmartJobOrdersItemsPageContent() {
       const directItems = itemNodesByBomId.get(id) || [];
       const childBoms = childBomIdsByParent.get(id) || [];
       const hasShortage = hasShortageInBom(id);
+      const shortageQuantity = getShortageQuantityInBom(id);
       const lvl = Number(bom.level ?? 0);
 
       return (
@@ -1592,7 +1591,7 @@ function SmartJobOrdersItemsPageContent() {
               </span>
               {hasShortage && (
                 <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
-                  Shortage
+                  Short {formatQuantity(shortageQuantity)}
                 </span>
               )}
             </span>
@@ -2345,6 +2344,10 @@ function SmartJobOrdersItemsPageContent() {
                           return preview.subAssembliesToMake.map((sa, idx) => {
                           const ready = isSubAssemblyReady(sa.bomId);
                           const selected = selectedSABatchKeys.has(getSAKey(sa));
+                          const shortageQty = Math.max(
+                            0,
+                            (Number(sa.requiredQuantity || 0) || 0) - getAvailableForItemId(String(sa.itemId || ''), Number(sa.availableQuantity || 0) || 0),
+                          );
                           return (
                             <tr key={`${sa.bomId}:${sa.itemId}`} className={ready ? 'bg-green-50' : ''}>
                               <td className="px-4 py-2 text-center">
@@ -2370,7 +2373,7 @@ function SmartJobOrdersItemsPageContent() {
                                   </span>
                                 ) : (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
-                                    Shortage
+                                    Short {formatQuantity(shortageQty)}
                                   </span>
                                 )}
                               </td>
@@ -2549,10 +2552,10 @@ function SmartJobOrdersItemsPageContent() {
                                 e.stopPropagation();
                                 handlePurchaseShortageItems();
                               }}
-                              disabled={creatingPR}
+                              disabled={creatingPR || creating}
                               className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                             >
-                              {creatingPR ? 'Creating PR...' : '🛒 Purchase All Shortage Items'}
+                              {creatingPR || creating ? 'Creating Job Order...' : 'Create Job Order'}
                             </button>
                           </div>
                         )}
@@ -2579,7 +2582,9 @@ function SmartJobOrdersItemsPageContent() {
                           )}
                         </div>
                         <button
-                          onClick={handleCreate}
+                          onClick={() => {
+                            void handleCreate();
+                          }}
                           disabled={creating || !canPreview}
                           className={`px-6 py-3 rounded-lg font-semibold text-white transition-colors ${
                             creating || !canPreview
@@ -2618,7 +2623,7 @@ function SmartJobOrdersItemsPageContent() {
             {(() => {
               const jo = (createSummary as any)?.jobOrder || (createSummary as any)?.job_order;
               const joNumber = jo?.job_order_number || jo?.jobOrderNumber || '';
-              const joStatus = jo?.status || '-';
+              const joStatus = jo?.workflow_status || jo?.workflowStatus || jo?.status || '-';
               const joItemCode = jo?.item_code || jo?.itemCode || '';
               const joItemName = jo?.item_name || jo?.itemName || '';
               const joQty = Number(jo?.quantity ?? 0) || 0;

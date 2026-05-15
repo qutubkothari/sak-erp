@@ -40,7 +40,7 @@ export class UidService {
   /**
    * Generate a unique UID with format:
    * UID-{TENANT}-{PLANT}-{TYPE}-{SEQUENCE}-{CHECKSUM}
-   * Example: UID-SAIF-KOL-RM-000001-A7
+    * Example: UID-TEN-KOL-RM-000001-A7
    */
   async generateUid(config: UidConfig): Promise<string> {
     const { tenantCode, plantCode, entityType, sequence } = config;

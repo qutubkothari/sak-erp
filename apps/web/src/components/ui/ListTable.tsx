@@ -1,7 +1,7 @@
 'use client';
 
-import React, { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { Download } from 'lucide-react';
+import React, { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDown, ArrowUp, Download, GripVertical } from 'lucide-react';
 import { downloadCSV } from '@/lib/utils';
 
 export type ListTableColumn<T> = {
@@ -12,8 +12,10 @@ export type ListTableColumn<T> = {
   sortable?: boolean;
   hideable?: boolean;
   defaultVisible?: boolean;
+  resizable?: boolean;
   headerClassName?: string;
   cellClassName?: string;
+  minWidth?: number;
   align?: 'left' | 'center' | 'right';
   sortAccessor?: (row: T) => unknown;
   searchAccessor?: (row: T) => string;
@@ -29,12 +31,17 @@ export type ListTableProps<T> = {
   pageSizeOptions?: number[];
   defaultPageSize?: number;
   searchPlaceholder?: string;
+  initialSearch?: string;
   hideSearch?: boolean;
   toolbarRight?: ReactNode;
   emptyState?: ReactNode;
   className?: string;
   /** When provided, a "Export CSV" button appears in the toolbar */
   exportFilename?: string;
+  fitToContainer?: boolean;
+  selectable?: boolean;
+  selectedRowIds?: string[];
+  onSelectionChange?: (selectedRowIds: string[]) => void;
 };
 
 function safeParseJson<T>(value: string | null): T | null {
@@ -83,16 +90,22 @@ export function ListTable<T>(props: ListTableProps<T>) {
     pageSizeOptions = [10, 25, 50, 100],
     defaultPageSize = 10,
     searchPlaceholder = 'Search…',
+    initialSearch = '',
     hideSearch,
     toolbarRight,
     emptyState,
     className = '',
     exportFilename,
+    fitToContainer = false,
+    selectable = false,
+    selectedRowIds,
+    onSelectionChange,
   } = props;
 
   const columnsMenuRef = useRef<HTMLDivElement | null>(null);
 
   const visibilityStorageKey = `${storageKey}:columns:v1`;
+  const orderStorageKey = `${storageKey}:columnOrder:v1`;
   const pageSizeStorageKey = `${storageKey}:pageSize:v1`;
 
   const defaultVisibility = useMemo(() => {
@@ -103,13 +116,24 @@ export function ListTable<T>(props: ListTableProps<T>) {
     return map;
   }, [columns]);
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
   const [sortId, setSortId] = useState<string>('');
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(defaultPageSize);
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
   const [visibleById, setVisibleById] = useState<Record<string, boolean>>(defaultVisibility);
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => columns.filter((c) => c.hideable !== false).map((c) => c.id));
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+    const widths: Record<string, number> = {};
+    for (const col of columns) {
+      if (col.minWidth) {
+        widths[col.id] = col.minWidth;
+      }
+    }
+    return widths;
+  });
+  const [activeResize, setActiveResize] = useState<{ id: string; startX: number; startWidth: number } | null>(null);
 
   useEffect(() => {
     const savedVisibility = safeParseJson<Record<string, boolean>>(localStorage.getItem(visibilityStorageKey));
@@ -117,12 +141,67 @@ export function ListTable<T>(props: ListTableProps<T>) {
       setVisibleById((prev) => ({ ...prev, ...savedVisibility }));
     }
 
+    const savedOrder = safeParseJson<string[]>(localStorage.getItem(orderStorageKey));
+    if (Array.isArray(savedOrder)) {
+      setColumnOrder(savedOrder.filter((id) => columns.some((col) => col.id === id && col.hideable !== false)));
+    }
+
     const savedPageSize = safeParseJson<number>(localStorage.getItem(pageSizeStorageKey));
     if (typeof savedPageSize === 'number' && pageSizeOptions.includes(savedPageSize)) {
       setPageSize(savedPageSize);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibilityStorageKey, pageSizeStorageKey]);
+  }, [visibilityStorageKey, orderStorageKey, pageSizeStorageKey]);
+
+  const orderedColumns = useMemo(() => {
+    const leadingFixed = columns.filter((c) => c.hideable === false && c.id !== 'actions');
+    const trailingFixed = columns.filter((c) => c.hideable === false && c.id === 'actions');
+    const reorderable = columns.filter((c) => c.hideable !== false);
+    const byId = new Map(reorderable.map((col) => [col.id, col]));
+    const orderedReorderable = columnOrder
+      .map((id) => byId.get(id))
+      .filter((col): col is ListTableColumn<T> => Boolean(col));
+    const remaining = reorderable.filter((col) => !columnOrder.includes(col.id));
+    return [...leadingFixed, ...orderedReorderable, ...remaining, ...trailingFixed];
+  }, [columnOrder, columns]);
+
+  const getColumnWidth = useCallback(
+    (col: ListTableColumn<T>) => columnWidths[col.id] ?? col.minWidth ?? 150,
+    [columnWidths],
+  );
+
+  useEffect(() => {
+    if (!activeResize) return;
+
+    const onMouseMove = (event: MouseEvent) => {
+      setColumnWidths((prev) => {
+        if (!activeResize) return prev;
+        const nextWidth = Math.max(80, activeResize.startWidth + (event.clientX - activeResize.startX));
+        return { ...prev, [activeResize.id]: nextWidth };
+      });
+    };
+
+    const onMouseUp = () => setActiveResize(null);
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [activeResize]);
+
+  const startColumnResize = useCallback((id: string, startX: number) => {
+    setActiveResize((current) => {
+      if (current && current.id === id) return current;
+      return {
+        id,
+        startX,
+        startWidth: columnWidths[id] ?? 150,
+      };
+    });
+  }, [columnWidths]);
 
   useEffect(() => {
     if (!showColumnsMenu) return;
@@ -138,8 +217,20 @@ export function ListTable<T>(props: ListTableProps<T>) {
   }, [showColumnsMenu]);
 
   const visibleColumns = useMemo(() => {
-    return columns.filter((c) => visibleById[c.id] !== false);
-  }, [columns, visibleById]);
+    return orderedColumns.filter((c) => visibleById[c.id] !== false);
+  }, [orderedColumns, visibleById]);
+
+  const tableMinWidth = useMemo(() => {
+    return visibleColumns.reduce((total, col) => {
+      const width = getColumnWidth(col);
+      return total + width;
+    }, 0);
+  }, [getColumnWidth, visibleColumns]);
+
+  const scrollTableWidth = useMemo(() => {
+    const perColumnWidth = visibleColumns.reduce((total, col) => total + getColumnWidth(col), 0);
+    return Math.max(perColumnWidth, tableMinWidth, 720);
+  }, [getColumnWidth, tableMinWidth, visibleColumns]);
 
   const filteredRows = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -191,6 +282,50 @@ export function ListTable<T>(props: ListTableProps<T>) {
   const showingFrom = totalRows === 0 ? 0 : clampedPageIndex * pageSize + 1;
   const showingTo = Math.min((clampedPageIndex + 1) * pageSize, totalRows);
 
+  const selectedRowIdsSet = useMemo(() => new Set(selectedRowIds ?? []), [selectedRowIds]);
+  const pageRowIds = useMemo(() => pagedRows.map(getRowId), [pagedRows, getRowId]);
+  const allPageSelected = selectable && pageRowIds.length > 0 && pageRowIds.every((id) => selectedRowIdsSet.has(id));
+  const somePageSelected = selectable && pageRowIds.some((id) => selectedRowIdsSet.has(id)) && !allPageSelected;
+  const pageCheckboxRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (pageCheckboxRef.current) {
+      pageCheckboxRef.current.indeterminate = somePageSelected;
+    }
+  }, [somePageSelected]);
+
+  const toggleRowSelection = useCallback(
+    (id: string, checked: boolean) => {
+      if (!onSelectionChange) return;
+      const next = new Set(selectedRowIdsSet);
+      if (checked) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      onSelectionChange(Array.from(next));
+    },
+    [onSelectionChange, selectedRowIdsSet],
+  );
+
+  const togglePageSelection = useCallback(
+    (checked: boolean) => {
+      if (!onSelectionChange) return;
+      const next = new Set(selectedRowIdsSet);
+      if (checked) {
+        for (const id of pageRowIds) {
+          next.add(id);
+        }
+      } else {
+        for (const id of pageRowIds) {
+          next.delete(id);
+        }
+      }
+      onSelectionChange(Array.from(next));
+    },
+    [onSelectionChange, pageRowIds, selectedRowIdsSet],
+  );
+
   const toggleSort = (id: string) => {
     if (sortId !== id) {
       setSortId(id);
@@ -229,9 +364,26 @@ export function ListTable<T>(props: ListTableProps<T>) {
     });
   };
 
+  const moveColumn = (id: string, direction: -1 | 1) => {
+    setColumnOrder((prev) => {
+      const current = prev.length ? prev : columns.filter((c) => c.hideable !== false).map((c) => c.id);
+      const index = current.indexOf(id);
+      const targetIndex = index + direction;
+      if (index < 0 || targetIndex < 0 || targetIndex >= current.length) return current;
+
+      const updated = [...current];
+      [updated[index], updated[targetIndex]] = [updated[targetIndex], updated[index]];
+      localStorage.setItem(orderStorageKey, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const resetColumns = () => {
     setVisibleById(defaultVisibility);
+    const defaultOrder = columns.filter((c) => c.hideable !== false).map((c) => c.id);
+    setColumnOrder(defaultOrder);
     localStorage.setItem(visibilityStorageKey, JSON.stringify(defaultVisibility));
+    localStorage.setItem(orderStorageKey, JSON.stringify(defaultOrder));
   };
 
   const handleExportCSV = () => {
@@ -252,7 +404,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
   return (
     <div className={`bg-white rounded-lg shadow-md overflow-hidden ${className}`}>
       {/* Toolbar */}
-      <div className="p-4 border-b bg-gray-50 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="p-3 border-b bg-gray-50 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 items-center gap-3">
           {!hideSearch && (
             <input
@@ -263,22 +415,22 @@ export function ListTable<T>(props: ListTableProps<T>) {
                 setPageIndex(0);
               }}
               placeholder={searchPlaceholder}
-              className="w-full sm:max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+              className="w-full sm:max-w-md px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500"
             />
           )}
           <div className="relative" ref={columnsMenuRef}>
             <button
               type="button"
               onClick={() => setShowColumnsMenu((s) => !s)}
-              className="px-4 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-sm"
+              className="px-3 py-2 border border-gray-300 rounded-md bg-white hover:bg-gray-50 text-sm"
             >
               Columns
             </button>
 
             {showColumnsMenu && (
-              <div className="absolute z-50 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+              <div className="absolute z-50 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-semibold text-gray-800">Show columns</div>
+                  <div className="text-sm font-semibold text-gray-800">Show and arrange columns</div>
                   <button
                     type="button"
                     onClick={() => setShowColumnsMenu(false)}
@@ -313,19 +465,42 @@ export function ListTable<T>(props: ListTableProps<T>) {
                   </button>
                 </div>
 
-                <div className="max-h-64 overflow-auto space-y-1">
-                  {columns
+                <div className="max-h-72 overflow-auto space-y-1">
+                  {orderedColumns
                     .filter((c) => c.hideable !== false)
-                    .map((col) => (
-                      <label key={col.id} className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="checkbox"
-                          checked={visibleById[col.id] !== false}
-                          onChange={(e) => toggleColumn(col.id, e.target.checked)}
-                          className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-                        />
-                        <span>{col.label}</span>
-                      </label>
+                    .map((col, index, list) => (
+                      <div key={col.id} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-50">
+                        <GripVertical className="h-4 w-4 shrink-0 text-gray-300" />
+                        <label className="flex min-w-0 flex-1 items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={visibleById[col.id] !== false}
+                            onChange={(e) => toggleColumn(col.id, e.target.checked)}
+                            className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                          />
+                          <span className="truncate">{col.label}</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => moveColumn(col.id, -1)}
+                          disabled={index === 0}
+                          className="rounded p-1 text-gray-500 hover:bg-white hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-30"
+                          title="Move column left"
+                          aria-label={`Move ${col.label} left`}
+                        >
+                          <ArrowUp className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveColumn(col.id, 1)}
+                          disabled={index === list.length - 1}
+                          className="rounded p-1 text-gray-500 hover:bg-white hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-30"
+                          title="Move column right"
+                          aria-label={`Move ${col.label} right`}
+                        >
+                          <ArrowDown className="h-4 w-4" />
+                        </button>
+                      </div>
                     ))}
                 </div>
               </div>
@@ -354,7 +529,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
               localStorage.setItem(pageSizeStorageKey, JSON.stringify(next));
               setPageIndex(0);
             }}
-            className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm"
+            className="px-3 py-2 border border-gray-300 rounded-md bg-white text-sm"
           >
             {pageSizeOptions.map((n) => (
               <option key={n} value={n}>
@@ -366,22 +541,46 @@ export function ListTable<T>(props: ListTableProps<T>) {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
+      <div
+        className={`${fitToContainer ? 'overflow-hidden' : 'erp-list-table-scroll pb-2'} ${activeResize ? 'cursor-col-resize select-none' : ''}`}
+        style={fitToContainer ? undefined : { scrollbarGutter: 'stable' }}
+      >
+        <table
+          className="table-fixed"
+          style={fitToContainer ? { width: '100%' } : { width: `${scrollTableWidth}px`, minWidth: '100%' }}
+        >
           <thead className="bg-gray-50 border-b">
             <tr>
+              {selectable && (
+                <th
+                  style={fitToContainer ? undefined : { width: '44px', minWidth: '44px' }}
+                  className="sticky top-0 z-10 bg-gray-50 px-3 py-2.5 text-left"
+                >
+                  <input
+                    type="checkbox"
+                    ref={pageCheckboxRef}
+                    checked={allPageSelected}
+                    onChange={(e) => togglePageSelection(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                    aria-label="Select all visible rows"
+                  />
+                </th>
+              )}
               {visibleColumns.map((col) => {
                 const sortable = col.sortable ?? Boolean(col.sortAccessor || col.accessor);
                 const isSorted = sortId === col.id;
                 const align = col.align || 'left';
                 const headerAlignClass =
                   align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
+                const width = getColumnWidth(col);
+                const resizable = col.resizable !== false;
 
                 return (
                   <th
                     key={col.id}
+                    style={{ width: `${width}px`, minWidth: `${width}px` }}
                     className={
-                      `px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider ` +
+                      `relative sticky top-0 z-10 bg-gray-50 px-3 py-2.5 text-[11px] font-semibold text-gray-600 uppercase tracking-wide ` +
                       headerAlignClass +
                       ` ${sortable ? 'cursor-pointer hover:bg-gray-100' : ''} ` +
                       (col.headerClassName || '')
@@ -391,10 +590,24 @@ export function ListTable<T>(props: ListTableProps<T>) {
                       toggleSort(col.id);
                     }}
                   >
-                    <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : ''}`}>
-                      <span>{col.label}</span>
+                    <div className={`flex min-w-0 items-center gap-1 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : ''}`}>
+                      <span className="min-w-0 truncate">{col.label}</span>
                       {isSorted && <span className="text-gray-500">{sortDir === 'asc' ? '↑' : '↓'}</span>}
                     </div>
+                    {resizable && (
+                      <div
+                        role="separator"
+                        aria-orientation="vertical"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          startColumnResize(col.id, e.clientX);
+                        }}
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize group/resize hover:bg-amber-400/40 active:bg-amber-500/60 transition-colors"
+                      >
+                        <div className="absolute right-0.5 top-1/4 h-1/2 w-px bg-gray-300 group-hover/resize:bg-amber-500 transition-colors" />
+                      </div>
+                    )}
                   </th>
                 );
               })}
@@ -403,13 +616,24 @@ export function ListTable<T>(props: ListTableProps<T>) {
           <tbody className="divide-y divide-gray-200">
             {pagedRows.length === 0 ? (
               <tr>
-                <td colSpan={visibleColumns.length || 1} className="px-6 py-10 text-center text-gray-500">
+                <td colSpan={(visibleColumns.length || 1) + (selectable ? 1 : 0)} className="px-6 py-10 text-center text-gray-500">
                   {emptyState || 'No results'}
                 </td>
               </tr>
             ) : (
               pagedRows.map((row) => (
-                <tr key={getRowId(row)} className="hover:bg-gray-50">
+                <tr key={getRowId(row)} className="group hover:bg-gray-50">
+                  {selectable && (
+                    <td className="px-3 py-2.5 text-left">
+                      <input
+                        type="checkbox"
+                        checked={selectedRowIdsSet.has(getRowId(row))}
+                        onChange={(e) => toggleRowSelection(getRowId(row), e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                        aria-label={`Select row ${getRowId(row)}`}
+                      />
+                    </td>
+                  )}
                   {visibleColumns.map((col) => {
                     const align = col.align || 'left';
                     const cellAlignClass =
@@ -418,7 +642,8 @@ export function ListTable<T>(props: ListTableProps<T>) {
                     return (
                       <td
                         key={col.id}
-                        className={`px-4 py-3 text-sm text-gray-700 ${cellAlignClass} ${col.cellClassName || ''}`}
+                        style={fitToContainer ? undefined : { width: `${getColumnWidth(col)}px`, minWidth: `${getColumnWidth(col)}px` }}
+                        className={`min-w-0 px-3 py-2.5 text-[13px] leading-5 text-gray-700 align-middle ${cellAlignClass} ${col.cellClassName || ''}`}
                       >
                         {col.cell ? col.cell(row) : normalizeForSearch(col.accessor ? col.accessor(row) : '')}
                       </td>

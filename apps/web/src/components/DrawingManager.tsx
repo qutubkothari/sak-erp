@@ -48,6 +48,9 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
   const [documents, setDocuments] = useState<DocumentOption[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>('');
+  const [externalUrl, setExternalUrl] = useState('');
+  const [externalUrlName, setExternalUrlName] = useState('');
+  const [linkingUrl, setLinkingUrl] = useState(false);
 
   const dataUrlToBlob = (dataUrl: string) => {
     const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
@@ -450,9 +453,72 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
                 </div>
               </div>
 
+              {/* External URL option */}
+              <div className="bg-white border border-amber-200 rounded-lg p-3">
+                <div className="text-sm font-medium text-amber-900 mb-2">Link External URL / Cloud Drive</div>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={externalUrlName}
+                    onChange={(e) => setExternalUrlName(e.target.value)}
+                    placeholder="Drawing name / description (e.g. Assembly Drawing Rev 2)"
+                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={externalUrl}
+                      onChange={(e) => setExternalUrl(e.target.value)}
+                      placeholder="https://drive.google.com/... or any public URL"
+                      className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm"
+                    />
+                    <button
+                      type="button"
+                      disabled={!externalUrl.trim() || linkingUrl}
+                      onClick={async () => {
+                        if (!externalUrl.trim()) return;
+                        setLinkingUrl(true);
+                        try {
+                          const token = localStorage.getItem('accessToken');
+                          const res = await fetch(`/api/v1/inventory/items/${itemId}/drawings`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({
+                              fileName: externalUrlName.trim() || new URL(externalUrl).pathname.split('/').pop() || 'external-link',
+                              fileUrl: externalUrl.trim(),
+                              fileType: 'application/external-link',
+                              fileSize: 0,
+                              revisionNotes: revisionNotes.trim() || 'Linked external URL',
+                            }),
+                          });
+                          if (res.ok) {
+                            alert('External URL linked successfully!');
+                            setExternalUrl('');
+                            setExternalUrlName('');
+                            setRevisionNotes('');
+                            await fetchDrawings();
+                          } else {
+                            const err = await res.json().catch(() => ({}));
+                            alert(`Failed: ${err.message || 'Unknown error'}`);
+                          }
+                        } catch (e: any) {
+                          alert(e.message || 'Failed to link URL');
+                        } finally {
+                          setLinkingUrl(false);
+                        }
+                      }}
+                      className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {linkingUrl ? 'Linking…' : 'Link URL'}
+                    </button>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Paste a Google Drive, SharePoint, or any accessible URL.</div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select File (PNG, JPG, PDF - Max 10MB) *
+                  Upload File (PNG, JPG, PDF - Max 10MB)
                 </label>
                 <input
                   type="file"
@@ -546,9 +612,12 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
                         </div>
 
                         <div className="mt-2 text-sm text-gray-600 grid grid-cols-2 gap-x-4">
-                          <div>Type: {drawing.file_type}</div>
-                          <div>Size: {formatFileSize(drawing.file_size)}</div>
+                          <div>Type: {drawing.file_type === 'application/external-link' ? <span className="text-blue-600 font-medium">🔗 External URL</span> : drawing.file_type}</div>
+                          <div>{drawing.file_type === 'application/external-link' ? '' : `Size: ${formatFileSize(drawing.file_size)}`}</div>
                           <div className="col-span-2 mt-1">Uploaded: {formatDate(drawing.created_at)}</div>
+                          {drawing.file_type === 'application/external-link' && (
+                            <div className="col-span-2 mt-1 truncate text-blue-500 text-xs">{drawing.file_url}</div>
+                          )}
                         </div>
 
                         {drawing.revision_notes && (

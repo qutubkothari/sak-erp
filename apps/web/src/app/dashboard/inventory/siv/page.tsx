@@ -3,8 +3,12 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import SearchableSelect from '../../../../components/SearchableSelect';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
+import { buildDocumentBranding, escapeHtml, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+
+const AUTO_REFRESH_MS = 30000;
 
 type BomComponent = {
   item_code: string;
@@ -17,6 +21,10 @@ type InventoryItem = {
   id: string;
   code?: string;
   name?: string;
+  category?: string;
+  type?: string;
+  uid_tracking?: boolean;
+  uid_strategy?: string;
 };
 
 type ManualIssueLine = {
@@ -47,6 +55,8 @@ type MaterialReq = {
   item_id?: string;
   item_code?: string;
   item_name?: string;
+  assigned_to?: string;
+  assigned_to_name?: string;
   status?: string;
   requiredQuantity?: number;
   issuedQuantity?: number;
@@ -75,6 +85,19 @@ type SivHistoryRow = {
 export default function SivPage() {
   const router = useRouter();
   const currentUser = readStoredUser();
+  const currentUserDisplayName = String(
+    (currentUser as any)?.employee_name ||
+    [
+      (currentUser as any)?.first_name,
+      (currentUser as any)?.last_name,
+    ].filter(Boolean).join(' ') ||
+    [
+      (currentUser as any)?.firstName,
+      (currentUser as any)?.lastName,
+    ].filter(Boolean).join(' ') ||
+    (currentUser as any)?.email ||
+    '-',
+  ).trim() || '-';
   const canCreate = hasModulePermission(currentUser, 'Inventory', 'create');
   const canApprove = hasModulePermission(currentUser, 'Inventory', 'approve');
   const canDelete = hasModulePermission(currentUser, 'Inventory', 'delete');
@@ -153,8 +176,10 @@ export default function SivPage() {
     setUidPickerOpen(false);
   }, [uidPickerLineId, uidPickerSelected]);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  const loadAll = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setLoading(true);
+    }
     try {
       const [reqs, sivHist] = await Promise.all([
         apiClient.get<MaterialReq[]>('/job-orders/store/material-requisitions/open'),
@@ -163,9 +188,13 @@ export default function SivPage() {
       setMaterialRequests(reqs || []);
       setSivHistory(sivHist || []);
     } catch (err: any) {
-      alert('Failed to load SIV data: ' + (err.message || err));
+      if (!options?.silent) {
+        alert('Failed to load SIV data: ' + (err.message || err));
+      }
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -176,12 +205,41 @@ export default function SivPage() {
         id: String(row?.id || '').trim(),
         code: String(row?.code || '').trim(),
         name: String(row?.name || '').trim(),
+        category: String(row?.category || '').trim(),
+        type: String(row?.type || '').trim(),
+        uid_tracking: Boolean(row?.uid_tracking ?? row?.uidTracking),
+        uid_strategy: String((row?.uid_strategy ?? row?.uidStrategy) || '').trim(),
       })).filter((row) => row.id);
       setInventoryItems(mapped);
     } catch {
       setInventoryItems([]);
     }
   }, []);
+
+  const isSubassemblyItem = useCallback((itemId?: string) => {
+    const normalizedId = String(itemId || '').trim();
+    if (!normalizedId) return false;
+
+    const item = inventoryItems.find((row) => row.id === normalizedId);
+    const category = String(item?.category || item?.type || '').trim().toUpperCase();
+
+    return category === 'SUBASSEMBLY' || category === 'SUB_ASSEMBLY' || category === 'WIP';
+  }, [inventoryItems]);
+
+  const itemRequiresUid = useCallback((itemId?: string) => {
+    const normalizedId = String(itemId || '').trim();
+    if (!normalizedId) return false;
+
+    const item = inventoryItems.find((row) => row.id === normalizedId);
+    if (!item) return false;
+
+    const strategy = String(item.uid_strategy || '').trim().toUpperCase();
+    if (strategy) {
+      return strategy !== 'NONE';
+    }
+
+    return item.uid_tracking === true;
+  }, [inventoryItems]);
 
   const fetchLineBom = useCallback(async (lineId: string, itemId: string) => {
     // Toggle collapse if already loaded
@@ -220,6 +278,21 @@ export default function SivPage() {
     loadAll();
     loadInventoryItems();
   }, [loadAll, loadInventoryItems]);
+
+  useEffect(() => {
+    if (!manualIssueItemId || itemRequiresUid(manualIssueItemId)) return;
+    setManualIssueUidInput('');
+    setManualIssueUids([]);
+  }, [itemRequiresUid, manualIssueItemId]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      loadAll({ silent: true });
+    }, AUTO_REFRESH_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadAll]);
 
   useEffect(() => {
     // Read jobId / joNumber from URL on client only (avoids Next.js Suspense requirement for useSearchParams).
@@ -287,25 +360,46 @@ export default function SivPage() {
     if (!selectedMaterialJobId) return;
     const req = materialRequests.find((r) => r.id === selectedMaterialJobId);
     if (!req?.materialLines?.length) return;
-    // Trigger BOM fetch for all lines that have an item_id (may be sub-assemblies)
-    // BUT skip lines where we already have sufficient stock — those issue directly from stock
+
     for (const ln of req.materialLines) {
-      if (ln.item_id) {
-        const pending = Number(ln.pending_quantity) || 0;
-        const available = Number(ln.available_quantity) || 0;
-        // If sufficient stock, no need to show/fetch BOM (issue from stock directly)
-        if (available >= pending && pending > 0) continue;
-        // Only auto-fetch if not already loaded
-        if (lineBomData[ln.id] === undefined && !lineBomLoading[ln.id]) {
-          fetchLineBom(ln.id, ln.item_id);
-        }
+      if (!ln.item_id || !isSubassemblyItem(ln.item_id)) continue;
+
+      const pending = Number(ln.pending_quantity) || 0;
+      const available = Number(ln.available_quantity) || 0;
+
+      if (available >= pending && pending > 0) continue;
+      if (lineBomData[ln.id] === undefined && !lineBomLoading[ln.id]) {
+        fetchLineBom(ln.id, ln.item_id);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMaterialJobId, materialRequests]);
+  }, [selectedMaterialJobId, materialRequests, inventoryItems]);
 
   const normalizeUid = useCallback((value: string) => {
     return String(value || '').replace(/\s+/g, '').trim();
+  }, []);
+
+  const formatApiErrorMessage = useCallback((error: any) => {
+    const responseData = error?.response?.data;
+    const directMessage = String(responseData?.errorMessage || responseData?.message || error?.message || error || 'Bad Request').trim();
+
+    if (!directMessage) return 'Bad Request';
+
+    const detailsIndex = directMessage.indexOf('Details:');
+    if (detailsIndex > 0) {
+      return directMessage.slice(0, detailsIndex).trim();
+    }
+
+    if (directMessage.startsWith('{') && directMessage.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(directMessage);
+        return String(parsed?.errorMessage || parsed?.message || directMessage).trim();
+      } catch {
+        return directMessage;
+      }
+    }
+
+    return directMessage;
   }, []);
 
   const addUidToLineCart = useCallback((jobId: string, lineId: string, uidRaw: string) => {
@@ -349,11 +443,12 @@ export default function SivPage() {
   }, []);
 
   const addManualIssueUid = useCallback(() => {
+    if (!itemRequiresUid(manualIssueItemId)) return;
     const uid = normalizeUid(manualIssueUidInput);
     if (!uid) return;
     setManualIssueUids((prev) => (prev.includes(uid) ? prev : [...prev, uid]));
     setManualIssueUidInput('');
-  }, [manualIssueUidInput, normalizeUid]);
+  }, [itemRequiresUid, manualIssueItemId, manualIssueUidInput, normalizeUid]);
 
   const resetManualIssueDraft = useCallback(() => {
     setManualIssueItemId('');
@@ -368,12 +463,14 @@ export default function SivPage() {
       return null;
     }
 
+    const requiresUid = itemRequiresUid(manualIssueItemId);
+
     const issueQuantity = Number(manualIssueQty || 0);
     if (!Number.isFinite(issueQuantity) || issueQuantity <= 0) {
       throw new Error('Issue quantity must be greater than 0.');
     }
 
-    if (manualIssueUids.length > 0 && manualIssueUids.length !== issueQuantity) {
+    if (requiresUid && manualIssueUids.length > 0 && manualIssueUids.length !== issueQuantity) {
       throw new Error('Manual UID count must match the issue quantity.');
     }
 
@@ -385,9 +482,9 @@ export default function SivPage() {
       itemName: String(item?.name || '').trim(),
       issueQuantity,
       notes: String(manualIssueNotes || '').trim() || undefined,
-      uids: [...manualIssueUids],
+      uids: requiresUid ? [...manualIssueUids] : [],
     };
-  }, [inventoryItems, manualIssueItemId, manualIssueNotes, manualIssueQty, manualIssueUids]);
+  }, [inventoryItems, itemRequiresUid, manualIssueItemId, manualIssueNotes, manualIssueQty, manualIssueUids]);
 
   const addManualIssueLine = useCallback(() => {
     try {
@@ -625,8 +722,18 @@ export default function SivPage() {
             : Number.isFinite(qtyParsed) && qtyParsed > 0
               ? qtyParsed
               : pending;
+          const available = Number((line as any).available_quantity || 0);
 
           if (!Number.isFinite(issueQty) || issueQty <= 0) {
+            continue;
+          }
+
+          if (uids.length === 0 && available <= 0) {
+            failures.push({
+              lineId,
+              itemCode: (line as any)?.item_code,
+              message: `No stock available to issue. Pending ${pending}.`,
+            });
             continue;
           }
 
@@ -638,7 +745,7 @@ export default function SivPage() {
             });
             successLineIds.push(lineId);
           } catch (err: any) {
-            const message = String(err?.response?.data?.message || err?.message || 'Bad Request');
+            const message = formatApiErrorMessage(err);
             failures.push({ lineId, itemCode: (line as any)?.item_code, message });
           }
         }
@@ -677,13 +784,13 @@ export default function SivPage() {
           );
         }
       } catch (err: any) {
-        const msg = String(err?.response?.data?.message || err?.message || err);
+        const msg = formatApiErrorMessage(err);
         alert('Failed to issue materials: ' + msg);
       } finally {
         setBusyJobId(null);
       }
     },
-    [issueQtyByLine, loadAll, materialRequests, scannedUidsByLine, selectedLineIdsByJob]
+    [formatApiErrorMessage, issueQtyByLine, loadAll, materialRequests, scannedUidsByLine, selectedLineIdsByJob]
   );
 
   const toggleSelectAllLines = (jobId: string, lineIds: string[], nextChecked: boolean) => {
@@ -694,7 +801,7 @@ export default function SivPage() {
   };
 
   const printSiv = useCallback(
-    (jobId: string) => {
+    async (jobId: string) => {
       const req = materialRequests.find((r) => r.id === jobId);
       if (!req) return;
       const selectedLineIds = selectedLineIdsByJob[jobId] || [];
@@ -703,7 +810,16 @@ export default function SivPage() {
         alert('Select lines to print on SIV.');
         return;
       }
-      const now = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+      const _now1 = new Date(); const now = `${_now1.getDate().toString().padStart(2,'0')}/${(_now1.getMonth()+1).toString().padStart(2,'0')}/${_now1.getFullYear()} ${_now1.getHours().toString().padStart(2,'0')}:${_now1.getMinutes().toString().padStart(2,'0')}`;
+      const issuedBy = currentUserDisplayName;
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Popup blocked. Please allow popups to print SIV.');
+        return;
+      }
+
+      const company = await apiClient.get<any>('/tenant/current').catch(() => null);
+      const branding = buildDocumentBranding(company);
       const linesHtml = lines
         .map((ln) => {
           const requiredQty = Number(ln.required_quantity || 0);
@@ -722,13 +838,13 @@ export default function SivPage() {
           const allUids = sessionUids.length > 0 ? sessionUids : historyUids;
 
           const uidsCell = allUids.length > 0
-            ? allUids.map(u => `<div style="font-family:monospace; font-size:11px; font-weight:600; margin-bottom:2px;">${u}</div>`).join('')
+            ? allUids.map((uid) => `<div style="font-family:monospace; font-size:11px; font-weight:600; margin-bottom:2px;">${escapeHtml(uid)}</div>`).join('')
             : '<span style="color:#999; font-size:10px;">—</span>';
 
           return `
             <tr>
-              <td style="border:1px solid #333; padding:5px; vertical-align:top; white-space:nowrap;">${ln.item_code || ''}</td>
-              <td style="border:1px solid #333; padding:5px; vertical-align:top;">${ln.item_name || ''}</td>
+              <td style="border:1px solid #333; padding:5px; vertical-align:top; white-space:nowrap;">${escapeHtml(ln.item_code || '')}</td>
+              <td style="border:1px solid #333; padding:5px; vertical-align:top;">${escapeHtml(ln.item_name || '')}</td>
               <td style="border:1px solid #333; padding:5px; text-align:center; vertical-align:top;">${requiredQty}</td>
               <td style="border:1px solid #333; padding:5px; text-align:center; vertical-align:top;">${issueQtyToPrint}</td>
               <td style="border:1px solid #333; padding:5px; vertical-align:top;">${uidsCell}</td>
@@ -739,9 +855,31 @@ export default function SivPage() {
       const html = `
         <!DOCTYPE html>
         <html>
-        <head><title>SIV - ${req.job_order_number || jobId}</title>
+        <head><title>SIV - ${escapeHtml(req.job_order_number || jobId)}</title>
+        <script>window.onload = function() { window.print(); }</script>
         <style>
-          body { font-family: Arial, sans-serif; font-size: 12px; margin: 24px; color: #111; }
+          @page { margin: 0.5cm; }
+          body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; padding: 20px; color: #111; }
+          .letterhead {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #1e3a8a;
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+          }
+          .logo-section { display: flex; align-items: center; gap: 12px; }
+          .logo-box {
+            width: 52px; height: 52px; background: #1e3a8a; color: white;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; border-radius: 8px;
+          }
+          .logo { width: 52px; height: 52px; object-fit: contain; border-radius: 8px; }
+          .company-name { font-size: 18px; font-weight: 700; margin: 0; color: #1e3a8a; }
+          .company-meta { font-size: 10.5pt; margin: 2px 0 0 0; color: #111; }
+          .generated-on { text-align:right; font-size:10.5pt; color:#1e3a8a; line-height:1.5; }
+          .generated-on-label { font-weight:700; text-transform:uppercase; letter-spacing:0.06em; }
+          .generated-on-value { font-weight:700; color:#111827; }
           table { width: 100%; border-collapse: collapse; margin-top: 12px; }
           th { border:1px solid #333; padding:6px; text-align: left; background:#f0f0f0; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; }
           td { border:1px solid #333; padding:5px; text-align: left; }
@@ -753,21 +891,27 @@ export default function SivPage() {
           .meta-value { font-size:13px; font-weight:600; }
           .signatures { display:flex; gap:20px; margin-top:36px; }
           .sig-box { flex:1; border:1px solid #333; padding:8px 12px; min-height:48px; }
+          .sig-name { font-size:12px; font-weight:600; margin-top:18px; }
           .sig-label { font-size:10px; color:#555; margin-top:6px; }
           @media print { body { margin: 8px; } }
         </style>
         </head>
         <body>
+          ${renderStandardLetterheadHtml(branding, now)}
           <div class="header">Store Issue Voucher (SIV)</div>
-          <div class="subheader">Printed: ${now}</div>
+          <div class="subheader">Issued materials against the selected production lines</div>
           <div class="meta">
             <div class="meta-item">
               <div class="meta-label">Job Order</div>
-              <div class="meta-value">${req.job_order_number || jobId}</div>
+              <div class="meta-value">${escapeHtml(req.job_order_number || jobId)}</div>
             </div>
             <div class="meta-item">
               <div class="meta-label">Product</div>
-              <div class="meta-value">${req.item_code || ''} — ${req.item_name || ''}</div>
+              <div class="meta-value">${escapeHtml(req.item_code || '')} — ${escapeHtml(req.item_name || '')}</div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-label">Printed By</div>
+              <div class="meta-value">${escapeHtml(issuedBy)}</div>
             </div>
           </div>
           <table>
@@ -785,19 +929,134 @@ export default function SivPage() {
           <div class="signatures">
             <div class="sig-box"><div class="sig-label">Issued By (Stores)</div></div>
             <div class="sig-box"><div class="sig-label">Received By (Production)</div></div>
-            <div class="sig-box"><div class="sig-label">Verified By (QC / Manager)</div></div>
           </div>
         </body>
         </html>
       `;
-      const w = window.open('', '_blank');
-      if (w) {
-        w.document.write(html);
-        w.document.close();
-        w.print();
-      }
+
+      printWindow.document.open();
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.focus();
     },
-    [materialRequests, selectedLineIdsByJob, sivHistory, scannedUidsByLine]
+    [currentUserDisplayName, materialRequests, selectedLineIdsByJob, sivHistory, scannedUidsByLine]
+  );
+
+  const printSivHistory = useCallback(
+    async (joId: string, rows: SivHistoryRow[]) => {
+      const joNumber = rows[0]?.job_order_number || joId;
+
+      // Open window FIRST (synchronously, before any await) to avoid popup blockers
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Popup blocked. Please allow popups for this site and try again.');
+        return;
+      }
+      const company = await apiClient.get<any>('/tenant/current').catch(() => null);
+      const branding = buildDocumentBranding(company);
+      const _now2 = new Date(); const now = `${_now2.getDate().toString().padStart(2,'0')}/${(_now2.getMonth()+1).toString().padStart(2,'0')}/${_now2.getFullYear()} ${_now2.getHours().toString().padStart(2,'0')}:${_now2.getMinutes().toString().padStart(2,'0')}`;
+
+      // Group lines by item to consolidate UIDs per item
+      const itemMap = new Map<string, { code: string; name: string; qty: number; uids: string[] }>();
+      for (const row of rows) {
+        const key = row.item_code || row.item_id || row.id;
+        if (!itemMap.has(key)) {
+          itemMap.set(key, { code: row.item_code || '', name: row.item_name || '', qty: 0, uids: [] });
+        }
+        const entry = itemMap.get(key)!;
+        entry.qty += Number(row.quantity || 0);
+        if (row.uid) entry.uids.push(row.uid);
+      }
+
+      const linesHtml = Array.from(itemMap.values()).map((item, idx) => {
+        const uidsCell = item.uids.length > 0
+          ? item.uids.map((u) => `<div style="font-family:monospace;font-size:11px;font-weight:600;margin-bottom:2px;">${escapeHtml(u)}</div>`).join('')
+          : '<span style="color:#999;font-size:10px;">—</span>';
+        return `
+          <tr>
+            <td style="border:1px solid #333;padding:5px;text-align:center;vertical-align:top;">${idx + 1}</td>
+            <td style="border:1px solid #333;padding:5px;vertical-align:top;white-space:nowrap;">${escapeHtml(item.code)}</td>
+            <td style="border:1px solid #333;padding:5px;vertical-align:top;">${escapeHtml(item.name)}</td>
+            <td style="border:1px solid #333;padding:5px;text-align:center;vertical-align:top;">${item.qty}</td>
+            <td style="border:1px solid #333;padding:5px;vertical-align:top;">${uidsCell}</td>
+          </tr>`;
+      }).join('');
+
+      const issuedDate = rows
+        .map((r) => r.movement_date)
+        .filter(Boolean)
+        .sort()
+        .at(-1);
+      const issuedDateFmt = issuedDate
+        ? new Date(issuedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+        : '-';
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head><title>SIV — ${escapeHtml(joNumber)}</title>
+        <script>setTimeout(function() { window.print(); }, 500);<\/script>
+        <style>
+          @page { margin: 0.5cm; }
+          body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; padding: 20px; color: #111; }
+          .letterhead { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #1e3a8a; padding-bottom:12px; margin-bottom:16px; }
+          .logo-section { display:flex; align-items:center; gap:12px; }
+          .logo-box { width:52px;height:52px;background:#1e3a8a;color:white;display:flex;align-items:center;justify-content:center;font-weight:700;border-radius:8px; }
+          .logo { width:52px;height:52px;object-fit:contain;border-radius:8px; }
+          .company-name { font-size:18px;font-weight:700;margin:0;color:#1e3a8a; }
+          .company-meta { font-size:10.5pt;margin:2px 0 0 0;color:#111; }
+          .generated-on { text-align:right;font-size:10.5pt;color:#1e3a8a;line-height:1.5; }
+          .generated-on-label { font-weight:700;text-transform:uppercase;letter-spacing:0.06em; }
+          .generated-on-value { font-weight:700;color:#111827; }
+          .doc-title { font-size:18px;font-weight:bold;margin:0 0 4px 0; }
+          .doc-sub { font-size:12px;color:#555;margin-bottom:14px; }
+          .meta { display:flex;gap:40px;flex-wrap:wrap;margin-bottom:14px; }
+          .meta-label { font-size:10px;color:#777;text-transform:uppercase;letter-spacing:0.5px; }
+          .meta-value { font-size:13px;font-weight:600; }
+          table { width:100%;border-collapse:collapse;margin-top:12px; }
+          th { border:1px solid #333;padding:6px;text-align:left;background:#f0f0f0;font-size:11px;text-transform:uppercase;letter-spacing:0.5px; }
+          td { border:1px solid #333;padding:5px;text-align:left; }
+          .signatures { display:flex;gap:20px;margin-top:36px; }
+          .sig-box { flex:1;border:1px solid #333;padding:8px 12px;min-height:48px; }
+          .sig-label { font-size:10px;color:#555;margin-top:6px; }
+          @media print { body { margin:8px; } }
+        </style>
+        </head>
+        <body>
+          ${renderStandardLetterheadHtml(branding, now)}
+          <div class="doc-title">Store Issue Voucher (SIV)</div>
+          <div class="doc-sub">Issued materials to production</div>
+          <div class="meta">
+            <div><div class="meta-label">Job Order</div><div class="meta-value">${escapeHtml(joNumber)}</div></div>
+            <div><div class="meta-label">Issue Date</div><div class="meta-value">${escapeHtml(issuedDateFmt)}</div></div>
+            <div><div class="meta-label">Total Lines</div><div class="meta-value">${itemMap.size}</div></div>
+            <div><div class="meta-label">Printed By</div><div class="meta-value">${escapeHtml(currentUserDisplayName)}</div></div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width:5%;text-align:center;">#</th>
+                <th style="width:18%;">Item Code</th>
+                <th>Item / Description</th>
+                <th style="width:9%;text-align:center;">Qty Issued</th>
+                <th style="width:26%;">Serial / UID Numbers</th>
+              </tr>
+            </thead>
+            <tbody>${linesHtml}</tbody>
+          </table>
+          <div class="signatures">
+            <div class="sig-box"><div class="sig-label">Issued By (Stores)</div></div>
+            <div class="sig-box"><div class="sig-label">Received By (Production)</div></div>
+          </div>
+        </body>
+        </html>`;
+
+      printWindow.document.open();
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.focus();
+    },
+    [currentUserDisplayName]
   );
 
   const toggleLineSelection = (jobId: string, lineId: string) => {
@@ -825,7 +1084,9 @@ export default function SivPage() {
             <p className="text-[#6F4E37]">Issue materials to production job orders</p>
           </div>
           <button
-            onClick={loadAll}
+            onClick={() => {
+              void loadAll();
+            }}
             disabled={loading}
             className="bg-[#8B6F47] text-white px-6 py-3 rounded-lg hover:bg-[#6F4E37] transition-colors font-semibold disabled:opacity-50 shadow-md"
           >
@@ -871,18 +1132,19 @@ export default function SivPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-5">
                 <div className="xl:col-span-2">
                   <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Item</label>
-                  <select
+                  <SearchableSelect
+                    options={inventoryItems.map((item) => ({
+                      value: item.id,
+                      label: [item.code, item.name].filter(Boolean).join(' - ') || item.id,
+                      subtitle: [item.category, item.type].filter(Boolean).join(' | ') || undefined,
+                    }))}
                     value={manualIssueItemId}
-                    onChange={(e) => setManualIssueItemId(e.target.value)}
-                    className="w-full border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
-                  >
-                    <option value="">Select item</option>
-                    {inventoryItems.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {[item.code, item.name].filter(Boolean).join(' - ') || item.id}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(value) => setManualIssueItemId(value)}
+                    placeholder={inventoryItems.length > 0 ? 'Search item by code or name...' : 'No items available'}
+                    truncateInput={false}
+                    disabled={inventoryItems.length === 0}
+                  />
+                  <p className="mt-2 text-xs text-gray-500">Type multiple letters from the item code or name to find the right item quickly.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Issue Quantity</label>
@@ -895,43 +1157,45 @@ export default function SivPage() {
                     className="w-full border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Manual UID Scan</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={manualIssueUidInput}
-                      onChange={(e) => setManualIssueUidInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          addManualIssueUid();
-                        }
-                      }}
-                      className="flex-1 border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
-                      placeholder="Scan UID"
-                    />
-                    <button
-                      type="button"
-                      onClick={addManualIssueUid}
-                      className="px-3 py-2 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37] text-sm font-medium shadow-sm"
-                    >
-                      Add UID
-                    </button>
-                  </div>
-                  {manualIssueUids.length > 0 ? (
-                    <div className="mt-2 text-xs text-gray-700">
-                      UIDs: {manualIssueUids.join(', ')}{' '}
+                {itemRequiresUid(manualIssueItemId) && (
+                  <div>
+                    <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Manual UID Scan</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={manualIssueUidInput}
+                        onChange={(e) => setManualIssueUidInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addManualIssueUid();
+                          }
+                        }}
+                        className="flex-1 border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
+                        placeholder="Scan UID"
+                      />
                       <button
                         type="button"
-                        onClick={() => setManualIssueUids([])}
-                        className="ml-2 text-red-600 hover:underline"
+                        onClick={addManualIssueUid}
+                        className="px-3 py-2 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37] text-sm font-medium shadow-sm"
                       >
-                        Clear
+                        Add UID
                       </button>
                     </div>
-                  ) : null}
-                </div>
+                    {manualIssueUids.length > 0 ? (
+                      <div className="mt-2 text-xs text-gray-700">
+                        UIDs: {manualIssueUids.join(', ')}{' '}
+                        <button
+                          type="button"
+                          onClick={() => setManualIssueUids([])}
+                          className="ml-2 text-red-600 hover:underline"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
               <div className="mt-4">
                 <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Notes</label>
@@ -1015,6 +1279,9 @@ export default function SivPage() {
             {openMaterialReqs.map((req) => {
               const selectedLineIds = selectedLineIdsByJob[req.id] || [];
               const expanded = selectedMaterialJobId === req.id;
+              const hasUidLines = (req.materialLines || []).some(
+                (line) => itemRequiresUid(line.item_id) && Number(line.pending_quantity || 0) > 0,
+              );
               return (
                 <div
                   key={req.id}
@@ -1028,6 +1295,9 @@ export default function SivPage() {
                       </h3>
                       <p className="text-[#6F4E37] mt-1">
                         {req.item_code} - {req.item_name}
+                      </p>
+                      <p className="text-sm text-[#8B6F47] mt-1 font-medium">
+                        Assigned To: {String(req.assigned_to_name || '').trim() || 'Unassigned'}
                       </p>
                       <p className="text-sm text-gray-600 mt-1">
                         Pending: {req.pendingQuantity || 0} | Issued: {req.issuedQuantity || 0} | Required:{' '}
@@ -1070,6 +1340,7 @@ export default function SivPage() {
                   </div>
                   {expanded && req.materialLines && req.materialLines.length > 0 && (
                     <div className="mt-4 overflow-x-auto">
+                      {hasUidLines && (
                       <div className="mb-3 flex flex-col gap-2">
                         <div className="flex items-center gap-3">
                           <div className="text-sm font-medium text-[#36454F]">Scan UIDs (cart)</div>
@@ -1108,6 +1379,7 @@ export default function SivPage() {
                           </div>
                         )}
                       </div>
+                      )}
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                           <tr>
@@ -1116,6 +1388,7 @@ export default function SivPage() {
                                 {(() => {
                                   const selectable = (req.materialLines || [])
                                     .filter((l) => Number(l.pending_quantity || 0) > 0)
+                                    .filter((l) => Number(l.available_quantity || 0) > 0)
                                     .map((l) => l.id);
                                   const allSelected = selectable.length > 0 && selectable.every((id) => selectedLineIds.includes(id));
                                   return (
@@ -1146,9 +1419,11 @@ export default function SivPage() {
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
                               Issue Qty
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
-                              Scan UID
-                            </th>
+                            {hasUidLines && (
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                                Scan UID
+                              </th>
+                            )}
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -1157,12 +1432,16 @@ export default function SivPage() {
                             const scannedUids = scannedUidsByLine[ln.id] || [];
                             const pending = Number(ln.pending_quantity || 0);
                             const available = Number(ln.available_quantity || 0);
+                            const isSubassembly = isSubassemblyItem(ln.item_id);
+                            const requiresUid = itemRequiresUid(ln.item_id);
                             // If sufficient stock on hand, issue directly — no need to expand BOM
                             const hasSufficientStock = pending > 0 && available >= pending;
+                            const hasNoStock = pending > 0 && available <= 0;
+                            const hasPartialStock = pending > 0 && available > 0 && available < pending;
                             // Show BOM only when there are still items pending AND stock is insufficient.
                             // When pending=0 (fully issued), do NOT show BOM even though hasSufficientStock=false.
-                            const needsBom = pending > 0 && available < pending;
-                            const disableRow = pending <= 0;
+                            const needsBom = isSubassembly && pending > 0 && available < pending;
+                            const disableRow = pending <= 0 || (hasNoStock && !requiresUid);
                             return (
                               <Fragment key={ln.id}>
                               <tr className="hover:bg-gray-50">
@@ -1194,6 +1473,16 @@ export default function SivPage() {
                                           ✓ In Stock ({available})
                                         </span>
                                       )}
+                                      {hasPartialStock && (
+                                        <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
+                                          Partial Stock ({available})
+                                        </span>
+                                      )}
+                                      {hasNoStock && !requiresUid && (
+                                        <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+                                          No Stock
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                 </td>
@@ -1217,8 +1506,9 @@ export default function SivPage() {
                                     />
                                   )}
                                 </td>
+                                {hasUidLines && (
                                 <td className="px-4 py-3">
-                                  {isSelected && (
+                                  {isSelected && requiresUid && (
                                     <div className="space-y-2">
                                       <div className="flex gap-2">
                                         <input
@@ -1269,10 +1559,11 @@ export default function SivPage() {
                                     </div>
                                   )}
                                 </td>
+                                )}
                               </tr>
                               {expandedLineIds[ln.id] && needsBom && (
                                 <tr className="bg-sky-50/70">
-                                  <td colSpan={7} className="px-10 py-3">
+                                  <td colSpan={hasUidLines ? 7 : 6} className="px-10 py-3">
                                     {lineBomLoading[ln.id] ? (
                                       <div className="text-sm text-gray-500 italic py-2">Loading BOM components…</div>
                                     ) : !lineBomData[ln.id] || lineBomData[ln.id].length === 0 ? (
@@ -1415,14 +1706,22 @@ export default function SivPage() {
                           </p>
                         </div>
                       </div>
-                      <button
-                        onClick={() =>
-                          setExpandedHistoryJoIds((prev) => ({ ...prev, [joId]: !expanded }))
-                        }
-                        className="px-4 py-2 bg-[#E8DCC4] text-[#6F4E37] rounded-lg hover:bg-[#D4C4A8] font-medium"
-                      >
-                        {expanded ? 'Collapse' : 'Expand'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => printSivHistory(joId, rows)}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
+                        >
+                          🖨 Print
+                        </button>
+                        <button
+                          onClick={() =>
+                            setExpandedHistoryJoIds((prev) => ({ ...prev, [joId]: !expanded }))
+                          }
+                          className="px-4 py-2 bg-[#E8DCC4] text-[#6F4E37] rounded-lg hover:bg-[#D4C4A8] font-medium"
+                        >
+                          {expanded ? 'Collapse' : 'Expand'}
+                        </button>
+                      </div>
                     </div>
 
                     {/* Material lines */}
@@ -1437,7 +1736,6 @@ export default function SivPage() {
                               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Qty</th>
                               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Issued At</th>
                               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Status</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
@@ -1467,35 +1765,14 @@ export default function SivPage() {
                                     {row.movement_date ? new Date(row.movement_date).toLocaleString() : '-'}
                                   </td>
                                   <td className="px-4 py-3 text-sm">
-                                    {row.approved_by ? (
-                                      <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
-                                        Approved
-                                      </span>
-                                    ) : (
-                                      <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">
-                                        Pending
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className="px-4 py-3 text-sm">
-                                    <div className="flex gap-3">
-                                      {canApprove && !row.approved_by && (
-                                        <button
-                                          onClick={() => approveSivHistoryRow(row.id)}
-                                          className="text-green-600 hover:text-green-900 font-medium"
-                                        >
-                                          Approve
-                                        </button>
-                                      )}
-                                      {canDelete && (
-                                      <button
-                                        onClick={() => deleteSivHistoryRow(row.id)}
-                                        className="text-red-600 hover:text-red-900 font-medium"
-                                      >
-                                        Delete
-                                      </button>
-                                      )}
-                                    </div>
+                                    <span
+                                      className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                        row.approved_by ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                                      }`}
+                                      title={row.approved_by ? `Approved by ${row.approved_by}` : 'Issued and awaiting approval'}
+                                    >
+                                      Goods Issued
+                                    </span>
                                   </td>
                                 </tr>
                               );

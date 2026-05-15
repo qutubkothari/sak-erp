@@ -1,5 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { DocumentBrandingService } from '../../common/services/document-branding.service';
+
+function formatShortDate(value?: string): string {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const year = String(date.getUTCFullYear()).slice(2);
+  return `${day}/${month}/${year}`;
+}
 
 interface POItem {
   item_code: string;
@@ -34,51 +45,41 @@ interface POPdfData {
   companyAddress?: string;
 }
 
+const formatInr = (value: number): string => `INR ${Number(value || 0).toFixed(2)}`;
+
 @Injectable()
 export class PoPdfService {
-  async generatePOPdf(data: POPdfData): Promise<Buffer> {
+  constructor(private readonly documentBrandingService: DocumentBrandingService) {}
+
+  async generatePOPdf(tenantId: string, data: POPdfData): Promise<Buffer> {
     const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([595, 842]); // A4 size
+    const assets = await this.documentBrandingService.preparePdfBrandingAssets(pdfDoc);
+    const page = await this.documentBrandingService.createBrandedPage(pdfDoc, assets, [595, 842]); // A4 size
     const { width, height } = page.getSize();
 
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-    let yPosition = height - 50;
-
-    // Header - Company Name
-    const companyName = data.companyName || 'Your Company Name';
-    page.drawText(companyName, {
-      x: 50,
-      y: yPosition,
-      size: 20,
-      font: fontBold,
-      color: rgb(0.573, 0.251, 0.024), // Amber-900
+    const branding = await this.documentBrandingService.getBranding(tenantId, {
+      companyName: data.companyName,
+      address: data.companyAddress,
+      taxId: '',
     });
 
-    yPosition -= 15;
-    if (data.companyAddress) {
-      page.drawText(data.companyAddress, {
-        x: 50,
-        y: yPosition,
-        size: 9,
-        font,
-        color: rgb(0.4, 0.4, 0.4),
-      });
-    }
-
-    // Purchase Order Title
-    yPosition -= 40;
-    page.drawText('PURCHASE ORDER', {
-      x: 50,
-      y: yPosition,
-      size: 18,
-      font: fontBold,
-      color: rgb(0, 0, 0),
+    let yPosition = this.documentBrandingService.drawStandardHeader({
+      page,
+      topY: height - 36,
+      marginX: 50,
+      width: width - 100,
+      title: 'PURCHASE ORDER',
+      reference: data.poNumber,
+      branding,
+      font,
+      fontBold,
+      assets,
     });
 
     // PO Number and Date
-    yPosition -= 30;
+    yPosition -= 26;
     page.drawText(`PO Number: ${data.poNumber}`, {
       x: 50,
       y: yPosition,
@@ -86,7 +87,7 @@ export class PoPdfService {
       font: fontBold,
     });
 
-    page.drawText(`Date: ${new Date(data.poDate).toLocaleDateString()}`, {
+    page.drawText(`Date: ${formatShortDate(data.poDate)}`, {
       x: width - 200,
       y: yPosition,
       size: 11,
@@ -149,7 +150,7 @@ export class PoPdfService {
 
       let termsY = yPosition - 15;
       if (data.deliveryDate) {
-        page.drawText(`Delivery Date: ${new Date(data.deliveryDate).toLocaleDateString()}`, {
+        page.drawText(`Delivery Date: ${formatShortDate(data.deliveryDate)}`, {
           x: 330,
           y: termsY,
           size: 9,
@@ -220,8 +221,8 @@ export class PoPdfService {
       page.drawText((item.description || item.specifications || '').substring(0, 18), { x: colX.desc, y: yPosition, size: 8, font });
       page.drawText(String(item.quantity), { x: colX.qty, y: yPosition, size: 8, font });
       page.drawText(item.uom.substring(0, 6), { x: colX.uom, y: yPosition, size: 8, font });
-      page.drawText(`₹${item.unit_price.toFixed(2)}`, { x: colX.price, y: yPosition, size: 8, font });
-      page.drawText(`₹${item.total_price.toFixed(2)}`, { x: colX.total, y: yPosition, size: 8, font });
+      page.drawText(formatInr(item.unit_price), { x: colX.price, y: yPosition, size: 8, font });
+      page.drawText(formatInr(item.total_price), { x: colX.total, y: yPosition, size: 8, font });
 
       yPosition -= 15;
 
@@ -244,11 +245,11 @@ export class PoPdfService {
     });
 
     page.drawText('Subtotal:', { x: totalsX, y: yPosition, size: 10, font });
-    page.drawText(`₹${data.subtotal.toFixed(2)}`, { x: totalsX + 80, y: yPosition, size: 10, font });
+    page.drawText(formatInr(data.subtotal), { x: totalsX + 80, y: yPosition, size: 10, font });
 
     yPosition -= 15;
     page.drawText('Tax:', { x: totalsX, y: yPosition, size: 10, font });
-    page.drawText(`₹${data.taxTotal.toFixed(2)}`, { x: totalsX + 80, y: yPosition, size: 10, font });
+    page.drawText(formatInr(data.taxTotal), { x: totalsX + 80, y: yPosition, size: 10, font });
 
     yPosition -= 15;
     page.drawLine({
@@ -259,7 +260,7 @@ export class PoPdfService {
     });
 
     page.drawText('Grand Total:', { x: totalsX, y: yPosition - 5, size: 11, font: fontBold });
-    page.drawText(`₹${data.grandTotal.toFixed(2)}`, { x: totalsX + 80, y: yPosition - 5, size: 11, font: fontBold });
+    page.drawText(formatInr(data.grandTotal), { x: totalsX + 80, y: yPosition - 5, size: 11, font: fontBold });
 
     // Remarks
     if (data.remarks) {

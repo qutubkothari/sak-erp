@@ -6,6 +6,7 @@ import { apiClient } from '../../../../lib/api-client';
 import SearchableSelect from '../../../components/SearchableSelect';
 import DuplicateWarning, { useDuplicateDetection } from '../../../components/DuplicateWarning';
 import { getTodayDateInputValue } from '@/lib/date';
+import { buildDocumentBranding, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
@@ -332,11 +333,8 @@ export default function SalesPage() {
         }
       };
 
-      const companyName = company?.name || 'Company';
-      const companyAddress = company?.address || '';
-      const companyPhone = company?.phone || '';
-      const companyEmail = company?.email || '';
-      const companyLogoUrl = company?.logo_url || '';
+      const branding = buildDocumentBranding(company);
+      const generatedOn = new Date().toLocaleDateString('en-IN');
 
       const itemLabel =
         (warranty?.item_code || warranty?.item_name)
@@ -366,8 +364,12 @@ export default function SalesPage() {
       display: flex; align-items: center; justify-content: center;
       font-weight: 700; border-radius: 8px;
     }
-    .company-name { font-size: 18px; font-weight: 700; margin: 0; }
+    .logo { width: 52px; height: 52px; object-fit: contain; border-radius: 8px; }
+    .company-name { font-size: 18px; font-weight: 700; margin: 0; color: #1e3a8a; }
     .company-meta { font-size: 10.5pt; margin: 2px 0 0 0; color: #111; }
+    .generated-on { text-align:right; font-size:10.5pt; color:#1e3a8a; line-height:1.5; }
+    .generated-on-label { font-weight:700; text-transform:uppercase; letter-spacing:0.06em; }
+    .generated-on-value { font-weight:700; color:#111827; }
     .title {
       text-align: center;
       font-size: 18px;
@@ -390,20 +392,7 @@ export default function SalesPage() {
   </style>
 </head>
 <body>
-  <div class="letterhead">
-    <div class="logo-section">
-      ${companyLogoUrl ? `<img class="logo" src="${escapeHtml(companyLogoUrl)}" alt="Logo" />` : `<div class="logo-box">${escapeHtml(companyName).slice(0, 2).toUpperCase()}</div>`}
-      <div>
-        <p class="company-name">${escapeHtml(companyName)}</p>
-        ${companyAddress ? `<p class="company-meta">${escapeHtml(companyAddress)}</p>` : ''}
-        <p class="company-meta">${[companyPhone ? `Phone: ${escapeHtml(companyPhone)}` : '', companyEmail ? `Email: ${escapeHtml(companyEmail)}` : ''].filter(Boolean).join(' • ')}</p>
-      </div>
-    </div>
-    <div style="text-align:right">
-      <div class="muted" style="font-size:10.5pt">Generated on</div>
-      <div style="font-weight:700">${escapeHtml(new Date().toLocaleDateString('en-IN'))}</div>
-    </div>
-  </div>
+  ${renderStandardLetterheadHtml(branding, generatedOn)}
 
   <div class="title">WARRANTY CERTIFICATE</div>
   <div class="sub">(1 certificate per dispatched UID)</div>

@@ -13,7 +13,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('users');
 
   const tabs = [
-    { id: 'users' as TabType, label: 'User Management', icon: Users },
+    { id: 'users' as TabType, label: 'Employee Access', icon: Users },
     { id: 'roles' as TabType, label: 'Roles & Permissions', icon: Shield },
     { id: 'company' as TabType, label: 'Company Settings', icon: Building2 },
     { id: 'email' as TabType, label: 'Email Configuration', icon: Mail },
@@ -29,7 +29,7 @@ export default function SettingsPage() {
           Settings
         </h1>
         <p className="text-sm mt-1" style={{ color: '#8B6F47' }}>
-          Manage your company settings, users, and permissions
+          Manage your company settings, employee access, and permissions
         </p>
       </div>
 

@@ -80,7 +80,7 @@ export class DocumentsService {
     const title = (dto.title || 'Quotation').toString();
     const tags = this.parseTags(dto.tags);
 
-    const pdfBuffer = await this.quotePdfService.renderQuotePdf({
+    const pdfBuffer = await this.quotePdfService.renderQuotePdf(tenantId, {
       quote_number: quoteNumber,
       quote_date_iso: quoteDate,
       title,

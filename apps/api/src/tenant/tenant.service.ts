@@ -41,6 +41,7 @@ export class TenantService {
       email?: string;
       tax_id?: string;
       logo_url?: string;
+      settings?: Record<string, unknown>;
     },
   ) {
     const { data, error } = await this.supabase

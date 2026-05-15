@@ -21,6 +21,26 @@ export class DebitNoteController {
     return this.debitNoteService.getVendorPayables(tenantId);
   }
 
+  @Get('po-advances')
+  async getAllAdvancePayments(@Req() req: any) {
+    return this.debitNoteService.getAllAdvancePayments(req.user.tenantId);
+  }
+
+  @Get('grn/:grnId/payable-detail')
+  async getGrnPayableDetail(@Req() req: any, @Param('grnId') grnId: string) {
+    return this.debitNoteService.getGrnPayableDetail(req.user.tenantId, grnId);
+  }
+
+  @Get('grn/:grnId/payment-entries')
+  async getPaymentEntries(@Req() req: any, @Param('grnId') grnId: string) {
+    return this.debitNoteService.getPaymentEntries(req.user.tenantId, grnId);
+  }
+
+  @Get('po/:poId/advance-payments')
+  async getAdvancePayments(@Req() req: any, @Param('poId') poId: string) {
+    return this.debitNoteService.getAdvancePayments(req.user.tenantId, poId);
+  }
+
   @Get('grn/:grnId')
   async findByGrn(@Req() req: any, @Param('grnId') grnId: string) {
     const tenantId = req.user.tenantId;
@@ -85,6 +105,21 @@ export class DebitNoteController {
     );
   }
 
+  @Post('po/:poId/advance-payment')
+  async recordAdvancePayment(
+    @Req() req: any,
+    @Param('poId') poId: string,
+    @Body() body: {
+      amount: number;
+      payment_method: string;
+      payment_reference?: string;
+      payment_date?: string;
+      payment_notes?: string;
+    },
+  ) {
+    return this.debitNoteService.recordAdvancePayment(req.user.tenantId, poId, { ...body, created_by: req.user.userId });
+  }
+
   @Post('grn/:grnId/payment')
   async recordPayment(
     @Req() req: any,
@@ -95,9 +130,14 @@ export class DebitNoteController {
       payment_reference?: string;
       payment_date?: string;
       payment_notes?: string;
+      tds_amount?: number;
+      short_payment_amount?: number;
+      short_payment_reason?: string;
+      close_invoice?: boolean;
     },
   ) {
     const tenantId = req.user.tenantId;
-    return this.debitNoteService.recordPayment(tenantId, grnId, body);
+    const userId = req.user.userId;
+    return this.debitNoteService.recordPayment(tenantId, grnId, { ...body, created_by: userId });
   }
 }

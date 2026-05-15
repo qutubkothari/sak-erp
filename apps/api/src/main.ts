@@ -18,6 +18,7 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('APP_PORT', 4000);
+  const companyName = configService.get<string>('COMPANY_NAME', 'Manufacturing');
 
   // Body size limits (needed for base64 document uploads)
   const bodySizeLimit = configService.get<string>('BODY_SIZE_LIMIT', '50mb');
@@ -64,7 +65,7 @@ async function bootstrap() {
 
   // Swagger documentation
   const config = new DocumentBuilder()
-    .setTitle('Saif Automations Manufacturing ERP API')
+    .setTitle(`${companyName} ERP API`)
     .setDescription(
       'Comprehensive API for multi-tenant, multi-plant manufacturing ERP system',
     )

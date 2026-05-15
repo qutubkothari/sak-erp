@@ -4,12 +4,14 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../lib/api-client';
+import { buildDocumentBranding } from '@/lib/document-branding';
 
 export const dynamic = 'force-dynamic';
+const appBranding = buildDocumentBranding(null);
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -21,7 +23,7 @@ export default function LoginPage() {
 
     try {
       const response = await apiClient.login({
-        email: email.trim().toLowerCase(),
+        username: username.trim().toLowerCase(),
         password,
       });
 
@@ -45,7 +47,7 @@ export default function LoginPage() {
         {/* Logo/Brand */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold mb-2" style={{ color: '#8B6F47' }}>
-            SAK Solutions
+            {appBranding.companyName}
           </h1>
           <p className="text-sm" style={{ color: '#6F4E37' }}>
             Manufacturing ERP System
@@ -55,21 +57,21 @@ export default function LoginPage() {
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-              Email Address
+            <label htmlFor="username" className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+              Username
             </label>
             <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               required
               className="w-full px-4 py-3 rounded-lg border-2 focus:outline-none focus:border-opacity-80 transition-colors"
               style={{ 
                 borderColor: '#E8DCC4',
                 color: '#6F4E37'
               }}
-              placeholder="your.email@company.com"
+              placeholder="Enter your username"
             />
           </div>
 

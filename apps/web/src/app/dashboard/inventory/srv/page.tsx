@@ -2,10 +2,15 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import QRCode from 'qrcode';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import { getTodayDateInputValue } from '@/lib/date';
-import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { buildDocumentBranding, renderStandardLetterheadHtml } from '@/lib/document-branding';
+import { hasModulePermission, hasScreenPermission, readStoredUser } from '@/lib/rbac';
+import SearchableSelect from '../../../../components/SearchableSelect';
+
+const AUTO_REFRESH_MS = 30000;
 
 function getApiV1BaseUrl(): string | null {
   const raw = (process.env.NEXT_PUBLIC_API_URL || '').trim();
@@ -37,6 +42,20 @@ type User = {
   id: string;
   employee_name: string;
   employee_code?: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  permissions?: unknown;
+  role?: {
+    name?: string;
+    permissions?: unknown;
+  };
+  roles?: Array<{
+    role?: {
+      name?: string;
+      permissions?: unknown;
+    };
+  }>;
 };
 
 type Warehouse = {
@@ -100,6 +119,13 @@ export default function SrvPage() {
   const [qcSummary, setQcSummary] = useState<any | null>(null);
   const [qcSummaryLoading, setQcSummaryLoading] = useState(false);
 
+  // Manual SRV creation
+  const [showManualSrvModal, setShowManualSrvModal] = useState(false);
+  const [manualSrvItems, setManualSrvItems] = useState<Array<{id: string; code: string; name: string}>>([]);
+  const [manualSrvForm, setManualSrvForm] = useState({ itemId: '', quantity: '', warehouseId: '', receiverName: '', receiverPhone: '', notes: '', movementDate: '' });
+  const [manualSrvSaving, setManualSrvSaving] = useState(false);
+  const [manualSrvAlert, setManualSrvAlert] = useState<{type: 'error'|'success'; message: string} | null>(null);
+
   // View SRV Details (GRN-like)
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedRow, setSelectedRow] = useState<ReceiptVoucherRow | null>(null);
@@ -137,8 +163,31 @@ export default function SrvPage() {
     qcBy: '',
   });
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  const normalizeEmail = useCallback((value: unknown) => String(value || '').trim().toLowerCase(), []);
+  const normalizeName = useCallback(
+    (value: unknown) =>
+      String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    [],
+  );
+
+  const hasQualityInspectionAccess = useCallback((user: User) => {
+    const actions: Array<'view' | 'create' | 'edit' | 'delete' | 'approve'> = ['view', 'create', 'edit', 'delete', 'approve'];
+    return actions.some(
+      (action) =>
+        hasModulePermission(user as any, 'Quality Control', action) ||
+        hasScreenPermission(user as any, '/dashboard/quality', action),
+    );
+  }, []);
+
+  const loadAll = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setLoading(true);
+    }
     try {
       const [open, hist] = await Promise.all([
         apiClient.get<ReceiptVoucherRow[]>('/job-orders/store/receipt-vouchers/open'),
@@ -147,9 +196,13 @@ export default function SrvPage() {
       setOpenSrvs(open || []);
       setSrvHistory(hist || []);
     } catch (err: any) {
-      alert('Failed to load SRV data: ' + (err?.message || err));
+      if (!options?.silent) {
+        alert('Failed to load SRV data: ' + (err?.message || err));
+      }
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -157,27 +210,63 @@ export default function SrvPage() {
     loadAll();
   }, [loadAll]);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      loadAll({ silent: true });
+    }, AUTO_REFRESH_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadAll]);
+
   const fetchUsers = useCallback(async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/hr/employees', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const [employeesResponse, usersResponse] = await Promise.all([
+        fetch('/api/v1/hr/employees', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }),
+        fetch('/api/v1/users', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }),
+      ]);
 
-      if (!response.ok) {
+      if (!employeesResponse.ok || !usersResponse.ok) {
         setUsers([]);
         return;
       }
 
-      const data = await response.json();
-      setUsers(Array.isArray(data) ? data : []);
+      const [employeesData, usersData] = await Promise.all([employeesResponse.json(), usersResponse.json()]);
+      const employees = Array.isArray(employeesData) ? (employeesData as User[]) : [];
+      const usersWithQualityAccess = Array.isArray(usersData)
+        ? (usersData as User[]).filter(hasQualityInspectionAccess)
+        : [];
+      const allowedEmails = new Set(
+        usersWithQualityAccess.map((user) => normalizeEmail(user.email)).filter(Boolean),
+      );
+      const allowedNames = new Set(
+        usersWithQualityAccess
+          .map((user) => normalizeName([user.first_name, user.last_name].filter(Boolean).join(' ')))
+          .filter(Boolean),
+      );
+
+      setUsers(
+        employees.filter((employee) => {
+          const email = normalizeEmail(employee.email);
+          const name = normalizeName(employee.employee_name);
+          return (email && allowedEmails.has(email)) || (name && allowedNames.has(name));
+        }),
+      );
     } catch {
       setUsers([]);
     }
-  }, []);
+  }, [hasQualityInspectionAccess, normalizeEmail, normalizeName]);
 
   useEffect(() => {
     fetchUsers();
@@ -384,10 +473,11 @@ export default function SrvPage() {
         row;
       setSelectedRow(receiptRow);
 
-      const jobOrderId = String(receiptRow.job_order_id || receiptRow.id || '').trim();
+      const jobOrderId = String(receiptRow.job_order_id || '').trim();
+      const isManualSrv = !receiptRow.job_order_id;
 
       setQcSummary(null);
-      fetchQcSummary(jobOrderId);
+      if (!isManualSrv) fetchQcSummary(jobOrderId);
 
       const prefillQty = Number(receiptRow.quantity ?? 0) || 0;
       setReceivedQty(prefillQty);
@@ -505,23 +595,35 @@ export default function SrvPage() {
     [loadAll]
   );
 
-  const printSrv = useCallback((row: ReceiptVoucherRow) => {
+  const printSrv = useCallback(async (row: ReceiptVoucherRow) => {
     const receivedAt = row.movement_date ? new Date(row.movement_date).toLocaleString() : '-';
     const approvedAt = row.approved_at ? new Date(row.approved_at).toLocaleString() : '-';
     const statusLabel = row.approved_by ? 'APPROVED' : 'PENDING';
 
     const warehouseLabel = resolveWarehouseLabel(row.to_warehouse_id);
     const receivedByLabel = resolveEmployeeLabel(row.received_by_name || row.received_by);
+    const generatedOn = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Popup blocked. Please allow popups to print SRV.');
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write('<!doctype html><html><head><title>Preparing SRV...</title></head><body style="font-family: Arial, sans-serif; padding: 16px;">Preparing SRV…</body></html>');
+    printWindow.document.close();
+
+    const company = await apiClient.get<any>('/tenant/current').catch(() => null);
+    const branding = buildDocumentBranding(company);
     const html = `
       <!DOCTYPE html>
       <html>
-      <head><title>SRV - ${row.job_order_number || row.id}</title>
+      <head><script>window.onload = window.print</script><title>SRV - ${escapePrintHtml(row.job_order_number || row.id || '-')}</title>
       <style>
         * { box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; font-size: 12px; margin: 24px; color: #111; }
+        body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; padding: 20px; color: #111; }
         .page { max-width: 900px; margin: 0 auto; }
         .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-        .brand { font-weight: 700; font-size: 12px; letter-spacing: 0.2px; color: #333; }
         .title { font-size: 18px; font-weight: 800; margin-top: 6px; }
         .subtitle { color: #444; margin-top: 2px; }
         .meta { text-align: right; }
@@ -549,16 +651,16 @@ export default function SrvPage() {
       </head>
       <body>
         <div class="page">
+          ${renderStandardLetterheadHtml(branding, generatedOn)}
+
           <div class="topbar">
             <div>
-              <div class="brand">SAK ERP</div>
               <div class="title">Store Receipt Voucher (SRV)</div>
               <div class="subtitle">Receipt of finished goods from production</div>
             </div>
             <div class="meta">
               <p class="kv"><span class="pill ${row.approved_by ? 'ok' : 'pending'}">${statusLabel}</span></p>
-              <p class="kv"><strong>SRV ID:</strong> <span class="muted">${row.id}</span></p>
-              <p class="kv"><strong>Received At:</strong> <span class="muted">${receivedAt}</span></p>
+              <p class="kv"><strong>Received At:</strong> <span class="muted">${escapePrintHtml(receivedAt)}</span></p>
             </div>
           </div>
 
@@ -567,20 +669,20 @@ export default function SrvPage() {
           <div class="grid">
             <div class="field">
               <div class="label">Job Order</div>
-              <div class="value">${row.job_order_number || row.job_order_id || '-'}</div>
+              <div class="value">${escapePrintHtml(row.job_order_number || row.job_order_id || '-')}</div>
             </div>
             <div class="field">
               <div class="label">To Warehouse</div>
-              <div class="value">${warehouseLabel || '-'}</div>
+              <div class="value">${escapePrintHtml(warehouseLabel || '-')}</div>
             </div>
             <div class="field">
               <div class="label">Received By</div>
-              <div class="value">${receivedByLabel || '-'}</div>
+              <div class="value">${escapePrintHtml(receivedByLabel || '-')}</div>
             </div>
             <div class="field">
               <div class="label">Approved By</div>
-              <div class="value">${row.approved_by || '-'}</div>
-              <div class="muted" style="margin-top:4px;"><strong>Approved At:</strong> ${approvedAt}</div>
+              <div class="value">${escapePrintHtml(row.approved_by || '-')}</div>
+              <div class="muted" style="margin-top:4px;"><strong>Approved At:</strong> ${escapePrintHtml(approvedAt)}</div>
             </div>
           </div>
 
@@ -597,15 +699,15 @@ export default function SrvPage() {
             <tbody>
               <tr>
                 <td>1</td>
-                <td><strong>${row.item_code || '-'}</strong></td>
-                <td>${row.item_name || '-'}</td>
-                <td>${row.uid || '-'}</td>
+                <td><strong>${escapePrintHtml(row.item_code || '-')}</strong></td>
+                <td>${escapePrintHtml(row.item_name || '-')}</td>
+                <td>${escapePrintHtml(row.uid || '-')}</td>
                 <td class="right"><strong>${row.quantity ?? 0}</strong></td>
               </tr>
             </tbody>
           </table>
 
-          ${row.notes ? `<div class="notes"><div class="label">Notes</div><div style="margin-top:6px;">${row.notes}</div></div>` : ''}
+          ${row.notes ? `<div class="notes"><div class="label">Notes</div><div style="margin-top:6px;">${escapePrintHtml(row.notes)}</div></div>` : ''}
 
           <div class="footer">
             <div class="sign">
@@ -625,22 +727,32 @@ export default function SrvPage() {
       </body>
       </html>
     `;
-    const w = window.open('', '_blank');
-    if (w) {
-      w.document.write(html);
-      w.document.close();
-      w.print();
-    }
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
   }, [resolveEmployeeLabel, resolveWarehouseLabel]);
 
-  const printGeneratedUids = useCallback((payload: GeneratedUidPrintPayload) => {
+  const printGeneratedUids = useCallback(async (payload: GeneratedUidPrintPayload, preOpenedWindow?: Window | null) => {
     const generatedUids = Array.isArray(payload.generatedUids)
       ? payload.generatedUids.map((uid) => String(uid || '').trim()).filter(Boolean)
       : [];
 
     if (generatedUids.length === 0) {
+      preOpenedWindow?.close();
       return;
     }
+
+    const printWindow = preOpenedWindow || window.open('', '_blank');
+    if (!printWindow) {
+      alert(`QC completed, but the UID print window was blocked. Generated UIDs: ${generatedUids.join(', ')}`);
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write('<!doctype html><html><head><title>Preparing UID print...</title></head><body style="font-family: Arial, sans-serif; padding: 16px;">Preparing UID print…</body></html>');
+    printWindow.document.close();
 
     const jobOrderNumber = escapePrintHtml(payload.jobOrderNumber || '-');
     const itemCode = escapePrintHtml(payload.itemCode || '-');
@@ -650,6 +762,18 @@ export default function SrvPage() {
     );
     const qcBy = escapePrintHtml(payload.qcBy || '-');
     const printedAt = escapePrintHtml(new Date().toLocaleString());
+    const company = await apiClient.get<any>('/tenant/current').catch(() => null);
+    const branding = buildDocumentBranding(company);
+    const qrCodes = await Promise.all(
+      generatedUids.map(async (uid) => ({
+        uid,
+        dataUrl: await QRCode.toDataURL(uid, {
+          errorCorrectionLevel: 'M',
+          margin: 1,
+          width: 120,
+        }),
+      })),
+    );
     const uidCards = generatedUids
       .map(
         (uid, index) => `
@@ -662,9 +786,14 @@ export default function SrvPage() {
               <div class="uid-card-seq">${index + 1}/${generatedUids.length}</div>
             </div>
             <div class="uid-card-body">
-              <div class="uid-value">${escapePrintHtml(uid)}</div>
-              <div class="uid-meta">JO: ${jobOrderNumber}</div>
-              <div class="uid-meta">QC Date: ${qcDate}</div>
+              <div class="uid-layout">
+                <div class="uid-copy">
+                  <div class="uid-value">${escapePrintHtml(uid)}</div>
+                  <div class="uid-meta">JO: ${jobOrderNumber}</div>
+                  <div class="uid-meta">QC Date: ${qcDate}</div>
+                </div>
+                <img class="uid-qr" src="${qrCodes[index]?.dataUrl || ''}" alt="QR for ${escapePrintHtml(uid)}" />
+              </div>
             </div>
           </div>
         `,
@@ -688,13 +817,15 @@ export default function SrvPage() {
       <!DOCTYPE html>
       <html>
       <head>
+        <script>window.onload = window.print</script>
         <title>UID Print - ${jobOrderNumber}</title>
         <style>
-          * { box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; margin: 20px; color: #111827; }
+          body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; padding: 20px; color: #111; }
+          .generated-on { text-align:right; font-size:10.5pt; color:#1e3a8a; line-height:1.5; }
+          .generated-on-label { font-weight:700; text-transform:uppercase; letter-spacing:0.06em; }
+          .generated-on-value { font-weight:700; color:#111827; }
           .page { max-width: 1100px; margin: 0 auto; }
           .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-          .brand { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: #6b7280; }
           .title { font-size: 28px; font-weight: 800; margin-top: 6px; }
           .subtitle { margin-top: 6px; color: #4b5563; }
           .meta { display: grid; gap: 6px; text-align: right; font-size: 12px; }
@@ -709,7 +840,10 @@ export default function SrvPage() {
           .uid-card-subtitle { margin-top: 4px; font-size: 13px; font-weight: 700; }
           .uid-card-seq { font-size: 11px; color: #6b7280; }
           .uid-card-body { margin-top: 18px; }
+          .uid-layout { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+          .uid-copy { flex: 1; min-width: 0; }
           .uid-value { font-size: 22px; font-weight: 800; letter-spacing: 0.04em; word-break: break-word; }
+          .uid-qr { width: 96px; height: 96px; object-fit: contain; flex-shrink: 0; }
           .uid-meta { margin-top: 6px; font-size: 12px; color: #4b5563; }
           table { width: 100%; border-collapse: collapse; margin-top: 24px; }
           th, td { border: 1px solid #d1d5db; padding: 8px 10px; text-align: left; font-size: 12px; }
@@ -723,9 +857,10 @@ export default function SrvPage() {
       </head>
       <body>
         <div class="page">
+          ${renderStandardLetterheadHtml(branding, printedAt)}
+
           <div class="header">
             <div>
-              <div class="brand">SAK ERP</div>
               <div class="title">Generated UID Labels</div>
               <div class="subtitle">Printed immediately after SRV QC acceptance</div>
             </div>
@@ -775,16 +910,10 @@ export default function SrvPage() {
       </body>
       </html>
     `;
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert(`QC completed, but the UID print window was blocked. Generated UIDs: ${generatedUids.join(', ')}`);
-      return;
-    }
-
+    printWindow.document.open();
     printWindow.document.write(html);
     printWindow.document.close();
-    printWindow.print();
+    printWindow.focus();
   }, []);
 
   return (
@@ -796,13 +925,33 @@ export default function SrvPage() {
             <h1 className="text-4xl font-bold text-[#36454F] mb-2">Store Receipt Voucher (SRV)</h1>
             <p className="text-[#6F4E37]">Receive finished goods from production</p>
           </div>
-          <button
-            onClick={loadAll}
-            disabled={loading}
-            className="bg-[#8B6F47] text-white px-6 py-3 rounded-lg hover:bg-[#6F4E37] transition-colors font-semibold disabled:opacity-50 shadow-md"
-          >
-            {loading ? 'Loading...' : 'Refresh'}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={async () => {
+                setManualSrvAlert(null);
+                setManualSrvForm({ itemId: '', quantity: '', warehouseId: '', receiverName: '', receiverPhone: '', notes: '', movementDate: todayDate });
+                if (manualSrvItems.length === 0) {
+                  const token = localStorage.getItem('accessToken');
+                  try {
+                    const res = await fetch('/api/v1/inventory/items', { headers: { Authorization: `Bearer ${token}` } });
+                    const data = await res.json();
+                    setManualSrvItems(Array.isArray(data) ? data.map((i: any) => ({ id: i.id, code: i.code, name: i.name })).sort((a: any, b: any) => a.code.localeCompare(b.code)) : []);
+                  } catch {}
+                }
+                setShowManualSrvModal(true);
+              }}
+              className="bg-amber-600 text-white px-5 py-3 rounded-lg hover:bg-amber-700 transition-colors font-semibold shadow-md"
+            >
+              + Manual SRV
+            </button>
+            <button
+              onClick={() => { void loadAll(); }}
+              disabled={loading}
+              className="bg-[#8B6F47] text-white px-6 py-3 rounded-lg hover:bg-[#6F4E37] transition-colors font-semibold disabled:opacity-50 shadow-md"
+            >
+              {loading ? 'Loading...' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
         {/* Sub-tabs: Open / History */}
@@ -918,19 +1067,6 @@ export default function SrvPage() {
 
         {activeSrvView === 'history' && (
           <div className="space-y-4">
-            {srvHistory.some((r) => !r.approved_by) && (
-              <div className="flex justify-end">
-                {canApprove && (
-                <button
-                  onClick={() => void approveAllPending()}
-                  disabled={bulkApproving}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 shadow-sm"
-                >
-                  {bulkApproving ? 'Approving...' : `✓ Approve All Pending (${srvHistory.filter((r) => !r.approved_by).length})`}
-                </button>
-                )}
-              </div>
-            )}
           <div className="bg-white rounded-lg shadow-md overflow-hidden">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -955,9 +1091,6 @@ export default function SrvPage() {
                       Received At
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                      Approved
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -965,7 +1098,7 @@ export default function SrvPage() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {srvHistory.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                      <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                         No SRV history.
                       </td>
                     </tr>
@@ -985,17 +1118,6 @@ export default function SrvPage() {
                         {row.movement_date
                           ? new Date(row.movement_date).toLocaleString()
                           : '-'}
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        {row.approved_by ? (
-                          <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
-                            Approved
-                          </span>
-                        ) : (
-                          <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">
-                            Pending
-                          </span>
-                        )}
                       </td>
                       <td className="px-6 py-4 text-sm">
                         <div className="flex gap-3">
@@ -1048,13 +1170,14 @@ export default function SrvPage() {
               </div>
 
               {(() => {
-                const jobOrderId = String(selectedRow.job_order_id || selectedRow.id || '').trim();
+                const jobOrderId = String(selectedRow.job_order_id || '').trim();
+                const isManualSrv = !selectedRow.job_order_id;
                 const receiptRow =
                   openSrvs.find((o) => o.id === selectedRow.id) ||
                   srvHistory.find((h) => h.id === selectedRow.id) ||
                   selectedRow;
 
-                const statusLabel = receiptRow?.approved_by ? 'APPROVED' : 'DRAFT';
+                const statusLabel = isManualSrv ? 'AUTO-APPROVED' : (receiptRow?.approved_by ? 'APPROVED' : 'DRAFT');
                 const receivedAt = (receiptRow as any)?.received_at || receiptRow?.movement_date || null;
                 const approvedAt = receiptRow?.approved_at || null;
 
@@ -1074,9 +1197,9 @@ export default function SrvPage() {
                     <div className="p-6 space-y-6">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700">Job Order</label>
+                          <label className="block text-sm font-medium text-gray-700">{isManualSrv ? 'Source' : 'Job Order'}</label>
                           <p className="mt-1 text-gray-900 font-semibold">
-                            {selectedRow.job_order_number || selectedRow.job_order_id || selectedRow.id}
+                            {isManualSrv ? 'Manual SRV' : (selectedRow.job_order_number || selectedRow.job_order_id || selectedRow.id)}
                           </p>
                         </div>
                         <div>
@@ -1085,6 +1208,8 @@ export default function SrvPage() {
                             className={`inline-block mt-1 px-3 py-1 text-xs font-semibold rounded-full ${
                               statusLabel === 'APPROVED'
                                 ? 'bg-green-100 text-green-800'
+                                : statusLabel === 'AUTO-APPROVED'
+                                ? 'bg-amber-100 text-amber-800'
                                 : 'bg-gray-100 text-gray-800'
                             }`}
                           >
@@ -1144,47 +1269,54 @@ export default function SrvPage() {
                         </table>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">Receive Qty *</label>
-                          <input
-                            type="number"
-                            min={0}
-                            value={receivedQty}
-                            onChange={(e) => setReceivedQty(Number(e.target.value || 0))}
-                            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
-                          />
+                      {isManualSrv ? (
+                        <div className="text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">
+                          ✅ This is a <strong>Manual SRV</strong> — stock and UIDs were auto-approved at creation. No QC step required.
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">Received By (Name)</label>
-                          <input
-                            type="text"
-                            value={receiverName}
-                            onChange={(e) => setReceiverName(e.target.value)}
-                            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
-                            placeholder="Store keeper name"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">Received By (Phone)</label>
-                          <input
-                            type="text"
-                            value={receiverPhone}
-                            onChange={(e) => setReceiverPhone(e.target.value)}
-                            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
-                            placeholder="Phone"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="text-sm text-gray-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                        UIDs will NOT be generated at SRV receipt. UIDs will be generated only after QC is completed.
-                      </div>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-3 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700">Receive Qty *</label>
+                              <input
+                                type="number"
+                                min={0}
+                                value={receivedQty}
+                                onChange={(e) => setReceivedQty(Number(e.target.value || 0))}
+                                className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700">Received By (Name)</label>
+                              <input
+                                type="text"
+                                value={receiverName}
+                                onChange={(e) => setReceiverName(e.target.value)}
+                                className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                                placeholder="Store keeper name"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700">Received By (Phone)</label>
+                              <input
+                                type="text"
+                                value={receiverPhone}
+                                onChange={(e) => setReceiverPhone(e.target.value)}
+                                className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                                placeholder="Phone"
+                              />
+                            </div>
+                          </div>
+                          <div className="text-sm text-gray-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                            UIDs will NOT be generated at SRV receipt. UIDs will be generated only after QC is completed.
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     <div className="p-6 border-t border-gray-200 flex justify-between items-center">
                       <div className="flex gap-3">
-                        <button
+                        {!isManualSrv && <button
                           onClick={async () => {
                             if (qcSummaryLoading) return;
                             if (qcCompleted) {
@@ -1242,7 +1374,7 @@ export default function SrvPage() {
                           title={qcSummaryLoading ? 'Checking QC status…' : qcCompleted ? 'QC already completed' : undefined}
                         >
                           🔍 QC Accept
-                        </button>
+                        </button>}
                       </div>
                       <button
                         onClick={() => {
@@ -1270,6 +1402,8 @@ export default function SrvPage() {
                               </button>
                               <button
                                 onClick={async () => {
+                                  // Declare outside try so catch block can close it on error
+                                  let uidPrintWindow: Window | null = null;
                                   try {
                                     const hasRejectedWithoutReason = qcFormData.some(
                                       (it) => it.rejectedQty > 0 && !it.rejectionReason?.trim(),
@@ -1307,6 +1441,13 @@ export default function SrvPage() {
                                       return;
                                     }
 
+                                    // Open print window now (synchronous user-gesture context) to avoid popup blocker
+                                    uidPrintWindow = window.open('', '_blank');
+                                    if (uidPrintWindow) {
+                                      uidPrintWindow.document.write('<!doctype html><html><head><title>Preparing UID print…</title></head><body style="font-family:Arial,sans-serif;padding:16px">Preparing UID print…</body></html>');
+                                      uidPrintWindow.document.close();
+                                    }
+
                                     const qcResult = await qcAcceptSrv(jobOrderId, accepted, rejected, {
                                       metadata: { ...qcMetadata, source: 'SRV' },
                                       items: qcFormData,
@@ -1326,7 +1467,7 @@ export default function SrvPage() {
                                       : [];
 
                                     if (generatedUids.length > 0) {
-                                      printGeneratedUids({
+                                      await printGeneratedUids({
                                         jobOrderNumber:
                                           String(qcResult?.jobOrderNumber || selectedRow?.job_order_number || jobOrderId).trim() ||
                                           '-',
@@ -1351,14 +1492,17 @@ export default function SrvPage() {
                                                   .filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index)
                                                   .join(' '),
                                               ).trim() || '-',
-                                      });
+                                      }, uidPrintWindow);
                                       alert(
                                         `QC completed successfully. ${generatedUids.length} UID(s) were generated and opened for print.`,
                                       );
                                     } else {
+                                      // No UIDs generated — close the pre-opened window
+                                      uidPrintWindow?.close();
                                       alert(qcResult?.message || 'QC completed successfully!');
                                     }
                                   } catch (err: any) {
+                                    uidPrintWindow?.close();
                                     alert('Failed to QC Accept: ' + (err?.response?.data?.message || err.message || err));
                                   }
                                 }}
@@ -1372,7 +1516,7 @@ export default function SrvPage() {
                           <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
                             <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
                               <h3 className="text-lg font-semibold text-gray-900 mb-4">QC Information</h3>
-                              <div className="grid grid-cols-3 gap-4">
+                              <div className="grid grid-cols-2 gap-4">
                                 <div>
                                   <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Number</label>
                                   <input
@@ -1393,45 +1537,9 @@ export default function SrvPage() {
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                                   />
                                 </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">QC By</label>
-                                  <select
-                                    value={qcMetadata.qcBy}
-                                    onChange={(e) => setQcMetadata({ ...qcMetadata, qcBy: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                  >
-                                    <option value="">Select User</option>
-                                    {users.map((user) => (
-                                      <option key={user.id} value={user.id}>
-                                        {user.employee_name} {user.employee_code ? `(${user.employee_code})` : ''}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
                               </div>
                             </div>
 
-                            <div className="mb-4 flex items-center justify-between p-3 bg-gray-100 rounded-lg">
-                              <div className="flex items-center gap-4">
-                                <label className="font-medium text-gray-700">Select All Checked By:</label>
-                                <select
-                                  onChange={(e) => {
-                                    if (e.target.value) {
-                                      const newData = qcFormData.map((item) => ({ ...item, checked_by: e.target.value }));
-                                      setQcFormData(newData);
-                                    }
-                                  }}
-                                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                >
-                                  <option value="">Select User for All Items</option>
-                                  {users.map((user) => (
-                                    <option key={user.id} value={user.id}>
-                                      {user.employee_name} {user.employee_code ? `(${user.employee_code})` : ''}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            </div>
 
                             <div className="space-y-4">
                               {qcFormData.map((item, index) => (
@@ -1511,25 +1619,6 @@ export default function SrvPage() {
                                     />
                                   </div>
 
-                                  <div className="mt-3">
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Checked By</label>
-                                    <select
-                                      value={item.checked_by || ''}
-                                      onChange={(e) => {
-                                        const newData = [...qcFormData];
-                                        newData[index] = { ...item, checked_by: e.target.value };
-                                        setQcFormData(newData);
-                                      }}
-                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                    >
-                                      <option value="">Select User</option>
-                                      {users.map((user) => (
-                                        <option key={user.id} value={user.id}>
-                                          {user.employee_name} {user.employee_code ? `(${user.employee_code})` : ''}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
 
                                   <div className="mt-3">
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1595,6 +1684,157 @@ export default function SrvPage() {
           </div>
         )}
       </div>
+
+      {/* Manual SRV Modal */}
+      {showManualSrvModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between p-5 border-b">
+              <h2 className="text-xl font-bold text-gray-900">Create Manual SRV</h2>
+              <button onClick={() => setShowManualSrvModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            <div className="p-5 space-y-4">
+              {manualSrvAlert && (
+                <div className={`rounded-lg px-4 py-3 text-sm font-medium ${manualSrvAlert.type === 'error' ? 'bg-red-50 text-red-800' : 'bg-green-50 text-green-800'}`}>
+                  {manualSrvAlert.message}
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Item <span className="text-red-500">*</span></label>
+                <SearchableSelect
+                  value={manualSrvForm.itemId}
+                  onChange={(value) => setManualSrvForm({ ...manualSrvForm, itemId: String(value || '') })}
+                  options={manualSrvItems.map(i => ({ value: i.id, label: i.code, subtitle: i.name }))}
+                  placeholder="Search item by code or name..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Quantity <span className="text-red-500">*</span></label>
+                  <input type="number" min="0.01" step="any"
+                    value={manualSrvForm.quantity}
+                    onChange={(e) => setManualSrvForm({ ...manualSrvForm, quantity: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+                    placeholder="e.g. 10" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Date</label>
+                  <input type="date"
+                    value={manualSrvForm.movementDate}
+                    onChange={(e) => setManualSrvForm({ ...manualSrvForm, movementDate: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
+                </div>
+              </div>
+              {warehouses.length > 0 && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Warehouse</label>
+                  <select
+                    value={manualSrvForm.warehouseId}
+                    onChange={(e) => setManualSrvForm({ ...manualSrvForm, warehouseId: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="">Default warehouse</option>
+                    {warehouses.map(w => (
+                      <option key={w.id} value={w.id}>{w.code ? `${w.code} — ` : ''}{w.name || w.id}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Received By</label>
+                  <input type="text"
+                    value={manualSrvForm.receiverName}
+                    onChange={(e) => setManualSrvForm({ ...manualSrvForm, receiverName: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+                    placeholder="Name" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Phone</label>
+                  <input type="text"
+                    value={manualSrvForm.receiverPhone}
+                    onChange={(e) => setManualSrvForm({ ...manualSrvForm, receiverPhone: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+                    placeholder="Phone number" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Notes / Reason</label>
+                <textarea rows={2}
+                  value={manualSrvForm.notes}
+                  onChange={(e) => setManualSrvForm({ ...manualSrvForm, notes: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+                  placeholder="Reason for manual receipt..." />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 p-5 border-t">
+              <button onClick={() => setShowManualSrvModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button
+                disabled={manualSrvSaving || !manualSrvForm.itemId || !manualSrvForm.quantity}
+                onClick={async () => {
+                  setManualSrvAlert(null);
+                  setManualSrvSaving(true);
+                  try {
+                    // Open print window now (in sync user-gesture context) to avoid popup blocker
+                    const uidPrintWin = window.open('', '_blank');
+                    if (uidPrintWin) {
+                      uidPrintWin.document.write('<!doctype html><html><head><title>Preparing UID print…</title></head><body style="font-family:Arial,sans-serif;padding:16px">Preparing UID print…</body></html>');
+                      uidPrintWin.document.close();
+                    }
+
+                    const token = localStorage.getItem('accessToken');
+                    const res = await fetch('/api/v1/job-orders/store/receipt-vouchers/manual', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({
+                        itemId: manualSrvForm.itemId,
+                        quantity: parseFloat(manualSrvForm.quantity),
+                        warehouseId: manualSrvForm.warehouseId || undefined,
+                        receiverName: manualSrvForm.receiverName || undefined,
+                        receiverPhone: manualSrvForm.receiverPhone || undefined,
+                        notes: manualSrvForm.notes || undefined,
+                        movementDate: manualSrvForm.movementDate || undefined,
+                      }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) { uidPrintWin?.close(); throw new Error(data?.message || 'Failed to create manual SRV'); }
+
+                    const generatedUids: string[] = Array.isArray(data?.uids) ? data.uids.map((u: any) => String(u || '').trim()).filter(Boolean) : [];
+                    const selectedItem = manualSrvItems.find(i => i.id === manualSrvForm.itemId);
+
+                    if (generatedUids.length > 0) {
+                      await printGeneratedUids({
+                        jobOrderNumber: `MANUAL-SRV / ${data?.entryId?.slice(0, 8) ?? 'NEW'}`,
+                        itemCode: selectedItem?.code ?? data?.itemCode ?? '',
+                        itemName: selectedItem?.name ?? data?.itemName ?? '',
+                        generatedUids,
+                        qcDate: manualSrvForm.movementDate || new Date().toISOString(),
+                        qcBy: manualSrvForm.receiverName || 'Store',
+                      }, uidPrintWin);
+                      setManualSrvAlert({ type: 'success', message: `${data.message || 'Manual SRV created!'} ${generatedUids.length} UID label(s) sent to print.` });
+                    } else {
+                      uidPrintWin?.close();
+                      setManualSrvAlert({ type: 'success', message: data.message || 'Manual SRV created successfully!' });
+                    }
+                    void loadAll();
+                    setTimeout(() => setShowManualSrvModal(false), 1500);
+                  } catch (err: any) {
+                    setManualSrvAlert({ type: 'error', message: err?.message || 'Failed to create manual SRV' });
+                  } finally {
+                    setManualSrvSaving(false);
+                  }
+                }}
+                className="px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700 disabled:opacity-50"
+              >
+                {manualSrvSaving ? 'Creating...' : 'Create SRV'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

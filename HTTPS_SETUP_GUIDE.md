@@ -6,7 +6,8 @@
 
 **Your Production URLs (after HTTPS setup):**
 - Frontend: https://pms.saksolution.com
-- API: https://api.pms.saksolution.com/api/v1
+- API: https://pms.saksolution.com/api/v1
+- Alias: https://erp.saifseas.com
 - HR Module: https://pms.saksolution.com/dashboard/hr
 
 ### What's Now Live:
@@ -51,14 +52,21 @@ sudo nano /etc/nginx/sites-available/sak-erp
 
 Add this configuration for **pms.saksolution.com**:
 ```nginx
-# Frontend Server Block
+# Main site server block
 server {
     listen 80;
-    server_name pms.saksolution.com www.pms.saksolution.com;
+    server_name pms.saksolution.com www.pms.saksolution.com erp.saifseas.com;
 
-    # Redirect all HTTP to HTTPS
-    location / {
-        proxy_pass http://localhost:3000;
+    location = /api {
+        return 308 /api/v1;
+    }
+
+    location = /api/v1 {
+        return 308 /api/v1/;
+    }
+
+    location /api/v1/ {
+        proxy_pass http://localhost:4000/api/v1/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -68,15 +76,9 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
-}
-
-# API Server Block
-server {
-    listen 80;
-    server_name api.pms.saksolution.com;
 
     location / {
-        proxy_pass http://localhost:4000;
+        proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -101,12 +103,12 @@ sudo systemctl reload nginx
 Run Certbot to get and install SSL certificate:
 ```bash
 # For Nginx (your setup)
-sudo certbot --nginx -d pms.saksolution.com -d www.pms.saksolution.com -d api.pms.saksolution.com
+sudo certbot --nginx -d pms.saksolution.com -d www.pms.saksolution.com -d erp.saifseas.com
 ```
 
 Or for Apache:
 ```bash
-sudo certbot --apache -d pms.saksolution.com -d www.pms.saksolution.com -d api.pms.saksolution.com
+sudo certbot --apache -d pms.saksolution.com -d www.pms.saksolution.com -d erp.saifseas.com
 ```
 
 Certbot will:
@@ -119,7 +121,8 @@ Certbot will:
 
 Test your sites:
 - Frontend: https://pms.saksolution.com
-- API: https://api.pms.saksolution.com/api/v1
+- API: https://pms.saksolution.com/api/v1
+- Alias: https://erp.saifseas.com
 
 ### Step 5: Auto-Renewal Setup
 
@@ -147,7 +150,6 @@ Add these A records in your domain's DNS settings:
 |------|------|-------|-----|
 | A | @ | 72.62.192.228 | 3600 |
 | A | www | 72.62.192.228 | 3600 |
-| A | api | 72.62.192.228 | 3600 |
 
 Wait 10-30 minutes for DNS propagation.
 
@@ -219,7 +221,7 @@ After setting up HTTPS, update your `.env` files:
 
 **apps/web/.env.local**:
 ```env
-NEXT_PUBLIC_API_URL=https://api.pms.saksolution.com/api/v1
+NEXT_PUBLIC_API_URL=/api/v1
 ```
 
 **apps/api/.env**:
@@ -270,7 +272,7 @@ sudo ln -s /etc/nginx/sites-available/sak-erp /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 
 # 4. Obtain SSL Certificate
-sudo certbot --nginx -d pms.saksolution.com -d www.pms.saksolution.com -d api.pms.saksolution.com
+sudo certbot --nginx -d pms.saksolution.com -d www.pms.saksolution.com -d erp.saifseas.com
 
 # 5. Test Auto-Renewal
 sudo certbot renew --dry-run
@@ -297,7 +299,8 @@ sudo ufw enable
 
 **Production URLs** (after HTTPS setup):
 - Frontend: https://pms.saksolution.com
-- API: https://api.pms.saksolution.com/api/v1
+- API: https://pms.saksolution.com/api/v1
+- Alias: https://erp.saifseas.com
 - HR Module: https://pms.saksolution.com/dashboard/hr
 
 **Current HTTP URLs** (temporary):

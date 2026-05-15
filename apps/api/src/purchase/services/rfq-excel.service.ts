@@ -29,7 +29,10 @@ export class RfqExcelService {
     if (!value) return '-';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '-';
-    return date.toLocaleDateString();
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const year = String(date.getUTCFullYear()).slice(2);
+    return `${day}/${month}/${year}`;
   }
 
   async generateRFQExcel(data: RFQExcelData): Promise<Buffer> {
@@ -39,7 +42,7 @@ export class RfqExcelService {
     // Set column widths
     worksheet.columns = [
       { width: 5 },   // S.No
-      { width: 15 },  // Item Code
+      { width: 15 },  // SAS Part Number
       { width: 30 },  // Item Name
       { width: 35 },  // Description
       { width: 12 },  // Quantity
@@ -102,7 +105,7 @@ export class RfqExcelService {
     // Items Table Header
     currentRow += 2;
     const headerRow = worksheet.getRow(currentRow);
-    const headers = ['S.No', 'Item Code', 'Item Name', 'Description', 'Quantity', 'UOM', 'Unit Price', 'Total Price', 'Remarks'];
+    const headers = ['S.No', 'SAS Part Number', 'Item Name', 'Description', 'Quantity', 'UOM', 'Unit Price', 'Total Price', 'Remarks'];
     
     headers.forEach((header, index) => {
       const cell = headerRow.getCell(index + 1);

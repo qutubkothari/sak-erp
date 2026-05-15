@@ -141,7 +141,7 @@ export default function DebugPage() {
             <li>Check if your JWT token has a <code className="bg-blue-100 px-1 rounded">tenantId</code> field</li>
             <li>If <strong>missing tenantId</strong>: Click &quot;Force Logout&quot; above, then login again</li>
             <li>After fresh login, your token will have tenantId and vendors will be isolated to your company</li>
-            <li>Old vendors created before the fix belong to &quot;SAK Solutions&quot; tenant - you&apos;ll need to create new ones</li>
+            <li>Old vendors created before the fix may belong to a previous default tenant - you&apos;ll need to create new ones</li>
           </ol>
         </div>
       </div>

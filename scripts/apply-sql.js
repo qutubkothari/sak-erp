@@ -35,9 +35,22 @@ async function main() {
 
   const sql = fs.readFileSync(sqlPath, 'utf8');
 
+  const appCurrentUserId = process.env.APP_CURRENT_USER_ID;
+  const appCurrentTenantId = process.env.APP_CURRENT_TENANT_ID;
+  const connectionOptions = [];
+
+  if (appCurrentUserId) {
+    connectionOptions.push(`-c app.current_user_id=${appCurrentUserId}`);
+  }
+
+  if (appCurrentTenantId) {
+    connectionOptions.push(`-c app.current_tenant_id=${appCurrentTenantId}`);
+  }
+
   const pool = new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
+    ...(connectionOptions.length > 0 ? { options: connectionOptions.join(' ') } : {}),
   });
 
   try {

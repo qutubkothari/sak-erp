@@ -21,12 +21,12 @@ export function formatCurrency(amount: number | null | undefined, currency = 'IN
 /** Format a date string to a readable date */
 export function formatDate(
   date: string | Date | null | undefined,
-  opts: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', year: 'numeric' },
+  opts: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', year: '2-digit' },
 ): string {
   if (
     opts.day === '2-digit' &&
     opts.month === '2-digit' &&
-    opts.year === 'numeric' &&
+    opts.year === '2-digit' &&
     !opts.weekday &&
     !opts.dateStyle
   ) {

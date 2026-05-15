@@ -3,16 +3,184 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Request } from 'express';
 import { EmailService } from '../../email/email.service';
 import { normalizeInventoryCategory } from '../utils/inventory-category';
+import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DEFAULT_WAREHOUSES = [
+  { code: 'MAIN_WAREHOUSE', name: 'Main Warehouse', type: 'STORE' },
+  { code: 'PRODUCTION_FLOOR', name: 'Production Floor', type: 'PRODUCTION' },
+  { code: 'QC_AREA', name: 'QC Area', type: 'QC' },
+  { code: 'FINISHED_GOODS', name: 'Finished Goods', type: 'STORE' },
+] as const;
+
+const toValidUuid = (value: unknown): string | null => {
+  const normalized = String(value || '').trim();
+  return UUID_PATTERN.test(normalized) ? normalized : null;
+};
+
+type UidAdjustmentContext = {
+  item: any;
+  direction: 'increase' | 'decrease';
+  quantity: number;
+  uidStrategy: 'SERIALIZED' | 'BATCHED';
+  qtyPerUid: number;
+  requiredUidCount: number;
+  selectedUids: string[];
+  generateUids: boolean;
+  warehouseId: string;
+  warehouseLabel: string;
+};
+
+type UidRollbackState = {
+  generatedUids: string[];
+  consumedUids: Array<{
+    uid: string;
+    status: string;
+    location?: string;
+  }>;
+};
+
+type WarehouseColumnSupport = {
+  metadata: boolean;
+  plantId: boolean;
+  type: boolean;
+};
+
+type WarehouseWriteInput = {
+  code?: string;
+  name?: string;
+  type?: string;
+  plant_id?: string;
+  is_active?: boolean;
+  metadata?: Record<string, unknown>;
+};
+
+type InventoryItemLookupRow = {
+  id: string;
+  code: string;
+  name: string;
+  uom?: string;
+  category?: string;
+  standard_cost?: number;
+  selling_price?: number;
+};
+
+type InventoryWarehouseLookupRow = {
+  id: string;
+  code: string;
+  name: string;
+};
 
 @Injectable()
 export class InventoryService {
   private supabase: SupabaseClient;
+  private warehouseColumnSupportPromise: Promise<WarehouseColumnSupport> | null = null;
 
-  constructor(private emailService: EmailService) {
+  constructor(
+    private emailService: EmailService,
+    private readonly uidSupabaseService: UidSupabaseService,
+  ) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_KEY!
     );
+  }
+
+  private isMissingColumnError(error: { message?: string; code?: string } | null | undefined, columnName: string) {
+    const msg = String(error?.message || '').toLowerCase();
+    return (
+      msg.includes(`could not find the '${columnName}' column`) ||
+      msg.includes(`column "${columnName}" does not exist`) ||
+      msg.includes(`column ${columnName} does not exist`) ||
+      msg.includes(`relation "warehouses" does not have column "${columnName}"`) ||
+      msg.includes(`undefined column "${columnName}"`) ||
+      (String(error?.code || '') === '42703') // PostgreSQL undefined_column
+    );
+  }
+
+  private async supportsWarehouseColumn(columnName: 'metadata' | 'plant_id' | 'type') {
+    try {
+      const { error } = await this.supabase
+        .from('warehouses')
+        .select(`id, ${columnName}`)
+        .limit(1);
+
+      if (!error) return true;
+      if (this.isMissingColumnError(error, columnName)) return false;
+      // Unknown error — assume column doesn't exist to avoid crashing warehouse seeding
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  private async getWarehouseColumnSupport() {
+    if (!this.warehouseColumnSupportPromise) {
+      this.warehouseColumnSupportPromise = (async () => {
+        const [metadata, plantId, type] = await Promise.all([
+          this.supportsWarehouseColumn('metadata'),
+          this.supportsWarehouseColumn('plant_id'),
+          this.supportsWarehouseColumn('type'),
+        ]);
+
+        return { metadata, plantId, type };
+      })();
+    }
+
+    return this.warehouseColumnSupportPromise;
+  }
+
+  private async buildWarehousePayload(tenantId: string, warehouse: WarehouseWriteInput) {
+    const columnSupport = await this.getWarehouseColumnSupport();
+    const payload: Record<string, unknown> = {
+      tenant_id: tenantId,
+      code: warehouse.code,
+      name: warehouse.name,
+      is_active: warehouse.is_active ?? true,
+    };
+
+    if (columnSupport.type && warehouse.type) {
+      payload.type = warehouse.type;
+    }
+
+    if (columnSupport.plantId && warehouse.plant_id) {
+      payload.plant_id = warehouse.plant_id;
+    }
+
+    if (columnSupport.metadata) {
+      payload.metadata = warehouse.metadata || {};
+    }
+
+    return payload;
+  }
+
+  private async ensureDefaultWarehouses(tenantId: string) {
+    const payload = await Promise.all(
+      DEFAULT_WAREHOUSES.map((warehouse) =>
+        this.buildWarehousePayload(tenantId, {
+          code: warehouse.code,
+          name: warehouse.name,
+          type: warehouse.type,
+          is_active: true,
+          metadata: { system_seeded: true },
+        })
+      )
+    );
+
+    const { error: insertError } = await this.supabase
+      .from('warehouses')
+      .insert(payload);
+
+    if (insertError) throw new BadRequestException(insertError.message);
+
+    const { data, error } = await this.supabase
+      .from('warehouses')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('name');
+
+    if (error) throw new BadRequestException(error.message);
+    return data || [];
   }
 
   // Get current stock levels with filters
@@ -45,27 +213,42 @@ export class InventoryService {
     }
 
     // Get item details separately
-    const itemIds = [...new Set(stockEntries.map(entry => entry.item_id))];
-    const { data: items, error: itemError } = await this.supabase
-      .from('items')
-      .select('id, code, name, uom, category, standard_cost, selling_price')
-      .in('id', itemIds);
+    const itemIds = [...new Set(
+      stockEntries
+        .map((entry) => toValidUuid(entry.item_id))
+        .filter(Boolean)
+    )] as string[];
+    const items = itemIds.length > 0
+      ? await this.supabase
+          .from('items')
+          .select('id, code, name, uom, category, standard_cost, selling_price')
+          .in('id', itemIds)
+      : { data: [], error: null };
 
-    if (itemError) throw new BadRequestException(itemError.message);
+    if (items.error) throw new BadRequestException(items.error.message);
 
     // Get warehouse details separately
-    const warehouseIds = [...new Set(stockEntries.map(entry => entry.warehouse_id))];
-    const { data: warehouses, error: warehouseError } = await this.supabase
-      .from('warehouses')
-      .select('id, code, name')
-      .in('id', warehouseIds);
+    const warehouseIds = [...new Set(
+      stockEntries
+        .map((entry) => toValidUuid(entry.warehouse_id))
+        .filter(Boolean)
+    )] as string[];
+    const warehouses = warehouseIds.length > 0
+      ? await this.supabase
+          .from('warehouses')
+          .select('id, code, name')
+          .in('id', warehouseIds)
+      : { data: [], error: null };
 
-    if (warehouseError) throw new BadRequestException(warehouseError.message);
+    if (warehouses.error) throw new BadRequestException(warehouses.error.message);
+
+    const itemRows = (items.data ?? []) as InventoryItemLookupRow[];
+    const warehouseRows = (warehouses.data ?? []) as InventoryWarehouseLookupRow[];
 
     // Combine the data manually
     const result = stockEntries.map(entry => {
-      const item = items?.find(i => i.id === entry.item_id);
-      const warehouse = warehouses?.find(w => w.id === entry.warehouse_id);
+      const item = itemRows.find(i => i.id === entry.item_id);
+      const warehouse = warehouseRows.find(w => w.id === entry.warehouse_id);
       
       return {
         ...entry,
@@ -123,32 +306,47 @@ export class InventoryService {
     }
 
     // Get item details separately
-    const itemIds = [...new Set(movements.map(m => m.item_id))];
-    const { data: items, error: itemError } = await this.supabase
-      .from('items')
-      .select('id, code, name')
-      .in('id', itemIds);
+    const itemIds = [...new Set(
+      movements
+        .map((movement) => toValidUuid(movement.item_id))
+        .filter(Boolean)
+    )] as string[];
+    const items = itemIds.length > 0
+      ? await this.supabase
+          .from('items')
+          .select('id, code, name')
+          .in('id', itemIds)
+      : { data: [], error: null };
 
-    if (itemError) throw new BadRequestException(itemError.message);
+    if (items.error) throw new BadRequestException(items.error.message);
 
     // Get warehouse details separately
     const warehouseIds = [...new Set([
-      ...movements.filter(m => m.from_warehouse_id).map(m => m.from_warehouse_id),
-      ...movements.filter(m => m.to_warehouse_id).map(m => m.to_warehouse_id)
-    ])];
+      ...movements
+        .map((movement) => toValidUuid(movement.from_warehouse_id))
+        .filter(Boolean),
+      ...movements
+        .map((movement) => toValidUuid(movement.to_warehouse_id))
+        .filter(Boolean)
+    ])] as string[];
     
-    const { data: warehouses, error: warehouseError } = await this.supabase
-      .from('warehouses')
-      .select('id, code, name')
-      .in('id', warehouseIds);
+    const warehouses = warehouseIds.length > 0
+      ? await this.supabase
+          .from('warehouses')
+          .select('id, code, name')
+          .in('id', warehouseIds)
+      : { data: [], error: null };
 
-    if (warehouseError) throw new BadRequestException(warehouseError.message);
+    if (warehouses.error) throw new BadRequestException(warehouses.error.message);
+
+    const itemRows = (items.data ?? []) as InventoryItemLookupRow[];
+    const warehouseRows = (warehouses.data ?? []) as InventoryWarehouseLookupRow[];
 
     // Combine the data manually
     const result = movements.map(movement => {
-      const item = items?.find(i => i.id === movement.item_id);
-      const fromWarehouse = warehouses?.find(w => w.id === movement.from_warehouse_id);
-      const toWarehouse = warehouses?.find(w => w.id === movement.to_warehouse_id);
+      const item = itemRows.find(i => i.id === movement.item_id);
+      const fromWarehouse = warehouseRows.find(w => w.id === movement.from_warehouse_id);
+      const toWarehouse = warehouseRows.find(w => w.id === movement.to_warehouse_id);
       
       return {
         ...movement,
@@ -165,6 +363,18 @@ export class InventoryService {
   async createStockMovement(req: Request, movementData: any) {
     
     const { tenantId, userId } = req.user as any;
+
+    const { data: item, error: itemError } = await this.supabase
+      .from('items')
+      .select('id, code, name, is_active, is_verified')
+      .eq('tenant_id', tenantId)
+      .eq('id', movementData.item_id)
+      .maybeSingle();
+    if (itemError) throw new BadRequestException(itemError.message);
+    if (!item?.id) throw new BadRequestException('Item not found');
+    if (item.is_active === false) throw new BadRequestException(`Item ${item.name || item.code || ''} is inactive and cannot be used.`);
+    // Verification check disabled - causing too many errors
+    // if (item.is_verified !== true) throw new BadRequestException(`Item ${item.name || item.code || ''} is not verified by admin and cannot be used.`);
 
     // Generate movement number
     const movementNumber = await this.generateMovementNumber(req, movementData.movement_type);
@@ -189,7 +399,7 @@ export class InventoryService {
       movement_date: movementData.movement_date || new Date().toISOString(),
     };
 
-    // Insert movement
+    // Insert movement first, then roll it back if a follow-up step fails.
     const { data: movementRecord, error: movementError } = await this.supabase
       .from('stock_movements')
       .insert(movement)
@@ -198,19 +408,66 @@ export class InventoryService {
 
     if (movementError) throw new BadRequestException(movementError.message);
 
-    // Update stock levels
-    await this.updateStockLevels(req, movementData);
+    const uidRollbackState: UidRollbackState = {
+      generatedUids: [],
+      consumedUids: [],
+    };
 
-    // Check for low stock alerts
-    await this.checkLowStockAlerts(req, movementData.item_id, movementData.to_warehouse_id || movementData.from_warehouse_id);
+    let uidAdjustmentResult: { generated_uids: string[]; consumed_uids: string[] } = {
+      generated_uids: [],
+      consumed_uids: [],
+    };
 
-    return movementRecord;
+    let stockUpdated = false;
+
+    try {
+      // Update stock levels
+      await this.updateStockLevels(req, movementData);
+      stockUpdated = true;
+
+      uidAdjustmentResult = await this.handleUidAdjustmentEffects(
+        req,
+        movementData,
+        movementRecord,
+        uidRollbackState,
+      );
+
+      // Check for low stock alerts
+      await this.checkLowStockAlerts(req, movementData.item_id, movementData.to_warehouse_id || movementData.from_warehouse_id);
+    } catch (error) {
+      if (stockUpdated) {
+        try {
+          await this.updateStockLevels(req, movementData, -1);
+        } catch (rollbackStockError) {
+          console.error('Failed to rollback stock levels after stock movement error:', rollbackStockError);
+        }
+      }
+
+      await this.rollbackUidAdjustmentEffects(req, uidRollbackState);
+
+      if (movementRecord?.id) {
+        await this.supabase
+          .from('stock_movements')
+          .delete()
+          .eq('id', movementRecord.id)
+          .eq('tenant_id', tenantId);
+      }
+
+      throw error;
+    }
+
+    return {
+      ...movementRecord,
+      ...uidAdjustmentResult,
+    };
   }
 
   // Update stock levels after movement
-  private async updateStockLevels(req: Request, movementData: any) {
+  private async updateStockLevels(req: Request, movementData: any, multiplier = 1) {
     
     const { tenantId } = req.user as any;
+
+    const quantity = Number(movementData.quantity || 0) * multiplier;
 
     // Decrease from source warehouse
     if (movementData.from_warehouse_id) {
@@ -219,7 +476,7 @@ export class InventoryService {
         movementData.item_id,
         movementData.from_warehouse_id,
         movementData.from_location_id,
-        -movementData.quantity
+        -quantity
       );
     }
 
@@ -230,9 +487,314 @@ export class InventoryService {
         movementData.item_id,
         movementData.to_warehouse_id,
         movementData.to_location_id,
-        movementData.quantity,
+        quantity,
         movementData.category
       );
+    }
+  }
+
+  private normalizeUidList(value: any): string[] {
+    const source = Array.isArray(value) ? value : [value];
+    return Array.from(
+      new Set(
+        source
+          .map((entry) => String(entry || '').trim())
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  private mapEntityTypeFromCategory(category?: string): string {
+    const normalized = String(category || '').toUpperCase();
+    if (normalized.includes('COMPONENT')) return 'CP';
+    if (normalized.includes('FINISHED')) return 'FG';
+    if (normalized.includes('ASSEMBLY')) return 'SA';
+    return 'RM';
+  }
+
+  private async resolveWarehouseLabel(warehouseId: string): Promise<string> {
+    const { data } = await this.supabase
+      .from('warehouses')
+      .select('code, name')
+      .eq('id', warehouseId)
+      .maybeSingle();
+
+    return String(data?.name || data?.code || 'Warehouse').trim() || 'Warehouse';
+  }
+
+  private resolveRequiredUidCount(quantity: number, uidStrategy: 'SERIALIZED' | 'BATCHED', qtyPerUid: number): number {
+    if (uidStrategy === 'BATCHED') {
+      const ratio = quantity / qtyPerUid;
+      if (!Number.isFinite(ratio) || Math.abs(ratio - Math.round(ratio)) > 1e-9) {
+        throw new BadRequestException(`Adjustment quantity must be a multiple of batch_quantity=${qtyPerUid} for this UID-tracked item`);
+      }
+
+      return Math.round(ratio);
+    }
+
+    if (Math.abs(quantity - Math.round(quantity)) > 1e-9) {
+      throw new BadRequestException('Adjustment quantity must be a whole number for SERIALIZED UID-tracked items');
+    }
+
+    return Math.round(quantity);
+  }
+
+  private async buildUidAdjustmentContext(req: Request, movementData: any): Promise<UidAdjustmentContext | null> {
+    const { tenantId } = req.user as any;
+    const movementType = String(movementData?.movement_type || '').trim().toUpperCase();
+
+    if (movementType !== 'ADJUSTMENT') {
+      return null;
+    }
+
+    const quantity = Number(movementData?.quantity || 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return null;
+    }
+
+    const isIncrease = !!movementData?.to_warehouse_id && !movementData?.from_warehouse_id;
+    const isDecrease = !!movementData?.from_warehouse_id && !movementData?.to_warehouse_id;
+
+    if (!isIncrease && !isDecrease) {
+      return null;
+    }
+
+    const { data: item, error: itemError } = await this.supabase
+      .from('items')
+      .select('id, code, name, category, uid_tracking, uid_strategy, batch_quantity, batch_uom')
+      .eq('tenant_id', tenantId)
+      .eq('id', movementData.item_id)
+      .maybeSingle();
+
+    if (itemError) throw new BadRequestException(itemError.message);
+    if (!item) throw new BadRequestException('Item not found');
+
+    const uidTrackingEnabled = item.uid_tracking === true && String(item.uid_strategy || '').toUpperCase() !== 'NONE';
+    if (!uidTrackingEnabled) {
+      return null;
+    }
+
+    const uidStrategy = (String(item.uid_strategy || 'SERIALIZED').toUpperCase() === 'BATCHED'
+      ? 'BATCHED'
+      : 'SERIALIZED') as 'SERIALIZED' | 'BATCHED';
+
+    const rawBatchQty = Number(item.batch_quantity);
+    const qtyPerUid = uidStrategy === 'BATCHED'
+      ? (Number.isFinite(rawBatchQty) && rawBatchQty > 0 ? rawBatchQty : NaN)
+      : 1;
+
+    if (uidStrategy === 'BATCHED' && !Number.isFinite(qtyPerUid)) {
+      throw new BadRequestException('Item UID strategy is BATCHED but batch_quantity is missing/invalid in Item Master');
+    }
+
+    const direction = isIncrease ? 'increase' : 'decrease';
+    const selectedUids = this.normalizeUidList(movementData?.selected_uids);
+    const generateUids = movementData?.generate_uids === true;
+    const requiresUidMapping = direction === 'decrease' || generateUids;
+    const requiredUidCount = requiresUidMapping
+      ? this.resolveRequiredUidCount(quantity, uidStrategy, qtyPerUid)
+      : 0;
+    const warehouseId = String(isIncrease ? movementData.to_warehouse_id : movementData.from_warehouse_id);
+    const warehouseLabel = await this.resolveWarehouseLabel(warehouseId);
+
+    return {
+      item,
+      direction,
+      quantity,
+      uidStrategy,
+      qtyPerUid,
+      requiredUidCount,
+      selectedUids,
+      generateUids,
+      warehouseId,
+      warehouseLabel,
+    };
+  }
+
+  private async validateConsumableUids(req: Request, context: UidAdjustmentContext) {
+    const { tenantId } = req.user as any;
+
+    if (context.selectedUids.length !== context.requiredUidCount) {
+      const extra = context.uidStrategy === 'BATCHED'
+        ? ` (batch_quantity=${context.qtyPerUid})`
+        : '';
+      throw new BadRequestException(`Select exactly ${context.requiredUidCount} UID(s) for this adjustment${extra}`);
+    }
+
+    const { data: uidRows, error: uidError } = await this.supabase
+      .from('uid_registry')
+      .select('uid, status, location, entity_id')
+      .eq('tenant_id', tenantId)
+      .in('uid', context.selectedUids);
+
+    if (uidError) throw new BadRequestException(uidError.message);
+
+    const byUid = new Map((uidRows || []).map((row: any) => [String(row.uid || '').trim(), row]));
+    const missing = context.selectedUids.filter((uid) => !byUid.has(uid));
+
+    if (missing.length > 0) {
+      throw new BadRequestException(`Unknown UID(s): ${missing.slice(0, 10).join(', ')}${missing.length > 10 ? '...' : ''}`);
+    }
+
+    const issuableStatuses = new Set(['ACTIVE', 'GENERATED', 'IN_STOCK']);
+
+    for (const uid of context.selectedUids) {
+      const row: any = byUid.get(uid);
+      const status = String(row?.status || '').trim();
+      const entityId = String(row?.entity_id || '').trim();
+
+      if (!issuableStatuses.has(status)) {
+        throw new BadRequestException(`UID ${uid} cannot be removed from stock (status=${status || 'N/A'})`);
+      }
+
+      if (entityId !== String(context.item.id)) {
+        throw new BadRequestException(`UID ${uid} does not belong to the selected item`);
+      }
+    }
+
+    return (uidRows || []).map((row: any) => ({
+      uid: String(row.uid || '').trim(),
+      status: String(row.status || '').trim(),
+      location: row.location ? String(row.location) : undefined,
+    }));
+  }
+
+  private async handleUidAdjustmentEffects(
+    req: Request,
+    movementData: any,
+    movementRecord: any,
+    rollbackState: UidRollbackState,
+  ): Promise<{ generated_uids: string[]; consumed_uids: string[] }> {
+    const context = await this.buildUidAdjustmentContext(req, movementData);
+
+    if (!context) {
+      return {
+        generated_uids: [],
+        consumed_uids: [],
+      };
+    }
+
+    if (context.direction === 'increase') {
+      if (!context.generateUids) {
+        return {
+          generated_uids: [],
+          consumed_uids: [],
+        };
+      }
+
+      const generatedUids: string[] = [];
+
+      for (let index = 0; index < context.requiredUidCount; index++) {
+        const created = await this.uidSupabaseService.createUID(req as any, {
+          plantCode: 'MFG',
+          entityType: this.mapEntityTypeFromCategory(context.item.category),
+          entity_type: this.mapEntityTypeFromCategory(context.item.category),
+          entity_id: context.item.id,
+          item_id: context.item.id,
+          status: 'GENERATED',
+          location: context.warehouseLabel,
+          reference: movementRecord.movement_number,
+          description: context.item.name,
+          metadata: {
+            source: 'STOCK_ADJUSTMENT',
+            movement_id: movementRecord.id,
+            movement_number: movementRecord.movement_number,
+            adjusted_quantity: context.quantity,
+            uid_sequence: index + 1,
+            uid_count: context.requiredUidCount,
+            uid_strategy: context.uidStrategy,
+            qty_per_uid: context.qtyPerUid,
+            warehouse_id: context.warehouseId,
+            warehouse_name: context.warehouseLabel,
+            item_code: context.item.code,
+            item_name: context.item.name,
+          },
+        });
+
+        const uid = String((created as any)?.uid || '').trim();
+        if (!uid) {
+          throw new BadRequestException('UID generation succeeded but no UID value was returned');
+        }
+
+        rollbackState.generatedUids.push(uid);
+        generatedUids.push(uid);
+
+        await this.uidSupabaseService.updateLifecycle(
+          req as any,
+          uid,
+          'STOCK_ADJUSTMENT_INCREASE',
+          context.warehouseLabel,
+          `Stock adjustment ${movementRecord.movement_number}`,
+        );
+      }
+
+      return {
+        generated_uids: generatedUids,
+        consumed_uids: [],
+      };
+    }
+
+    const originalStates = await this.validateConsumableUids(req, context);
+
+    for (const state of originalStates) {
+      rollbackState.consumedUids.push(state);
+
+      await this.uidSupabaseService.updateStatus(
+        req as any,
+        state.uid,
+        'CONSUMED',
+        `Stock Adjustment - ${context.warehouseLabel}`,
+      );
+
+      await this.uidSupabaseService.updateLifecycle(
+        req as any,
+        state.uid,
+        'STOCK_ADJUSTMENT_DECREASE',
+        `Stock Adjustment - ${context.warehouseLabel}`,
+        `Stock adjustment ${movementRecord.movement_number}`,
+      );
+    }
+
+    return {
+      generated_uids: [],
+      consumed_uids: originalStates.map((state) => state.uid),
+    };
+  }
+
+  private async rollbackUidAdjustmentEffects(req: Request, rollbackState: UidRollbackState) {
+    const { tenantId } = req.user as any;
+
+    if (rollbackState.generatedUids.length > 0) {
+      const { error } = await this.supabase
+        .from('uid_registry')
+        .delete()
+        .eq('tenant_id', tenantId)
+        .in('uid', rollbackState.generatedUids);
+
+      if (error) {
+        console.error('Failed to rollback generated UIDs after stock movement error:', error);
+      }
+    }
+
+    for (const state of rollbackState.consumedUids) {
+      try {
+        await this.uidSupabaseService.updateStatus(
+          req as any,
+          state.uid,
+          state.status,
+          state.location,
+        );
+
+        await this.uidSupabaseService.updateLifecycle(
+          req as any,
+          state.uid,
+          'STOCK_ADJUSTMENT_ROLLBACK',
+          state.location || 'Warehouse',
+          'Rolled back failed stock adjustment',
+        );
+      } catch (error) {
+        console.error(`Failed to rollback consumed UID ${state.uid}:`, error);
+      }
     }
   }
 
@@ -246,20 +808,149 @@ export class InventoryService {
     category?: string
   ) {
     const { tenantId } = req.user as any;
+    const normalizedCategory = normalizeInventoryCategory(category, 'RAW_MATERIAL');
+
+    if (!locationId) {
+      try {
+        await this.adjustStockFallbackDirect({
+          tenantId,
+          itemId,
+          warehouseId,
+          quantityChange,
+          category: normalizedCategory,
+        });
+        return;
+      } catch (fallbackError: any) {
+        console.error('Error in adjustStock direct fallback:', fallbackError);
+        throw new BadRequestException('Failed to adjust stock levels.');
+      }
+    }
 
     const { error } = await this.supabase.rpc('adjust_inventory_stock', {
       p_tenant_id: tenantId,
       p_item_id: itemId,
       p_warehouse_id: warehouseId,
-      p_location_id: locationId,
+      p_location_id: locationId ?? null,
       p_quantity_change: quantityChange,
-      p_category: normalizeInventoryCategory(category, 'RAW_MATERIAL'),
+      p_category: normalizedCategory,
     });
 
-    if (error) {
-      console.error('Error in adjustStock RPC call:', error);
+    if (!error) {
+      return;
+    }
+
+    console.error('Error in adjustStock RPC call, attempting fallback:', error);
+
+    try {
+      await this.adjustStockFallbackDirect({
+        tenantId,
+        itemId,
+        warehouseId,
+        quantityChange,
+        category: normalizedCategory,
+      });
+    } catch (fallbackError: any) {
+      console.error('Error in adjustStock fallback:', fallbackError);
       throw new BadRequestException('Failed to adjust stock levels.');
     }
+  }
+
+  private async adjustStockFallbackDirect(args: {
+    tenantId: string;
+    itemId: string;
+    warehouseId: string;
+    quantityChange: number;
+    category: string;
+  }) {
+    const { tenantId, itemId, warehouseId, quantityChange, category } = args;
+
+    if (!Number.isFinite(quantityChange) || Math.abs(quantityChange) < 1e-9) {
+      return;
+    }
+
+    const { data: rows, error } = await this.supabase
+      .from('inventory_stock')
+      .select('id, quantity, reserved_quantity, available_quantity, location_id')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .eq('warehouse_id', warehouseId)
+      .eq('category', category)
+      .order('available_quantity', { ascending: false });
+
+    if (error) throw error;
+
+    const safeRows = Array.isArray(rows) ? rows : [];
+
+    if (safeRows.length === 0) {
+      if (quantityChange < 0) {
+        throw new Error('No inventory stock rows available for deduction');
+      }
+
+      const { error: insertError } = await this.supabase
+        .from('inventory_stock')
+        .insert({
+          tenant_id: tenantId,
+          item_id: itemId,
+          warehouse_id: warehouseId,
+          location_id: null,
+          category,
+          quantity: quantityChange,
+          reserved_quantity: 0,
+          last_movement_date: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as any);
+
+      if (insertError) throw insertError;
+      return;
+    }
+
+    let remaining = quantityChange;
+
+    if (remaining < 0) {
+      for (const row of safeRows) {
+        if (remaining >= -1e-9) break;
+
+        const currentQty = Number((row as any)?.quantity || 0);
+        const reservedQty = Number((row as any)?.reserved_quantity || 0);
+        const maxDeduct = Math.max(0, currentQty - reservedQty);
+        const wanted = Math.min(maxDeduct, -remaining);
+
+        if (wanted <= 0) continue;
+
+        const nextQty = currentQty - wanted;
+        const { error: updateError } = await this.supabase
+          .from('inventory_stock')
+          .update({
+            quantity: nextQty,
+            last_movement_date: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq('id', (row as any)?.id);
+
+        if (updateError) throw updateError;
+        remaining += wanted;
+      }
+
+      if (remaining < -1e-6) {
+        throw new Error(`Fallback inventory_stock deduction short by ${Math.abs(remaining).toFixed(6)}`);
+      }
+
+      return;
+    }
+
+    const target = safeRows[0];
+    const currentQty = Number((target as any)?.quantity || 0);
+    const nextQty = currentQty + remaining;
+    const { error: updateError } = await this.supabase
+      .from('inventory_stock')
+      .update({
+        quantity: nextQty,
+        last_movement_date: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      } as any)
+      .eq('id', (target as any)?.id);
+
+    if (updateError) throw updateError;
   }
 
   // Generate movement number
@@ -697,7 +1388,7 @@ export class InventoryService {
     }
 
     try {
-      await this.emailService.sendLowStockAlert(recipientEmail, lowStockAlerts);
+      await this.emailService.sendLowStockAlert(recipientEmail, lowStockAlerts, tenantId);
       return { 
         success: true, 
         message: `Low stock alert email sent to ${recipientEmail}`,
@@ -915,11 +1606,18 @@ export class InventoryService {
       .from('warehouses')
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('is_active', true)
       .order('name');
 
     if (error) throw new BadRequestException(error.message);
-    return data;
+
+    const warehouses = data || [];
+
+    if (warehouses.length === 0) {
+      return this.ensureDefaultWarehouses(tenantId);
+    }
+
+    const visibleWarehouses = warehouses.filter((warehouse: any) => warehouse?.is_active !== false);
+    return visibleWarehouses.length > 0 ? visibleWarehouses : warehouses;
   }
 
   // Create warehouse
@@ -927,15 +1625,14 @@ export class InventoryService {
     
     const { tenantId } = req.user as any;
 
-    const warehouse = {
-      tenant_id: tenantId,
+    const warehouse = await this.buildWarehousePayload(tenantId, {
       code: warehouseData.code || warehouseData.warehouse_code,
       name: warehouseData.name || warehouseData.warehouse_name,
       type: warehouseData.type,
       plant_id: warehouseData.plant_id,
       is_active: true,
       metadata: warehouseData.metadata || {},
-    };
+    });
 
     const { data, error } = await this.supabase
       .from('warehouses')

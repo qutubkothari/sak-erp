@@ -4,14 +4,17 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../lib/api-client';
+import { buildDocumentBranding } from '@/lib/document-branding';
 
 export const dynamic = 'force-dynamic';
+const appBranding = buildDocumentBranding(null);
 
 export default function RegisterPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
+    username: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -46,6 +49,7 @@ export default function RegisterPage() {
     try {
       const response = await apiClient.register({
         name: `${formData.firstName} ${formData.lastName}`,
+        username: formData.username.trim().toLowerCase(),
         email: formData.email,
         password: formData.password,
         companyName: formData.company,
@@ -74,7 +78,7 @@ export default function RegisterPage() {
             Create Account
           </h1>
           <p className="text-sm" style={{ color: '#6F4E37' }}>
-            Join SAK Solutions ERP Platform
+            Join {appBranding.companyName} ERP Platform
           </p>
         </div>
 
@@ -123,6 +127,22 @@ export default function RegisterPage() {
               name="company"
               type="text"
               value={formData.company}
+              onChange={handleChange}
+              required
+              className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80 transition-colors"
+              style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="username" className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+              Username
+            </label>
+            <input
+              id="username"
+              name="username"
+              type="text"
+              value={formData.username}
               onChange={handleChange}
               required
               className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80 transition-colors"

@@ -4,7 +4,7 @@ import { CreateJobOrderDto, PartialCompleteJobOrderDto, UpdateJobOrderDto, Updat
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
-import { hasScreenAccess } from '../../auth/utils/permission-utils';
+import { hasPermission, hasScreenAccess } from '../../auth/utils/permission-utils';
 
 @Controller('job-orders')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -130,7 +130,8 @@ export class JobOrderController {
     const nextFilters = { ...(filters || {}) };
     const canSeeAllJobOrders =
       hasScreenAccess(req.user, 'production-create-job-order') ||
-      hasScreenAccess(req.user, 'production-smart-job-order');
+      hasScreenAccess(req.user, 'production-smart-job-order') ||
+      hasPermission(req.user, 'job_orders:approve');
 
     if (!canSeeAllJobOrders && userId) {
       nextFilters.assignedTo = userId;
@@ -242,13 +243,29 @@ export class JobOrderController {
   @Get('store/material-requisitions/open')
   async getOpenMaterialRequisitions(@Request() req: any) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
-    return this.jobOrderService.getOpenMaterialRequisitions(tenantId);
+    const userId = req.user?.id || req.user?.userId || req.user?.sub;
+    const canSeeAllJobOrders =
+      hasScreenAccess(req.user, 'production-create-job-order') ||
+      hasScreenAccess(req.user, 'production-smart-job-order') ||
+      hasPermission(req.user, 'job_orders:approve');
+
+    return this.jobOrderService.getOpenMaterialRequisitions(tenantId, {
+      assignedTo: canSeeAllJobOrders ? undefined : userId,
+    });
   }
 
   @Get('store/material-requisitions/history')
   async getStoreIssueVoucherHistory(@Request() req: any) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
-    return this.jobOrderService.getStoreIssueVoucherHistory(tenantId);
+    const userId = req.user?.id || req.user?.userId || req.user?.sub;
+    const canSeeAllJobOrders =
+      hasScreenAccess(req.user, 'production-create-job-order') ||
+      hasScreenAccess(req.user, 'production-smart-job-order') ||
+      hasPermission(req.user, 'job_orders:approve');
+
+    return this.jobOrderService.getStoreIssueVoucherHistory(tenantId, {
+      assignedTo: canSeeAllJobOrders ? undefined : userId,
+    });
   }
 
   @Get('store/material-requisitions/:id/readiness')
@@ -405,6 +422,16 @@ export class JobOrderController {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id || req.user?.sub;
     return this.jobOrderService.deleteStoreReceiptVoucherHistoryRow(tenantId, entryId, userId);
+  }
+
+  @Post('store/receipt-vouchers/manual')
+  async createManualStoreReceiptVoucher(
+    @Request() req: any,
+    @Body() body: { itemId: string; quantity: number; warehouseId?: string; receiverName?: string; receiverPhone?: string; notes?: string; movementDate?: string },
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.id || req.user?.sub;
+    return this.jobOrderService.createManualStoreReceiptVoucher(tenantId, { ...body, userId });
   }
 
   @Delete('store/receipt-vouchers/:entryId')

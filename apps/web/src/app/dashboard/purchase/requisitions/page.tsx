@@ -4,9 +4,13 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { getTodayDateInputValue } from '@/lib/date';
+import { loadDeliveryAddresses, saveDeliveryAddress, type DeliveryAddressOption } from '@/lib/delivery-addresses';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
+import SearchableSelect from '../../../../components/SearchableSelect';
+import DateInput from '../../../../components/ui/DateInput';
 
 interface PRItem {
   id: string;
@@ -30,6 +34,9 @@ interface Item {
   standard_cost?: number;
 }
 
+const PR_ITEM_SEARCH_MIN_CHARS = 2;
+const PR_ITEM_SEARCH_RESULT_LIMIT = 75;
+
 type RawItem = Record<string, any>;
 
 interface Requisition {
@@ -41,6 +48,7 @@ interface Requisition {
   status: string;
   priority?: string;
   purpose?: string;
+  delivery_address?: string;
   requested_by: string;
   created_at: string;
   workflow_status?: string;
@@ -84,6 +92,7 @@ interface PRDetail {
   status: string;
   priority?: string;
   purpose?: string;
+  delivery_address?: string;
   requested_by: string;
   approved_by?: string;
   approved_by_name?: string;
@@ -208,15 +217,19 @@ function normalizeDateInputValue(value: string | null | undefined): string {
   return `${year}-${month}-${day}`;
 }
 
+const AUTO_REFRESH_MS = 30000;
+
 function PRContent() {
   const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
+  const todayDate = getTodayDateInputValue();
   const currentUser = readStoredUser();
   const canApprovePR = hasModulePermission(currentUser, 'Purchase Management', 'approve');
   const canCreatePR = hasModulePermission(currentUser, 'Purchase Management', 'create');
   const canEditPR = hasModulePermission(currentUser, 'Purchase Management', 'edit');
   const canDeletePR = hasModulePermission(currentUser, 'Purchase Management', 'delete');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const itemResultRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [items, setItems] = useState<PRItem[]>([]);
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
@@ -235,8 +248,12 @@ function PRContent() {
     department: '',
     requiredDate: '',
     priority: 'MEDIUM',
+    deliveryAddress: '',
     notes: '',
   });
+  const [deliveryAddresses, setDeliveryAddresses] = useState<DeliveryAddressOption[]>([]);
+  const [deliveryAddressName, setDeliveryAddressName] = useState('');
+  const [deliveryAddressSaving, setDeliveryAddressSaving] = useState(false);
 
   const [itemForm, setItemForm] = useState({
     itemName: '',
@@ -248,6 +265,7 @@ function PRContent() {
     specifications: '',
     paymentTerms: '',
     deliveryTerms: '',
+    requiredDate: '',
   });
 
   const [masterItems, setMasterItems] = useState<Item[]>([]);
@@ -255,6 +273,7 @@ function PRContent() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [useManualEntry, setUseManualEntry] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [highlightedItemIndex, setHighlightedItemIndex] = useState(0);
   const [itemsLoadError, setItemsLoadError] = useState<string | null>(null);
   const [lastPurchasePrice, setLastPurchasePrice] = useState<{
     unit_price: number;
@@ -265,6 +284,7 @@ function PRContent() {
   const [rfqPanelOpen, setRfqPanelOpen] = useState(false);
   const [rfqVendors, setRfqVendors] = useState<Vendor[]>([]);
   const [rfqItemVendors, setRfqItemVendors] = useState<Record<string, string[]>>({});
+  const [rfqVendorDrafts, setRfqVendorDrafts] = useState<Record<string, string>>({});
   const [rfqLoadingVendors, setRfqLoadingVendors] = useState(false);
   const [rfqSending, setRfqSending] = useState(false);
   const [rfqResponseDate, setRfqResponseDate] = useState('');
@@ -412,17 +432,56 @@ function PRContent() {
   }, []);
 
   useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+
+      fetchRequisitions({ silent: true });
+      if (showDetailModal && selectedPR?.id) {
+        refreshSelectedPRDetail(selectedPR.id);
+        if (showRfqResponses) {
+          fetchRfqHistory(selectedPR.id, { silent: true });
+        }
+      }
+    }, AUTO_REFRESH_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [showDetailModal, selectedPR?.id, showRfqResponses]);
+
+  useEffect(() => {
     setCurrentPage(1);
   }, [filterStatus]);
 
   useEffect(() => {
     if (showCreateForm) {
       fetchMasterItems();
+      loadDeliveryAddresses()
+        .then(setDeliveryAddresses)
+        .catch(() => setDeliveryAddresses([]));
       if (rfqVendors.length === 0) {
         fetchRFQVendors();
       }
     }
   }, [showCreateForm]);
+
+  const handleSaveDeliveryAddress = async () => {
+    const address = formData.deliveryAddress.trim();
+    if (!address) {
+      alert('Enter a delivery address before saving');
+      return;
+    }
+
+    setDeliveryAddressSaving(true);
+    try {
+      const next = await saveDeliveryAddress(deliveryAddressName, address);
+      setDeliveryAddresses(next);
+      setDeliveryAddressName('');
+      alert('Delivery address saved successfully');
+    } catch (error: any) {
+      alert(error?.message || 'Failed to save delivery address');
+    } finally {
+      setDeliveryAddressSaving(false);
+    }
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -436,21 +495,25 @@ function PRContent() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchRequisitions = async () => {
+  const fetchRequisitions = async (options?: { silent?: boolean }) => {
     try {
-      setLoadingRequisitions(true);
+      if (!options?.silent) {
+        setLoadingRequisitions(true);
+      }
       const response = await apiClient.get('/purchase/requisitions');
       setRequisitions(Array.isArray(response) ? response : []);
     } catch (error: any) {
     } finally {
-      setLoadingRequisitions(false);
+      if (!options?.silent) {
+        setLoadingRequisitions(false);
+      }
     }
   };
 
   const fetchMasterItems = async () => {
     try {
       setItemsLoadError(null);
-      const response = await apiClient.get('/inventory/items');
+      const response = await apiClient.get('/inventory/items?onlyVerified=true');
       // apiClient.get already unwraps the data, so response is the array directly.
       // Normalize field names because some APIs return item_id/item_code/etc.
       const list = Array.isArray(response) ? (response as RawItem[]) : [];
@@ -479,20 +542,45 @@ function PRContent() {
     }
   };
 
-  const filteredItems = masterItems.filter(item => {
-    if (!searchTerm) return true; // Show all items when no search term
-    const search = searchTerm.toLowerCase();
-    return (
-      item.name.toLowerCase().includes(search) ||
-      item.code.toLowerCase().includes(search) ||
-      (item.uom && item.uom.toLowerCase().includes(search))
-    );
-  });
+  const normalizedItemSearch = searchTerm.trim().toLowerCase();
+  const hasEnoughSearchText = normalizedItemSearch.length >= PR_ITEM_SEARCH_MIN_CHARS;
+
+  const filteredItems = hasEnoughSearchText
+    ? masterItems
+        .filter(item => (
+          item.name.toLowerCase().includes(normalizedItemSearch) ||
+          item.code.toLowerCase().includes(normalizedItemSearch) ||
+          (item.uom && item.uom.toLowerCase().includes(normalizedItemSearch))
+        ))
+        .slice(0, PR_ITEM_SEARCH_RESULT_LIMIT)
+    : [];
+
+  useEffect(() => {
+    if (!showDropdown || filteredItems.length === 0) {
+      setHighlightedItemIndex(0);
+      return;
+    }
+
+    setHighlightedItemIndex((prev) => {
+      if (prev < 0) return 0;
+      if (prev >= filteredItems.length) return filteredItems.length - 1;
+      return prev;
+    });
+  }, [filteredItems.length, showDropdown]);
+
+  useEffect(() => {
+    if (!showDropdown || filteredItems.length === 0) {
+      return;
+    }
+
+    itemResultRefs.current[highlightedItemIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [filteredItems, highlightedItemIndex, showDropdown]);
 
   const selectItem = async (item: Item) => {
     setSelectedItemId(item.id);
     setSearchTerm(`${item.code} - ${item.name}`);
     setShowDropdown(false);
+    setHighlightedItemIndex(0);
     setLastPurchasePrice(null);
 
     // Fetch preferred vendor
@@ -570,6 +658,42 @@ function PRContent() {
     }
   };
 
+  const handleItemSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (useManualEntry) return;
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setShowDropdown(false);
+      setHighlightedItemIndex(0);
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (!showDropdown) {
+        setShowDropdown(true);
+      }
+      if (!filteredItems.length) return;
+      setHighlightedItemIndex((prev) => Math.min(prev + 1, filteredItems.length - 1));
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!showDropdown) {
+        setShowDropdown(true);
+      }
+      if (!filteredItems.length) return;
+      setHighlightedItemIndex((prev) => Math.max(prev - 1, 0));
+      return;
+    }
+
+    if (event.key === 'Enter' && showDropdown && filteredItems[highlightedItemIndex]) {
+      event.preventDefault();
+      void selectItem(filteredItems[highlightedItemIndex]);
+    }
+  };
+
   const addItem = () => {
     if (!itemForm.quantity) {
       alert('Please enter quantity');
@@ -608,6 +732,7 @@ function PRContent() {
       specifications: itemForm.specifications,
       paymentTerms: itemForm.paymentTerms || undefined,
       deliveryTerms: itemForm.deliveryTerms || undefined,
+      requiredDate: itemForm.requiredDate || undefined,
     };
 
     setItems((prev) => [...prev, nextItem]);
@@ -622,6 +747,7 @@ function PRContent() {
       specifications: '',
       paymentTerms: '',
       deliveryTerms: '',
+      requiredDate: '',
     });
     setSearchTerm('');
     setSelectedItemId(null);
@@ -640,6 +766,7 @@ function PRContent() {
       specifications: '',
       paymentTerms: '',
       deliveryTerms: '',
+      requiredDate: '',
     });
     setSearchTerm('');
     setSelectedItemId(null);
@@ -671,6 +798,7 @@ function PRContent() {
       specifications: item.specifications || '',
       paymentTerms: item.paymentTerms || '',
       deliveryTerms: item.deliveryTerms || '',
+      requiredDate: (item as any).requiredDate || '',
     });
     setSearchTerm(item.itemName);
     if (matchedItem) {
@@ -720,6 +848,9 @@ function PRContent() {
         quantity: parseFloat(itemForm.quantity),
         estimatedPrice: itemForm.estimatedPrice ? parseFloat(itemForm.estimatedPrice) : undefined,
         specifications: itemForm.specifications,
+        paymentTerms: itemForm.paymentTerms || undefined,
+        deliveryTerms: itemForm.deliveryTerms || undefined,
+        requiredDate: itemForm.requiredDate || undefined,
       } : item
     ));
 
@@ -758,6 +889,14 @@ function PRContent() {
     }
   };
 
+  const refreshSelectedPRDetail = async (prId: string) => {
+    try {
+      const data = await apiClient.get(`/purchase/requisitions/${prId}`);
+      setSelectedPR(data);
+    } catch {
+    }
+  };
+
   const resolveUomForPRDetailItem = (prItem: PRDetailItem): string => {
     const byId = prItem.item_id
       ? masterItems.find((mi) => mi.id === String(prItem.item_id))
@@ -792,6 +931,7 @@ function PRContent() {
         department: data.department || '',
         requiredDate: toDateInputValue(data.required_date ?? data.requiredDate),
         priority: data.priority || 'MEDIUM',
+        deliveryAddress: data.delivery_address || data.deliveryAddress || '',
         notes: data.notes || '',
       });
 
@@ -896,7 +1036,7 @@ function PRContent() {
       setRfqLoadingVendors(true);
       
       // Get all vendors first, then filter to those associated with PR items
-      const allVendors = await apiClient.get<Vendor[]>('/purchase/vendors');
+      const allVendors = await apiClient.get<Vendor[]>('/purchase/vendors?isActive=true');
       const vendorList = Array.isArray(allVendors) ? allVendors : [];
       
       // If we have a selected PR with items, get vendors from item_vendors relationships
@@ -933,14 +1073,15 @@ function PRContent() {
           (v) => v?.is_active !== false && idsToUse.has(String(v.id)),
         );
 
-        setRfqVendors(
-          associatedVendors.length > 0
-            ? associatedVendors
-            : vendorList.filter((v) => v?.is_active !== false),
-        );
+        const sortByName = (a: Vendor, b: Vendor) => (a.name || '').localeCompare(b.name || '');
+        const finalList = associatedVendors.length > 0
+          ? associatedVendors
+          : vendorList.filter((v) => v?.is_active !== false);
+        setRfqVendors([...finalList].sort(sortByName));
       } else {
         // No PR selected, show all active vendors
-        setRfqVendors(vendorList.filter((v) => v?.is_active !== false));
+        const sortByName = (a: Vendor, b: Vendor) => (a.name || '').localeCompare(b.name || '');
+        setRfqVendors([...vendorList.filter((v) => v?.is_active !== false)].sort(sortByName));
       }
     } catch (error) {
       alert('Failed to load vendors');
@@ -949,16 +1090,22 @@ function PRContent() {
     }
   };
 
-  const fetchRfqHistory = async (prId: string) => {
+  const fetchRfqHistory = async (prId: string, options?: { silent?: boolean }) => {
     try {
-      setLoadingRfqHistory(true);
+      if (!options?.silent) {
+        setLoadingRfqHistory(true);
+      }
       const data = await apiClient.get<RfqRecord[]>(`/purchase/requisitions/${prId}/rfqs`);
       setRfqHistory(Array.isArray(data) ? data : []);
     } catch (error) {
-      alert('Failed to load RFQ responses');
+      if (!options?.silent) {
+        alert('Failed to load RFQ responses');
+      }
       setRfqHistory([]);
     } finally {
-      setLoadingRfqHistory(false);
+      if (!options?.silent) {
+        setLoadingRfqHistory(false);
+      }
     }
   };
 
@@ -1082,18 +1229,27 @@ function PRContent() {
     }
   };
 
-  const toggleItemVendor = (itemId: string, vendorId: string) => {
+  const addItemVendor = (itemId: string, vendorId: string) => {
+    if (!vendorId) return;
     setRfqItemVendors((prev) => {
       const currentVendors = prev[itemId] || [];
-      const isSelected = currentVendors.includes(vendorId);
-      
+      if (currentVendors.includes(vendorId)) {
+        return prev;
+      }
+
       return {
         ...prev,
-        [itemId]: isSelected 
-          ? currentVendors.filter(v => v !== vendorId)
-          : [...currentVendors, vendorId]
+        [itemId]: [...currentVendors, vendorId],
       };
     });
+    setRfqVendorDrafts((prev) => ({ ...prev, [itemId]: '' }));
+  };
+
+  const removeItemVendor = (itemId: string, vendorId: string) => {
+    setRfqItemVendors((prev) => ({
+      ...prev,
+      [itemId]: (prev[itemId] || []).filter((id) => id !== vendorId),
+    }));
   };
 
   const handlePreviewRFQ = async (options?: { keepIndex?: number }) => {
@@ -1181,16 +1337,16 @@ function PRContent() {
 
       const sentCount = result?.sent_count ?? 0;
       const failedCount = result?.failed_count ?? 0;
-      const failedList: Array<{ email?: string; error?: string }> = Array.isArray(result?.failed)
-        ? result.failed
-        : [];
-      const failedDetails =
-        failedCount > 0 && failedList.length > 0
-          ? `\n\nFailed details:\n${failedList
-              .map((f) => `${f?.email || 'unknown'} - ${f?.error || 'Unknown error'}`)
-              .join('\n')}`
-          : '';
-      alert(`RFQ sent: ${sentCount}, failed: ${failedCount}${failedDetails}`);
+      const skippedCount = result?.skipped_count ?? 0;
+      const failedList: Array<{ email?: string; error?: string }> = Array.isArray(result?.failed) ? result.failed : [];
+      const skippedList: Array<{ name?: string; reason?: string }> = Array.isArray(result?.skipped) ? result.skipped : [];
+      const failedDetails = failedCount > 0 && failedList.length > 0
+        ? `\n\nFailed:\n${failedList.map((f) => `• ${f?.email || 'unknown'} - ${f?.error || 'Unknown error'}`).join('\n')}`
+        : '';
+      const skippedDetails = skippedCount > 0 && skippedList.length > 0
+        ? `\n\nSkipped (no email on file):\n${skippedList.map((s) => `• ${s?.name || 'unknown'}`).join('\n')}`
+        : '';
+      alert(`RFQ sent: ${sentCount}, failed: ${failedCount}, skipped: ${skippedCount}${failedDetails}${skippedDetails}`);
       setShowRfqPreview(false);
       setRfqPanelOpen(false);
       setRfqItemVendors({});
@@ -1262,6 +1418,7 @@ function PRContent() {
         department: formData.department,
         requiredDate: formData.requiredDate,
         priority: formData.priority,
+        deliveryAddress: formData.deliveryAddress || null,
         purpose: formData.notes || null,
         status: status,
         items: items.map(item => ({
@@ -1288,7 +1445,7 @@ function PRContent() {
       
       setShowCreateForm(false);
       setItems([]);
-      setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', notes: '' });
+      setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
       setEditingPRId(null);
       fetchRequisitions(); // Refresh the list
     } catch (error: any) {
@@ -1357,7 +1514,7 @@ function PRContent() {
                     setShowCreateForm(false);
                     setEditingPRId(null);
                     setItems([]);
-                    setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', notes: '' });
+                    setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
                   }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
@@ -1370,56 +1527,60 @@ function PRContent() {
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Department *
-                    </label>
-                    <select
-                      value={formData.department}
-                      onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                    >
-                      <option value="">Select Department</option>
-                      <option value="Production">Production</option>
-                      <option value="Maintenance">Maintenance</option>
-                      <option value="Quality Assurance">Quality Assurance</option>
-                      <option value="QA Testing">QA Testing</option>
-                      <option value="Engineering">Engineering</option>
-                      <option value="R&D">R&D</option>
-                      <option value="Warehouse">Warehouse</option>
-                      <option value="Logistics">Logistics</option>
-                      <option value="Procurement">Procurement</option>
-                      <option value="IT">IT</option>
-                      <option value="Admin">Admin</option>
-                      <option value="HR">HR</option>
-                      <option value="Finance">Finance</option>
-                      <option value="Sales">Sales</option>
-                      <option value="Marketing">Marketing</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Required Date *
                     </label>
                     <input
                       type="date"
+                      min={todayDate}
                       value={formData.requiredDate}
                       onChange={(e) => setFormData({ ...formData, requiredDate: e.target.value })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                     />
                   </div>
-                  <div>
+                  <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Priority
+                      Delivery Address
                     </label>
-                    <select
-                      value={formData.priority}
-                      onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                    >
-                      <option value="LOW">Low</option>
-                      <option value="MEDIUM">Medium</option>
-                      <option value="HIGH">High</option>
-                      <option value="URGENT">Urgent</option>
-                    </select>
+                    <div className="space-y-2">
+                      <select
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            setFormData({ ...formData, deliveryAddress: e.target.value });
+                            e.target.value = '';
+                          }
+                        }}
+                      >
+                        <option value="">Select stored delivery address...</option>
+                        {deliveryAddresses.map((entry) => (
+                          <option key={entry.id} value={entry.address}>{entry.name}</option>
+                        ))}
+                      </select>
+                      <textarea
+                        value={formData.deliveryAddress}
+                        onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
+                        rows={2}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        placeholder="Enter delivery address..."
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          value={deliveryAddressName}
+                          onChange={(e) => setDeliveryAddressName(e.target.value)}
+                          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                          placeholder="Address name for saving, e.g. Factory"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveDeliveryAddress}
+                          disabled={deliveryAddressSaving || !formData.deliveryAddress.trim()}
+                          className="px-4 py-2 rounded-lg bg-amber-700 text-white text-sm font-semibold hover:bg-amber-800 disabled:opacity-50"
+                        >
+                          {deliveryAddressSaving ? 'Saving...' : 'Save Address'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -1440,24 +1601,13 @@ function PRContent() {
                     >
                       Search Existing Items
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setUseManualEntry(true)}
-                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                        useManualEntry
-                          ? 'bg-amber-800 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      Add New Item
-                    </button>
                   </div>
                   
                   {/* Add Item Form */}
                   <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                    <div className="grid grid-cols-5 gap-3 mb-3">
+                    <div className="grid grid-cols-6 gap-3 mb-3">
                       {/* Item Name/Search */}
-                      <div className="relative" ref={dropdownRef}>
+                      <div className="relative col-span-2" ref={dropdownRef}>
                         {!useManualEntry ? (
                           <>
                             <div className="relative">
@@ -1467,12 +1617,14 @@ function PRContent() {
                                 onChange={(e) => {
                                   setSearchTerm(e.target.value);
                                   setShowDropdown(true);
+                                  setHighlightedItemIndex(0);
                                   setSelectedItemId(null);
                                   setItemForm((prev) => ({ ...prev, vendorId: '', vendorName: '' }));
                                   setLastPurchasePrice(null);
                                 }}
                                 onFocus={() => setShowDropdown(true)}
-                                placeholder="🔍 Search items by name, code..."
+                                onKeyDown={handleItemSearchKeyDown}
+                                placeholder="Search items by name, code, UOM..."
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                                 autoComplete="off"
                               />
@@ -1482,6 +1634,7 @@ function PRContent() {
                                   onClick={() => {
                                     setSearchTerm('');
                                     setSelectedItemId(null);
+                                    setHighlightedItemIndex(0);
                                     setItemForm({ ...itemForm, estimatedPrice: '', vendorId: '', vendorName: '' });
                                     setLastPurchasePrice(null);
                                   }}
@@ -1497,7 +1650,7 @@ function PRContent() {
                               </div>
                             ) : null}
                             {showDropdown && (
-                              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-72 overflow-y-auto">
+                              <div className="absolute left-0 z-50 mt-2 w-[42rem] max-w-[min(42rem,calc(100vw-8rem))] bg-white border border-gray-300 rounded-xl shadow-2xl max-h-[26rem] overflow-y-auto">
                                 {itemsLoadError ? (
                                   <div className="px-4 py-6 text-center">
                                     <div className="text-red-600 font-semibold mb-2">⚠️ {itemsLoadError}</div>
@@ -1509,39 +1662,67 @@ function PRContent() {
                                       Go to Login
                                     </button>
                                   </div>
+                                ) : !searchTerm.trim() ? (
+                                  <div className="px-5 py-6 text-sm text-gray-600">
+                                    Start typing to search products.
+                                    <div className="mt-1 text-xs text-gray-500">
+                                      Search by item name, SAS part number, or UOM.
+                                    </div>
+                                  </div>
+                                ) : !hasEnoughSearchText ? (
+                                  <div className="px-5 py-6 text-sm text-gray-600">
+                                    Type at least {PR_ITEM_SEARCH_MIN_CHARS} characters to search.
+                                  </div>
                                 ) : filteredItems.length > 0 ? (
                                   <>
-                                    <div className="sticky top-0 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 border-b">
-                                      {filteredItems.length} item{filteredItems.length !== 1 ? 's' : ''} found
+                                    <div className="sticky top-0 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900 border-b flex items-center justify-between gap-3">
+                                      <span>
+                                        Showing {filteredItems.length} result{filteredItems.length !== 1 ? 's' : ''}
+                                      </span>
+                                      <span className="text-[11px] font-medium text-amber-800/80">
+                                        Search: {searchTerm.trim()}
+                                      </span>
                                     </div>
-                                    {filteredItems.map((item) => (
+                                    {filteredItems.map((item, index) => (
                                       <button
                                         type="button"
                                         key={item.id}
+                                        ref={(element) => {
+                                          itemResultRefs.current[index] = element;
+                                        }}
                                         onClick={() => selectItem(item)}
+                                        onMouseEnter={() => setHighlightedItemIndex(index)}
                                         className={`w-full text-left px-4 py-3 hover:bg-amber-50 border-b last:border-b-0 transition-colors ${
-                                          selectedItemId === item.id ? 'bg-amber-100' : ''
+                                          selectedItemId === item.id || highlightedItemIndex === index ? 'bg-amber-100' : ''
                                         }`}
                                       >
-                                        <div className="flex justify-between items-start">
-                                          <div className="flex-1">
-                                            <div className="font-semibold text-gray-900">{item.name}</div>
-                                            <div className="text-sm text-gray-600 mt-1">
-                                              <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-xs font-medium mr-2">
+                                        <div className="grid grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)_auto] gap-4 items-start">
+                                          <div className="min-w-0">
+                                            <div className="font-semibold text-gray-900 leading-5 break-words">{item.name}</div>
+                                            <div className="mt-1 text-xs text-gray-500">ID: {item.id}</div>
+                                          </div>
+                                          <div className="min-w-0 text-sm text-gray-600">
+                                            <div>
+                                              <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-xs font-medium">
                                                 {item.code}
                                               </span>
-                                              <span className="text-gray-500">UOM: {item.uom}</span>
+                                            </div>
+                                            <div className="mt-2 text-xs text-gray-500">UOM: {item.uom || '-'}</div>
+                                          </div>
+                                          <div className="text-right min-w-[5.5rem]">
+                                            <div className="text-[11px] uppercase tracking-wide text-gray-500">Std Cost</div>
+                                            <div className="font-semibold text-green-700">
+                                              {typeof item.standard_cost === 'number' ? `₹${item.standard_cost.toFixed(2)}` : '-'}
                                             </div>
                                           </div>
-                                          {item.standard_cost && (
-                                            <div className="text-right ml-2">
-                                              <div className="text-xs text-gray-500">Std Cost</div>
-                                              <div className="font-semibold text-green-700">₹{item.standard_cost.toFixed(2)}</div>
-                                            </div>
-                                          )}
                                         </div>
                                       </button>
                                     ))}
+                                    {filteredItems.length === PR_ITEM_SEARCH_RESULT_LIMIT ? (
+                                      <div className="px-4 py-2 text-xs text-gray-500 bg-gray-50 border-t">
+                                        Refine the search to narrow down more than {PR_ITEM_SEARCH_RESULT_LIMIT} matching products.
+                                      </div>
+                                    ) : null}
                                   </>
                                 ) : (
                                   <div className="px-4 py-8 text-center text-gray-500">
@@ -1630,20 +1811,16 @@ function PRContent() {
                     />
 
                     <div className="grid grid-cols-2 gap-3 mt-3">
-                      <input
-                        type="text"
-                        value={itemForm.paymentTerms}
-                        onChange={(e) => setItemForm({ ...itemForm, paymentTerms: e.target.value })}
-                        placeholder="Payment Terms (line)"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-                      />
-                      <input
-                        type="text"
-                        value={itemForm.deliveryTerms}
-                        onChange={(e) => setItemForm({ ...itemForm, deliveryTerms: e.target.value })}
-                        placeholder="Delivery Terms (line)"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-                      />
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Delivery Terms (line)</label>
+                        <input
+                          type="text"
+                          value={itemForm.deliveryTerms}
+                          onChange={(e) => setItemForm({ ...itemForm, deliveryTerms: e.target.value })}
+                          placeholder="e.g. FOB, CIF, Ex-Works"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-sm"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -1662,7 +1839,6 @@ function PRContent() {
                             >
                               Est. Unit Price
                             </th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold">Payment Terms</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Delivery Terms</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Specifications</th>
                             <th className="px-4 py-2"></th>
@@ -1800,7 +1976,9 @@ function PRContent() {
 
         {/* List View */}
         <div className="mb-4">
-          <h3 className="text-lg font-bold text-gray-900">All Requisitions</h3>
+          <h3 className="text-lg font-bold text-gray-900">
+            {canApprovePR ? 'All Requisitions' : 'My Requisitions'}
+          </h3>
         </div>
 
         {loadingRequisitions ? (
@@ -1864,7 +2042,7 @@ function PRContent() {
                       <p className="text-gray-600 mt-1">PR Number: {selectedPR.pr_number}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {selectedPR.status === 'SUBMITTED' && (
+                      {(selectedPR.status === 'DRAFT' || selectedPR.status === 'SUBMITTED') && (
                         <>
                           <button
                             onClick={() => {
@@ -1893,7 +2071,10 @@ function PRContent() {
                           )}
                         </>
                       )}
-                      {selectedPR.status !== 'DRAFT' && selectedPR.status !== 'REJECTED' && (
+                      {selectedPR.status !== 'DRAFT' &&
+                        selectedPR.status !== 'REJECTED' &&
+                        getPrWorkflowStatus(selectedPR) !== 'PO_DONE' &&
+                        getPrWorkflowStatus(selectedPR) !== 'GOODS_RCVD' && (
                         <>
                           <button
                             onClick={async () => {
@@ -1927,7 +2108,6 @@ function PRContent() {
                               setShowDetailModal(false);
                               router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
                             }}
-                            disabled={getPrWorkflowStatus(selectedPR) === 'GOODS_RCVD'}
                             className="px-4 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors text-sm"
                           >
                             Create PO from this PR
@@ -1973,6 +2153,10 @@ function PRContent() {
                     <div>
                       <p className="text-sm text-gray-600">Request Date</p>
                       <p className="font-semibold">{new Date(selectedPR.request_date).toLocaleDateString()}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-sm text-gray-600">Delivery Address</p>
+                      <p className="font-semibold whitespace-pre-line">{selectedPR.delivery_address || 'N/A'}</p>
                     </div>
                     {/* Hide UUID for requested_by until we implement user lookup */}
                     {selectedPR.approved_by && (
@@ -2023,7 +2207,7 @@ function PRContent() {
                         <thead className="bg-gray-100">
                           <tr>
                             <th className="px-4 py-2 text-center text-sm font-semibold">S.No</th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold">Item Code</th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold">SAS Part Number</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Item Name</th>
                             {rfqPanelOpen && <th className="px-4 py-2 text-left text-sm font-semibold">Vendors (Select Multiple)</th>}
                             <th className="px-4 py-2 text-right text-sm font-semibold">Requested</th>
@@ -2033,7 +2217,6 @@ function PRContent() {
                             <th className="px-4 py-2 text-center text-sm font-semibold">Status</th>
                             <th className="px-4 py-2 text-right text-sm font-semibold">Est. Rate</th>
                             <th className="px-4 py-2 text-right text-sm font-semibold">Total</th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold">Payment Terms</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Delivery Terms</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Remarks</th>
                           </tr>
@@ -2047,25 +2230,50 @@ function PRContent() {
                                 <td className="px-4 py-2 text-sm">{item.item_name}</td>
                                 {rfqPanelOpen && (
                                   <td className="px-4 py-2">
-                                    <div className="space-y-1 max-h-32 overflow-y-auto">
-                                      {rfqVendors.map((vendor) => {
-                                        const isSelected = (rfqItemVendors[item.id] || []).includes(vendor.id);
-                                        const isPreferred = item.vendor_id === vendor.id;
-                                        return (
-                                          <label key={vendor.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 px-2 py-1 rounded">
-                                            <input
-                                              type="checkbox"
-                                              checked={isSelected}
-                                              onChange={() => toggleItemVendor(item.id, vendor.id)}
-                                              className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-                                            />
-                                            <span className={isPreferred ? 'font-semibold text-amber-700' : ''}>
-                                              {vendor.name}
-                                              {isPreferred && <span className="ml-1 text-xs">(Preferred)</span>}
-                                            </span>
-                                          </label>
-                                        );
-                                      })}
+                                    <div className="space-y-2 min-w-[260px]">
+                                      <SearchableSelect
+                                        value={rfqVendorDrafts[item.id] || ''}
+                                        onChange={(value) => addItemVendor(item.id, String(value || ''))}
+                                        options={rfqVendors
+                                          .filter((vendor) => !(rfqItemVendors[item.id] || []).includes(vendor.id))
+                                          .map((vendor) => ({
+                                            value: vendor.id,
+                                            label: vendor.name,
+                                            subtitle: item.vendor_id === vendor.id
+                                              ? `${vendor.email || 'No email'} - Preferred vendor`
+                                              : (vendor.email || vendor.code || ''),
+                                          }))}
+                                        placeholder="Search vendor..."
+                                        disabled={rfqVendors.filter((vendor) => !(rfqItemVendors[item.id] || []).includes(vendor.id)).length === 0}
+                                      />
+                                      {(rfqItemVendors[item.id] || []).length > 0 ? (
+                                        <div className="flex flex-wrap gap-2">
+                                          {(rfqItemVendors[item.id] || []).map((vendorId) => {
+                                            const vendor = rfqVendors.find((entry) => entry.id === vendorId);
+                                            if (!vendor) return null;
+                                            const isPreferred = item.vendor_id === vendor.id;
+                                            return (
+                                              <span
+                                                key={vendor.id}
+                                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium ${isPreferred ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-gray-200 bg-gray-50 text-gray-700'}`}
+                                              >
+                                                <span>{vendor.name}</span>
+                                                {isPreferred && <span>(Preferred)</span>}
+                                                <button
+                                                  type="button"
+                                                  onClick={() => removeItemVendor(item.id, vendor.id)}
+                                                  className="text-gray-500 hover:text-gray-900"
+                                                  aria-label={`Remove ${vendor.name}`}
+                                                >
+                                                  x
+                                                </button>
+                                              </span>
+                                            );
+                                          })}
+                                        </div>
+                                      ) : (
+                                        <p className="text-xs text-gray-500">No vendors selected yet.</p>
+                                      )}
                                     </div>
                                   </td>
                                 )}
@@ -2086,7 +2294,6 @@ function PRContent() {
                                 </td>
                                 <td className="px-4 py-2 text-sm text-right">₹{(item.estimated_rate || 0).toFixed(2)}</td>
                                 <td className="px-4 py-2 text-sm text-right font-semibold">₹{((item.requested_qty || 0) * (item.estimated_rate || 0)).toFixed(2)}</td>
-                                <td className="px-4 py-2 text-sm text-gray-700">{item.payment_terms || '-'}</td>
                                 <td className="px-4 py-2 text-sm text-gray-700">{item.delivery_terms || '-'}</td>
                                 <td className="px-4 py-2 text-sm text-gray-600">{item.remarks || '-'}</td>
                               </tr>
@@ -2129,7 +2336,7 @@ function PRContent() {
                       </div>
 
                       <div className="mb-3 text-sm text-gray-600">
-                        💡 Select multiple vendors for each item using checkboxes. Preferred vendors are auto-selected and marked.
+                        Select vendors by typing part of the vendor name, similar to PO creation. Preferred vendors stay highlighted.
                       </div>
 
                       {rfqLoadingVendors && (
@@ -2139,10 +2346,10 @@ function PRContent() {
                       <div className="grid grid-cols-2 gap-3 mt-3">
                         <div>
                           <label className="block text-xs font-semibold text-gray-700 mb-1">Expected Response Date (optional)</label>
-                          <input
-                            type="date"
+                          <DateInput
+                            min={todayDate}
                             value={rfqResponseDate}
-                            onChange={(e) => setRfqResponseDate(e.target.value)}
+                            onChange={(value) => setRfqResponseDate(value)}
                             className="w-full px-3 py-2 border rounded-lg text-sm"
                           />
                         </div>
@@ -2174,77 +2381,6 @@ function PRContent() {
                     </div>
                   )}
 
-                  {showRfqResponses && (
-                    <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-lg font-bold text-slate-900">RFQ Responses</h3>
-                        <button
-                          onClick={() => setShowRfqResponses(false)}
-                          className="text-slate-600 hover:text-slate-900 font-medium"
-                        >
-                          Hide
-                        </button>
-                      </div>
-
-                      <div className="mb-3 rounded-lg bg-white border border-slate-200 px-3 py-2 text-sm text-slate-700">
-                        Use <span className="font-semibold">Record Response</span> to enter the vendor quote, lead time, remarks, follow-up date, and attachments for each RFQ.
-                      </div>
-
-                      {loadingRfqHistory ? (
-                        <p className="text-sm text-slate-600">Loading RFQ responses...</p>
-                      ) : rfqHistory.length === 0 ? (
-                        <p className="text-sm text-slate-600">No RFQ responses recorded yet.</p>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead className="bg-white border-b">
-                              <tr>
-                                <th className="px-3 py-2 text-left">RFQ</th>
-                                <th className="px-3 py-2 text-left">Vendor</th>
-                                <th className="px-3 py-2 text-left">Status</th>
-                                <th className="px-3 py-2 text-left">Sent</th>
-                                <th className="px-3 py-2 text-left">Received</th>
-                                <th className="px-3 py-2 text-left">Follow-up</th>
-                                <th className="px-3 py-2 text-right">Actions</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {rfqHistory.map((rfq) => (
-                                <tr key={rfq.id} className="border-b last:border-b-0">
-                                  <td className="px-3 py-2 font-medium text-slate-900">{rfq.rfq_number}</td>
-                                  <td className="px-3 py-2">
-                                    <div>{rfq.vendor?.name || 'Vendor'}</div>
-                                    <div className="text-xs text-slate-500">{rfq.vendor?.email || '-'}</div>
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                                      String(rfq.status).toUpperCase() === 'RECEIVED'
-                                        ? 'bg-blue-100 text-blue-800'
-                                        : 'bg-amber-100 text-amber-800'
-                                    }`}>
-                                      {String(rfq.status || '').toUpperCase()}
-                                    </span>
-                                  </td>
-                                  <td className="px-3 py-2">{rfq.sent_at ? new Date(rfq.sent_at).toLocaleDateString() : '-'}</td>
-                                  <td className="px-3 py-2">{rfq.vendor_quote_received_at ? new Date(rfq.vendor_quote_received_at).toLocaleDateString() : '-'}</td>
-                                  <td className="px-3 py-2">{rfq.follow_up_date ? new Date(rfq.follow_up_date).toLocaleDateString() : '-'}</td>
-                                  <td className="px-3 py-2 text-right">
-                                    <button
-                                      type="button"
-                                      onClick={() => openRfqResponseEditor(rfq)}
-                                      className="text-blue-600 hover:text-blue-900 font-medium"
-                                    >
-                                      {String(rfq.status).toUpperCase() === 'RECEIVED' ? 'Edit Response' : 'Record Response'}
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  )}
                   </div>
                 </>
               ) : (
@@ -2258,6 +2394,96 @@ function PRContent() {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {showRfqResponses && selectedPR && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[55] p-4">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="border-b px-6 py-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900">RFQ Responses</h2>
+                  <p className="text-sm text-slate-600 mt-1">PR Number: {selectedPR.pr_number}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowRfqResponses(false)}
+                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="mb-4 rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm text-slate-700">
+                  Use <span className="font-semibold">Record Response</span> to enter the vendor quote, lead time, remarks, follow-up date, and attachments for each RFQ.
+                </div>
+
+                {loadingRfqHistory ? (
+                  <p className="text-sm text-slate-600">Loading RFQ responses...</p>
+                ) : rfqHistory.length === 0 ? (
+                  <p className="text-sm text-slate-600">No RFQ responses recorded yet.</p>
+                ) : (
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead className="bg-white border-b sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-left">RFQ</th>
+                          <th className="px-3 py-2 text-left">Vendor</th>
+                          <th className="px-3 py-2 text-left">Status</th>
+                          <th className="px-3 py-2 text-left">Sent</th>
+                          <th className="px-3 py-2 text-left">Received</th>
+                          <th className="px-3 py-2 text-left">Follow-up</th>
+                          <th className="px-3 py-2 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rfqHistory.map((rfq) => (
+                          <tr key={rfq.id} className="border-b last:border-b-0">
+                            <td className="px-3 py-2 font-medium text-slate-900">{rfq.rfq_number}</td>
+                            <td className="px-3 py-2">
+                              <div>{rfq.vendor?.name || 'Vendor'}</div>
+                              <div className="text-xs text-slate-500">{rfq.vendor?.email || '-'}</div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                                String(rfq.status).toUpperCase() === 'RECEIVED'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {String(rfq.status || '').toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2">{rfq.sent_at ? new Date(rfq.sent_at).toLocaleDateString() : '-'}</td>
+                            <td className="px-3 py-2">{rfq.vendor_quote_received_at ? new Date(rfq.vendor_quote_received_at).toLocaleDateString() : '-'}</td>
+                            <td className="px-3 py-2">{rfq.follow_up_date ? new Date(rfq.follow_up_date).toLocaleDateString() : '-'}</td>
+                            <td className="px-3 py-2 text-right">
+                              <button
+                                type="button"
+                                onClick={() => openRfqResponseEditor(rfq)}
+                                className="text-blue-600 hover:text-blue-900 font-medium"
+                              >
+                                {String(rfq.status).toUpperCase() === 'RECEIVED' ? 'Edit Response' : 'Record Response'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t px-6 py-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowRfqResponses(false)}
+                  className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -2295,10 +2521,10 @@ function PRContent() {
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Follow-up Date</label>
-                    <input
-                      type="date"
+                    <DateInput
+                      min={todayDate}
                       value={rfqResponseForm.followUpDate}
-                      onChange={(e) => setRfqResponseForm((prev) => ({ ...prev, followUpDate: e.target.value }))}
+                      onChange={(value) => setRfqResponseForm((prev) => ({ ...prev, followUpDate: value }))}
                       className="w-full border rounded-lg px-3 py-2"
                     />
                   </div>

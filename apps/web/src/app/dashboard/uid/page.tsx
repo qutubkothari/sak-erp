@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
+import { buildDocumentBranding, escapeHtml, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { ListTable, type ListTableColumn } from '../../../components/ui/ListTable';
 
 interface UIDRecord {
   id: string;
@@ -52,6 +54,7 @@ interface UIDRecord {
 }
 
 const statusColors: Record<string, string> = {
+  GENERATED: 'bg-blue-100 text-blue-800',
   ACTIVE: 'bg-green-100 text-green-800',
   IN_PRODUCTION: 'bg-amber-100 text-amber-800',
   IN_TRANSIT: 'bg-yellow-100 text-yellow-800',
@@ -60,6 +63,9 @@ const statusColors: Record<string, string> = {
   SCRAPPED: 'bg-red-100 text-red-800',
   RETURNED: 'bg-gray-100 text-gray-800',
 };
+
+const UID_FETCH_PAGE_SIZE = 500;
+const UID_FETCH_MAX_ROWS = 5000;
 
 export default function UIDTrackingPage() {
   const router = useRouter();
@@ -76,13 +82,8 @@ export default function UIDTrackingPage() {
   const [editingUID, setEditingUID] = useState<UIDRecord | null>(null);
   const [partNumberInput, setPartNumberInput] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
-  
-  // Pagination and sorting
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [error, setError] = useState('');
   const [totalCount, setTotalCount] = useState(0);
-  const [sortField, setSortField] = useState<keyof UIDRecord>('created_at');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Filters
   const [filters, setFilters] = useState({
@@ -90,41 +91,54 @@ export default function UIDTrackingPage() {
     entity_type: '',
     location: '',
     quality_status: '',
+    grn: '',
   });
 
   const fetchUIDs = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
-      const queryParams = new URLSearchParams();
-      
-      if (filters.status) queryParams.append('status', filters.status);
-      if (filters.entity_type) queryParams.append('entity_type', filters.entity_type);
-      if (filters.location) queryParams.append('location', filters.location);
-      if (filters.quality_status) queryParams.append('quality_status', filters.quality_status);
-      
-      // Server-side pagination
-      const offset = (currentPage - 1) * itemsPerPage;
-      queryParams.append('limit', itemsPerPage.toString());
-      queryParams.append('offset', offset.toString());
-      
-      // Sorting
-      queryParams.append('sortBy', sortField);
-      queryParams.append('sortOrder', sortOrder);
+      const baseParams = new URLSearchParams();
 
-      const response = await apiClient.get<any>(`/uid?${queryParams}`);
-      // Handle both old array format and new paginated format
-      const data = Array.isArray(response) ? response : response.data || [];
-      setUids(data);
-      
-      // If API returns total count, use it for pagination
-      if (response.total) {
-        setTotalCount(response.total);
+      if (filters.status) baseParams.append('status', filters.status);
+      if (filters.entity_type) baseParams.append('entity_type', filters.entity_type);
+      if (filters.location) baseParams.append('location', filters.location);
+      if (filters.quality_status) baseParams.append('quality_status', filters.quality_status);
+      baseParams.append('sortBy', 'created_at');
+      baseParams.append('sortOrder', 'desc');
+
+      const allRows: UIDRecord[] = [];
+      let nextOffset = 0;
+      let serverTotal = 0;
+
+      do {
+        const queryParams = new URLSearchParams(baseParams);
+        queryParams.append('limit', UID_FETCH_PAGE_SIZE.toString());
+        queryParams.append('offset', nextOffset.toString());
+
+        const response = await apiClient.get<any>(`/uid?${queryParams}`);
+        const data = Array.isArray(response) ? response : response.data || [];
+        allRows.push(...data);
+        serverTotal = Number(response?.total ?? allRows.length) || allRows.length;
+
+        if (data.length < UID_FETCH_PAGE_SIZE) break;
+        nextOffset += UID_FETCH_PAGE_SIZE;
+      } while (allRows.length < serverTotal && allRows.length < UID_FETCH_MAX_ROWS);
+
+      setUids(allRows);
+      setTotalCount(serverTotal);
+
+      if (serverTotal > UID_FETCH_MAX_ROWS) {
+        setError(`Showing first ${UID_FETCH_MAX_ROWS} UIDs. Use filters or search to narrow the list.`);
       }
-    } catch (error) {
+    } catch (error: any) {
+      setError(error?.message || 'Failed to load UID registry');
+      setUids([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
-  }, [filters, currentPage, itemsPerPage, sortField, sortOrder]);
+  }, [filters]);
 
   useEffect(() => {
     fetchUIDs();
@@ -156,7 +170,10 @@ export default function UIDTrackingPage() {
       const data = Array.isArray(response) ? response : response.data || [];
       setSearchResults(data);
       setShowSearchDropdown(data.length > 0);
-    } catch (error) {
+    } catch (error: any) {
+      setError(error?.message || 'Failed to search UIDs');
+      setSearchResults([]);
+      setShowSearchDropdown(false);
     } finally {
       setSearchLoading(false);
     }
@@ -178,8 +195,8 @@ export default function UIDTrackingPage() {
       setSelectedUID(parsedData);
       setShowTraceModal(true);
       setShowSearchDropdown(false);
-    } catch (error) {
-      alert('Error searching for UID');
+    } catch (error: any) {
+      alert(error?.message || 'Error searching for UID');
     }
   };
 
@@ -210,8 +227,8 @@ export default function UIDTrackingPage() {
       setPartNumberInput('');
       
       alert('Part number updated successfully!');
-    } catch (error) {
-      alert('Failed to update part number');
+    } catch (error: any) {
+      alert(error?.message || 'Failed to update part number');
     }
   };
 
@@ -220,31 +237,37 @@ export default function UIDTrackingPage() {
     return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(uid)}`;
   };
 
-  const handleSort = (field: keyof UIDRecord) => {
-    if (sortField === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortOrder('asc');
+  const parseUIDRecord = (record: UIDRecord): UIDRecord => ({
+    ...record,
+    lifecycle: typeof (record as any).lifecycle === 'string' ? JSON.parse((record as any).lifecycle) : record.lifecycle,
+    parent_uids: typeof (record as any).parent_uids === 'string' ? JSON.parse((record as any).parent_uids) : record.parent_uids,
+    child_uids: typeof (record as any).child_uids === 'string' ? JSON.parse((record as any).child_uids) : record.child_uids,
+    vendorName: record.vendorName || record.supplier?.name || '',
+    vendorCode: record.vendorCode || record.supplier?.vendor_code || '',
+    grnNumber: record.grnNumber || record.grn?.grn_number || '',
+  });
+
+  const openTraceForUID = async (record: UIDRecord) => {
+    try {
+      const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(record.uid)}`);
+      setSelectedUID(parseUIDRecord({ ...record, ...data, items: data.items || record.items }));
+      setShowTraceModal(true);
+    } catch (error: any) {
+      alert(error?.message || 'Error loading trace information');
     }
-    setCurrentPage(1); // Reset to first page when sorting
   };
 
-  const getSortIcon = (field: keyof UIDRecord) => {
-    if (sortField !== field) return '⇅';
-    return sortOrder === 'asc' ? '↑' : '↓';
-  };
+  const openQrForUID = async (record: UIDRecord) => {
+    const parsedRowUID = parseUIDRecord(record);
 
-  // Calculate total pages based on total count or current data
-  const totalPages = totalCount > 0 
-    ? Math.ceil(totalCount / itemsPerPage)
-    : Math.ceil(uids.length / itemsPerPage);
-  
-  // No need to sort or paginate client-side - server does it
-  const paginatedUIDs = uids;
+    try {
+      const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(record.uid)}`);
+      setSelectedUID(parseUIDRecord({ ...parsedRowUID, ...data, items: parsedRowUID.items || data.items }));
+    } catch {
+      setSelectedUID(parsedRowUID);
+    }
 
-  const goToPage = (page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+    setShowModal(true);
   };
 
   const formatDate = (dateString: string) => {
@@ -282,7 +305,534 @@ export default function UIDTrackingPage() {
     return '';
   };
 
+  const getDisplayPartNumber = (record?: UIDRecord | null) => {
+    if (!record) return '';
+
+    const candidates = [
+      record.client_part_number,
+      record.items?.code,
+      record.itemCode,
+    ];
+
+    return candidates
+      .map((value) => String(value || '').trim())
+      .find(Boolean) || '';
+  };
+
+  const [selectedUIDIds, setSelectedUIDIds] = useState<string[]>([]);
+
+  const availableGrns = useMemo(() => {
+    const grns = Array.from(new Set(uids.map((row) => getDisplayGrn(row)).filter(Boolean)));
+    return grns.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  }, [uids]);
+
+  const filteredUids = useMemo(() => {
+    if (!filters.grn) return uids;
+    return uids.filter((row) => getDisplayGrn(row) === filters.grn);
+  }, [filters.grn, uids]);
+
+  const selectedUIDs = useMemo(
+    () => uids.filter((row) => selectedUIDIds.includes(row.id || row.uid)),
+    [selectedUIDIds, uids],
+  );
+
+  const printBulkLabels = (records: UIDRecord[]) => {
+    if (records.length === 0) {
+      alert('Please select one or more UIDs before printing.');
+      return;
+    }
+
+    const printWindow = openPrintWindow('UID Labels', 'The print window was blocked. Please allow pop-ups and try again.');
+    if (!printWindow) return;
+
+    const labelCards = records.map((record) => {
+      const uidValue = escapeHtml(record.uid || '-');
+      const partNumber = escapeHtml(getDisplayPartNumber(record) || '-');
+      const itemName = escapeHtml(record.items?.name || record.itemName || '-');
+      const itemCode = escapeHtml(record.items?.code || record.itemCode || '-');
+      const location = escapeHtml(record.location || 'N/A');
+      const qrCodeUrl = generateQRCode(record.uid);
+
+      return `
+        <div class="label-card">
+          <div class="label-grid">
+            <img class="qr" src="${qrCodeUrl}" alt="QR for ${uidValue}" />
+            <div class="meta">
+              <div class="uid">${uidValue}</div>
+              <div class="meta-row"><div class="meta-label">Part No</div><div>${partNumber}</div></div>
+              <div class="meta-row"><div class="meta-label">Item</div><div>${itemCode}${itemName !== '-' ? ` | ${itemName}` : ''}</div></div>
+              <div class="meta-row"><div class="meta-label">Location</div><div>${location}</div></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <script>window.onload = window.print</script>
+          <title>UID Labels</title>
+          <style>
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; margin: 0; padding: 16px; color: #111827; }
+            .label-card { border: 1px solid #d1d5db; border-radius: 14px; padding: 16px; margin-bottom: 20px; page-break-inside: avoid; }
+            .label-grid { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+            .qr { width: 160px; height: 160px; object-fit: contain; border: 1px solid #d1d5db; padding: 10px; border-radius: 12px; background: #fff; }
+            .meta { flex: 1; min-width: 220px; }
+            .uid { font-size: 22px; font-weight: 800; word-break: break-word; margin-bottom: 12px; }
+            .meta-row { margin-top: 10px; font-size: 14px; }
+            .meta-label { color: #6b7280; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+            @media print { body { padding: 8px; } .label-card { margin-bottom: 16px; } }
+          </style>
+        </head>
+        <body>
+          ${labelCards}
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+  };
+
+  const openPrintWindow = (title: string, fallbackMessage: string) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert(fallbackMessage);
+      return null;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html><html><head><title>${escapeHtml(title)}</title></head><body style="font-family: Arial, sans-serif; padding: 16px;">Preparing print...</body></html>`);
+    printWindow.document.close();
+    return printWindow;
+  };
+
+  const loadBranding = async () => {
+    const company = await apiClient.get<any>('/tenant/current').catch(() => null);
+    return buildDocumentBranding(company);
+  };
+
+  const printQrLabel = useCallback(async (record: UIDRecord) => {
+    const printWindow = openPrintWindow(`UID Label - ${record.uid}`, 'The print window was blocked. Please allow pop-ups and try again.');
+    if (!printWindow) {
+      return;
+    }
+
+    const uidValue = escapeHtml(record.uid || '-');
+    const partNumber = escapeHtml(getDisplayPartNumber(record) || '-');
+    const itemName = escapeHtml(record.items?.name || record.itemName || '-');
+    const itemCode = escapeHtml(record.items?.code || record.itemCode || '-');
+    const location = escapeHtml(record.location || 'N/A');
+    const qrCodeUrl = generateQRCode(record.uid);
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <script>window.onload = window.print</script>
+          <title>UID Label - ${uidValue}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #111827; }
+            .page { max-width: 760px; margin: 0 auto; }
+            .panel { border: 1px solid #d1d5db; border-radius: 14px; padding: 20px; }
+            .title { font-size: 28px; font-weight: 800; }
+            .subtitle { color: #4b5563; margin-top: 6px; }
+            .label-layout { margin-top: 18px; display: flex; gap: 24px; align-items: center; }
+            .qr { width: 180px; height: 180px; object-fit: contain; border: 1px solid #d1d5db; padding: 10px; border-radius: 12px; background: #fff; }
+            .meta { flex: 1; min-width: 0; }
+            .uid { font-size: 24px; font-weight: 800; word-break: break-word; }
+            .meta-row { margin-top: 10px; font-size: 14px; }
+            .meta-label { color: #6b7280; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+            @media print { body { padding: 12px; } }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            <div class="panel">
+              <div class="title">UID Label</div>
+              <div class="subtitle">Print-ready label for traceability and shop-floor use</div>
+              <div class="label-layout">
+                <img class="qr" src="${qrCodeUrl}" alt="QR for ${uidValue}" />
+                <div class="meta">
+                  <div class="uid">${uidValue}</div>
+                  <div class="meta-row"><div class="meta-label">Part No</div><div>${partNumber}</div></div>
+                  <div class="meta-row"><div class="meta-label">Item</div><div>${itemCode}${itemName !== '-' ? ` | ${itemName}` : ''}</div></div>
+                  <div class="meta-row"><div class="meta-label">Location</div><div>${location}</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+  }, []);
+
+  const printTraceReport = useCallback(async (record: UIDRecord) => {
+    const printWindow = openPrintWindow(`UID Traceability Report - ${record.uid}`, 'The print window was blocked. Please allow pop-ups and try again.');
+    if (!printWindow) {
+      return;
+    }
+
+    const branding = await loadBranding();
+    const generatedOn = new Date().toLocaleString();
+    const selectedGrn = escapeHtml(getDisplayGrn(record) || '-');
+    const partNumber = escapeHtml(getDisplayPartNumber(record) || '-');
+    const lifecycleRows = (Array.isArray(record.lifecycle) ? record.lifecycle : [])
+      .map((event) => `
+        <tr>
+          <td>${escapeHtml(event?.timestamp ? new Date(event.timestamp).toLocaleString() : '-')}</td>
+          <td>${escapeHtml(event?.stage || '-')}</td>
+          <td>${escapeHtml(event?.location || '-')}</td>
+          <td>${escapeHtml(event?.reference || '-')}</td>
+          <td>${escapeHtml(event?.user || '-')}</td>
+        </tr>
+      `)
+      .join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <script>window.onload = window.print</script>
+          <title>UID Traceability Report - ${escapeHtml(record.uid || '-')}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #111827; }
+            .letterhead {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              border-bottom: 2px solid #1e3a8a;
+              padding-bottom: 12px;
+              margin-bottom: 16px;
+            }
+            .logo-section { display: flex; align-items: center; gap: 12px; }
+            .logo-box {
+              width: 52px; height: 52px; background: #1e3a8a; color: white;
+              display: flex; align-items: center; justify-content: center;
+              font-weight: 700; border-radius: 8px;
+            }
+            .logo { width: 52px; height: 52px; object-fit: contain; border-radius: 8px; }
+            .company-name { font-size: 18px; font-weight: 700; margin: 0; color: #1e3a8a; }
+            .company-meta { font-size: 10.5pt; margin: 2px 0 0 0; color: #111; }
+            .generated-on { text-align:right; font-size:10.5pt; color:#1e3a8a; line-height:1.5; }
+            .generated-on-label { font-weight:700; text-transform:uppercase; letter-spacing:0.06em; }
+            .generated-on-value { font-weight:700; color:#111827; }
+            .page { max-width: 1100px; margin: 0 auto; }
+            .header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+            .title { font-size: 28px; font-weight: 800; }
+            .subtitle { margin-top: 6px; color: #4b5563; }
+            .summary { margin-top: 20px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+            .summary-card { border: 1px solid #d1d5db; border-radius: 10px; padding: 12px; }
+            .summary-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; }
+            .summary-value { margin-top: 6px; font-size: 14px; font-weight: 700; word-break: break-word; }
+            .section { margin-top: 20px; }
+            .section-title { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+            .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+            .chip { padding: 6px 10px; border-radius: 999px; font-size: 12px; background: #f3f4f6; }
+            table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+            th, td { border: 1px solid #d1d5db; padding: 8px 10px; text-align: left; font-size: 12px; vertical-align: top; }
+            th { background: #f3f4f6; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+            @media print { body { padding: 12px; } }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            ${renderStandardLetterheadHtml(branding, generatedOn)}
+            <div class="header">
+              <div>
+                <div class="title">UID Traceability Report</div>
+                <div class="subtitle">End-to-end lifecycle snapshot for UID-controlled inventory</div>
+              </div>
+            </div>
+
+            <div class="summary">
+              <div class="summary-card"><div class="summary-label">UID</div><div class="summary-value">${escapeHtml(record.uid || '-')}</div></div>
+              <div class="summary-card"><div class="summary-label">Part No</div><div class="summary-value">${partNumber}</div></div>
+              <div class="summary-card"><div class="summary-label">Status</div><div class="summary-value">${escapeHtml(record.status || '-')}</div></div>
+              <div class="summary-card"><div class="summary-label">Location</div><div class="summary-value">${escapeHtml(record.location || 'N/A')}</div></div>
+            </div>
+
+            <div class="summary">
+              <div class="summary-card"><div class="summary-label">Entity Type</div><div class="summary-value">${escapeHtml(record.entity_type || '-')}</div></div>
+              <div class="summary-card"><div class="summary-label">Assembly Level</div><div class="summary-value">Level ${escapeHtml(String(record.assembly_level ?? '-'))}</div></div>
+              <div class="summary-card"><div class="summary-label">Quality</div><div class="summary-value">${escapeHtml(record.quality_status || '-')}</div></div>
+              <div class="summary-card"><div class="summary-label">GRN</div><div class="summary-value">${selectedGrn}</div></div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Source Traceability</div>
+              <table>
+                <tbody>
+                  <tr><th>Supplier</th><td>${escapeHtml(record.vendorName || record.supplier?.name || '-')}</td><th>Vendor Code</th><td>${escapeHtml(record.vendorCode || record.supplier?.vendor_code || '-')}</td></tr>
+                  <tr><th>PO</th><td>${escapeHtml(record.purchase_order?.po_number || record.purchase_order_id || '-')}</td><th>Batch</th><td>${escapeHtml(record.batch_number || '-')}</td></tr>
+                  <tr><th>Item</th><td>${escapeHtml(record.items?.code || record.itemCode || '-')} | ${escapeHtml(record.items?.name || record.itemName || '-')}</td><th>Created</th><td>${escapeHtml(record.created_at ? formatDate(record.created_at) : '-')}</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            ${(record.parent_uids?.length || 0) > 0 || (record.child_uids?.length || 0) > 0 ? `
+              <div class="section">
+                <div class="section-title">Assembly Hierarchy</div>
+                ${(record.parent_uids?.length || 0) > 0 ? `<div><strong>Parent UIDs</strong><div class="chips">${record.parent_uids.map((parentUid) => `<span class="chip">${escapeHtml(parentUid)}</span>`).join('')}</div></div>` : ''}
+                ${(record.child_uids?.length || 0) > 0 ? `<div style="margin-top: 12px;"><strong>Child UIDs</strong><div class="chips">${record.child_uids.map((childUid) => `<span class="chip">${escapeHtml(childUid)}</span>`).join('')}</div></div>` : ''}
+              </div>
+            ` : ''}
+
+            ${(Array.isArray(record.lifecycle) && record.lifecycle.length > 0) ? `
+              <div class="section">
+                <div class="section-title">Lifecycle Timeline</div>
+                <table>
+                  <thead>
+                    <tr><th>Timestamp</th><th>Stage</th><th>Location</th><th>Reference</th><th>User</th></tr>
+                  </thead>
+                  <tbody>${lifecycleRows}</tbody>
+                </table>
+              </div>
+            ` : ''}
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+  }, []);
+
   const selectedGrnDisplay = selectedUID ? getDisplayGrn(selectedUID) : '';
+  const selectedPartNumberDisplay = getDisplayPartNumber(selectedUID);
+
+  const selectionToolbar = (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+      <div className="text-sm text-gray-700">{selectedUIDIds.length} selected</div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => printBulkLabels(selectedUIDs)}
+          disabled={selectedUIDIds.length === 0}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Print selected labels
+        </button>
+        {selectedUIDIds.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setSelectedUIDIds([])}
+            className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+          >
+            Clear selection
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  const getQualityStatusColor = (status?: string) => {
+    switch (status) {
+      case 'PASSED':
+        return 'bg-green-100 text-green-800';
+      case 'FAILED':
+        return 'bg-red-100 text-red-800';
+      case 'ON_HOLD':
+        return 'bg-yellow-100 text-yellow-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const uidTableColumns: Array<ListTableColumn<UIDRecord>> = [
+    {
+      id: 'uid',
+      label: 'UID',
+      accessor: (row) => row.uid,
+      searchAccessor: (row) => [row.uid, row.batch_number, getDisplayPartNumber(row)].filter(Boolean).join(' '),
+      cell: (row) => (
+        <div className="min-w-0">
+          <div className="truncate font-mono text-[13px] font-semibold text-amber-700" title={row.uid}>{row.uid}</div>
+          {row.batch_number && <div className="truncate text-[11px] text-gray-500" title={row.batch_number}>Batch: {row.batch_number}</div>}
+        </div>
+      ),
+      hideable: false,
+      minWidth: 260,
+    },
+    {
+      id: 'client_part_number',
+      label: 'Part No',
+      accessor: (row) => getDisplayPartNumber(row),
+      cell: (row) => (
+        <div className="flex min-w-0 items-center gap-2">
+          {getDisplayPartNumber(row) ? (
+            <span className="truncate rounded bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-800" title={getDisplayPartNumber(row)}>
+              {getDisplayPartNumber(row)}
+            </span>
+          ) : (
+            <span className="text-xs text-gray-400">Not assigned</span>
+          )}
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => openPartNumberModal(row)}
+              className="text-xs font-medium text-blue-600 hover:text-blue-800"
+              title="Edit part number"
+            >
+              Edit
+            </button>
+          )}
+        </div>
+      ),
+      minWidth: 160,
+    },
+    {
+      id: 'item',
+      label: 'Item',
+      accessor: (row) => `${row.items?.code || row.itemCode || ''} ${row.items?.name || row.itemName || ''}`.trim(),
+      searchAccessor: (row) => `${row.items?.code || row.itemCode || ''} ${row.items?.name || row.itemName || ''}`.trim(),
+      cell: (row) => {
+        const code = row.items?.code || row.itemCode || '';
+        const name = row.items?.name || row.itemName || '';
+        return code || name ? (
+          <div className="min-w-0">
+            <div className="truncate text-sm font-medium text-gray-900" title={code}>{code || '-'}</div>
+            {name && <div className="truncate text-[11px] text-gray-500" title={name}>{name}</div>}
+          </div>
+        ) : <span className="text-gray-400">-</span>;
+      },
+      minWidth: 240,
+    },
+    {
+      id: 'entity_type',
+      label: 'Type',
+      accessor: (row) => row.entity_type || '-',
+      minWidth: 150,
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      accessor: (row) => row.status || '-',
+      cell: (row) => (
+        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${statusColors[row.status] || 'bg-gray-100 text-gray-800'}`}>
+          {row.status || '-'}
+        </span>
+      ),
+      align: 'center',
+      minWidth: 150,
+    },
+    {
+      id: 'quality_status',
+      label: 'QC',
+      accessor: (row) => row.quality_status || '-',
+      cell: (row) => (
+        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getQualityStatusColor(row.quality_status)}`}>
+          {row.quality_status || '-'}
+        </span>
+      ),
+      align: 'center',
+      defaultVisible: false,
+      minWidth: 130,
+    },
+    {
+      id: 'location',
+      label: 'Location',
+      accessor: (row) => row.location || '',
+      cell: (row) => <span className="block truncate" title={row.location || 'N/A'}>{row.location || 'N/A'}</span>,
+      minWidth: 180,
+    },
+    {
+      id: 'assembly_level',
+      label: 'Level',
+      accessor: (row) => row.assembly_level ?? 0,
+      cell: (row) => (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap">
+          <span>L{row.assembly_level ?? 0}</span>
+          {Array.isArray(row.parent_uids) && row.parent_uids.length > 0 && <span className="text-xs text-amber-600">Up {row.parent_uids.length}</span>}
+          {Array.isArray(row.child_uids) && row.child_uids.length > 0 && <span className="text-xs text-green-600">Down {row.child_uids.length}</span>}
+        </span>
+      ),
+      align: 'center',
+      minWidth: 140,
+    },
+    {
+      id: 'vendor',
+      label: 'Vendor',
+      accessor: (row) => row.vendorName || row.supplier?.name || '',
+      cell: (row) => (
+        <div className="min-w-0">
+          <div className="truncate text-sm text-gray-900" title={row.vendorName || row.supplier?.name || '-'}>{row.vendorName || row.supplier?.name || '-'}</div>
+          {(row.vendorCode || row.supplier?.vendor_code) && <div className="truncate text-[11px] text-gray-500">{row.vendorCode || row.supplier?.vendor_code}</div>}
+        </div>
+      ),
+      defaultVisible: false,
+      minWidth: 220,
+    },
+    {
+      id: 'grn',
+      label: 'GRN',
+      accessor: (row) => getDisplayGrn(row),
+      defaultVisible: true,
+      minWidth: 180,
+    },
+    {
+      id: 'po',
+      label: 'PO',
+      accessor: (row) => row.purchase_order?.po_number || row.purchase_order_id || '',
+      defaultVisible: false,
+      minWidth: 180,
+    },
+    {
+      id: 'batch_number',
+      label: 'Batch',
+      accessor: (row) => row.batch_number || '',
+      defaultVisible: false,
+      minWidth: 150,
+    },
+    {
+      id: 'created_at',
+      label: 'Created',
+      accessor: (row) => row.created_at || '',
+      sortAccessor: (row) => (row.created_at ? new Date(row.created_at).getTime() : 0),
+      cell: (row) => <span className="whitespace-nowrap text-gray-600">{row.created_at ? formatDate(row.created_at) : '-'}</span>,
+      minWidth: 190,
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      sortable: false,
+      hideable: false,
+      align: 'right',
+      minWidth: 150,
+      cell: (row) => (
+        <div className="flex items-center justify-end gap-2 whitespace-nowrap text-xs">
+          <button
+            type="button"
+            onClick={() => openTraceForUID(row)}
+            className="font-medium text-amber-600 hover:text-amber-800"
+          >
+            Trace
+          </button>
+          <button
+            type="button"
+            onClick={() => openQrForUID(row)}
+            className="font-medium text-purple-600 hover:text-purple-800"
+          >
+            QR Code
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   if (loading) {
     return (
@@ -311,6 +861,12 @@ export default function UIDTrackingPage() {
           🔍 Trace Product
         </button>
       </div>
+
+      {error && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Search Bar */}
       <div className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 p-6 rounded-xl shadow">
@@ -376,7 +932,7 @@ export default function UIDTrackingPage() {
           💡 Scan QR code or enter UID to view complete history and traceability
         </p>
         <p className="text-xs text-amber-600 mt-1">
-          ℹ️ Showing 10 UIDs per page. Use search above to find specific UIDs, or navigate pages below to browse all records.
+          ℹ️ Use the registry table search, column menu, sorting, and page size controls to browse records.
         </p>
       </div>
 
@@ -384,9 +940,9 @@ export default function UIDTrackingPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         {[
           { label: 'Total UIDs', value: totalCount || uids.length, color: 'amber', icon: '🏷️' },
-          { label: 'Showing', value: uids.length, color: 'blue', icon: '📄' },
-          { label: 'Current Page', value: currentPage, color: 'green', icon: '📖' },
-          { label: 'Total Pages', value: totalPages, color: 'orange', icon: '📚' },
+          { label: 'Loaded Rows', value: uids.length, color: 'blue', icon: '📄' },
+          { label: 'Active Filters', value: Object.values(filters).filter(Boolean).length, color: 'green', icon: '🔎' },
+          { label: 'Table Tools', value: 'On', color: 'orange', icon: '⚙️' },
         ].map((stat, idx) => (
           <div key={idx} className="bg-white p-5 rounded-lg shadow border-l-4 border-amber-500">
             <div className="flex items-center justify-between">
@@ -441,6 +997,19 @@ export default function UIDTrackingPage() {
               <option value="FAILED">QC FAILED</option>
             </select>
 
+            <select
+              value={filters.grn}
+              onChange={(e) => setFilters({ ...filters, grn: e.target.value })}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="">All GRNs</option>
+              {availableGrns.map((grn) => (
+                <option key={grn} value={grn}>
+                  {grn}
+                </option>
+              ))}
+            </select>
+
             <input
               type="text"
               placeholder="Filter by location..."
@@ -450,9 +1019,9 @@ export default function UIDTrackingPage() {
             />
           </div>
           
-          {(filters.status || filters.entity_type || filters.location || filters.quality_status) && (
+          {(filters.status || filters.entity_type || filters.location || filters.quality_status || filters.grn) && (
             <button
-              onClick={() => setFilters({ status: '', entity_type: '', location: '', quality_status: '' })}
+              onClick={() => setFilters({ status: '', entity_type: '', location: '', quality_status: '', grn: '' })}
               className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium flex items-center gap-2"
             >
               ✕ Clear Filters
@@ -462,235 +1031,27 @@ export default function UIDTrackingPage() {
       </div>
 
       {/* UID Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-amber-50">
-            <tr>
-              <th 
-                onClick={() => handleSort('uid')}
-                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
-              >
-                UID {getSortIcon('uid')}
-              </th>
-              <th 
-                onClick={() => handleSort('client_part_number')}
-                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
-              >
-                Part No {getSortIcon('client_part_number')}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase">Item</th>
-              <th 
-                onClick={() => handleSort('entity_type')}
-                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
-              >
-                Type {getSortIcon('entity_type')}
-              </th>
-              <th 
-                onClick={() => handleSort('status')}
-                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
-              >
-                Status {getSortIcon('status')}
-              </th>
-              <th 
-                onClick={() => handleSort('location')}
-                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
-              >
-                Location {getSortIcon('location')}
-              </th>
-              <th 
-                onClick={() => handleSort('assembly_level')}
-                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
-              >
-                Level {getSortIcon('assembly_level')}
-              </th>
-              <th 
-                onClick={() => handleSort('created_at')}
-                className="px-6 py-3 text-left text-xs font-medium text-amber-900 uppercase cursor-pointer hover:bg-amber-100"
-              >
-                Created {getSortIcon('created_at')}
-              </th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-amber-900 uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {paginatedUIDs.map((uid) => (
-              <tr key={uid.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4">
-                  <div className="font-mono text-sm font-medium text-amber-600">{uid.uid}</div>
-                  {uid.batch_number && (
-                    <div className="text-xs text-gray-500">Batch: {uid.batch_number}</div>
-                  )}
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    {uid.client_part_number ? (
-                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
-                        {uid.client_part_number}
-                      </span>
-                    ) : (
-                      <span className="text-gray-400 text-xs">Not assigned</span>
-                    )}
-                    {canEdit && (
-                    <button
-                      onClick={() => openPartNumberModal(uid)}
-                      className="text-blue-600 hover:text-blue-800 text-xs"
-                      title="Edit Part Number"
-                    >
-                      ✏️
-                    </button>
-                    )}
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  {uid.items ? (
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{uid.items.code}</div>
-                      <div className="text-xs text-gray-500">{uid.items.name}</div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-400">-</div>
-                  )}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-900">{uid.entity_type}</td>
-                <td className="px-6 py-4">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${statusColors[uid.status] || 'bg-gray-100 text-gray-800'}`}>
-                    {uid.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-900">{uid.location || 'N/A'}</td>
-                <td className="px-6 py-4 text-sm text-gray-900">
-                  <span className="flex items-center gap-1">
-                    <span>L{uid.assembly_level}</span>
-                    {uid.parent_uids && uid.parent_uids.length > 0 && (
-                      <span className="text-xs text-amber-600">⬆{uid.parent_uids.length}</span>
-                    )}
-                    {uid.child_uids && uid.child_uids.length > 0 && (
-                      <span className="text-xs text-green-600">⬇{uid.child_uids.length}</span>
-                    )}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  {new Date(uid.created_at).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 text-sm space-x-2">
-                  <button
-                    onClick={async () => {
-                      try {
-                        const data = await apiClient.get<UIDRecord>(`/uid/search/${encodeURIComponent(uid.uid)}`);
-                        const parsedUID: any = {
-                          ...data,
-                          lifecycle: typeof data.lifecycle === 'string' ? JSON.parse(data.lifecycle) : data.lifecycle,
-                          parent_uids: typeof data.parent_uids === 'string' ? JSON.parse(data.parent_uids) : data.parent_uids,
-                          child_uids: typeof data.child_uids === 'string' ? JSON.parse(data.child_uids) : data.child_uids,
-                          vendorName: data.supplier?.name || '',
-                          vendorCode: data.supplier?.vendor_code || '',
-                          grnNumber: data.grn?.grn_number || '',
-                        };
-                        setSelectedUID(parsedUID);
-                        setShowTraceModal(true);
-                      } catch (error) {
-                        alert('Error loading trace information');
-                      }
-                    }}
-                    className="text-amber-600 hover:text-amber-900 font-medium"
-                  >
-                    Trace
-                  </button>
-                  <button
-                    onClick={() => {
-                      const parsedUID: any = {
-                        ...uid,
-                        lifecycle: typeof uid.lifecycle === 'string' ? JSON.parse(uid.lifecycle) : uid.lifecycle,
-                        parent_uids: typeof uid.parent_uids === 'string' ? JSON.parse(uid.parent_uids) : uid.parent_uids,
-                        child_uids: typeof uid.child_uids === 'string' ? JSON.parse(uid.child_uids) : uid.child_uids,
-                      };
-                      setSelectedUID(parsedUID);
-                      setShowModal(true);
-                    }}
-                    className="text-purple-600 hover:text-purple-900 font-medium"
-                  >
-                    QR Code
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {/* Pagination */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-          <div className="text-sm text-gray-700">
-            {totalCount > 0 ? (
-              <>Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, totalCount)} of {totalCount} results</>
-            ) : (
-              <>Showing {uids.length} results</>
-            )}
+      <ListTable
+        storageKey="uidRegistryTable:configurable:v2"
+        rows={filteredUids}
+        columns={uidTableColumns}
+        getRowId={(row) => row.id || row.uid}
+        defaultPageSize={25}
+        pageSizeOptions={[10, 25, 50, 100]}
+        searchPlaceholder="Search UID, part no, item, vendor, GRN, PO, batch, status..."
+        exportFilename="uid-registry.csv"
+        selectable
+        selectedRowIds={selectedUIDIds}
+        onSelectionChange={setSelectedUIDIds}
+        toolbarRight={selectionToolbar}
+        emptyState={
+          <div className="p-12 text-center">
+            <div className="text-5xl mb-4">🏷️</div>
+            <h3 className="mb-2 text-xl font-semibold text-gray-700">No UIDs Found</h3>
+            <p className="text-gray-500">UIDs are auto-generated at Goods Receipt.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => goToPage(1)}
-              disabled={currentPage === 1}
-              className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-            >
-              ««
-            </button>
-            <button
-              onClick={() => goToPage(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-            >
-              «
-            </button>
-            
-            {[...Array(totalPages)].map((_, i) => {
-              const page = i + 1;
-              if (
-                page === 1 ||
-                page === totalPages ||
-                (page >= currentPage - 1 && page <= currentPage + 1)
-              ) {
-                return (
-                  <button
-                    key={page}
-                    onClick={() => goToPage(page)}
-                    className={`px-3 py-1 rounded text-sm ${
-                      currentPage === page
-                        ? 'bg-amber-600 text-white font-semibold'
-                        : 'border border-gray-300 hover:bg-gray-100'
-                    }`}
-                  >
-                    {page}
-                  </button>
-                );
-              } else if (page === currentPage - 2 || page === currentPage + 2) {
-                return <span key={page} className="px-2">...</span>;
-              }
-              return null;
-            })}
-            
-            <button
-              onClick={() => goToPage(currentPage + 1)}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-            >
-              »
-            </button>
-            <button
-              onClick={() => goToPage(totalPages)}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-            >
-              »»
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {uids.length === 0 && !loading && (
-        <div className="text-center py-12 bg-white rounded-lg shadow mt-6">
-          <p className="text-gray-500">No UIDs found. UIDs are auto-generated at Goods Receipt.</p>
-        </div>
-      )}
+        }
+      />
 
       {/* QR Code Modal */}
       {showModal && selectedUID && (
@@ -706,11 +1067,16 @@ export default function UIDTrackingPage() {
                 />
               </div>
               <p className="font-mono text-sm text-gray-700 mb-2">{selectedUID.uid}</p>
+              {selectedPartNumberDisplay && (
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  Part No: {selectedPartNumberDisplay}
+                </p>
+              )}
               <p className="text-sm text-gray-500 mb-4">
                 Scan to view complete traceability
               </p>
               <button
-                onClick={() => window.print()}
+                onClick={() => printQrLabel(selectedUID)}
                 className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 mr-2"
               >
                 Print Label
@@ -853,7 +1219,7 @@ export default function UIDTrackingPage() {
 
             <div className="mt-6 flex gap-2">
               <button
-                onClick={() => window.print()}
+                onClick={() => printTraceReport(selectedUID)}
                 className="flex-1 bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700"
               >
                 Print Report

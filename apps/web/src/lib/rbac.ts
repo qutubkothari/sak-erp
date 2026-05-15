@@ -8,6 +8,7 @@ import {
 export type StoredUser = {
   roles?: string[] | Array<{ role: { name: string; permissions?: unknown } }>;
   role?: { name: string; permissions?: unknown };
+  username?: string;
   email?: string;
   first_name?: string;
   last_name?: string;
@@ -286,7 +287,7 @@ const MODULE_TO_ROUTE_PREFIXES: Record<string, string[]> = {
   Documents: ['/dashboard/documents'],
   // Avoid mapping to '/dashboard' (it becomes a wildcard for all dashboard routes).
   Reports: [],
-  Settings: ['/dashboard/settings', '/dashboard/debug'],
+  Settings: ['/dashboard/settings', '/dashboard/audit-trails', '/dashboard/debug'],
 };
 
 export function getAllowedRoutePrefixes(user: StoredUser | null): string[] {

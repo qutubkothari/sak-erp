@@ -3,7 +3,25 @@
     "allow": [
       "Bash(ls:*)",
       "Bash(powershell.exe -ExecutionPolicy Bypass -File \".\\\\deploy-hostinger.ps1\")",
-      "Bash(ssh:*)"
+      "Bash(ssh:*)",
+      "Bash(powershell -NoProfile -Command \"Get-ChildItem -Depth 2 -Directory | Select-Object -ExpandProperty FullName | head -50\")",
+      "Bash(Get-ChildItem -Recurse -Directory -Name)",
+      "Bash(xargs grep *)",
+      "PowerShell(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=20 -i \"$env:USERPROFILE\\\\.ssh\\\\hostinger_ed25519\" qutubk@72.62.192.228 \"pm2 logs sak-api --lines 30 --nostream 2>&1 | tail -40\")",
+      "PowerShell(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=20 -i \"$env:USERPROFILE\\\\.ssh\\\\hostinger_ed25519\" qutubk@72.62.192.228 \"ls /etc/nginx/sites-enabled/ && echo '---' && cat /etc/nginx/sites-enabled/erp.saifseas.com 2>/dev/null || echo 'no saif config found'\")",
+      "PowerShell(Resolve-DnsName erp.saifseas.com -Type A 2>&1)",
+      "PowerShell(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=30 -i \"$env:USERPROFILE\\\\.ssh\\\\hostinger_ed25519\" qutubk@72.62.192.228 \"ls /etc/nginx/sites-enabled/\")",
+      "PowerShell(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=30 -i \"$env:USERPROFILE\\\\.ssh\\\\hostinger_ed25519\" qutubk@72.62.192.228 \"cat /etc/nginx/sites-enabled/pms.saksolution.com | head -30\")",
+      "PowerShell(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=30 -i \"$env:USERPROFILE\\\\.ssh\\\\hostinger_ed25519\" qutubk@72.62.192.228 \"pm2 logs sak-api --lines 30 --nostream 2>&1 | tail -35\")",
+      "PowerShell(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=30 -i \"$env:USERPROFILE\\\\.ssh\\\\hostinger_ed25519\" qutubk@72.62.192.228 \"pm2 logs sak-api --lines 20 --nostream 2>&1 | grep -i 'getVendorPayables\\\\|tenantId'\")",
+      "PowerShell(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=30 -i \"$env:USERPROFILE\\\\.ssh\\\\hostinger_ed25519\" qutubk@72.62.192.228 \"pm2 logs sak-api --lines 30 --nostream 2>&1 | tail -20\")",
+      "PowerShell(Start-Sleep -Seconds 15; ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=30 -i \"$env:USERPROFILE\\\\.ssh\\\\hostinger_ed25519\" qutubk@72.62.192.228 \"pm2 logs sak-api --lines 10 --nostream 2>&1 | grep -a 'getVendorPayables' || echo 'no debug log yet'\")",
+      "PowerShell(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=30 -i \"$env:USERPROFILE\\\\.ssh\\\\hostinger_ed25519\" qutubk@72.62.192.228 \"pm2 logs sak-api --lines 50 --nostream 2>&1 | grep -a 'getVendorPayables\\\\|vendor-payable\\\\|COMPLETED'\")",
+      "Bash(pnpm --filter web tsc --noEmit)",
+      "Bash(npx tsc *)",
+      "Bash(powershell.exe -File deploy-hostinger.ps1)",
+      "Bash(powershell.exe -File deploy-hostinger-test.ps1)",
+      "PowerShell(head -20)"
     ]
   }
 }

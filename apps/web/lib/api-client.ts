@@ -3,6 +3,8 @@
  * Handles all HTTP requests to the backend API
  */
 
+import { prepareDataQualityPayload } from './data-quality';
+
 const DEFAULT_BROWSER_API_BASE_URL = '/api/v1';
 const DEFAULT_SERVER_API_BASE_URL =
   process.env.INTERNAL_API_URL || 'http://localhost:4000/api/v1';
@@ -75,13 +77,14 @@ interface ApiResponse<T = any> {
 
 interface RegisterData {
   name: string;
+  username: string;
   email: string;
   password: string;
   companyName: string;
 }
 
 interface LoginData {
-  email: string;
+  username: string;
   password: string;
   tenantId?: string;
 }
@@ -91,6 +94,7 @@ interface LoginResponse {
   refreshToken: string;
   user: {
     id: string;
+    username?: string;
     email: string;
     firstName?: string;
     lastName?: string;
@@ -113,6 +117,11 @@ interface LoginResponse {
 
 interface ResetPasswordRequestData {
   email: string;
+}
+
+interface ResetPasswordData {
+  token: string;
+  newPassword: string;
 }
 
 class ApiClient {
@@ -335,6 +344,13 @@ class ApiClient {
     });
   }
 
+  async resetPassword(data: ResetPasswordData): Promise<ApiResponse> {
+    return this.request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   /**
    * Change password (authenticated user)
    */
@@ -411,9 +427,10 @@ class ApiClient {
    * Generic POST request
    */
   async post<T = any>(endpoint: string, data?: any): Promise<T> {
+    const payload = data ? prepareDataQualityPayload(endpoint, data) : undefined;
     const response = await this.request<T>(endpoint, {
       method: 'POST',
-      body: data ? JSON.stringify(data) : undefined,
+      body: payload ? JSON.stringify(payload) : undefined,
     });
     if (!response.success) {
       throw new Error(response.error || 'Request failed');
@@ -439,9 +456,10 @@ class ApiClient {
    * Generic PUT request
    */
   async put<T = any>(endpoint: string, data?: any): Promise<T> {
+    const payload = data ? prepareDataQualityPayload(endpoint, data) : undefined;
     const response = await this.request<T>(endpoint, {
       method: 'PUT',
-      body: data ? JSON.stringify(data) : undefined,
+      body: payload ? JSON.stringify(payload) : undefined,
     });
     if (!response.success) {
       throw new Error(response.error || 'Request failed');

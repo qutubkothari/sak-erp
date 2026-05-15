@@ -84,6 +84,28 @@ export class HrController {
     return this.hrService.updateLeave(req.user.tenantId, id, body);
   }
 
+  // Holiday Calendar
+  @Get('holidays')
+  getHolidays(@Request() req: any, @Query('year') year?: string) {
+    const parsedYear = year ? Number.parseInt(year, 10) : undefined;
+    return this.hrService.getHolidays(req.user.tenantId, Number.isFinite(parsedYear as number) ? parsedYear : undefined);
+  }
+
+  @Post('holidays')
+  createHoliday(@Request() req: any, @Body() body: any) {
+    return this.hrService.createHoliday(req.user.tenantId, body);
+  }
+
+  @Put('holidays/:id')
+  updateHoliday(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.hrService.updateHoliday(req.user.tenantId, id, body);
+  }
+
+  @Delete('holidays/:id')
+  deleteHoliday(@Request() req: any, @Param('id') id: string) {
+    return this.hrService.deleteHoliday(req.user.tenantId, id);
+  }
+
   // Salary Components
   @Post('salary')
   addSalaryComponent(@Request() req: any, @Body() body: any) {

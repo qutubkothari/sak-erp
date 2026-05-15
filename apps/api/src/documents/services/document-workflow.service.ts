@@ -510,7 +510,7 @@ export class DocumentWorkflowService {
       <p><a href="${process.env.FRONTEND_URL || 'http://3.110.100.60'}/dashboard/documents" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Review Document</a></p>
     `;
 
-    await this.emailService.sendEmail({ to: email, subject, html, from: 'admin' });
+    await this.emailService.sendEmail({ to: email, subject, html, from: 'admin', tenantId: doc.tenant_id });
   }
 
   private async sendApprovalRequestEmail(email: string, doc: any, requestedBy: any) {
@@ -528,7 +528,7 @@ export class DocumentWorkflowService {
       <p><a href="${process.env.FRONTEND_URL || 'http://3.110.100.60'}/dashboard/documents" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Review Document</a></p>
     `;
 
-    await this.emailService.sendEmail({ to: email, subject, html, from: 'admin' });
+    await this.emailService.sendEmail({ to: email, subject, html, from: 'admin', tenantId: doc.tenant_id });
   }
 
   private async sendClientReviewEmail(email: string, doc: any, options: any) {
@@ -550,10 +550,9 @@ export class DocumentWorkflowService {
       </ol>
       <p style="color: #666; font-size: 12px; margin-top: 30px;">This link will expire in 15 days.</p>
       <hr style="margin: 20px 0;">
-      <p style="color: #666; font-size: 12px;">Best regards,<br>${process.env.COMPANY_NAME || 'SAK Solutions'}</p>
     `;
 
-    await this.emailService.sendEmail({ to: email, subject, html, from: 'admin' });
+    await this.emailService.sendEmail({ to: email, subject, html, from: 'admin', tenantId: doc.tenant_id });
   }
 
   private async sendRejectionEmail(email: string, doc: any, reason: string, rejectedBy: any) {
@@ -572,7 +571,7 @@ export class DocumentWorkflowService {
       <p><a href="${process.env.FRONTEND_URL || 'http://3.110.100.60'}/dashboard/documents" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">View Document</a></p>
     `;
 
-    await this.emailService.sendEmail({ to: email, subject, html, from: 'admin' });
+    await this.emailService.sendEmail({ to: email, subject, html, from: 'admin', tenantId: doc.tenant_id });
   }
 
   private async sendClientUploadNotification(email: string, doc: any, revisionNumber: string) {
@@ -591,6 +590,6 @@ export class DocumentWorkflowService {
       <p><a href="${process.env.FRONTEND_URL || 'http://3.110.100.60'}/dashboard/documents" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Review Document</a></p>
     `;
 
-    await this.emailService.sendEmail({ to: email, subject, html, from: 'admin' });
+    await this.emailService.sendEmail({ to: email, subject, html, from: 'admin', tenantId: doc.tenant_id });
   }
 }

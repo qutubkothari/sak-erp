@@ -273,7 +273,10 @@ export class EmailConfigService {
   /**
    * Get company name
    */
-  getCompanyName(): string {
+  getCompanyName(companyNameOverride?: string): string {
+    if (typeof companyNameOverride === 'string' && companyNameOverride.trim()) {
+      return companyNameOverride.trim();
+    }
     return this.configService.get('COMPANY_NAME', 'SAK Solutions');
   }
 
@@ -294,29 +297,31 @@ export class EmailConfigService {
   /**
    * Get formatted sender address for emails
    */
-  getFromAddress(type: keyof EmailConfig = 'noreply'): string {
+  getFromAddress(type: keyof EmailConfig = 'noreply', companyNameOverride?: string): string {
     const email = this.getEmail(type);
-    const companyName = this.getCompanyName();
+    const companyName = this.getCompanyName(companyNameOverride);
     return `"${companyName}" <${email}>`;
   }
 
   /**
    * Get formatted sender address for emails (async, database-backed)
    */
-  async getFromAddressAsync(type: keyof EmailConfig = 'noreply'): Promise<string> {
+  async getFromAddressAsync(type: keyof EmailConfig = 'noreply', companyNameOverride?: string): Promise<string> {
     const email = await this.getEmailAsync(type);
-    const companyName = this.getCompanyName();
+    const companyName = this.getCompanyName(companyNameOverride);
     return `"${companyName}" <${email}>`;
   }
 
   /**
    * Get email signature HTML
    */
-  getEmailSignature(): string {
-    const companyName = this.getCompanyName();
-    const companyAddress = this.getCompanyAddress();
-    const companyPhone = this.getCompanyPhone();
-    const supportEmail = this.getSupportEmail();
+  getEmailSignature(overrides?: { companyName?: string; address?: string; phone?: string; email?: string }): string {
+    const companyName = this.getCompanyName(overrides?.companyName);
+    const companyAddress = typeof overrides?.address === 'string' ? overrides.address.trim() : this.getCompanyAddress();
+    const companyPhone = typeof overrides?.phone === 'string' ? overrides.phone.trim() : this.getCompanyPhone();
+    const supportEmail = typeof overrides?.email === 'string' && overrides.email.trim()
+      ? overrides.email.trim()
+      : this.getSupportEmail();
 
     let signature = `
       <br><br>

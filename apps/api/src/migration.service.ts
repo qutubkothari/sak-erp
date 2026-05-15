@@ -123,6 +123,23 @@ CREATE INDEX IF NOT EXISTS idx_leave_tenant ON leave_requests(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_leave_employee ON leave_requests(employee_id);
 CREATE INDEX IF NOT EXISTS idx_leave_status ON leave_requests(status);
 
+-- Holiday calendar
+CREATE TABLE IF NOT EXISTS hr_holidays (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tenant_id UUID NOT NULL,
+  holiday_name VARCHAR(200) NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE,
+  holiday_type VARCHAR(50) DEFAULT 'PUBLIC',
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_hr_holidays_tenant ON hr_holidays(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_hr_holidays_start_date ON hr_holidays(start_date);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holidays(tenant_id, holiday_name, start_date);
+
 -- Create salary_components table
 CREATE TABLE IF NOT EXISTS salary_components (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

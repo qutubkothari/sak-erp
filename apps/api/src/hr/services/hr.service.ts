@@ -36,15 +36,192 @@ const isMissingColumnError = (error: unknown, columnName: string) => {
   return false;
 };
 
+const DEFAULT_HR_HOLIDAYS_2026 = [
+  { holiday_name: 'Bhogi', start_date: '2026-01-14', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Makara Sankranti', start_date: '2026-01-15', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Kanuma', start_date: '2026-01-16', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Republic Day', start_date: '2026-01-26', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Holi', start_date: '2026-03-03', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Ugadi', start_date: '2026-03-19', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Ramzan Eid', start_date: '2026-03-20', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Bakri Eid', start_date: '2026-05-27', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Mohurram', start_date: '2026-06-16', end_date: '2026-06-24', holiday_type: 'PUBLIC', notes: 'Imported from Holiday List 2026 reference.' },
+  { holiday_name: 'Independence Day', start_date: '2026-08-15', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Vinayaka Chavithi', start_date: '2026-08-21', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Eid ul Milad un Nabi', start_date: '2026-08-25', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Mahatma Gandhi Jayanti', start_date: '2026-10-02', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Dusshera', start_date: '2026-10-20', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Diwali', start_date: '2026-11-08', end_date: null, holiday_type: 'PUBLIC' },
+  { holiday_name: 'Christmas', start_date: '2026-12-25', end_date: null, holiday_type: 'PUBLIC' },
+];
+
 @Injectable()
 export class HrService {
   private supabase: SupabaseClient;
+  private holidayTableReady = false;
 
   constructor() {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_KEY!
     );
+  }
+
+  private countHolidayDays(startDate: string, endDate?: string | null) {
+    const start = new Date(startDate);
+    const end = new Date(endDate || startDate);
+    const diffMs = end.getTime() - start.getTime();
+    return Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1);
+  }
+
+  private async ensureHolidayTable() {
+    if (this.holidayTableReady) {
+      return;
+    }
+
+    const sql = `
+CREATE TABLE IF NOT EXISTS hr_holidays (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL,
+    holiday_name VARCHAR(200) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE,
+    holiday_type VARCHAR(50) DEFAULT 'PUBLIC',
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_hr_holidays_tenant ON hr_holidays(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_hr_holidays_start_date ON hr_holidays(start_date);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holidays(tenant_id, holiday_name, start_date);
+`;
+
+    const { error } = await this.supabase.rpc('exec_sql', { sql });
+    if (error) throw new Error(error.message);
+
+    this.holidayTableReady = true;
+  }
+
+  private async ensureHolidaySeeded(tenantId: string) {
+    await this.ensureHolidayTable();
+
+    const { count, error } = await this.supabase
+      .from('hr_holidays')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId);
+    if (error) throw new Error(error.message);
+
+    if ((count || 0) > 0) {
+      return;
+    }
+
+    const payload = DEFAULT_HR_HOLIDAYS_2026.map((holiday) => ({
+      tenant_id: tenantId,
+      holiday_name: holiday.holiday_name,
+      start_date: holiday.start_date,
+      end_date: holiday.end_date,
+      holiday_type: holiday.holiday_type,
+      notes: 'notes' in holiday ? (holiday as any).notes || null : null,
+    }));
+
+    const { error: insertError } = await this.supabase.from('hr_holidays').insert(payload);
+    if (insertError) throw new Error(insertError.message);
+  }
+
+  async getHolidays(tenantId: string, year?: number) {
+    await this.ensureHolidaySeeded(tenantId);
+
+    const { data, error } = await this.supabase
+      .from('hr_holidays')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('start_date', { ascending: true })
+      .order('holiday_name', { ascending: true });
+    if (error) throw new Error(error.message);
+
+    const filtered = (data || []).filter((holiday: any) => {
+      if (!year) return true;
+      const yearStart = `${year}-01-01`;
+      const yearEnd = `${year}-12-31`;
+      const start = String(holiday.start_date || '');
+      const end = String(holiday.end_date || holiday.start_date || '');
+      return start <= yearEnd && end >= yearStart;
+    });
+
+    return filtered.map((holiday: any) => ({
+      ...holiday,
+      day_count: this.countHolidayDays(holiday.start_date, holiday.end_date),
+    }));
+  }
+
+  async createHoliday(tenantId: string, data: any) {
+    await this.ensureHolidayTable();
+
+    const startDate = String(data?.start_date || '').trim();
+    const endDate = String(data?.end_date || '').trim() || null;
+    if (!startDate || !String(data?.holiday_name || '').trim()) {
+      throw new Error('holiday_name and start_date are required');
+    }
+    if (endDate && endDate < startDate) {
+      throw new Error('end_date cannot be earlier than start_date');
+    }
+
+    const payload = {
+      tenant_id: tenantId,
+      holiday_name: String(data.holiday_name).trim(),
+      start_date: startDate,
+      end_date: endDate,
+      holiday_type: String(data?.holiday_type || 'PUBLIC').trim() || 'PUBLIC',
+      notes: String(data?.notes || '').trim() || null,
+    };
+
+    const { data: result, error } = await this.supabase
+      .from('hr_holidays')
+      .insert([payload])
+      .select();
+    if (error) throw new Error(error.message);
+    return result;
+  }
+
+  async updateHoliday(tenantId: string, id: string, data: any) {
+    await this.ensureHolidayTable();
+
+    const updates: any = {
+      updated_at: new Date().toISOString(),
+    };
+    if (data.holiday_name !== undefined) updates.holiday_name = String(data.holiday_name || '').trim();
+    if (data.start_date !== undefined) updates.start_date = String(data.start_date || '').trim();
+    if (data.end_date !== undefined) updates.end_date = String(data.end_date || '').trim() || null;
+    if (data.holiday_type !== undefined) updates.holiday_type = String(data.holiday_type || 'PUBLIC').trim() || 'PUBLIC';
+    if (data.notes !== undefined) updates.notes = String(data.notes || '').trim() || null;
+
+    const startDate = String(updates.start_date || data.start_date || '').trim();
+    const endDate = String(updates.end_date || '').trim();
+    if (startDate && endDate && endDate < startDate) {
+      throw new Error('end_date cannot be earlier than start_date');
+    }
+
+    const { data: result, error } = await this.supabase
+      .from('hr_holidays')
+      .update(updates)
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .select();
+    if (error) throw new Error(error.message);
+    return result;
+  }
+
+  async deleteHoliday(tenantId: string, id: string) {
+    await this.ensureHolidayTable();
+
+    const { error } = await this.supabase
+      .from('hr_holidays')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('id', id);
+    if (error) throw new Error(error.message);
+    return { message: 'Holiday deleted successfully' };
   }
 
   // Employee CRUD

@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import { getTodayDateInputValue } from '@/lib/date';
+import { buildDocumentBranding, escapeHtml, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 import { getUserRoleNames as getStoredUserRoleNames, hasModulePermission as hasRbacPermission, readStoredUser } from '@/lib/rbac';
 
@@ -24,6 +25,7 @@ import {
 
 interface Employee {
   id: string;
+  user_id?: string | null;
   employee_code: string;
   employee_name: string;
   designation: string;
@@ -54,6 +56,16 @@ interface LeaveRequest {
   total_days: number;
   reason: string;
   status: string;
+}
+
+interface Holiday {
+  id: string;
+  holiday_name: string;
+  start_date: string;
+  end_date?: string | null;
+  holiday_type: string;
+  notes?: string | null;
+  day_count?: number;
 }
 
 interface Payslip {
@@ -270,10 +282,11 @@ function HrPageContent() {
   const [activeSection, setActiveSection] = useState<'management' | 'employees'>('management');
   const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
   const [myEmployee, setMyEmployee] = useState<Employee | null>(null);
-  const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leaves' | 'payroll' | 'config'>('employees');
+  const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leaves' | 'holidays' | 'payroll' | 'config'>('employees');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [payslips, setPayslips] = useState<Payslip[]>([]);
 
   const isEmployeePortal = activeSection === 'employees';
@@ -347,6 +360,9 @@ function HrPageContent() {
   const [showLeaveDetails, setShowLeaveDetails] = useState(false);
   const [showEditLeave, setShowEditLeave] = useState(false);
   const [selectedLeave, setSelectedLeave] = useState<LeaveRequest | null>(null);
+  const [showHolidayForm, setShowHolidayForm] = useState(false);
+  const [selectedHoliday, setSelectedHoliday] = useState<Holiday | null>(null);
+  const [holidayYear, setHolidayYear] = useState(String(new Date().getFullYear()));
   
   // Loading and error states
   const [loading, setLoading] = useState(false);
@@ -437,6 +453,14 @@ function HrPageContent() {
     end_date: getTodayDateInputValue(),
     total_days: 1,
     reason: ''
+  });
+
+  const [holidayForm, setHolidayForm] = useState({
+    holiday_name: '',
+    start_date: getTodayDateInputValue(),
+    end_date: '',
+    holiday_type: 'PUBLIC',
+    notes: '',
   });
 
   useEffect(() => {
@@ -569,7 +593,7 @@ function HrPageContent() {
     if (activeSection === 'management' && activeTab === 'config') {
       fetchMasterConfig();
     }
-  }, [activeSection, activeTab, payrollSubTab]);
+  }, [activeSection, activeTab, payrollSubTab, holidayYear]);
 
   const fetchMasterConfig = async () => {
     try {
@@ -622,20 +646,24 @@ function HrPageContent() {
         const resolveMyEmployee = async (): Promise<Employee | null> => {
           if (myEmployee?.id) return myEmployee;
 
+          const userId = normalizeText(currentUser?.id);
           const email = normalizeText(currentUser?.email);
-          if (!email) {
+          if (!userId && !email) {
             setError('User profile not loaded. Please re-login.');
             return null;
           }
 
           const empData = await apiClient.get<any>('/hr/employees');
           const allEmployees: Employee[] = Array.isArray(empData) ? empData : (empData.data || []);
-          const match = allEmployees.find((emp) => normalizeText(emp.email) === email) || null;
+          const match =
+            allEmployees.find((emp) => normalizeText(emp.user_id) === userId) ||
+            allEmployees.find((emp) => normalizeText(emp.email) === email) ||
+            null;
 
           if (!match) {
             setMyEmployee(null);
             setEmployees([]);
-            setError('No employee record found for this login. Ask HR to link your email to your employee profile.');
+            setError('No employee record found for this login. Ask HR to link your account to your employee profile.');
             return null;
           }
 
@@ -685,6 +713,12 @@ function HrPageContent() {
               employee_name: employee.employee_name,
             }))
           );
+          return;
+        }
+
+        if (activeTab === 'holidays') {
+          const holidayData = await apiClient.get<any>(`/hr/holidays?year=${encodeURIComponent(holidayYear)}`);
+          setHolidays(Array.isArray(holidayData) ? holidayData : (holidayData.data || []));
           return;
         }
 
@@ -760,6 +794,9 @@ function HrPageContent() {
         
         const allLeaves = await Promise.all(leavePromises);
         setLeaves(allLeaves.flat());
+      } else if (activeTab === 'holidays') {
+        const holidayData = await apiClient.get<any>(`/hr/holidays?year=${encodeURIComponent(holidayYear)}`);
+        setHolidays(Array.isArray(holidayData) ? holidayData : (holidayData.data || []));
       } else if (activeTab === 'payroll') {
         const empData = await apiClient.get<any>('/hr/employees');
         const allEmployees = Array.isArray(empData) ? empData : (empData.data || []);
@@ -911,6 +948,89 @@ function HrPageContent() {
       alert('Leave rejected successfully');
     } catch (error) {
       alert('Failed to reject leave');
+    }
+  };
+
+  const resetHolidayForm = () => {
+    setHolidayForm({
+      holiday_name: '',
+      start_date: getTodayDateInputValue(),
+      end_date: '',
+      holiday_type: 'PUBLIC',
+      notes: '',
+    });
+    setSelectedHoliday(null);
+  };
+
+  const openHolidayForm = (holiday?: Holiday | null) => {
+    if (holiday) {
+      setSelectedHoliday(holiday);
+      setHolidayForm({
+        holiday_name: holiday.holiday_name,
+        start_date: holiday.start_date,
+        end_date: holiday.end_date || '',
+        holiday_type: holiday.holiday_type || 'PUBLIC',
+        notes: holiday.notes || '',
+      });
+    } else {
+      resetHolidayForm();
+    }
+
+    setShowHolidayForm(true);
+  };
+
+  const handleSaveHoliday = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedHoliday ? !canEditHR : !canCreateHR) {
+      alert(`You do not have permission to ${selectedHoliday ? 'edit' : 'create'} holidays`);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const payload = {
+        ...holidayForm,
+        end_date: holidayForm.end_date || null,
+      };
+
+      if (selectedHoliday?.id) {
+        await apiClient.put(`/hr/holidays/${selectedHoliday.id}`, payload);
+        alert('Holiday updated successfully');
+      } else {
+        await apiClient.post('/hr/holidays', payload);
+        alert('Holiday added successfully');
+      }
+
+      setShowHolidayForm(false);
+      resetHolidayForm();
+      fetchData();
+    } catch (error: any) {
+      alert(error?.message || 'Failed to save holiday');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteHoliday = async (holiday: Holiday) => {
+    if (!canDeleteHR) {
+      alert('You do not have permission to delete holidays');
+      return;
+    }
+
+    const confirmed = await confirmDialog({
+      title: 'Delete Holiday',
+      message: `Delete holiday ${holiday.holiday_name}?`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
+    try {
+      await apiClient.delete(`/hr/holidays/${holiday.id}`);
+      fetchData();
+      alert('Holiday deleted successfully');
+    } catch (error: any) {
+      alert(error?.message || 'Failed to delete holiday');
     }
   };
 
@@ -1682,14 +1802,6 @@ function HrPageContent() {
 
   const handlePrintPayslip = async (record: any) => {
     try {
-      const escapeHtml = (value: unknown) =>
-        String(value ?? '')
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#39;');
-
       const formatPayrollMonthLabel = (yyyyMm: string) => {
         const match = /^(\d{4})-(\d{2})$/.exec(String(yyyyMm || '').trim());
         if (!match) return String(yyyyMm || '').trim();
@@ -1703,6 +1815,9 @@ function HrPageContent() {
       const fmtINR = (n: number) =>
         Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+      let branding = buildDocumentBranding(null);
+      const generatedOn = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: '2-digit' });
+
       const buildSaifLetterHtml = (opts: {
         employeeName: string;
         monthLabel: string;
@@ -1715,10 +1830,9 @@ function HrPageContent() {
         sideRows: Array<{ label: string; value: string | number }>;
         employeeAddressLines?: string[];
       }) => {
-        const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: '2-digit' });
         const addressLines = Array.isArray(opts.employeeAddressLines) && opts.employeeAddressLines.length
           ? opts.employeeAddressLines
-          : ['New colony, Mewatiyan,', 'Gonda - 271001', 'Uttar Pradesh'];
+          : ['Address not available'];
 
         const salaryRowsHtml = opts.salaryRows
           .map((row, i) => {
@@ -1783,9 +1897,12 @@ function HrPageContent() {
       display: flex; align-items: center; justify-content: center;
       font-size: 24px; font-weight: bold; border-radius: 4px;
     }
-    .company-name { font-size: 28px; font-weight: bold; font-style: italic; color: #1e3a8a; }
-    .contact-info { text-align: right; font-size: 9pt; color: #1e3a8a; line-height: 1.4; }
-    .contact-info .website { font-weight: bold; }
+    .logo { width: 50px; height: 50px; object-fit: contain; border-radius: 4px; }
+    .company-name { font-size: 22px; font-weight: bold; color: #1e3a8a; }
+    .company-meta { font-size: 9pt; color: #1e3a8a; line-height: 1.5; }
+    .generated-on { text-align: right; font-size: 9pt; color: #1e3a8a; line-height: 1.5; }
+    .generated-on-label { font-weight: bold; text-transform: uppercase; letter-spacing: 0.06em; }
+    .generated-on-value { font-size: 11pt; color: #111827; }
     .date { margin: 15px 0 20px 0; font-size: 10pt; }
     .recipient { margin: 15px 0; font-size: 10pt; line-height: 1.5; }
     .greeting { margin: 20px 0 15px 0; font-size: 10pt; }
@@ -1813,20 +1930,9 @@ function HrPageContent() {
   </style>
 </head>
 <body>
-  <div class="letterhead">
-    <div class="logo-section">
-      <div class="logo-box">S</div>
-      <div class="company-name">Saif Seas</div>
-    </div>
-    <div class="contact-info">
-      <div class="website">www.saifseas.com</div>
-      <div class="email">saif.automations@gmail.com</div>
-      <div>Ph: 0891-6662153/2540786</div>
-      <div>27-32-42/1, 75 Feet Rd, Visakhapatnam-1</div>
-    </div>
-  </div>
+  ${renderStandardLetterheadHtml(branding, generatedOn)}
 
-  <div class="date">Dated : ${today}</div>
+  <div class="date">Dated : ${generatedOn}</div>
 
   <div class="recipient">
     <div><strong>To,</strong></div>
@@ -1898,20 +2004,14 @@ function HrPageContent() {
   <div class="footer">
     <div>Thanking You,</div>
     <div style="margin-top: 15px;">With Regards,</div>
-    <div style="margin-top: 15px;"><strong>For Saif Automations Services LLP</strong></div>
+    <div style="margin-top: 15px;"><strong>For ${escapeHtml(branding.companyName)}</strong></div>
     <div style="margin-top: 30px;"><strong>Accounts In Charge</strong></div>
     <div style="margin-top: 5px;">Paramita Mall</div>
   </div>
 
   <div class="footer-address">
-    <div class="footer-works"><u>Works:</u></div>
-    <div>1st Floor, Nasscom CoE -IOT, Sunrise Incubations Hub, 35, Muzaffar Ahmed Street,</div>
-    <div>Hill 3, Rushikonda, Visakhapatnam-530045</div>
-    <div>Andhra Pradesh, India</div>
-    <div style="margin-top: 10px;"><strong><u>Reg Add:</u></strong></div>
-    <div>27-32-42/1, Near Santhi Theatre, Muzaffar Ahmed Street,</div>
-    <div>Taskeen Apartment,</div>
-    <div>Kolkata - 700016</div>
+    <div class="footer-works"><u>Company Address:</u></div>
+    ${branding.addressLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}
     <div class="bottom-stripes"></div>
   </div>
 </body>
@@ -1931,6 +2031,9 @@ function HrPageContent() {
       printWindow.document.write('<!doctype html><html><head><title>Preparing payslip...</title></head><body style="font-family: Arial, sans-serif; padding: 16px;">Preparing payslip…</body></html>');
       printWindow.document.close();
 
+      const company = await apiClient.get<any>('/tenant/current').catch(() => null);
+      branding = buildDocumentBranding(company);
+
       // Check if it's monthly payroll or regular payslip
       const isMonthlyPayroll = record.paid_for_total_days !== undefined;
       
@@ -1947,8 +2050,12 @@ function HrPageContent() {
           ['Medical', 'Travelling'].includes(c.component_name)
         );
         
-        const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: '2-digit' });
         const monthLabel = formatPayrollMonthLabel(String(record.payroll_month || record.salary_month || ''));
+        const employeeBase = employees.find((employee) => employee.id === record.employee_id) as any;
+        const employeeAddressRaw = String(employeeBase?.address || '').trim();
+        const employeeAddressLines = employeeAddressRaw
+          ? employeeAddressRaw.split(/\r?\n|,\s*/).map((line: string) => line.trim()).filter(Boolean)
+          : ['Address not available'];
 
         printWindow.document.open();
         printWindow.document.write(`
@@ -1986,20 +2093,25 @@ function HrPageContent() {
                 font-weight: bold;
                 border-radius: 4px;
               }
+              .logo { width: 50px; height: 50px; object-fit: contain; border-radius: 4px; }
               .company-name {
-                font-size: 28px;
+                font-size: 22px;
                 font-weight: bold;
-                font-style: italic;
                 color: #1e3a8a;
               }
-              .contact-info {
+              .company-meta {
+                font-size: 9pt;
+                color: #1e3a8a;
+                line-height: 1.5;
+              }
+              .generated-on {
                 text-align: right;
                 font-size: 9pt;
                 color: #1e3a8a;
-                line-height: 1.4;
+                line-height: 1.5;
               }
-              .contact-info .website { font-weight: bold; }
-              .contact-info .email { color: #1e3a8a; }
+              .generated-on-label { font-weight: bold; text-transform: uppercase; letter-spacing: 0.06em; }
+              .generated-on-value { font-size: 11pt; color: #111827; }
               
               /* Letter Content */
               .date { margin: 15px 0 20px 0; font-size: 10pt; }
@@ -2043,30 +2155,16 @@ function HrPageContent() {
             </style>
           </head>
           <body>
-            <!-- Letterhead -->
-            <div class="letterhead">
-              <div class="logo-section">
-                <div class="logo-box">S</div>
-                <div class="company-name">Saif Seas</div>
-              </div>
-              <div class="contact-info">
-                <div class="website">www.saifseas.com</div>
-                <div class="email">saif.automations@gmail.com</div>
-                <div>Ph: 0891-6662153/2540786</div>
-                <div>27-32-42/1, 75 Feet Rd, Visakhapatnam-1</div>
-              </div>
-            </div>
+            ${renderStandardLetterheadHtml(branding, generatedOn)}
 
             <!-- Date -->
-            <div class="date">Dated : ${today}</div>
+            <div class="date">Dated : ${generatedOn}</div>
 
             <!-- Recipient -->
             <div class="recipient">
               <div><strong>To,</strong></div>
               <div>${record.employee_name || 'Employee Name'}</div>
-              <div>New colony, Mewatiyan,</div>
-              <div>Gonda - 271001</div>
-              <div>Uttar Pradesh</div>
+              ${employeeAddressLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}
             </div>
 
             <!-- Greeting -->
@@ -2214,21 +2312,15 @@ function HrPageContent() {
             <div class="footer">
               <div>Thanking You,</div>
               <div style="margin-top: 15px;">With Regards,</div>
-              <div style="margin-top: 15px;"><strong>For Saif Automations Services LLP</strong></div>
+              <div style="margin-top: 15px;"><strong>For ${escapeHtml(branding.companyName)}</strong></div>
               <div style="margin-top: 30px;"><strong>Accounts In Charge</strong></div>
               <div style="margin-top: 5px;">Paramita Mall</div>
             </div>
 
             <!-- Footer Address -->
             <div class="footer-address">
-              <div class="footer-works"><u>Works:</u></div>
-              <div>1st Floor, Nasscom CoE -IOT, Sunrise Incubations Hub, 35, Muzaffar Ahmed Street,</div>
-              <div>Hill 3, Rushikonda, Visakhapatnam-530045</div>
-              <div>Andhra Pradesh, India</div>
-              <div style="margin-top: 10px;"><strong><u>Reg Add:</u></strong></div>
-              <div>27-32-42/1, Near Santhi Theatre, Muzaffar Ahmed Street,</div>
-              <div>Taskeen Apartment,</div>
-              <div>Kolkata - 700016</div>
+              <div class="footer-works"><u>Company Address:</u></div>
+              ${branding.addressLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}
             </div>
 
           </body>
@@ -2590,12 +2682,22 @@ function HrPageContent() {
     return s === 'PENDING' || s === 'PENDING_APPROVAL';
   };
 
+  const formatHolidayDateRange = (holiday: Holiday) => {
+    const start = new Date(holiday.start_date).toLocaleDateString('en-IN');
+    if (!holiday.end_date || holiday.end_date === holiday.start_date) {
+      return start;
+    }
+    return `${start} - ${new Date(holiday.end_date).toLocaleDateString('en-IN')}`;
+  };
+
+  const totalHolidayDays = holidays.reduce((sum, holiday) => sum + Number(holiday.day_count || 0), 0);
+
   // Support deep-links like /dashboard/hr?tab=leaves or /dashboard/hr?tab=leaves&applyLeave=1
   useEffect(() => {
     const tabParam = (searchParams.get('tab') || '').toLowerCase();
     const allowedTabs = isEmployeePortal
-      ? (['employees', 'attendance', 'leaves', 'payroll'] as const)
-      : (['employees', 'attendance', 'leaves', 'payroll', 'config'] as const);
+      ? (['employees', 'attendance', 'leaves', 'holidays', 'payroll'] as const)
+      : (['employees', 'attendance', 'leaves', 'holidays', 'payroll', 'config'] as const);
     const tab = (allowedTabs as readonly string[]).includes(tabParam)
       ? (tabParam as typeof activeTab)
       : null;
@@ -2701,6 +2803,14 @@ function HrPageContent() {
               + Apply Leave
             </button>
           )}
+          {!isEmployeePortal && activeTab === 'holidays' && canCreateHR && (
+            <button
+              onClick={() => openHolidayForm()}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+              + Add Holiday
+            </button>
+          )}
         </div>
       </div>
 
@@ -2724,6 +2834,12 @@ function HrPageContent() {
             className={`pb-4 px-2 ${activeTab === 'leaves' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}
           >
             {isEmployeePortal ? 'My Leaves' : 'Leave Requests'}
+          </button>
+          <button
+            onClick={() => setActiveTab('holidays')}
+            className={`pb-4 px-2 ${activeTab === 'holidays' ? 'border-b-2 border-amber-600 text-amber-600 font-semibold' : 'text-gray-600'}`}
+          >
+            Holiday Calendar
           </button>
           <button
             onClick={() => setActiveTab('payroll')}
@@ -3127,6 +3243,101 @@ function HrPageContent() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Holiday Calendar Tab */}
+      {activeTab === 'holidays' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">Holiday Calendar</h3>
+                <p className="text-sm text-gray-600">
+                  Central holiday master for HR planning, attendance reference, and leave visibility.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-gray-600" htmlFor="holiday-year">
+                  Year
+                </label>
+                <input
+                  id="holiday-year"
+                  type="number"
+                  value={holidayYear}
+                  onChange={(e) => setHolidayYear(e.target.value || String(new Date().getFullYear()))}
+                  className="w-28 rounded border px-3 py-2"
+                />
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <div className="text-sm text-amber-800">Holiday Entries</div>
+                <div className="mt-1 text-2xl font-semibold text-amber-950">{holidays.length}</div>
+              </div>
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <div className="text-sm text-blue-800">Total Holiday Days</div>
+                <div className="mt-1 text-2xl font-semibold text-blue-950">{totalHolidayDays}</div>
+              </div>
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <div className="text-sm text-emerald-800">HR Note</div>
+                <div className="mt-1 text-sm font-medium text-emerald-950">Casual leave remains separate from this company holiday calendar.</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Holiday</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Days</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
+                    {!isEmployeePortal && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {holidays.length === 0 && (
+                    <tr>
+                      <td colSpan={isEmployeePortal ? 5 : 6} className="px-6 py-8 text-center text-sm text-gray-500">
+                        No holidays found for {holidayYear}.
+                      </td>
+                    </tr>
+                  )}
+                  {holidays.map((holiday) => (
+                    <tr key={holiday.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{holiday.holiday_name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{formatHolidayDateRange(holiday)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{holiday.day_count || 1}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">{holiday.holiday_type || 'PUBLIC'}</span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{holiday.notes || '-'}</td>
+                      {!isEmployeePortal && (
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <div className="flex items-center gap-3">
+                            {canEditHR && (
+                              <button onClick={() => openHolidayForm(holiday)} className="text-amber-600 hover:text-amber-800" title="Edit Holiday">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                              </button>
+                            )}
+                            {canDeleteHR && (
+                              <button onClick={() => handleDeleteHoliday(holiday)} className="text-red-600 hover:text-red-800" title="Delete Holiday">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -3711,6 +3922,85 @@ function HrPageContent() {
                   className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
                 >
                   Submit Leave Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showHolidayForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg">
+            <h2 className="text-xl font-bold mb-4">{selectedHoliday ? 'Edit Holiday' : 'Add Holiday'}</h2>
+            <form onSubmit={handleSaveHoliday} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Holiday Name</label>
+                <input
+                  type="text"
+                  value={holidayForm.holiday_name}
+                  onChange={(e) => setHolidayForm({ ...holidayForm, holiday_name: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    value={holidayForm.start_date}
+                    onChange={(e) => setHolidayForm({ ...holidayForm, start_date: e.target.value })}
+                    className="w-full border rounded px-3 py-2"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">End Date</label>
+                  <input
+                    type="date"
+                    min={holidayForm.start_date}
+                    value={holidayForm.end_date}
+                    onChange={(e) => setHolidayForm({ ...holidayForm, end_date: e.target.value })}
+                    className="w-full border rounded px-3 py-2"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Holiday Type</label>
+                <select
+                  value={holidayForm.holiday_type}
+                  onChange={(e) => setHolidayForm({ ...holidayForm, holiday_type: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                >
+                  <option value="PUBLIC">Public Holiday</option>
+                  <option value="COMPANY">Company Holiday</option>
+                  <option value="OPTIONAL">Optional Holiday</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Notes</label>
+                <textarea
+                  value={holidayForm.notes}
+                  onChange={(e) => setHolidayForm({ ...holidayForm, notes: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  rows={3}
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowHolidayForm(false); resetHolidayForm(); }}
+                  className="px-4 py-2 border rounded hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loading ? 'Saving...' : selectedHoliday ? 'Update Holiday' : 'Add Holiday'}
                 </button>
               </div>
             </form>

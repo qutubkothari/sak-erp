@@ -120,6 +120,32 @@ type LinkedPurchaseRequisitionInfo = {
   prNumber: string;
 };
 
+const LINKED_PR_WORKFLOW_STATUS = {
+  DRAFT: 'DRAFT',
+  RFQ_ISSUED: 'RFQ_ISSUED',
+  RFQ_RCVD: 'RFQ_RCVD',
+  PO_DONE: 'PO_DONE',
+  GOODS_RCVD: 'GOODS_RCVD',
+  REJECTED: 'REJECTED',
+} as const;
+
+function normalizeLinkedPrStatus(value: unknown): string {
+  return String(value || '').trim().toUpperCase();
+}
+
+function parseLinkedPrNotes(value: unknown): Record<string, any> {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, any>;
+  if (typeof value !== 'string') return {};
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 @Injectable()
 export class JobOrderService {
   private readonly logger = new Logger(JobOrderService.name);
@@ -132,6 +158,11 @@ export class JobOrderService {
   private smartCreateJobTtlMs = 1000 * 60 * 60; // 1 hour
 
   constructor(private readonly uidService: UidSupabaseService) {}
+
+  private isIssuableUidStatus(status: unknown): boolean {
+    const normalized = String(status || '').trim().toUpperCase();
+    return ['ACTIVE', 'AVAILABLE', 'GENERATED', 'IN_STOCK'].includes(normalized);
+  }
 
   private formatUserDisplayName(user: any) {
     const firstName = String(user?.first_name || '').trim();
@@ -376,12 +407,13 @@ export class JobOrderService {
     }
 
     const uidsCreated: string[] = [];
+    const tenantCode = await this.uidService.resolveTenantCode(tenantId);
 
     console.log(`[JobOrder] Generating ${quantity} UIDs for ${finishedItem?.code}, entityType: ${entityType}, reason: ${reason}`);
 
     for (let i = 0; i < quantity; i++) {
       const uid = await this.uidService.generateUID(
-        'SAIF',
+        tenantCode,
         'MFG',
         entityType,
       );
@@ -922,19 +954,22 @@ export class JobOrderService {
         continue;
       }
 
-      // If item is UID-tracked (has ACTIVE UIDs), require scanned UID issuing via issue-line.
+      // If item is UID-tracked and has issuable UIDs, require scanned UID issuing via issue-line.
       // Prevent bypassing the UID mapping requirement through the bulk issue endpoint.
       try {
-        const { count: activeUidCount, error: uidCountErr } = await this.supabase
+        const { data: uidStatusRows, error: uidCountErr } = await this.supabase
           .from('uid_registry')
-          .select('id', { count: 'exact', head: true })
+          .select('status')
           .eq('tenant_id', tenantId)
-          .eq('entity_id', itemIdToConsume)
-          .eq('status', 'ACTIVE');
+          .eq('entity_id', itemIdToConsume);
 
         if (uidCountErr) throw uidCountErr;
 
-        if ((activeUidCount || 0) > 0) {
+        const issuableUidCount = (Array.isArray(uidStatusRows) ? uidStatusRows : [])
+          .filter((row: any) => this.isIssuableUidStatus(row?.status))
+          .length;
+
+        if (issuableUidCount > 0) {
           failures.push({
             materialId: String(material.id),
             itemCode: material.item_code,
@@ -943,7 +978,7 @@ export class JobOrderService {
             message: 'UID_MAPPING_REQUIRED',
           });
           this.logger.warn('[SmartJO] Skipping bulk issue for UID-tracked item; requires scanned UID issue-line');
-          this.logger.warn(JSON.stringify({ tenantId, jobOrderId, materialId: material.id, itemIdToConsume, activeUidCount }));
+          this.logger.warn(JSON.stringify({ tenantId, jobOrderId, materialId: material.id, itemIdToConsume, issuableUidCount }));
           continue;
         }
       } catch (e: any) {
@@ -1841,6 +1876,7 @@ export class JobOrderService {
     const created = await this.findOne(tenantId, jobOrder.id);
     return {
       ...created,
+      linked_pr_id: linkedPrId,
       linked_pr_number: linkedPrNumber,
       siv_ready: materialAvailability.available && normalizedMaterials.length > 0,
     };
@@ -2020,6 +2056,10 @@ export class JobOrderService {
       .eq('job_order_id', id);
 
     const linkedPrInfo = this.extractLinkedPurchaseRequisitionInfo((jobOrder as any)?.notes);
+    const linkedPrWorkflowStatus = await this.resolveLinkedPurchaseWorkflowStatus(
+      tenantId,
+      linkedPrInfo?.prNumber || null,
+    );
     const baseStatus = String((jobOrder as any)?.status || '').trim();
     const workflowStatus = linkedPrInfo && String(baseStatus).toUpperCase() === 'DRAFT'
       ? 'PR Issued'
@@ -2029,9 +2069,100 @@ export class JobOrderService {
       ...jobOrder,
       workflow_status: workflowStatus,
       linked_pr_number: linkedPrInfo?.prNumber || null,
+      linked_pr_workflow_status: linkedPrWorkflowStatus,
       operations: operations || [],
       materials: materials || [],
     };
+  }
+
+  private async resolveLinkedPurchaseWorkflowStatus(tenantId: string, prNumber: string | null): Promise<string | null> {
+    const normalizedPrNumber = String(prNumber || '').trim();
+    if (!normalizedPrNumber) return null;
+
+    const { data: requisition } = await this.supabase
+      .from('purchase_requisitions')
+      .select(`
+        id,
+        status,
+        purchase_requisition_items(remaining_qty, requested_qty)
+      `)
+      .eq('tenant_id', tenantId)
+      .eq('pr_number', normalizedPrNumber)
+      .maybeSingle();
+
+    if (!requisition) return null;
+
+    const prId = String((requisition as any)?.id || '').trim();
+    if (!prId) return null;
+
+    const [{ data: rfqRows }, { data: poRows }] = await Promise.all([
+      this.supabase
+        .from('rfqs')
+        .select('status, sent_at, vendor_quote_received_at, notes')
+        .eq('tenant_id', tenantId)
+        .eq('pr_id', prId),
+      this.supabase
+        .from('purchase_orders')
+        .select('purchase_order_items(ordered_qty, received_qty)')
+        .eq('tenant_id', tenantId)
+        .eq('pr_id', prId),
+    ]);
+
+    const items = Array.isArray((requisition as any)?.purchase_requisition_items)
+      ? (requisition as any).purchase_requisition_items
+      : [];
+
+    const rfqSummary = {
+      sentCount: 0,
+      receivedCount: 0,
+    };
+
+    (Array.isArray(rfqRows) ? rfqRows : []).forEach((row: any) => {
+      const notes = parseLinkedPrNotes(row?.notes);
+      const normalizedStatus = normalizeLinkedPrStatus(row?.status);
+      if (row?.sent_at) rfqSummary.sentCount += 1;
+      if (normalizedStatus === 'RECEIVED' || row?.vendor_quote_received_at || notes?.receivedAt) {
+        rfqSummary.receivedCount += 1;
+      }
+    });
+
+    const poSummary = {
+      totalOrderedQty: 0,
+      totalReceivedQty: 0,
+    };
+
+    (Array.isArray(poRows) ? poRows : []).forEach((row: any) => {
+      const poItems = Array.isArray(row?.purchase_order_items) ? row.purchase_order_items : [];
+      poItems.forEach((item: any) => {
+        poSummary.totalOrderedQty += Number(item?.ordered_qty || 0);
+        poSummary.totalReceivedQty += Number(item?.received_qty || 0);
+      });
+    });
+
+    const baseStatus = normalizeLinkedPrStatus((requisition as any)?.status);
+    const poDone =
+      items.length > 0 &&
+      items.every((item: any) => Number(item?.remaining_qty ?? item?.requested_qty ?? 0) <= 0);
+    const goodsReceived =
+      poSummary.totalOrderedQty > 0 && poSummary.totalReceivedQty >= poSummary.totalOrderedQty;
+
+    if (baseStatus === LINKED_PR_WORKFLOW_STATUS.REJECTED) {
+      return LINKED_PR_WORKFLOW_STATUS.REJECTED;
+    }
+    if (baseStatus === LINKED_PR_WORKFLOW_STATUS.DRAFT || !baseStatus) {
+      return LINKED_PR_WORKFLOW_STATUS.DRAFT;
+    }
+    if (goodsReceived) {
+      return LINKED_PR_WORKFLOW_STATUS.GOODS_RCVD;
+    }
+    if (poDone) {
+      return LINKED_PR_WORKFLOW_STATUS.PO_DONE;
+    }
+    if (rfqSummary.receivedCount > 0) {
+      return LINKED_PR_WORKFLOW_STATUS.RFQ_RCVD;
+    }
+
+    return LINKED_PR_WORKFLOW_STATUS.RFQ_ISSUED;
   }
 
   private extractLinkedPurchaseRequisitionInfo(notes: unknown): LinkedPurchaseRequisitionInfo | null {
@@ -2069,15 +2200,18 @@ export class JobOrderService {
       .from('purchase_requisitions')
       .select('pr_number')
       .eq('tenant_id', tenantId)
-      .like('pr_number', `${prefix}%`)
-      .order('pr_number', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .like('pr_number', 'PR-%');
 
-    if (!data?.pr_number) return `${prefix}-001`;
+    let maxSeq = 0;
+    for (const row of (data || [])) {
+      const match = /^PR-\d{4}-\d{2}-(\d+)$/.exec((row as any).pr_number || '');
+      if (match) {
+        const seq = parseInt(match[1], 10);
+        if (seq > maxSeq) maxSeq = seq;
+      }
+    }
 
-    const lastNumber = parseInt(String(data.pr_number).split('-').pop() || '0', 10);
-    return `${prefix}-${String((Number.isFinite(lastNumber) ? lastNumber : 0) + 1).padStart(3, '0')}`;
+    return `${prefix}-${String(maxSeq + 1).padStart(3, '0')}`;
   }
 
   private async createShortagePurchaseRequisition(
@@ -2094,6 +2228,29 @@ export class JobOrderService {
     }>,
   ): Promise<{ prId: string | null; prNumber: string | null } | null> {
     if (!Array.isArray(shortages) || shortages.length === 0) return null;
+
+    const rawMaterialShortages = (
+      await Promise.all(
+        shortages.map(async (shortage) => {
+          const itemId = String(shortage.itemId || '').trim();
+          if (!itemId) return null;
+
+          const activeBom = await this.getActiveBomForItem(tenantId, itemId);
+          if (activeBom) return null;
+
+          return shortage;
+        }),
+      )
+    ).filter((row): row is {
+      itemId: string;
+      itemCode: string;
+      itemName: string;
+      required: number;
+      available: number;
+      shortage: number;
+    } => Boolean(row));
+
+    if (rawMaterialShortages.length === 0) return null;
 
     const prNumber = await this.generatePRNumber(tenantId);
     const requiredDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -2120,7 +2277,7 @@ export class JobOrderService {
 
       createdPrId = String(pr?.id || '').trim() || null;
 
-      const itemIds = shortages.map((row) => String(row.itemId || '').trim()).filter(Boolean);
+      const itemIds = rawMaterialShortages.map((row) => String(row.itemId || '').trim()).filter(Boolean);
       const { data: itemRows, error: itemRowsError } = await this.supabase
         .from('items')
         .select('id, code, name, uom, standard_cost, selling_price')
@@ -2135,7 +2292,7 @@ export class JobOrderService {
         if (itemId) itemById.set(itemId, row);
       }
 
-      const itemsPayload = shortages.map((shortage) => {
+      const itemsPayload = rawMaterialShortages.map((shortage) => {
         const item = itemById.get(String(shortage.itemId || '').trim()) || {};
         const estimatedRate = Number((item as any)?.standard_cost || (item as any)?.selling_price || 0) || 0;
         return {
@@ -2190,6 +2347,68 @@ export class JobOrderService {
       await this.supabase.from('purchase_requisition_items').delete().eq('pr_id', normalizedPrId);
       await this.supabase.from('purchase_requisitions').delete().eq('tenant_id', tenantId).eq('id', normalizedPrId);
     }
+  }
+
+  private async resolveUidMappingsForIssue(params: {
+    tenantId: string;
+    itemId: string;
+    requestedIssueQty: number;
+    normalizedUids: string[];
+    uidTrackingEnabled: boolean;
+    uidStrategy: string;
+    qtyPerUid: number;
+  }): Promise<string[]> {
+    const {
+      tenantId,
+      itemId,
+      requestedIssueQty,
+      normalizedUids,
+      uidTrackingEnabled,
+      uidStrategy,
+      qtyPerUid,
+    } = params;
+
+    if (!uidTrackingEnabled || normalizedUids.length > 0) {
+      return normalizedUids;
+    }
+
+    if (uidStrategy === 'BATCHED') {
+      const ratio = requestedIssueQty / qtyPerUid;
+      if (!Number.isFinite(ratio) || Math.abs(ratio - Math.round(ratio)) > 1e-9) {
+        throw new BadRequestException(`Issue quantity must be a multiple of batch_quantity=${qtyPerUid} for this UID-tracked item`);
+      }
+    }
+
+    const neededUidCount = uidStrategy === 'BATCHED'
+      ? Math.round(requestedIssueQty / qtyPerUid)
+      : Math.round(requestedIssueQty);
+
+    if (!Number.isFinite(neededUidCount) || neededUidCount <= 0) {
+      throw new BadRequestException('Unable to determine required UID count for this issue');
+    }
+
+    const { data: autoUidRows, error: autoUidError } = await this.supabase
+      .from('uid_registry')
+      .select('uid, status')
+      .eq('tenant_id', tenantId)
+      .eq('entity_id', itemId)
+      .order('created_at', { ascending: true });
+
+    if (autoUidError) {
+      throw new BadRequestException(autoUidError.message);
+    }
+
+    const autoUids = (Array.isArray(autoUidRows) ? autoUidRows : [])
+      .filter((row: any) => this.isIssuableUidStatus(row?.status))
+      .map((row: any) => String(row?.uid || '').trim())
+      .filter(Boolean)
+      .slice(0, neededUidCount);
+
+    if (autoUids.length < neededUidCount) {
+      throw new BadRequestException('This item requires UID mapping. Please scan UIDs before issuing.');
+    }
+
+    return autoUids;
   }
 
   async update(tenantId: string, id: string, dto: UpdateJobOrderDto) {
@@ -3042,14 +3261,14 @@ export class JobOrderService {
         'QC_COMPLETE',
       );
 
-      // Mark generated UIDs as PASSED and ACTIVE immediately (QC already completed here).
+      // Mark generated UIDs as PASSED and IN_STOCK immediately (QC already completed here).
       if (createdUids.length > 0) {
         for (const uid of createdUids) {
           await this.supabase
             .from('uid_registry')
             .update({
               quality_status: 'PASSED',
-              status: 'ACTIVE',
+              status: 'IN_STOCK',
               location: 'STORE',
             } as any)
             .eq('tenant_id', tenantId)
@@ -3090,6 +3309,8 @@ export class JobOrderService {
           qc_accepted_quantity: acceptedQuantity,
           qc_rejected_quantity: rejectedQuantity,
           approved_uids: createdUids,
+          srv_approved_by: approver,
+          srv_approved_at: new Date().toISOString(),
         };
         await this.supabase
           .from('stock_entries')
@@ -3327,13 +3548,24 @@ export class JobOrderService {
     }
   }
 
-  async getOpenMaterialRequisitions(tenantId: string) {
-    const { data: jobOrders, error: jobOrderError } = await this.supabase
+  async getOpenMaterialRequisitions(
+    tenantId: string,
+    options?: { assignedTo?: string },
+  ) {
+    const assignedTo = String(options?.assignedTo || '').trim();
+
+    let jobOrdersQuery = this.supabase
       .from('production_job_orders')
-      .select('id, job_order_number, item_id, item_code, item_name, quantity, status, start_date, created_at')
+      .select('id, job_order_number, item_id, item_code, item_name, quantity, status, start_date, created_at, assigned_to, assigned_to_name')
       .eq('tenant_id', tenantId)
       .neq('status', 'COMPLETED')
-      .neq('status', 'CANCELLED')
+      .neq('status', 'CANCELLED');
+
+    if (assignedTo) {
+      jobOrdersQuery = jobOrdersQuery.eq('assigned_to', assignedTo);
+    }
+
+    const { data: jobOrders, error: jobOrderError } = await jobOrdersQuery
       .order('created_at', { ascending: false })
       .limit(200);
 
@@ -3573,7 +3805,7 @@ export class JobOrderService {
       throw new BadRequestException('issueQuantity must be greater than 0');
     }
 
-    const normalizedUids = Array.from(
+    let normalizedUids = Array.from(
       new Set(
         (Array.isArray(uids) ? uids : [])
           .map((u) => String(u || '').trim())
@@ -3685,13 +3917,19 @@ export class JobOrderService {
       throw new BadRequestException('Item UID strategy is BATCHED but batch_quantity is missing/invalid in Item Master');
     }
 
+    normalizedUids = await this.resolveUidMappingsForIssue({
+      tenantId,
+      itemId: itemIdToConsume,
+      requestedIssueQty,
+      normalizedUids,
+      uidTrackingEnabled,
+      uidStrategy,
+      qtyPerUid,
+    });
+
     // If UID tracking is enabled, UIDs are compulsory for issuing (otherwise traceability breaks).
     // If UID tracking is disabled, UIDs are optional; if user provided them, we will validate them.
     const requiresUidMapping = uidTrackingEnabled || normalizedUids.length > 0;
-
-    if (uidTrackingEnabled && normalizedUids.length === 0) {
-      throw new BadRequestException('This item requires UID mapping. Please scan UIDs before issuing.');
-    }
 
     const issueQtyFromUids = normalizedUids.length > 0 ? normalizedUids.length * qtyPerUid : 0;
 
@@ -3732,8 +3970,7 @@ export class JobOrderService {
         const status = String((row as any)?.status || '').trim();
         const entityId = String((row as any)?.entity_id || '').trim();
 
-        const issuableStatuses = ['ACTIVE', 'GENERATED', 'IN_STOCK'];
-        if (!issuableStatuses.includes(status)) {
+        if (!this.isIssuableUidStatus(status)) {
           throw new BadRequestException(`UID ${uid} cannot be issued (status=${status || 'N/A'}). Must be GENERATED or IN_STOCK.`);
         }
         if (entityId !== itemIdToConsume) {
@@ -4286,6 +4523,15 @@ export class JobOrderService {
         const meta = receiptEntry?.metadata || {};
         const srvApprovedAt = meta?.srv_approved_at || null;
         const hasPendingReceiptApproval = Boolean(receiptEntry?.id) && !srvApprovedAt && pendingQty <= 0;
+        const receiptQuantity = Number(receiptEntry?.quantity || 0) || 0;
+        const approvedUids = Array.isArray(meta?.approved_uids)
+          ? meta.approved_uids.map((uid: any) => String(uid || '').trim()).filter(Boolean)
+          : [];
+        const receivedUids = Array.isArray(meta?.received_uids)
+          ? meta.received_uids.map((uid: any) => String(uid || '').trim()).filter(Boolean)
+          : [];
+        const uids = approvedUids.length > 0 ? approvedUids : receivedUids;
+        const uidSummary = uids.length === 0 ? null : uids.length === 1 ? uids[0] : `${uids.length} UIDs`;
 
         return {
           id: String(jo.id),
@@ -4295,8 +4541,8 @@ export class JobOrderService {
           item_id: jo.item_id,
           item_code: jo.item_code,
           item_name: jo.item_name,
-          uid: null,
-          quantity: pendingQty,
+          uid: hasPendingReceiptApproval ? uidSummary : null,
+          quantity: hasPendingReceiptApproval ? receiptQuantity : pendingQty,
           to_warehouse_id: null,
           movement_date: hasPendingReceiptApproval ? meta?.received_at || jo.actual_end_date || jo.created_at || null : jo.actual_end_date || jo.created_at || null,
           received_by: hasPendingReceiptApproval ? meta?.received_by_name || meta?.received_by || null : null,
@@ -4350,7 +4596,25 @@ export class JobOrderService {
     return { id: String((row as any).id), metadata: (row as any).metadata };
   }
 
-  async getStoreIssueVoucherHistory(tenantId: string) {
+  private summarizeStoreReceiptUids(metadata: any): string | null {
+    const approvedUids = Array.isArray(metadata?.approved_uids)
+      ? metadata.approved_uids.map((uid: any) => String(uid || '').trim()).filter(Boolean)
+      : [];
+    const receivedUids = Array.isArray(metadata?.received_uids)
+      ? metadata.received_uids.map((uid: any) => String(uid || '').trim()).filter(Boolean)
+      : [];
+    const uids = approvedUids.length > 0 ? approvedUids : receivedUids;
+
+    if (uids.length === 0) return null;
+    if (uids.length === 1) return uids[0];
+    return `${uids.length} UIDs`;
+  }
+
+  async getStoreIssueVoucherHistory(
+    tenantId: string,
+    options?: { assignedTo?: string },
+  ) {
+    const assignedTo = String(options?.assignedTo || '').trim();
     const { data: movements, error: mvErr } = await this.supabase
       .from('stock_movements')
       .select('id, tenant_id, movement_type, item_id, uid, from_warehouse_id, quantity, reference_type, reference_id, reference_number, movement_date, notes, moved_by, approved_by, approved_at')
@@ -4380,7 +4644,7 @@ export class JobOrderService {
       jobIds.length
         ? this.supabase
             .from('production_job_orders')
-            .select('id, job_order_number, item_code, item_name')
+        .select('id, job_order_number, item_code, item_name, assigned_to, assigned_to_name')
             .eq('tenant_id', tenantId)
             .in('id', jobIds)
         : Promise.resolve({ data: [], error: null } as any),
@@ -4403,7 +4667,27 @@ export class JobOrderService {
       jobsById.set(id, jo);
     }
 
-    return safe.map((m: any) => {
+    const allowedJobIds = assignedTo
+      ? new Set(
+          Array.from(jobsById.values())
+            .filter((jo: any) => String((jo as any)?.assigned_to || '').trim() === assignedTo)
+            .map((jo: any) => String((jo as any)?.id || '').trim())
+            .filter(Boolean),
+        )
+      : null;
+
+    return safe
+      .filter((m: any) => {
+        if (!assignedTo) return true;
+
+        const jobId = String(m?.reference_id || '').trim();
+        if (jobId) {
+          return allowedJobIds?.has(jobId) ?? false;
+        }
+
+        return String(m?.moved_by || '').trim() === assignedTo;
+      })
+      .map((m: any) => {
       const itemId = String(m?.item_id || '').trim();
       const jobId = String(m?.reference_id || '').trim();
       const item = itemId ? itemsById.get(itemId) : null;
@@ -4424,6 +4708,8 @@ export class JobOrderService {
         approved_by: String(m?.approved_by || ''),
         approved_at: m?.approved_at || null,
         notes: String(m?.notes || ''),
+        assigned_to: String(job?.assigned_to || ''),
+        assigned_to_name: String(job?.assigned_to_name || ''),
       };
     });
   }
@@ -4436,7 +4722,7 @@ export class JobOrderService {
     const requestedIssueQty = Number(payload?.issueQuantity || 0);
     const movedBy = String(payload?.userId || '').trim();
     const manualNotes = String(payload?.notes || '').trim();
-    const normalizedUids = Array.from(
+    let normalizedUids = Array.from(
       new Set(
         (Array.isArray(payload?.uids) ? payload.uids : [])
           .map((uid) => String(uid || '').trim())
@@ -4470,10 +4756,17 @@ export class JobOrderService {
       throw new BadRequestException('Item UID strategy is BATCHED but batch_quantity is missing/invalid in Item Master');
     }
 
+    normalizedUids = await this.resolveUidMappingsForIssue({
+      tenantId,
+      itemId,
+      requestedIssueQty,
+      normalizedUids,
+      uidTrackingEnabled,
+      uidStrategy,
+      qtyPerUid,
+    });
+
     const requiresUidMapping = uidTrackingEnabled || normalizedUids.length > 0;
-    if (uidTrackingEnabled && normalizedUids.length === 0) {
-      throw new BadRequestException('This item requires UID mapping. Please scan UIDs before issuing.');
-    }
 
     const issueQtyFromUids = normalizedUids.length > 0 ? normalizedUids.length * qtyPerUid : 0;
     if (normalizedUids.length > 0 && Math.abs(issueQtyFromUids - requestedIssueQty) > 1e-9) {
@@ -4505,7 +4798,7 @@ export class JobOrderService {
         const row = byUid.get(uid);
         const status = String((row as any)?.status || '').trim();
         const entityId = String((row as any)?.entity_id || '').trim();
-        if (!['ACTIVE', 'GENERATED', 'IN_STOCK'].includes(status)) {
+        if (!this.isIssuableUidStatus(status)) {
           throw new BadRequestException(`UID ${uid} cannot be issued (status=${status || 'N/A'})`);
         }
         if (entityId !== itemId) {
@@ -4893,7 +5186,7 @@ export class JobOrderService {
         await this.supabase
           .from('uid_registry')
           .update({
-            status: 'ACTIVE',
+            status: 'IN_STOCK',
             location: 'Warehouse',
             lifecycle: [
               ...currentLifecycle,
@@ -5223,7 +5516,7 @@ export class JobOrderService {
       .from('stock_entries')
       .select('id, item_id, warehouse_id, quantity, available_quantity, created_at, metadata')
       .eq('tenant_id', tenantId)
-      .eq('metadata->>created_from', 'STORE_RECEIPT')
+      .or('metadata->>created_from.eq.STORE_RECEIPT,metadata->>created_from.eq.MANUAL_SRV')
       .order('created_at', { ascending: false })
       .limit(200);
 
@@ -5250,8 +5543,7 @@ export class JobOrderService {
       const itemInfo = itemById.get(String((e as any)?.item_id || '')) || {};
       const receivedUids = Array.isArray(meta?.received_uids) ? meta.received_uids : [];
       const approvedUids = Array.isArray(meta?.approved_uids) ? meta.approved_uids : [];
-
-      const singleUid = receivedUids.length === 1 ? String(receivedUids[0] || '').trim() : '';
+      const uidSummary = this.summarizeStoreReceiptUids(meta);
       return {
         id: e.id,
         entry_id: e.id,
@@ -5260,14 +5552,14 @@ export class JobOrderService {
         item_id: e.item_id,
         item_code: itemInfo.code || null,
         item_name: itemInfo.name || null,
-        uid: singleUid || null,
+        uid: uidSummary,
         quantity: Number(e.quantity || 0),
         to_warehouse_id: (e as any)?.warehouse_id || null,
         movement_date: meta?.received_at || e.created_at || null,
         received_by: meta?.received_by_name || meta?.received_by || null,
         approved_by: meta?.srv_approved_by || null,
         approved_at: meta?.srv_approved_at || null,
-        notes: null,
+        notes: meta?.notes || null,
 
         // Keep extended fields for other UI consumers (ignored by current SRV page)
         received_quantity: Number(e.quantity || 0),
@@ -6331,7 +6623,11 @@ export class JobOrderService {
     onProgress?.({ current: totalSteps, total: totalSteps, phase: 'DONE', message: 'Done' });
 
     return {
-      jobOrder: mainWithMaterials,
+      jobOrder: {
+        ...mainWithMaterials,
+        linked_pr_id: (main as any)?.linked_pr_id ?? (mainWithMaterials as any)?.linked_pr_id ?? null,
+        linked_pr_number: (main as any)?.linked_pr_number ?? (mainWithMaterials as any)?.linked_pr_number ?? null,
+      },
       autoCompletedSubJobOrders: completedSubJobOrders,
       preview,
       issueMaterialsSummary,
@@ -6402,5 +6698,141 @@ export class JobOrderService {
 
     this.logger.log('[ForceAutoComplete] Completed successfully');
     return completed;
+  }
+
+  async createManualStoreReceiptVoucher(
+    tenantId: string,
+    payload: {
+      itemId: string;
+      quantity: number;
+      warehouseId?: string;
+      receiverName?: string;
+      receiverPhone?: string;
+      notes?: string;
+      movementDate?: string;
+      userId?: string;
+    },
+  ) {
+    const itemId = String(payload?.itemId || '').trim();
+    const quantity = Number(payload?.quantity || 0);
+    if (!this.isUuid(itemId)) throw new BadRequestException('Valid itemId is required');
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new BadRequestException('quantity must be greater than 0');
+
+    const { data: item, error: itemError } = await this.supabase
+      .from('items')
+      .select('id, code, name, category, uid_tracking, uid_strategy')
+      .eq('tenant_id', tenantId)
+      .eq('id', itemId)
+      .single();
+
+    if (itemError || !item) throw new BadRequestException('Item not found');
+
+    let warehouseId = String(payload?.warehouseId || '').trim();
+    if (!warehouseId || !this.isUuid(warehouseId)) {
+      const { data: warehouses, error: whError } = await this.supabase
+        .from('warehouses')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .limit(1);
+      if (whError || !warehouses?.length) throw new BadRequestException('No warehouse configured');
+      warehouseId = warehouses[0].id;
+    }
+
+    const movementDate = payload?.movementDate || new Date().toISOString().split('T')[0];
+
+    // Auto-approve manual SRV: stock is immediately available
+    const { data: entry, error: insertError } = await this.supabase
+      .from('stock_entries')
+      .insert({
+        tenant_id: tenantId,
+        item_id: itemId,
+        warehouse_id: warehouseId,
+        quantity,
+        available_quantity: quantity,
+        allocated_quantity: 0,
+        metadata: {
+          created_from: 'MANUAL_SRV',
+          item_code: (item as any).code,
+          item_name: (item as any).name,
+          received_by: payload?.userId || null,
+          received_by_name: String(payload?.receiverName || '').trim() || null,
+          received_by_phone: String(payload?.receiverPhone || '').trim() || null,
+          notes: String(payload?.notes || '').trim() || null,
+          movement_date: movementDate,
+          srv_approved_at: new Date().toISOString(),
+          received_at: new Date().toISOString(),
+        },
+      })
+      .select('id')
+      .single();
+
+    if (insertError) throw new BadRequestException(`Failed to create manual SRV: ${insertError.message}`);
+
+    // Update inventory_stock to reflect new available stock
+    const { error: invErr } = await this.supabase.rpc('adjust_inventory_stock', {
+      p_tenant_id: tenantId,
+      p_item_id: itemId,
+      p_warehouse_id: warehouseId,
+      p_location_id: null,
+      p_quantity_change: quantity,
+      p_category: normalizeInventoryCategory((item as any).category, 'RAW_MATERIAL'),
+    });
+    if (invErr) {
+      this.logger.warn(`[ManualSRV] adjust_inventory_stock failed (non-fatal): ${invErr.message}`);
+    }
+
+    this.logger.log(`[ManualSRV] Created entry ${entry?.id} for item ${itemId}, qty=${quantity}`);
+
+    // Generate UIDs for received quantity (respects uid_tracking / uid_strategy on the item)
+    const generatedUids: string[] = [];
+    try {
+      if ((item as any).uid_tracking !== false && (item as any).uid_strategy !== 'NONE') {
+        const entityType = this.resolveUidEntityTypeFromItemCategory((item as any).category);
+        const tenantCode = await this.uidService.resolveTenantCode(tenantId);
+        for (let i = 0; i < quantity; i++) {
+          const uid = await this.uidService.generateUID(tenantCode, 'SRV', entityType);
+          const { error: uidError } = await this.supabase.from('uid_registry').insert({
+            tenant_id: tenantId,
+            uid,
+            entity_type: entityType,
+            entity_id: itemId,
+            location: 'STORE',
+            status: 'IN_STOCK',
+            quality_status: 'APPROVED',
+            lifecycle: JSON.stringify([{
+              stage: 'RECEIVED',
+              timestamp: new Date().toISOString(),
+              location: 'Store',
+              reference: `MANUAL SRV entry ${entry?.id}`,
+              user: payload?.userId || null,
+            }]),
+            metadata: JSON.stringify({
+              item_code: (item as any).code,
+              item_name: (item as any).name,
+              stock_entry_id: entry?.id,
+              created_from: 'MANUAL_SRV',
+              received_by: payload?.receiverName || null,
+              movement_date: movementDate,
+            }),
+          });
+          if (!uidError) generatedUids.push(uid);
+          else this.logger.warn(`[ManualSRV] UID insert error for uid=${uid}: ${uidError.message}`);
+        }
+        this.logger.log(`[ManualSRV] Generated ${generatedUids.length} UIDs for item ${itemId}`);
+      }
+    } catch (uidErr: any) {
+      this.logger.warn(`[ManualSRV] UID generation failed (non-fatal): ${uidErr?.message}`);
+    }
+
+    return {
+      entryId: entry?.id,
+      itemId,
+      itemCode: (item as any).code,
+      itemName: (item as any).name,
+      quantity,
+      warehouseId,
+      uids: generatedUids,
+      message: `Manual SRV created: ${quantity} unit(s) received and added to stock.${generatedUids.length > 0 ? ` ${generatedUids.length} UID(s) generated.` : ''}`,
+    };
   }
 }

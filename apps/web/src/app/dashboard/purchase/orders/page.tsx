@@ -6,12 +6,51 @@ import { toast } from 'sonner';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import { getTodayDateInputValue } from '@/lib/date';
+import { loadDeliveryAddresses, saveDeliveryAddress, type DeliveryAddressOption } from '@/lib/delivery-addresses';
+import DateInput from '../../../../components/ui/DateInput';
 import DrawingManager from '../../../../components/DrawingManager';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { useSelection } from '../../../../hooks/useSelection';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
+
+const ITEM_CATEGORY_OPTIONS = [
+  { value: 'RAW_MATERIAL', label: 'Raw Material' },
+  { value: 'CAPITAL_GOODS', label: 'Capital Goods' },
+  { value: 'CONSUMABLE', label: 'Consumable' },
+  { value: 'PACKING_MATERIAL', label: 'Packing Material' },
+  { value: 'SERVICES', label: 'Services' },
+];
+
+const ITEM_CATEGORY_ALIASES: Record<string, string> = {
+  RAW_MATERIALS: 'RAW_MATERIAL',
+  SERVICE: 'SERVICES',
+};
+
+function normalizeItemCategory(category: unknown): string {
+  const value = String(category ?? '').trim().toUpperCase().replace(/\s+/g, '_');
+  return ITEM_CATEGORY_ALIASES[value] || value;
+}
+
+const AUTO_REFRESH_MS = 30000;
+
+const inrFmt = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function fmtINR(val: number | undefined | null): string {
+  return inrFmt.format(val ?? 0);
+}
+
+function fmtPercent(val: number | undefined | null): string {
+  const value = Number(val || 0) || 0;
+  return value.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+
+function calcFreightGstAmount(freightAmount: number | undefined | null, applicable: boolean, percent: number | undefined | null): number {
+  const base = Number(freightAmount || 0) || 0;
+  const rate = Number(percent || 0) || 0;
+  if (!applicable || base <= 0 || rate <= 0) return 0;
+  return Number(((base * rate) / 100).toFixed(2));
+}
 
 interface PurchaseOrder {
   id: string;
@@ -24,6 +63,16 @@ interface PurchaseOrder {
   vendor: {
     name: string;
     contact_person: string;
+    billing_line2?: string;
+    metadata?: { billingLine2?: string } | null;
+    street?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    email?: string;
+    phone?: string;
+    tax_id?: string;
   };
   po_date: string;
   delivery_date: string;
@@ -67,6 +116,7 @@ interface PurchaseOrder {
 }
 
 type PurchaseOrderFormItem = {
+  prItemId?: string;
   itemId?: string;
   itemCode?: string;
   itemName?: string;
@@ -79,6 +129,16 @@ type PurchaseOrderFormItem = {
   uom?: string;
   paymentTerms?: string;
   deliveryTerms?: string;
+  includeDrawing?: boolean;
+  selectedDrawingId?: string;
+};
+
+type DrawingOption = {
+  id: string;
+  file_name?: string;
+  version?: number;
+  is_active?: boolean;
+  created_at?: string;
 };
 
 type PurchaseOrderFormData = {
@@ -89,7 +149,15 @@ type PurchaseOrderFormData = {
   paymentStatus: string;
   paymentNotes: string;
   deliveryAddress: string;
+  deliveryContactPerson: string;
+  deliveryContactPhone: string;
   notes: string;
+  quotationRef: string;
+  projectName: string;
+  freightTerms: string;
+  freightAmount: number;
+  freightGstApplicable: boolean;
+  freightGstPercent: number;
   customsDuty: number;
   otherCharges: number;
   trackingNumber: string;
@@ -98,6 +166,9 @@ type PurchaseOrderFormData = {
   carrierName: string;
   trackingUrl: string;
   deliveryStatus: string;
+  sent_at?: string;
+  approved_at?: string;
+  attachments: Array<{ url: string; name: string }>;
   items: PurchaseOrderFormItem[];
 };
 
@@ -119,15 +190,20 @@ function PurchaseOrdersContent() {
   
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<Array<{ id: string; name: string; contact_person: string }>>([]);
-  const [items, setItems] = useState<Array<{ 
-    id: string; 
-    code: string; 
-    name: string; 
-    uom: string; 
-    standard_cost?: number; 
+  const [users, setUsers] = useState<Array<{ id: string; employee_name: string; employee_code?: string }>>([]);
+  const [items, setItems] = useState<Array<{
+    id: string;
+    code: string;
+    name: string;
+    uom: string;
+    category?: string;
+    standard_cost?: number;
     selling_price?: number;
     drawing_required?: string;
+    oem_part_no?: string;
+    description?: string;
   }>>([]);
+  const [itemsLoading, setItemsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -151,14 +227,32 @@ function PurchaseOrdersContent() {
   const [submitting, setSubmitting] = useState(false);
   const [showDrawingManager, setShowDrawingManager] = useState(false);
   const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string; mandatory: boolean } | null>(null);
+  const [drawingOptionsByItemId, setDrawingOptionsByItemId] = useState<Record<string, DrawingOption[]>>({});
+  const [drawingOptionsLoading, setDrawingOptionsLoading] = useState<Record<string, boolean>>({});
   const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [currentPrId, setCurrentPrId] = useState<string | null>(null);
+  const [rfqRespondedVendorIds, setRfqRespondedVendorIds] = useState<string[]>([]);
   const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   type PriceHistoryRecord = { po_number: string; po_date: string; unit_price: number; quantity: number; po_status: string };
   const [priceHistory, setPriceHistory] = useState<Record<string, PriceHistoryRecord[]>>({});
   const [stockInfo, setStockInfo] = useState<Record<string, { total_quantity: number; available_quantity: number; allocated_quantity: number }>>({});
   const [hoveredItem, setHoveredItem] = useState<number | null>(null);
+  const [deliveryAddresses, setDeliveryAddresses] = useState<DeliveryAddressOption[]>([]);
+  const [deliveryAddressName, setDeliveryAddressName] = useState('');
+  const [deliveryAddressSaving, setDeliveryAddressSaving] = useState(false);
+
+  // Quick-create item state (from PO form)
+  const [showQuickCreateItem, setShowQuickCreateItem] = useState(false);
+  const [quickCreateItemIndex, setQuickCreateItemIndex] = useState<number | null>(null);
+  const [quickCreateItemForm, setQuickCreateItemForm] = useState({
+    code: '', name: '', category: 'RAW_MATERIAL', uom: 'NOS', hsn_code: '',
+    description: '', reorder_level: '', standard_cost: '',
+  });
+  const [quickCreateItemSaving, setQuickCreateItemSaving] = useState(false);
+
+  // PO attachment upload state
+  const [poAttachmentUploading, setPoAttachmentUploading] = useState(false);
 
   const orderSelection = useSelection(orders);
 
@@ -171,7 +265,15 @@ function PurchaseOrdersContent() {
     paymentStatus: 'UNPAID',
     paymentNotes: '',
     deliveryAddress: '',
+    deliveryContactPerson: '',
+    deliveryContactPhone: '',
     notes: '',
+    quotationRef: '',
+    projectName: '',
+    freightTerms: '',
+    freightAmount: 0,
+    freightGstApplicable: false,
+    freightGstPercent: 0,
     customsDuty: 0,
     otherCharges: 0,
     trackingNumber: '',
@@ -180,7 +282,13 @@ function PurchaseOrdersContent() {
     carrierName: '',
     trackingUrl: '',
     deliveryStatus: 'PENDING',
+    attachments: [],
     items: [],
+  });
+
+  const isServiceOrder = formData.items.length > 0 && formData.items.every(item => {
+    const matchedItem = items.find(i => i.id === item.itemId || i.code === item.itemCode);
+    return normalizeItemCategory((matchedItem as any)?.category) === 'SERVICES';
   });
 
   useEffect(() => {
@@ -189,15 +297,56 @@ function PurchaseOrdersContent() {
     fetchItems();
   }, [showModal, items.length]);
 
+  useEffect(() => {
+    if (!showModal) return;
+    loadDeliveryAddresses()
+      .then(setDeliveryAddresses)
+      .catch(() => setDeliveryAddresses([]));
+  }, [showModal]);
+
   // Fetch vendors on component mount
   useEffect(() => {
     fetchVendors();
+    apiClient.get<any[]>('/hr/employees').then(data => setUsers(Array.isArray(data) ? data : [])).catch(() => {});
+
+    // Fetch PRs eligible for PO creation (all non-draft/non-rejected)
+    setLoadingPrList(true);
+    apiClient.get<any[]>('/purchase/requisitions')
+      .then((allPrs) => {
+        const eligible = (Array.isArray(allPrs) ? allPrs : []).filter((pr: any) => {
+          const s = String(pr.status || '').toUpperCase();
+          const ws = String(pr.workflow_status || '').toUpperCase();
+          // Exclude draft/rejected base statuses and PRs fully converted to PO or goods received
+          return s !== 'DRAFT' && s !== 'REJECTED' && s !== ''
+            && ws !== 'PO_DONE' && ws !== 'GOODS_RCVD';
+        });
+        setPurchaseRequisitions(eligible.map((pr: any) => ({
+          id: pr.id,
+          pr_number: pr.pr_number,
+          department: pr.department,
+          status: pr.status,
+        })));
+      })
+      .catch(() => {})
+      .finally(() => setLoadingPrList(false));
   }, []);
 
   // Fetch orders on mount and when filters change
   useEffect(() => {
     fetchOrders();
   }, [filterStatus, searchTerm]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      fetchOrders({ silent: true });
+      if (showViewModal && selectedPO?.id) {
+        refreshSelectedPODetail(selectedPO.id);
+      }
+    }, AUTO_REFRESH_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [filterStatus, searchTerm, showViewModal, selectedPO?.id]);
 
   // Load PR data if prId is in URL (convert PR to PO)
   useEffect(() => {
@@ -286,7 +435,7 @@ function PurchaseOrdersContent() {
     try {
       const token = localStorage.getItem('accessToken');
       
-      const response = await fetch('/api/v1/purchase/vendors', {
+      const response = await fetch('/api/v1/purchase/vendors?isActive=true', {
         headers: { Authorization: `Bearer ${token}` },
       });
       
@@ -296,12 +445,15 @@ function PurchaseOrdersContent() {
       if (data && data.length > 0) {
       }
       
-      setVendors(data || []);
+      // VERIFICATION FILTER DISABLED TEMPORARILY - uncomment below to re-enable
+      // setVendors(Array.isArray(data) ? data.filter((v: any) => v.is_verified === true).sort((a: any, b: any) => a.name.localeCompare(b.name)) : []);
+      setVendors(Array.isArray(data) ? data.sort((a: any, b: any) => a.name.localeCompare(b.name)) : []);
     } catch (error) {
     }
   };
 
   const fetchItems = async () => {
+    setItemsLoading(true);
     try {
       const token = localStorage.getItem('accessToken');
       // Include inactive so historical PO lines can still resolve UOM.
@@ -310,10 +462,36 @@ function PurchaseOrdersContent() {
       });
       const data = await response.json();
       const normalized = Array.isArray(data)
-        ? data.map((item: any) => ({ ...item, uom: resolveUomFromItem(item) }))
+        ? data.map((item: any) => ({
+            ...item,
+            category: normalizeItemCategory(item?.category),
+            uom: resolveUomFromItem(item),
+          }))
         : [];
       setItems(normalized);
     } catch (error) {
+    } finally {
+      setItemsLoading(false);
+    }
+  };
+
+  const handleSaveDeliveryAddress = async () => {
+    const address = formData.deliveryAddress.trim();
+    if (!address) {
+      toast.error('Enter a delivery address before saving');
+      return;
+    }
+
+    setDeliveryAddressSaving(true);
+    try {
+      const next = await saveDeliveryAddress(deliveryAddressName, address);
+      setDeliveryAddresses(next);
+      setDeliveryAddressName('');
+      toast.success('Delivery address saved');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save delivery address');
+    } finally {
+      setDeliveryAddressSaving(false);
     }
   };
 
@@ -430,6 +608,17 @@ function PurchaseOrdersContent() {
       
       // Store PR ID for later use
       setCurrentPrId(prId);
+
+      // Fetch RFQ responses for this PR to filter vendor dropdown
+      try {
+        const rfqs: any[] = await apiClient.get(`/purchase/requisitions/${prId}/rfqs`);
+        const respondedIds = (rfqs || [])
+          .filter((r: any) => r.status === 'RECEIVED' || r.status === 'RESPONDED')
+          .map((r: any) => String(r.vendor_id));
+        setRfqRespondedVendorIds(respondedIds);
+      } catch {
+        setRfqRespondedVendorIds([]);
+      }
       
       // Map PR items to PO items and fetch preferred vendors
       const prItemsRaw = Array.isArray(prData.purchase_requisition_items) ? prData.purchase_requisition_items : [];
@@ -524,7 +713,7 @@ function PurchaseOrdersContent() {
 
       setFormData((prev) => ({
         ...prev,
-        notes: `Generated from PR: ${prData.pr_number}\nDepartment: ${prData.department}\nPriority: ${prData.priority || 'MEDIUM'}`,
+        notes: '',
         items: poItems,
       }));
 
@@ -535,7 +724,7 @@ function PurchaseOrdersContent() {
         type: 'info', 
         message: poItems.length === 0
           ? `PR ${prData.pr_number} has no remaining items available for PO.`
-          : `Loaded ${poItems.length} items from PR ${prData.pr_number}. ${autoSelectedCount} items have preferred vendors auto-selected. You can override vendor selection if needed. System will automatically create separate POs for different vendors.` 
+          : `Loaded ${poItems.length} items from PR ${prData.pr_number}. ${autoSelectedCount} items have preferred vendors auto-selected. Select the PO vendor above to apply it to all items.` 
       });
     } catch (error) {
       setAlertMessage({ type: 'error', message: 'Failed to load PR data. Please try again.' });
@@ -544,9 +733,11 @@ function PurchaseOrdersContent() {
     }
   };
 
-  const fetchOrders = async () => {
+  const fetchOrders = async (options?: { silent?: boolean }) => {
     try {
-      setLoading(true);
+      if (!options?.silent) {
+        setLoading(true);
+      }
       const params = new URLSearchParams();
       if (filterStatus !== 'ALL') params.append('status', filterStatus);
       if (searchTerm) params.append('search', searchTerm);
@@ -558,11 +749,26 @@ function PurchaseOrdersContent() {
     } catch (error) {
       setOrders([]);
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   };
 
-  const actuallyCreatePO = async () => {
+  const refreshSelectedPODetail = async (poId: string) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`/api/v1/purchase/orders/${poId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      setSelectedPO(data);
+    } catch {
+    }
+  };
+
+  const actuallyCreatePO = async (poStatus: 'DRAFT' | 'PENDING' = 'DRAFT') => {
     if (submitting) return; // Prevent duplicate submissions
     
     try {
@@ -580,9 +786,15 @@ function PurchaseOrdersContent() {
         setSubmitting(false);
         return;
       }
+
+      if (poStatus !== 'DRAFT' && (!Array.isArray(formData.attachments) || formData.attachments.length === 0)) {
+        setAlertMessage({ type: 'error', message: 'Vendor quotation attachment is mandatory for Purchase Order.' });
+        setSubmitting(false);
+        return;
+      }
       
       // Check if all items have vendor selected
-      const itemsWithoutVendor = formData.items.filter(item => !item.vendorId);
+      const itemsWithoutVendor = formData.items.filter(item => !String(item.vendorId || formData.vendorId || '').trim());
       if (itemsWithoutVendor.length > 0) {
         setAlertMessage({ type: 'error', message: 'Please select vendor for all items' });
         setSubmitting(false);
@@ -741,13 +953,19 @@ function PurchaseOrdersContent() {
             remarks: item.specifications || '',
             paymentTerms: (item as any).paymentTerms || null,
             deliveryTerms: (item as any).deliveryTerms || null,
+            includeDrawing: item.includeDrawing === true,
+            selectedDrawingId: item.selectedDrawingId || null,
           };
         });
 
         const itemsSubtotal = vendorItems.reduce((sum, item) => sum + item.totalPrice, 0);
+        const freightAmount = parseFloat(formData.freightAmount?.toString() || '0');
+        const freightGstApplicable = formData.freightGstApplicable === true && freightAmount > 0;
+        const freightGstPercent = freightGstApplicable ? parseFloat(formData.freightGstPercent?.toString() || '0') : 0;
+        const freightGstAmount = calcFreightGstAmount(freightAmount, freightGstApplicable, freightGstPercent);
         const customsDuty = parseFloat(formData.customsDuty?.toString() || '0');
         const otherCharges = parseFloat(formData.otherCharges?.toString() || '0');
-        const grandTotal = itemsSubtotal + customsDuty + otherCharges;
+        const grandTotal = itemsSubtotal + freightAmount + freightGstAmount + customsDuty + otherCharges;
 
         const payload = {
           prId: currentPrId,
@@ -758,11 +976,22 @@ function PurchaseOrdersContent() {
           paymentStatus: formData.paymentStatus,
           paymentNotes: formData.paymentNotes || null,
           deliveryAddress: formData.deliveryAddress,
+          deliveryContactPerson: formData.deliveryContactPerson || undefined,
+          deliveryContactPhone: formData.deliveryContactPhone || undefined,
           remarks: formData.notes,
+          quotationRef: formData.quotationRef || undefined,
+          projectName: formData.projectName || undefined,
+          freightTerms: formData.freightTerms || undefined,
+          freightAmount,
+          freightGstApplicable,
+          freightGstPercent,
+          freightGstAmount,
           customsDuty: customsDuty,
           otherCharges: otherCharges,
-          status: 'DRAFT',
+          status: poStatus,
+          attachments: formData.attachments || [],
           totalAmount: grandTotal,
+          grandTotal,
           items: transformedItems,
         };
 
@@ -778,7 +1007,8 @@ function PurchaseOrdersContent() {
 
         if (response.ok) {
           const data = await response.json();
-          createdPOs.push(data.po_number || data.id);
+          const displayNum = data.po_number?.startsWith('DRAFT-') ? 'Draft' : (data.po_number || data.id);
+          createdPOs.push(displayNum);
         } else {
           const errorData = await response.json();
           throw new Error(`Failed to create PO for vendor: ${errorData.message || 'Unknown error'}`);
@@ -799,7 +1029,7 @@ function PurchaseOrdersContent() {
     }
   };
 
-  const handleCreateOrder = async () => {
+  const handleCreateOrder = async (poStatus: 'DRAFT' | 'PENDING' = 'PENDING') => {
     // First validate required fields
     if (!formData.orderDate) {
       setAlertMessage({ type: 'error', message: 'Please select an order date' });
@@ -812,14 +1042,14 @@ function PurchaseOrdersContent() {
     }
 
     // Check if all items have vendor selected
-    const itemsWithoutVendor = formData.items.filter(item => !item.vendorId);
+    const itemsWithoutVendor = formData.items.filter(item => !String(item.vendorId || formData.vendorId || '').trim());
     if (itemsWithoutVendor.length > 0) {
       setAlertMessage({ type: 'error', message: 'Please select vendor for all items' });
       return;
     }
 
     // Get first vendor ID for duplicate check
-    const firstVendorId = formData.items[0]?.vendorId;
+    const firstVendorId = formData.vendorId || formData.items[0]?.vendorId;
     if (!firstVendorId) {
       setAlertMessage({ type: 'error', message: 'Please select vendor for items' });
       return;
@@ -837,7 +1067,7 @@ function PurchaseOrdersContent() {
     // Check for duplicates before creating
     await checkDuplicates(
       () => apiClient.post('/purchase/orders/check-duplicates', checkPayload),
-      () => actuallyCreatePO(),
+      () => actuallyCreatePO(poStatus),
     );
   };
 
@@ -860,7 +1090,21 @@ function PurchaseOrdersContent() {
         return;
       }
 
-      const vendorId = formData.vendorId || formData.items[0]?.vendorId;
+      const resolvedVendorIds = Array.from(
+        new Set(
+          formData.items
+            .map((item) => String(item.vendorId || formData.vendorId || '').trim())
+            .filter((vendorId) => vendorId.length > 0),
+        ),
+      );
+
+      if (resolvedVendorIds.length > 1) {
+        setAlertMessage({ type: 'error', message: 'A purchase order can only have one vendor. Use the master vendor field to change the vendor for the whole PO.' });
+        setSubmitting(false);
+        return;
+      }
+
+      const vendorId = resolvedVendorIds[0] || formData.vendorId || formData.items[0]?.vendorId;
       if (!vendorId) {
         setAlertMessage({ type: 'error', message: 'Please select a vendor' });
         setSubmitting(false);
@@ -904,9 +1148,13 @@ function PurchaseOrdersContent() {
       }
 
       const itemsSubtotal = formData.items.reduce((sum, item) => sum + item.totalPrice, 0);
+      const freightAmount = parseFloat(formData.freightAmount?.toString() || '0');
+      const freightGstApplicable = formData.freightGstApplicable === true && freightAmount > 0;
+      const freightGstPercent = freightGstApplicable ? parseFloat(formData.freightGstPercent?.toString() || '0') : 0;
+      const freightGstAmount = calcFreightGstAmount(freightAmount, freightGstApplicable, freightGstPercent);
       const customsDuty = parseFloat(formData.customsDuty?.toString() || '0');
       const otherCharges = parseFloat(formData.otherCharges?.toString() || '0');
-      const grandTotal = itemsSubtotal + customsDuty + otherCharges;
+      const grandTotal = itemsSubtotal + freightAmount + freightGstAmount + customsDuty + otherCharges;
 
       const payload = {
         vendorId,
@@ -916,10 +1164,23 @@ function PurchaseOrdersContent() {
         paymentStatus: formData.paymentStatus,
         paymentNotes: formData.paymentNotes || null,
         deliveryAddress: formData.deliveryAddress,
+        deliveryContactPerson: formData.deliveryContactPerson || undefined,
+        deliveryContactPhone: formData.deliveryContactPhone || undefined,
         remarks: formData.notes,
+        quotationRef: formData.quotationRef || undefined,
+        projectName: formData.projectName || undefined,
+        freightTerms: formData.freightTerms || undefined,
+        freightAmount,
+        freightGstApplicable,
+        freightGstPercent,
+        freightGstAmount,
         customsDuty,
         otherCharges,
+        ...(Array.isArray(formData.attachments) && formData.attachments.length > 0
+          ? { attachments: formData.attachments }
+          : {}),
         totalAmount: grandTotal,
+        grandTotal,
         items: formData.items.map((item) => ({
           prItemId: (item as any).prItemId,
           itemId: item.itemId || items.find((i) => i.code === item.itemCode)?.id,
@@ -932,6 +1193,8 @@ function PurchaseOrdersContent() {
           remarks: item.specifications || '',
           paymentTerms: (item as any).paymentTerms || null,
           deliveryTerms: (item as any).deliveryTerms || null,
+          includeDrawing: item.includeDrawing === true,
+          selectedDrawingId: item.selectedDrawingId || null,
         })),
       };
 
@@ -980,7 +1243,7 @@ function PurchaseOrdersContent() {
           itemCode: '',
           itemName: '',
           uom: '',
-          vendorId: '',
+          vendorId: prev.vendorId,
           quantity: 1,
           unitPrice: 0,
           taxRate: 18,
@@ -988,13 +1251,113 @@ function PurchaseOrdersContent() {
           specifications: '',
           paymentTerms: '',
           deliveryTerms: '',
+          includeDrawing: false,
+          selectedDrawingId: '',
         },
       ],
     }));
   };
 
+  const handleQuickCreateItem = async () => {
+    const { code, name, category, uom, hsn_code, description, reorder_level, standard_cost } = quickCreateItemForm;
+    if (!code.trim() || !name.trim() || !category || !uom) {
+      alert('Code, Name, Category and UOM are required');
+      return;
+    }
+    setQuickCreateItemSaving(true);
+    try {
+      const payload: any = {
+        code: code.trim(),
+        name: name.trim(),
+        category: normalizeItemCategory(category),
+        uom,
+        description: description.trim() || null,
+        hsn_code: hsn_code.replace(/[^0-9]/g, '') || null,
+        reorder_level: reorder_level ? parseInt(reorder_level) : null,
+        standard_cost: standard_cost ? parseFloat(standard_cost) : null,
+        is_active: true,
+      };
+      const newItem = await apiClient.post('/inventory/items', payload);
+      // Refresh items list
+      await fetchItems();
+      // Select the new item in the PO row if we know which row
+      if (quickCreateItemIndex !== null && newItem?.id) {
+        handleUpdateItem(quickCreateItemIndex, 'itemId', newItem.id);
+      }
+      setShowQuickCreateItem(false);
+      setQuickCreateItemForm({ code: '', name: '', category: 'RAW_MATERIAL', uom: 'NOS', hsn_code: '', description: '', reorder_level: '', standard_cost: '' });
+      setQuickCreateItemIndex(null);
+    } catch (err: any) {
+      alert(err.message || 'Failed to create item');
+    } finally {
+      setQuickCreateItemSaving(false);
+    }
+  };
+
+  const handleUploadPOAttachment = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    try {
+      setPoAttachmentUploading(true);
+      const token = localStorage.getItem('accessToken');
+      const uploaded: Array<{ url: string; name: string }> = [];
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('bucket', 'documents');
+        fd.append('folder', 'po-attachments');
+        const response = await fetch('/api/v1/upload', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        });
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err?.message || 'Upload failed');
+        }
+        const data = await response.json();
+        const url = String(data?.url || '').trim();
+        if (!url) throw new Error('Upload failed: no URL returned');
+        uploaded.push({ url, name: file.name });
+      }
+      setFormData((prev) => ({ ...prev, attachments: [...prev.attachments, ...uploaded] }));
+    } catch (err: any) {
+      alert(`Failed to upload attachment: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setPoAttachmentUploading(false);
+    }
+  };
+
+  const fetchDrawingOptionsForItem = async (itemId: string): Promise<DrawingOption[]> => {
+    const normalizedItemId = String(itemId || '').trim();
+    if (!normalizedItemId) return [];
+    if (drawingOptionsByItemId[normalizedItemId]) return drawingOptionsByItemId[normalizedItemId];
+    if (drawingOptionsLoading[normalizedItemId]) return [];
+
+    setDrawingOptionsLoading((prev) => ({ ...prev, [normalizedItemId]: true }));
+    try {
+      const drawings: DrawingOption[] = await apiClient.get(`/inventory/items/${normalizedItemId}/drawings`);
+      const normalizedDrawings = Array.isArray(drawings) ? drawings : [];
+      setDrawingOptionsByItemId((prev) => ({
+        ...prev,
+        [normalizedItemId]: normalizedDrawings,
+      }));
+      return normalizedDrawings;
+    } catch (error) {
+      setDrawingOptionsByItemId((prev) => ({ ...prev, [normalizedItemId]: [] }));
+      return [];
+    } finally {
+      setDrawingOptionsLoading((prev) => ({ ...prev, [normalizedItemId]: false }));
+    }
+  };
+
+  const getLatestDrawingId = (itemId: string, fallbackDrawings?: DrawingOption[]) => {
+    const drawings = fallbackDrawings || drawingOptionsByItemId[itemId] || [];
+    return drawings.find((drawing) => drawing.is_active)?.id || drawings[0]?.id || '';
+  };
+
   const handleUpdateItem = async (index: number, field: string, value: any) => {
     const updatedItems = [...(formData.items || [])];
+    const normalizedVendorValue = field === 'vendorId' ? String(value || '').trim() : '';
     
     // Check for duplicate items when changing itemId
     if (field === 'itemId' && value) {
@@ -1018,10 +1381,13 @@ function PurchaseOrdersContent() {
           itemName: selectedItem.name,
           uom: resolveUomFromItem(selectedItem),
           unitPrice: selectedItem.standard_cost || selectedItem.selling_price || 0,
+          includeDrawing: selectedItem.drawing_required === 'COMPULSORY',
+          selectedDrawingId: '',
         };
         
         // Fetch stock info for this item
         fetchStockInfo(value);
+        fetchDrawingOptionsForItem(value);
         
         // Fetch preferred vendor for this item
         try {
@@ -1042,7 +1408,7 @@ function PurchaseOrdersContent() {
               '';
 
             if (preferredVendor && preferredVendorId) {
-              updatedItems[index].vendorId = String(preferredVendorId);
+              updatedItems[index].vendorId = formData.vendorId || String(preferredVendorId);
               // Update unit price from preferred vendor if available
               if (preferredVendor.unit_price) {
                 updatedItems[index].unitPrice = preferredVendor.unit_price;
@@ -1054,9 +1420,35 @@ function PurchaseOrdersContent() {
           }
         } catch (error) {
         }
+      } else {
+        // Item not found in loaded list — record the selection and trigger a re-fetch.
+        // This handles the race condition where the user selects before items finish loading.
+        updatedItems[index] = { ...updatedItems[index], itemId: value };
+        if (items.length === 0) fetchItems();
       }
     } else {
       updatedItems[index] = { ...updatedItems[index], [field]: value };
+
+      if (field === 'includeDrawing' && value) {
+        const itemId = String(updatedItems[index]?.itemId || '').trim();
+        if (itemId) {
+          const drawings = await fetchDrawingOptionsForItem(itemId);
+          updatedItems[index].selectedDrawingId = updatedItems[index].selectedDrawingId || getLatestDrawingId(itemId, drawings);
+        }
+      }
+
+      if (field === 'includeDrawing' && !value) {
+        updatedItems[index].selectedDrawingId = '';
+      }
+
+      if (field === 'vendorId' && editingMode === 'edit') {
+        for (let itemIndex = 0; itemIndex < updatedItems.length; itemIndex += 1) {
+          updatedItems[itemIndex] = {
+            ...updatedItems[itemIndex],
+            vendorId: normalizedVendorValue,
+          };
+        }
+      }
     }
 
     // If we have item + vendor, try to autofill the unit price from last purchase price.
@@ -1086,7 +1478,11 @@ function PurchaseOrdersContent() {
     }
 
     // Use functional update to avoid clobbering other form fields
-    setFormData((prev) => ({ ...prev, items: updatedItems }));
+    setFormData((prev) => ({
+      ...prev,
+      vendorId: field === 'vendorId' && editingMode === 'edit' ? normalizedVendorValue : prev.vendorId,
+      items: updatedItems,
+    }));
   };
 
   const handleRemoveItem = (index: number) => {
@@ -1096,13 +1492,41 @@ function PurchaseOrdersContent() {
     });
   };
 
-  // Helper function to set vendor for all items
-  const handleSetAllVendors = (vendorId: string) => {
-    setFormData({
-      ...formData,
-      vendorId: vendorId,
-      items: formData.items.map(item => ({ ...item, vendorId }))
-    });
+  // Helper function to set vendor for all items, and pull RFQ prices if available
+  const handleSetAllVendors = async (vendorId: string) => {
+    let rfqPriceByPrItemId: Record<string, number> = {};
+    if (currentPrId && vendorId) {
+      try {
+        const rfqs: any[] = await apiClient.get(`/purchase/requisitions/${currentPrId}/rfqs`);
+        const vendorRfq = (rfqs || []).find((r: any) => r.vendor_id === vendorId && (r.status === 'RECEIVED' || r.status === 'RESPONDED'));
+        if (vendorRfq && Array.isArray(vendorRfq.rfq_items)) {
+          vendorRfq.rfq_items.forEach((ri: any) => {
+            if (ri.pr_item_id && ri.vendor_quoted_price != null) {
+              rfqPriceByPrItemId[String(ri.pr_item_id)] = Number(ri.vendor_quoted_price);
+            }
+          });
+        }
+      } catch { }
+    }
+    setFormData(prev => ({
+      ...prev,
+      vendorId,
+      items: prev.items.map(item => {
+        const rfqPrice = item.prItemId ? rfqPriceByPrItemId[String(item.prItemId)] : undefined;
+        const effectivePrice = rfqPrice != null ? rfqPrice : item.unitPrice;
+        const subtotal = item.quantity * effectivePrice;
+        const totalPrice = subtotal + (subtotal * item.taxRate) / 100;
+        return {
+          ...item,
+          vendorId,
+          ...(rfqPrice != null ? { unitPrice: rfqPrice } : {}),
+          totalPrice,
+        };
+      }),
+    }));
+    if (Object.keys(rfqPriceByPrItemId).length > 0) {
+      setAlertMessage({ type: 'info', message: `RFQ quoted prices loaded for ${Object.keys(rfqPriceByPrItemId).length} item(s) from vendor response.` });
+    }
   };
 
   const resetForm = () => {
@@ -1114,7 +1538,15 @@ function PurchaseOrdersContent() {
       paymentStatus: 'UNPAID',
       paymentNotes: '',
       deliveryAddress: '',
+      deliveryContactPerson: '',
+      deliveryContactPhone: '',
       notes: '',
+      quotationRef: '',
+      projectName: '',
+      freightTerms: '',
+      freightAmount: 0,
+      freightGstApplicable: false,
+      freightGstPercent: 0,
       customsDuty: 0,
       otherCharges: 0,
       trackingNumber: '',
@@ -1123,6 +1555,7 @@ function PurchaseOrdersContent() {
       carrierName: '',
       trackingUrl: '',
       deliveryStatus: 'PENDING',
+      attachments: [],
       items: [],
     });
     setCurrentPrId(null); // Clear PR ID on form reset
@@ -1236,6 +1669,8 @@ function PurchaseOrdersContent() {
         taxRate: item.tax_percent || 18,
         totalPrice: item.amount || 0,
         specifications: item.remarks || '',
+        includeDrawing: item.include_drawing === true || item.includeDrawing === true,
+        selectedDrawingId: item.selected_drawing_id || item.selectedDrawingId || '',
       })) || [];
       
       setFormData({
@@ -1246,7 +1681,50 @@ function PurchaseOrdersContent() {
         paymentStatus: data.payment_status || 'UNPAID',
         paymentNotes: data.payment_notes || '',
         deliveryAddress: data.delivery_address || '',
+        deliveryContactPerson: data.delivery_contact_person || '',
+        deliveryContactPhone: data.delivery_contact_phone || '',
         notes: data.remarks || '',
+        quotationRef: data.quotation_ref || '',
+        projectName: (() => {
+          try {
+            const tc = data.terms_and_conditions;
+            if (tc && typeof tc === 'string' && tc.startsWith('{')) return JSON.parse(tc).project || '';
+            if (tc && typeof tc === 'object') return (tc as any).project || '';
+          } catch {}
+          return data.project_name || '';
+        })(),
+        freightTerms: (() => {
+          try {
+            const tc = data.terms_and_conditions;
+            if (tc && typeof tc === 'string' && tc.startsWith('{')) return JSON.parse(tc).freight || '';
+            if (tc && typeof tc === 'object') return (tc as any).freight || '';
+          } catch {}
+          return data.freight_terms || '';
+        })(),
+        freightAmount: (() => {
+          try {
+            const tc = data.terms_and_conditions;
+            if (tc && typeof tc === 'string' && tc.startsWith('{')) return Number(JSON.parse(tc).freightAmount || 0);
+            if (tc && typeof tc === 'object') return Number((tc as any).freightAmount || 0);
+          } catch {}
+          return 0;
+        })(),
+        freightGstApplicable: (() => {
+          try {
+            const tc = data.terms_and_conditions;
+            if (tc && typeof tc === 'string' && tc.startsWith('{')) return JSON.parse(tc).freightGstApplicable === true;
+            if (tc && typeof tc === 'object') return (tc as any).freightGstApplicable === true;
+          } catch {}
+          return false;
+        })(),
+        freightGstPercent: (() => {
+          try {
+            const tc = data.terms_and_conditions;
+            if (tc && typeof tc === 'string' && tc.startsWith('{')) return Number(JSON.parse(tc).freightGstPercent || 0);
+            if (tc && typeof tc === 'object') return Number((tc as any).freightGstPercent || 0);
+          } catch {}
+          return 0;
+        })(),
         customsDuty: data.customs_duty || 0,
         otherCharges: data.other_charges || 0,
         trackingNumber: data.tracking_number || '',
@@ -1255,6 +1733,7 @@ function PurchaseOrdersContent() {
         carrierName: data.carrier_name || '',
         trackingUrl: data.tracking_url || '',
         deliveryStatus: data.delivery_status || 'PENDING',
+        attachments: Array.isArray(data.attachments) ? data.attachments : [],
         items: editItems,
       });
       
@@ -1342,11 +1821,23 @@ function PurchaseOrdersContent() {
     }
   };
 
-  const handleDownloadPDF = async (poId: string) => {
+  const buildPoPdfFilename = (poNumber?: string | null) => {
+    const normalized = String(poNumber || '')
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/\s+/g, ' ');
+
+    return normalized ? `${normalized}.pdf` : 'PO.pdf';
+  };
+
+  const buildPoPdfUrl = (poId: string) => `/api/v1/purchase/orders/${poId}/pdf/world-class?v=${Date.now()}`;
+
+  const handleDownloadPDF = async (poId: string, poNumber?: string | null) => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/v1/purchase/orders/${poId}/pdf/world-class`, {
+      const response = await fetch(buildPoPdfUrl(poId), {
         method: 'GET',
+        cache: 'no-store',
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -1360,7 +1851,7 @@ function PurchaseOrdersContent() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `PO-${poId}.pdf`;
+      a.download = buildPoPdfFilename(poNumber);
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1379,10 +1870,11 @@ function PurchaseOrdersContent() {
     }
   };
 
-  const handleViewPDF = async (poId: string) => {
+  const handleViewPDF = async (poId: string, poNumber?: string | null) => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/v1/purchase/orders/${poId}/pdf/world-class`, {
+      const response = await fetch(buildPoPdfUrl(poId), {
+        cache: 'no-store',
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -1394,13 +1886,23 @@ function PurchaseOrdersContent() {
 
       // Create blob from response
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      
+      const filename = buildPoPdfFilename(poNumber);
+      // Use File (not Blob) so the embedded PDF viewer sees the correct filename
+      const pdfFile = new File([blob], filename, { type: 'application/pdf' });
+      const pdfUrl = URL.createObjectURL(pdfFile);
+
+      // Open in an HTML wrapper page so the browser tab title = PO filename,
+      // ensuring Ctrl+S / browser Save As and Acrobat Save As all suggest the right name.
+      const escapedFilename = filename.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapedFilename}</title></head><body style="margin:0;padding:0;height:100vh;overflow:hidden"><embed src="${pdfUrl}" type="application/pdf" style="width:100%;height:100%;border:none" /></body></html>`;
+      const htmlBlob = new Blob([html], { type: 'text/html' });
+      const htmlUrl = URL.createObjectURL(htmlBlob);
+
       // Open in new window
-      window.open(url, '_blank');
-      
-      // Don't revoke quickly — user may click download in the PDF viewer tab
-      setTimeout(() => URL.revokeObjectURL(url), 300000);
+      window.open(htmlUrl, '_blank');
+
+      // Don't revoke quickly — user may interact with the PDF viewer tab
+      setTimeout(() => { URL.revokeObjectURL(pdfUrl); URL.revokeObjectURL(htmlUrl); }, 300000);
     } catch (error: any) {
       setAlertMessage({
         type: 'error',
@@ -1409,11 +1911,12 @@ function PurchaseOrdersContent() {
     }
   };
 
-  const handlePrintPDF = async (poId: string) => {
+  const handlePrintPDF = async (poId: string, poNumber?: string | null) => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/v1/purchase/orders/${poId}/pdf/world-class`, {
+      const response = await fetch(buildPoPdfUrl(poId), {
         method: 'GET',
+        cache: 'no-store',
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -1424,7 +1927,8 @@ function PurchaseOrdersContent() {
       }
 
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const file = new File([blob], buildPoPdfFilename(poNumber), { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(file);
       const iframe = document.createElement('iframe');
       iframe.style.display = 'none';
       iframe.src = url;
@@ -1507,16 +2011,70 @@ function PurchaseOrdersContent() {
     }
   };
 
+  const handleDeleteOne = async (order: PurchaseOrder) => {
+    const confirmed = await confirmDialog({
+      title: 'Delete Purchase Order',
+      message: `This will permanently delete ${order.po_number || 'this purchase order'}. This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
+    try {
+      await apiClient.delete(`/purchase/orders/${order.id}`);
+      orderSelection.deselectAll();
+      fetchOrders();
+      setAlertMessage({
+        type: 'success',
+        message: `${order.po_number || 'Purchase order'} deleted successfully`,
+      });
+    } catch (error) {
+      setAlertMessage({
+        type: 'error',
+        message: (error as any)?.message || 'Failed to delete purchase order',
+      });
+    }
+  };
+
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       DRAFT: 'bg-gray-100 text-gray-800',
+      PENDING: 'bg-orange-100 text-orange-800',
       SENT: 'bg-blue-100 text-blue-800',
       ACKNOWLEDGED: 'bg-purple-100 text-purple-800',
+      APPROVED: 'bg-green-100 text-green-800',
+      REJECTED: 'bg-red-100 text-red-800',
       PARTIAL: 'bg-yellow-100 text-yellow-800',
       COMPLETED: 'bg-green-100 text-green-800',
       CANCELLED: 'bg-red-100 text-red-800',
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getPaymentStatusLabel = (status?: string | null) => {
+    const key = String(status || 'UNPAID').toUpperCase();
+    if (key === 'PAID') return 'Payment Done';
+    if (key === 'PARTIAL' || key === 'PARTIALLY_PAID') return 'Partial Payment';
+    if (key === 'CHEQUE_ISSUED') return 'Cheque Issued';
+    if (key === 'OTHER') return 'Other';
+    return 'Unpaid';
+  };
+
+  const getPoLifecycle = (order: PurchaseOrder): { label: string; className: string } => {
+    const status = String(order.status || '').toUpperCase();
+    const deliveryStatus = String((order as any).delivery_status || '').toUpperCase();
+    const paymentStatus = String(order.payment_status || '').toUpperCase();
+    const receiptStatus = String((order as any).receipt_status || '').toUpperCase();
+
+    if (paymentStatus === 'PAID') return { label: 'Payment Done', className: 'bg-green-100 text-green-800' };
+    if (paymentStatus === 'PARTIAL' || paymentStatus === 'PARTIALLY_PAID') return { label: 'Partial Payment', className: 'bg-yellow-100 text-yellow-800' };
+    if (receiptStatus === 'FULLY_RECEIVED' || receiptStatus === 'PARTIALLY_RECEIVED') return { label: 'GRN Done', className: 'bg-indigo-100 text-indigo-800' };
+    if (deliveryStatus === 'IN_TRANSIT' || deliveryStatus === 'SHIPPED') return { label: 'Under Transit', className: 'bg-blue-100 text-blue-800' };
+    if (status === 'APPROVED') return { label: 'Approved', className: 'bg-green-100 text-green-800' };
+    if (status === 'PENDING') return { label: 'Pending for Approval', className: 'bg-orange-100 text-orange-800' };
+    if (status === 'DRAFT') return { label: 'Draft', className: 'bg-gray-100 text-gray-800' };
+    if (status === 'REJECTED') return { label: 'Rejected', className: 'bg-red-100 text-red-800' };
+    return { label: status || 'Draft', className: getStatusColor(status) };
   };
 
   const getReceiptStatusColor = (receiptStatus: string) => {
@@ -1541,39 +2099,17 @@ function PurchaseOrdersContent() {
           className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
         />
       ),
-      headerClassName: 'w-12',
-      cellClassName: 'w-12',
-    },
-    {
-      id: 'po_number',
-      label: 'PO Number',
-      accessor: (o) => o.po_number,
-      cell: (o) => <span className="font-medium text-gray-900">{o.po_number}</span>,
-    },
-    {
-      id: 'pr_ref',
-      label: 'PR Ref',
-      accessor: (o) => o.pr?.pr_number || '-',
-    },
-    {
-      id: 'vendor',
-      label: 'Vendor',
-      accessor: (o) => o.vendor?.name || '',
-      searchAccessor: (o) => `${o.vendor?.name || ''} ${o.vendor?.contact_person || ''}`.trim(),
-      cell: (o) => (
-        <div>
-          <div className="text-sm font-medium text-gray-900">{o.vendor?.name || '-'}</div>
-          <div className="text-xs text-gray-500">{o.vendor?.contact_person || ''}</div>
-        </div>
-      ),
+      minWidth: 48,
+      headerClassName: 'w-[4%]',
+      cellClassName: 'w-[4%]',
     },
     {
       id: 'po_date',
-      label: 'Order Date',
+      label: 'Date',
       accessor: (o) => o.po_date,
       sortAccessor: (o) => (o.po_date ? new Date(o.po_date).getTime() : 0),
       cell: (o) => (
-        <span className="text-sm text-gray-600">
+        <span className="whitespace-nowrap text-gray-600">
           {o.po_date
             ? (() => {
                 try {
@@ -1585,6 +2121,44 @@ function PurchaseOrdersContent() {
             : '-'}
         </span>
       ),
+      minWidth: 130,
+      headerClassName: 'w-[12%]',
+      cellClassName: 'w-[12%]',
+    },
+    {
+      id: 'po_number',
+      label: 'PO Number',
+      accessor: (o) => o.po_number,
+      cell: (o) => (
+        <span className="block truncate font-medium text-gray-900" title={o.po_number || ''}>
+          {o.po_number?.startsWith('DRAFT-') ? <span className="italic text-gray-400">Draft</span> : o.po_number}
+        </span>
+      ),
+      minWidth: 170,
+      headerClassName: 'w-[18%]',
+      cellClassName: 'w-[18%]',
+    },
+    {
+      id: 'pr_ref',
+      label: 'PR Ref',
+      accessor: (o) => o.pr?.pr_number || '-',
+      defaultVisible: false,
+      minWidth: 140,
+    },
+    {
+      id: 'vendor',
+      label: 'Supplier',
+      accessor: (o) => o.vendor?.name || '',
+      searchAccessor: (o) => `${o.vendor?.name || ''} ${o.vendor?.contact_person || ''}`.trim(),
+      cell: (o) => (
+        <div className="min-w-0">
+          <div className="truncate font-medium text-gray-900" title={o.vendor?.name || '-'}>{o.vendor?.name || '-'}</div>
+          {o.vendor?.contact_person && <div className="truncate text-[11px] text-gray-500" title={o.vendor.contact_person}>{o.vendor.contact_person}</div>}
+        </div>
+      ),
+      minWidth: 300,
+      headerClassName: 'w-[34%]',
+      cellClassName: 'w-[34%]',
     },
     {
       id: 'delivery_date',
@@ -1604,18 +2178,28 @@ function PurchaseOrdersContent() {
             : '-'}
         </span>
       ),
+      defaultVisible: false,
+      minWidth: 140,
     },
     {
       id: 'payment_terms',
       label: 'Payment Terms',
       accessor: (o) => (o as any)?.payment_terms || (o as any)?.paymentTerms || '-',
-      cell: (o) => <span className="text-sm text-gray-700">{(o as any)?.payment_terms || (o as any)?.paymentTerms || '-'}</span>,
+      cell: (o) => <span className="block break-words text-sm text-gray-700">{(o as any)?.payment_terms || (o as any)?.paymentTerms || '-'}</span>,
+      defaultVisible: false,
+      minWidth: 170,
+      headerClassName: 'w-[16%]',
+      cellClassName: 'w-[16%]',
     },
     {
       id: 'delivery_terms',
       label: 'Delivery Terms',
       accessor: (o) => (o as any)?.delivery_terms || (o as any)?.deliveryTerms || '-',
-      cell: (o) => <span className="text-sm text-gray-700">{(o as any)?.delivery_terms || (o as any)?.deliveryTerms || '-'}</span>,
+      cell: (o) => <span className="block break-words text-sm text-gray-700">{(o as any)?.delivery_terms || (o as any)?.deliveryTerms || '-'}</span>,
+      defaultVisible: false,
+      minWidth: 170,
+      headerClassName: 'w-[10%]',
+      cellClassName: 'w-[10%]',
     },
     {
       id: 'items_count',
@@ -1623,6 +2207,8 @@ function PurchaseOrdersContent() {
       accessor: (o) => o.purchase_order_items?.length || 0,
       sortAccessor: (o) => o.purchase_order_items?.length || 0,
       cell: (o) => <span className="text-sm text-gray-600">{o.purchase_order_items?.length || 0} items</span>,
+      defaultVisible: false,
+      minWidth: 110,
     },
     {
       id: 'total_amount',
@@ -1630,18 +2216,23 @@ function PurchaseOrdersContent() {
       accessor: (o) => o.total_amount || 0,
       align: 'right',
       cell: (o) => (
-        <span className="whitespace-nowrap text-sm font-semibold text-gray-900">₹{o.total_amount?.toLocaleString() || 0}</span>
+        <span className="whitespace-nowrap font-semibold text-gray-900">₹{fmtINR(o.total_amount)}</span>
       ),
+      minWidth: 150,
+      headerClassName: 'w-[10%]',
+      cellClassName: 'w-[10%]',
     },
     {
       id: 'payment_status',
       label: 'Payment',
-      accessor: (o) => o.payment_status || 'UNPAID',
+      accessor: (o) => getPaymentStatusLabel(o.payment_status),
       cell: (o) => (
         <span
           className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
             o.payment_status === 'PAID'
               ? 'bg-green-100 text-green-700'
+              : o.payment_status === 'PARTIAL' || o.payment_status === 'PARTIALLY_PAID'
+                ? 'bg-yellow-100 text-yellow-700'
               : o.payment_status === 'CHEQUE_ISSUED'
                 ? 'bg-blue-100 text-blue-700'
                 : o.payment_status === 'OTHER'
@@ -1649,10 +2240,12 @@ function PurchaseOrdersContent() {
                   : 'bg-yellow-100 text-yellow-700'
           }`}
         >
-          {o.payment_status === 'CHEQUE_ISSUED' ? 'CHEQUE' : o.payment_status || 'UNPAID'}
+          {getPaymentStatusLabel(o.payment_status)}
         </span>
       ),
       align: 'center',
+      defaultVisible: false,
+      minWidth: 130,
     },
     {
       id: 'receipt',
@@ -1676,7 +2269,7 @@ function PurchaseOrdersContent() {
             <span
               className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getReceiptStatusColor(receiptStatus)}`}
             >
-              {receiptStatus}
+              {receiptStatus === 'FULLY_RECEIVED' || receiptStatus === 'PARTIALLY_RECEIVED' ? 'GRN Done' : receiptStatus}
             </span>
             <div className="mt-1 text-xs text-gray-500 whitespace-nowrap">
               {receivedQty}/{orderedQty}{orderedQty > 0 ? ` (${pctText})` : ''}
@@ -1685,17 +2278,26 @@ function PurchaseOrdersContent() {
         );
       },
       align: 'center',
+      defaultVisible: false,
+      minWidth: 150,
+      headerClassName: 'w-[9%]',
+      cellClassName: 'w-[9%]',
     },
     {
       id: 'status',
       label: 'Status',
-      accessor: (o) => o.status,
-      cell: (o) => (
-        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(o.status)}`}>
-          {o.status}
-        </span>
-      ),
+      accessor: (o) => getPoLifecycle(o).label,
+      cell: (o) => {
+        const lifecycle = getPoLifecycle(o);
+        return (
+          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${lifecycle.className}`}>
+            {lifecycle.label}
+          </span>
+        );
+      },
       align: 'center',
+      defaultVisible: false,
+      minWidth: 130,
     },
     {
       id: 'actions',
@@ -1703,12 +2305,15 @@ function PurchaseOrdersContent() {
       sortable: false,
       hideable: false,
       align: 'right',
+      minWidth: 150,
+      headerClassName: 'w-[16%]',
+      cellClassName: 'w-[16%]',
       cell: (o) => (
-        <div className="whitespace-nowrap text-sm">
+        <div className="flex items-center justify-end gap-2 whitespace-nowrap text-xs">
           <button
             type="button"
             onClick={() => handleViewDetails(o.id)}
-            className="text-amber-600 hover:text-amber-800 font-medium mr-3"
+            className="font-medium text-amber-600 hover:text-amber-800"
           >
             View
           </button>
@@ -1716,10 +2321,19 @@ function PurchaseOrdersContent() {
           <button
             type="button"
             onClick={() => handleEditDetails(o.id, 'edit')}
-            className="text-blue-600 hover:text-blue-800 font-medium"
+            className="font-medium text-blue-600 hover:text-blue-800"
           >
             Edit
           </button>
+          )}
+          {canDeletePO && (
+            <button
+              type="button"
+              onClick={() => handleDeleteOne(o)}
+              className="font-medium text-red-600 hover:text-red-800"
+            >
+              Delete
+            </button>
           )}
         </div>
       ),
@@ -1727,19 +2341,21 @@ function PurchaseOrdersContent() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className={showModal ? 'min-h-screen bg-white' : 'min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 px-3 py-4 lg:px-4'}>
+      <div className="w-full max-w-none">
+        {!showModal && (
+          <>
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="mb-4 flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-bold text-amber-900">Purchase Orders</h1>
-            <p className="text-amber-700">Create and manage purchase orders to vendors</p>
+            <h1 className="text-2xl font-bold text-amber-900">Purchase Orders</h1>
+            <p className="text-sm text-amber-700">Create and manage purchase orders to vendors</p>
           </div>
-          <div className="flex gap-4">
+          <div className="flex shrink-0 gap-3">
             {orderSelection.hasSelections && canDeletePO && (
               <button
                 onClick={handleDeleteAll}
-                className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold"
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
               >
                 Delete Selected ({orderSelection.selectedItems.length})
               </button>
@@ -1755,7 +2371,7 @@ function PurchaseOrdersContent() {
                   fetchItems();
                 }
               }}
-              className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold"
+              className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
             >
               + Create Purchase Order
             </button>
@@ -1764,7 +2380,7 @@ function PurchaseOrdersContent() {
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div className="mb-4 rounded-lg bg-white p-4 shadow-md">
           <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
@@ -1775,9 +2391,11 @@ function PurchaseOrdersContent() {
               >
                 <option value="ALL">All Status</option>
                 <option value="DRAFT">Draft</option>
+                <option value="PENDING">Pending Approval</option>
+                <option value="APPROVED">Approved</option>
+                <option value="REJECTED">Rejected</option>
                 <option value="SENT">Sent</option>
                 <option value="ACKNOWLEDGED">Acknowledged</option>
-                <option value="APPROVED">Approved</option>
                 <option value="PARTIAL">Partial</option>
                 <option value="COMPLETED">Completed</option>
               </select>
@@ -1815,7 +2433,7 @@ function PurchaseOrdersContent() {
           </div>
         ) : (
           <ListTable
-            storageKey="purchaseOrdersTable"
+            storageKey="purchaseOrdersTable:compact:v3"
             rows={orders}
             columns={ordersTableColumns}
             getRowId={(o) => o.id}
@@ -1831,19 +2449,19 @@ function PurchaseOrdersContent() {
             }
           />
         )}
-      </div>
+          </>
+        )}
 
-      {/* Create Modal */}
+      {/* Create/Edit Form */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-[98vw] h-[96vh] flex flex-col overflow-hidden shadow-2xl">
-            <div className="sticky top-0 z-10 bg-white p-6 border-b border-gray-200 flex items-center justify-between gap-4 flex-shrink-0">
+        <div className="bg-white min-h-screen w-full">
+            <div className="sticky top-0 z-10 bg-white p-6 border-b border-gray-200 flex items-center justify-between gap-4">
               <h2 className="text-2xl font-bold text-gray-900">
                 {editingMode === 'create'
-                  ? 'Create Purchase Order'
+                  ? `Create ${isServiceOrder ? 'Service' : 'Purchase'} Order`
                   : editingMode === 'tracking'
                     ? 'Update Tracking Information'
-                    : 'Edit Purchase Order'}
+                    : `Edit ${isServiceOrder ? 'Service' : 'Purchase'} Order`}
               </h2>
               <div className="flex items-center gap-3">
                 <button
@@ -1872,17 +2490,26 @@ function PurchaseOrdersContent() {
                     {submitting ? 'Saving...' : 'Save Changes'}
                   </button>
                 ) : (
-                  <button
-                    onClick={handleCreateOrder}
-                    disabled={submitting}
-                    className="px-5 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {submitting ? 'Creating...' : 'Create Purchase Order'}
-                  </button>
+                  <>
+                    <button
+                      onClick={() => handleCreateOrder('DRAFT')}
+                      disabled={submitting}
+                      className="px-5 py-2 border border-gray-400 text-gray-700 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {submitting ? 'Saving...' : 'Save as Draft'}
+                    </button>
+                    <button
+                      onClick={() => handleCreateOrder('PENDING')}
+                      disabled={submitting}
+                      className="px-5 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {submitting ? 'Submitting...' : 'Submit'}
+                    </button>
+                  </>
                 )}
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="p-6 space-y-6">
               {/* Order Details */}
               <div className="grid grid-cols-2 gap-4">
                 {editingMode === 'create' && (
@@ -1896,6 +2523,7 @@ function PurchaseOrdersContent() {
                         const next = String(value || '').trim();
                         if (!next) {
                           setCurrentPrId(null);
+                          setRfqRespondedVendorIds([]);
                           setFormData((prev) => ({ ...prev, items: [] }));
                           return;
                         }
@@ -1915,20 +2543,28 @@ function PurchaseOrdersContent() {
                 )}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">
-                    Master Vendor (sets all items)
+                    Vendor <span className="text-red-500">*</span>
+                    {currentPrId && <span className="ml-2 text-xs font-normal text-indigo-600 normal-case">Selecting a vendor will auto-load RFQ prices</span>}
                   </label>
                   <SearchableSelect
                     value={formData.vendorId}
                     onChange={(value) => handleSetAllVendors(String(value || ''))}
-                    options={vendors.map((v) => ({
-                      value: v.id,
-                      label: v.name,
-                      subtitle: v.contact_person,
-                    }))}
+                    options={(() => {
+                      const filtered = rfqRespondedVendorIds.length > 0
+                        ? vendors.filter((v) => rfqRespondedVendorIds.includes(v.id))
+                        : vendors;
+                      return filtered.map((v) => ({
+                        value: v.id,
+                        label: v.name,
+                        subtitle: v.contact_person,
+                      }));
+                    })()}
                     placeholder="Search vendor to apply to all items..."
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    You can override individual item vendors in the items grid below
+                    {rfqRespondedVendorIds.length > 0
+                      ? `Showing ${rfqRespondedVendorIds.length} vendor(s) who responded to the RFQ.`
+                      : 'Applies to all items in this purchase order.'}
                   </p>
                 </div>
                 <div>
@@ -1945,22 +2581,20 @@ function PurchaseOrdersContent() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Order Date</label>
-                  <input
-                    type="date"
-                    max={todayDate}
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Order Date <span className="text-red-500">*</span></label>
+                  <DateInput
+                    min={todayDate}
                     value={formData.orderDate}
-                    onChange={(e) => setFormData({ ...formData, orderDate: e.target.value })}
+                    onChange={(value) => setFormData({ ...formData, orderDate: value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Expected Delivery</label>
-                  <input
-                    type="date"
-                    max={todayDate}
+                  <DateInput
+                    min={formData.orderDate || todayDate}
                     value={formData.expectedDelivery}
-                    onChange={(e) => setFormData({ ...formData, expectedDelivery: e.target.value })}
+                    onChange={(value) => setFormData({ ...formData, expectedDelivery: value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
                   />
                 </div>
@@ -1968,13 +2602,127 @@ function PurchaseOrdersContent() {
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Delivery Address</label>
-                <textarea
-                  value={formData.deliveryAddress}
-                  onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
-                  rows={2}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                  placeholder="Enter delivery address..."
-                />
+                <div className="space-y-2">
+                  {/* Saved addresses quick-select */}
+                  {deliveryAddresses.length > 0 && (
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">📍 Quick-select saved address:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {deliveryAddresses.map((entry) => (
+                          <button
+                            key={entry.id}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, deliveryAddress: entry.address })}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                              formData.deliveryAddress === entry.address
+                                ? 'bg-amber-700 text-white border-amber-700'
+                                : 'bg-white text-amber-800 border-amber-300 hover:bg-amber-50'
+                            }`}
+                          >
+                            📍 {entry.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <textarea
+                    value={formData.deliveryAddress}
+                    onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
+                    rows={2}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="Enter delivery address..."
+                  />
+                  {/* Save current address for future reuse */}
+                  <div className="flex gap-2 items-center">
+                    <input
+                      value={deliveryAddressName}
+                      onChange={(e) => setDeliveryAddressName(e.target.value)}
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+                      placeholder="Label to save this address (e.g. Factory, Head Office)"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveDeliveryAddress}
+                      disabled={deliveryAddressSaving || !formData.deliveryAddress.trim()}
+                      className="px-3 py-1.5 rounded-lg bg-amber-700 text-white text-xs font-semibold hover:bg-amber-800 disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {deliveryAddressSaving ? 'Saving…' : '💾 Save for reuse'}
+                    </button>
+                  </div>
+                  {deliveryAddresses.length === 0 && (
+                    <p className="text-xs text-gray-400">Enter an address above, give it a label, and click "Save for reuse" to build your saved address list.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Consignee POC Name</label>
+                  {users.length > 0 ? (
+                    <select
+                      value={formData.deliveryContactPerson}
+                      onChange={(e) => setFormData({ ...formData, deliveryContactPerson: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    >
+                      <option value="">Select or type below...</option>
+                      {users.map(u => (
+                        <option key={u.id} value={u.employee_name}>
+                          {u.employee_name}{u.employee_code ? ` (${u.employee_code})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
+                  <input
+                    type="text"
+                    value={formData.deliveryContactPerson}
+                    onChange={(e) => setFormData({ ...formData, deliveryContactPerson: e.target.value })}
+                    className={`w-full border border-gray-300 rounded-lg px-4 py-2 ${users.length > 0 ? 'mt-1' : ''}`}
+                    placeholder="Or type name manually"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Consignee POC Phone</label>
+                  <input
+                    type="text"
+                    value={formData.deliveryContactPhone}
+                    onChange={(e) => setFormData({ ...formData, deliveryContactPhone: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="Phone number of contact person"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Quotation Ref No.</label>
+                  <input
+                    type="text"
+                    value={formData.quotationRef}
+                    onChange={(e) => setFormData({ ...formData, quotationRef: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="Quotation reference (optional)"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Project Name</label>
+                  <input
+                    type="text"
+                    value={formData.projectName}
+                    onChange={(e) => setFormData({ ...formData, projectName: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="Project name (optional)"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Freight Terms</label>
+                  <input
+                    type="text"
+                    value={formData.freightTerms}
+                    onChange={(e) => setFormData({ ...formData, freightTerms: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="e.g. FOB, CIF, Ex-Works"
+                  />
+                </div>
               </div>
 
               {/* Tracking Information */}
@@ -2018,21 +2766,19 @@ function PurchaseOrdersContent() {
                     </div>
                     <div>
                       <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Shipped Date</label>
-                      <input
-                        type="date"
+                      <DateInput
                         max={todayDate}
                         value={formData.shippedDate}
-                        onChange={(e) => setFormData({ ...formData, shippedDate: e.target.value })}
+                        onChange={(value) => setFormData({ ...formData, shippedDate: value })}
                         className="w-full border border-gray-300 rounded-lg px-4 py-2"
                       />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Estimated Delivery Date</label>
-                      <input
-                        type="date"
-                        max={todayDate}
+                      <DateInput
+                        min={todayDate}
                         value={formData.estimatedDeliveryDate}
-                        onChange={(e) => setFormData({ ...formData, estimatedDeliveryDate: e.target.value })}
+                        onChange={(value) => setFormData({ ...formData, estimatedDeliveryDate: value })}
                         className="w-full border border-gray-300 rounded-lg px-4 py-2"
                       />
                     </div>
@@ -2080,11 +2826,21 @@ function PurchaseOrdersContent() {
                   {formData.items.length === 0 ? (
                     <div className="text-sm text-gray-500">No items added yet.</div>
                   ) : (
-                    <div className="space-y-4">
+                    <div className="rounded-xl border border-gray-200 bg-white p-3 overflow-visible">
+                      <div className="hidden lg:grid grid-cols-[minmax(12rem,2fr)_4.75rem_6rem_minmax(8rem,1fr)_4.75rem_6rem_2.5rem] gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600 shadow-sm">
+                          <div>Item</div>
+                          <div>Qty</div>
+                          <div>UOM</div>
+                          <div>Unit Price</div>
+                          <div>GST %</div>
+                          <div className="text-right">Total</div>
+                          <div></div>
+                        </div>
+                        <div className="mt-3 space-y-4">
                       {formData.items.map((item, index) => (
-                        <div key={index} className="border border-gray-200 rounded-lg p-4">
-                          <div className="grid grid-cols-8 gap-4 min-w-[1280px]">
-                            <div className="col-span-2 min-w-0">
+                        <div key={index} className="relative border border-gray-200 rounded-lg p-4 bg-white">
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-[minmax(12rem,2fr)_4.75rem_6rem_minmax(8rem,1fr)_4.75rem_6rem_2.5rem] lg:gap-3">
+                            <div className="min-w-0 md:col-span-2 lg:col-span-1">
                               {item.itemId ? (
                                 <div className="flex flex-col gap-2 min-w-0">
                                   <div className="min-w-0">
@@ -2094,36 +2850,66 @@ function PurchaseOrdersContent() {
                                       const drawingRequired = masterItem?.drawing_required || 'OPTIONAL';
                                       const displayCode = item.itemCode || masterItem?.code || '';
                                       const displayName = item.itemName || masterItem?.name || '';
+                                      const includeDrawing = drawingRequired === 'COMPULSORY' || item.includeDrawing === true;
+                                      const drawingOptions = resolvedItemId ? (drawingOptionsByItemId[resolvedItemId] || []) : [];
+                                      const selectedDrawingId = item.selectedDrawingId || (includeDrawing && resolvedItemId ? getLatestDrawingId(resolvedItemId) : '');
 
                                       return (
                                         <>
                                           <div className="text-sm font-medium text-gray-900">{displayCode || '-'}</div>
                                           <div className="text-xs text-gray-500 truncate">{displayName || '-'}</div>
                                           {resolvedItemId ? (
-                                            <div className="mt-1 flex items-center justify-between gap-2 min-w-0">
-                                              <span className={`text-xs px-2 py-0.5 rounded ${
-                                                drawingRequired === 'COMPULSORY'
-                                                  ? 'bg-red-100 text-red-800'
-                                                  : 'bg-gray-100 text-gray-700'
-                                              }`}>
-                                                Drawing: {drawingRequired}
-                                              </span>
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setPendingItemIndex(index);
-                                                  setSelectedItemForDrawing({
-                                                    id: resolvedItemId,
-                                                    code: displayCode,
-                                                    name: displayName,
-                                                    mandatory: drawingRequired === 'COMPULSORY',
-                                                  });
-                                                  setShowDrawingManager(true);
-                                                }}
-                                                className="text-xs text-amber-700 hover:text-amber-900 font-medium shrink-0"
-                                              >
-                                                Manage Drawings
-                                              </button>
+                                            <div className="mt-1 space-y-2 min-w-0">
+                                              <div className="flex items-center justify-between gap-2 min-w-0">
+                                                <span className={`text-xs px-2 py-0.5 rounded ${
+                                                  drawingRequired === 'COMPULSORY'
+                                                    ? 'bg-red-100 text-red-800'
+                                                    : 'bg-gray-100 text-gray-700'
+                                                }`}>
+                                                  Drawing: {drawingRequired}
+                                                </span>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setPendingItemIndex(index);
+                                                    setSelectedItemForDrawing({
+                                                      id: resolvedItemId,
+                                                      code: displayCode,
+                                                      name: displayName,
+                                                      mandatory: drawingRequired === 'COMPULSORY',
+                                                    });
+                                                    setShowDrawingManager(true);
+                                                  }}
+                                                  className="text-xs text-amber-700 hover:text-amber-900 font-medium shrink-0"
+                                                >
+                                                  Manage Drawings
+                                                </button>
+                                              </div>
+                                              <label className="flex items-center gap-2 text-xs text-gray-700">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={includeDrawing}
+                                                  disabled={drawingRequired === 'COMPULSORY'}
+                                                  onChange={(event) => handleUpdateItem(index, 'includeDrawing', event.target.checked)}
+                                                  className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                                                />
+                                                <span>{drawingRequired === 'COMPULSORY' ? 'Drawing will be attached' : 'Attach drawing to PO/PDF'}</span>
+                                              </label>
+                                              {includeDrawing && (
+                                                <select
+                                                  value={selectedDrawingId}
+                                                  onFocus={() => fetchDrawingOptionsForItem(resolvedItemId)}
+                                                  onChange={(event) => handleUpdateItem(index, 'selectedDrawingId', event.target.value)}
+                                                  className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
+                                                >
+                                                  <option value="">{drawingOptionsLoading[resolvedItemId] ? 'Loading drawings...' : 'Latest active drawing'}</option>
+                                                  {drawingOptions.map((drawing) => (
+                                                    <option key={drawing.id} value={drawing.id}>
+                                                      v{drawing.version || '-'} {drawing.is_active ? '(Active)' : '(Old)'} - {drawing.file_name || 'Drawing'}
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                              )}
                                             </div>
                                           ) : null}
                                         </>
@@ -2152,38 +2938,36 @@ function PurchaseOrdersContent() {
                                     options={items.map(i => ({
                                       value: i.id,
                                       label: i.code,
-                                      subtitle: i.name
+                                      subtitle: [i.name, i.oem_part_no, i.description].filter(Boolean).join(' | ')
                                     }))}
-                                    placeholder="Change item..."
+                                    placeholder={itemsLoading ? 'Loading items...' : 'Change item...'}
+                                    disabled={itemsLoading}
                                     className="text-xs"
                                   />
                                 </div>
                               ) : (
+                                <div className="relative z-20 flex min-w-0 items-center gap-1">
                                 <SearchableSelect
                                   value={item.itemId || ''}
                                   onChange={(value) => handleUpdateItem(index, 'itemId', value)}
                                   options={items.map(i => ({
                                     value: i.id,
                                     label: i.code,
-                                    subtitle: i.name
+                                    subtitle: [i.name, i.oem_part_no, i.description].filter(Boolean).join(' | ')
                                   }))}
-                                  placeholder="Select Item"
+                                  placeholder={itemsLoading ? 'Loading items...' : 'Select Item'}
+                                  disabled={itemsLoading}
                                   required
+                                  className="flex-1"
                                 />
+                                <button
+                                  type="button"
+                                  title="Create new item"
+                                  onClick={() => { setQuickCreateItemIndex(index); setShowQuickCreateItem(true); }}
+                                  className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded bg-amber-100 hover:bg-amber-200 text-amber-700 font-bold text-sm"
+                                >+</button>
+                                </div>
                               )}
-                            </div>
-                            <div className="min-w-0">
-                              <SearchableSelect
-                                value={item.vendorId || ''}
-                                onChange={(value) => handleUpdateItem(index, 'vendorId', String(value || ''))}
-                                options={vendors.map((v) => ({
-                                  value: v.id,
-                                  label: v.name,
-                                  subtitle: v.contact_person,
-                                }))}
-                                placeholder="Search vendor..."
-                                required
-                              />
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
@@ -2227,72 +3011,67 @@ function PurchaseOrdersContent() {
                                   if (!effectiveItemId || !effectiveVendorId) return null;
 
                                   return (
-                                  <div
-                                    className="relative"
-                                    onMouseEnter={() => {
-                                      setHoveredItem(index);
-                                      fetchPriceHistory(effectiveItemId, effectiveVendorId);
-                                    }}
-                                    onMouseLeave={() => setHoveredItem(null)}
-                                  >
-                                    <button
-                                      type="button"
-                                      className="p-1 text-blue-500 hover:text-blue-700 cursor-help"
+                                    <div
+                                      className="relative"
+                                      onMouseEnter={() => {
+                                        setHoveredItem(index);
+                                        fetchPriceHistory(effectiveItemId, effectiveVendorId);
+                                      }}
+                                      onMouseLeave={() => setHoveredItem(null)}
                                     >
-                                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                                      </svg>
-                                    </button>
-                                    
-                                    {hoveredItem === index && (
-                                      <div className="absolute z-50 right-0 mr-2 top-0 w-80 bg-white border border-gray-300 rounded-lg shadow-xl p-4">
-                                        <div className="text-sm font-semibold text-gray-700 mb-2">Last 3 Purchase Prices</div>
-                                        {(() => {
-                                          const key = `${effectiveItemId}-${effectiveVendorId}`;
-                                          const history = priceHistory[key];
-                                          
-                                          if (!history) {
-                                            return <div className="text-xs text-gray-500">Loading...</div>;
-                                          }
-                                          
-                                          if (history.length === 0) {
-                                            return <div className="text-xs text-gray-500">No purchase history available</div>;
-                                          }
-                                          
-                                          return (
-                                            <div className="space-y-2">
-                                              {history.map((record, idx) => (
-                                                <div key={idx} className="border-b border-gray-200 pb-2 last:border-0">
-                                                  <div className="flex justify-between items-start">
-                                                    <div>
-                                                      <div className="text-xs font-medium text-gray-900">
-                                                        PO: {record.po_number}
+                                      <button
+                                        type="button"
+                                        className="p-1 text-blue-500 hover:text-blue-700 cursor-help"
+                                      >
+                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                        </svg>
+                                      </button>
+
+                                      {hoveredItem === index && (
+                                        <div className="absolute z-50 right-0 mr-2 top-0 w-80 bg-white border border-gray-300 rounded-lg shadow-xl p-4">
+                                          <div className="text-sm font-semibold text-gray-700 mb-2">Last 3 Purchase Prices</div>
+                                          {(() => {
+                                            const key = `${effectiveItemId}-${effectiveVendorId}`;
+                                            const history = priceHistory[key];
+
+                                            if (!history || history.length === 0) {
+                                              return <div className="text-xs text-gray-400 italic">No previous prices available</div>;
+                                            }
+
+                                            return (
+                                              <div className="space-y-2">
+                                                {history.map((record, idx) => (
+                                                  <div key={idx} className="border-b border-gray-200 pb-2 last:border-0">
+                                                    <div className="flex justify-between items-start">
+                                                      <div>
+                                                        <div className="text-xs font-medium text-gray-900">
+                                                          PO: {record.po_number}
+                                                        </div>
+                                                        <div className="text-xs text-gray-500">
+                                                          {new Date(record.po_date).toLocaleDateString()}
+                                                        </div>
+                                                        <div className="text-xs text-gray-500">
+                                                          Qty: {record.quantity}
+                                                        </div>
                                                       </div>
-                                                      <div className="text-xs text-gray-500">
-                                                        {new Date(record.po_date).toLocaleDateString()}
-                                                      </div>
-                                                      <div className="text-xs text-gray-500">
-                                                        Qty: {record.quantity}
-                                                      </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                      <div className="text-sm font-semibold text-blue-600">
-                                                        ₹{record.unit_price?.toFixed(2) || '0.00'}
-                                                      </div>
-                                                      <div className="text-xs text-gray-500 capitalize">
-                                                        {record.po_status.replace('_', ' ')}
+                                                      <div className="text-right">
+                                                        <div className="text-sm font-semibold text-blue-600">
+                                                          ₹{fmtINR(record.unit_price)}
+                                                        </div>
+                                                        <div className="text-xs text-gray-500 capitalize">
+                                                          {record.po_status.replace('_', ' ')}
+                                                        </div>
                                                       </div>
                                                     </div>
                                                   </div>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          );
-                                        })()}
-
-                                      </div>
-                                    )}
-                                  </div>
+                                                ))}
+                                              </div>
+                                            );
+                                          })()}
+                                        </div>
+                                      )}
+                                    </div>
                                   );
                                 })()}
                               </div>
@@ -2306,21 +3085,21 @@ function PurchaseOrdersContent() {
 
                                 const key = `${effectiveItemId}-${effectiveVendorId}`;
                                 const history = priceHistory[key];
-                                if (!history) {
-                                  return <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-500">Last: Loading...</div>;
+                                if (!history || history.length === 0) {
+                                  return <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-400 italic">No previous prices available</div>;
                                 }
                                 const last = history?.[0];
                                 if (!last) {
-                                  return <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-500">Last purchase price not available</div>;
+                                  return <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-400 italic">No previous prices available</div>;
                                 }
                                 return (
                                   <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-600">
-                                    Last: <span className="font-medium text-gray-800">₹{Number(last.unit_price || 0).toFixed(2)}</span>
+                                    Last: <span className="font-medium text-gray-800">₹{fmtINR(last.unit_price)}</span>
                                   </div>
                                 );
                               })()}
                             </div>
-                            <div>
+                            <div className="min-w-0">
                               <input
                                 type="number"
                                 value={item.taxRate}
@@ -2329,11 +3108,13 @@ function PurchaseOrdersContent() {
                                 className="w-full border border-gray-300 rounded px-3 py-2"
                               />
                             </div>
-                            <div className="flex items-center justify-between gap-2 min-w-0 pt-2">
-                              <span className="font-medium">₹{item.totalPrice.toFixed(2)}</span>
+                            <div className="flex min-w-0 items-center justify-start lg:justify-end pt-2 lg:pt-0">
+                              <span className="font-medium whitespace-nowrap">₹{fmtINR(item.totalPrice)}</span>
+                            </div>
+                            <div className="flex items-center justify-end md:justify-start lg:justify-center">
                               <button
                                 onClick={() => handleRemoveItem(index)}
-                                className="shrink-0 px-2 py-1 bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-800 rounded font-bold text-lg"
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-red-100 text-lg font-bold text-red-600 hover:bg-red-200 hover:text-red-800"
                                 title="Remove this item"
                               >
                                 ×
@@ -2341,9 +3122,9 @@ function PurchaseOrdersContent() {
                             </div>
                           </div>
 
-                          <div className="mt-3 grid grid-cols-2 gap-4">
+                          <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">Line Payment Terms</label>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Line Description</label>
                               <input
                                 type="text"
                                 value={(item as any).paymentTerms || ''}
@@ -2363,6 +3144,7 @@ function PurchaseOrdersContent() {
                           </div>
                         </div>
                       ))}
+                        </div>
                     </div>
                   )}
                   {(editingMode === 'create' || editingMode === 'edit') && formData.items.length > 0 && (
@@ -2389,9 +3171,83 @@ function PurchaseOrdersContent() {
                 />
               </div>
 
+              {/* Documents / Quotation Attachments */}
+              {(editingMode === 'create' || editingMode === 'edit') && (
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Documents / Quotation</label>
+                  <p className="text-xs text-gray-500 mb-2">Attach vendor quotations, drawings, or any supporting documents for this PO.</p>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 border border-dashed border-gray-400 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
+                      {poAttachmentUploading ? 'Uploading...' : '+ Attach Document'}
+                      <input
+                        type="file"
+                        multiple
+                        className="hidden"
+                        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx"
+                        disabled={poAttachmentUploading}
+                        onChange={(e) => handleUploadPOAttachment(e.target.files)}
+                      />
+                    </label>
+                    {formData.attachments.map((att, i) => (
+                      <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 max-w-xs">
+                        <a href={att.url} target="_blank" rel="noopener noreferrer" className="truncate hover:underline" title={att.name}>{att.name}</a>
+                        <button
+                          type="button"
+                          onClick={() => setFormData((prev) => ({ ...prev, attachments: prev.attachments.filter((_, idx) => idx !== i) }))}
+                          className="text-blue-400 hover:text-red-600 flex-shrink-0 font-bold"
+                          title="Remove"
+                        >&times;</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Additional Charges */}
               {editingMode !== 'tracking' && (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Freight Value (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.freightAmount}
+                    onChange={(e) => setFormData({ ...formData, freightAmount: parseFloat(e.target.value) || 0 })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">GST on Freight</label>
+                  <label className="flex h-[42px] items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={formData.freightGstApplicable}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        freightGstApplicable: e.target.checked,
+                        freightGstPercent: e.target.checked ? formData.freightGstPercent : 0,
+                      })}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    Applicable
+                  </label>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Freight GST (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    value={formData.freightGstPercent}
+                    onChange={(e) => setFormData({ ...formData, freightGstPercent: parseFloat(e.target.value) || 0 })}
+                    disabled={!formData.freightGstApplicable}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 disabled:bg-gray-100 disabled:text-gray-500"
+                    placeholder="0.00"
+                  />
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Customs Duty (₹)</label>
                   <input
@@ -2405,7 +3261,7 @@ function PurchaseOrdersContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Other Charges (₹)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Additional Expenses (₹)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -2424,34 +3280,110 @@ function PurchaseOrdersContent() {
                 <div className="space-y-2 text-right">
                   <div className="flex justify-between text-sm text-gray-600">
                     <span>Items Subtotal:</span>
-                    <span>₹{formData.items.reduce((sum, item) => sum + item.totalPrice, 0).toFixed(2)}</span>
+                    <span>₹{fmtINR(formData.items.reduce((sum, item) => sum + item.totalPrice, 0))}</span>
                   </div>
-                  {(formData.customsDuty > 0 || formData.otherCharges > 0) && (
+                  {(formData.freightAmount > 0 || calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) > 0 || formData.customsDuty > 0 || formData.otherCharges > 0) && (
                     <>
+                      {formData.freightAmount > 0 && (
+                        <div className="flex justify-between text-sm text-gray-600">
+                          <span>Freight Value:</span>
+                          <span>₹{fmtINR(formData.freightAmount)}</span>
+                        </div>
+                      )}
+                      {calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) > 0 && (
+                        <div className="flex justify-between text-sm text-gray-600">
+                          <span>Freight GST ({fmtPercent(formData.freightGstPercent)}%):</span>
+                          <span>₹{fmtINR(calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent))}</span>
+                        </div>
+                      )}
                       {formData.customsDuty > 0 && (
                         <div className="flex justify-between text-sm text-gray-600">
                           <span>Customs Duty:</span>
-                          <span>₹{formData.customsDuty.toFixed(2)}</span>
+                          <span>₹{fmtINR(formData.customsDuty)}</span>
                         </div>
                       )}
                       {formData.otherCharges > 0 && (
                         <div className="flex justify-between text-sm text-gray-600">
-                          <span>Other Charges:</span>
-                          <span>₹{formData.otherCharges.toFixed(2)}</span>
+                          <span>Additional Expenses:</span>
+                          <span>₹{fmtINR(formData.otherCharges)}</span>
                         </div>
                       )}
                     </>
                   )}
                   <div className="flex justify-between text-xl font-bold text-gray-900 border-t pt-2">
                     <span>Grand Total:</span>
-                    <span>₹{(
+                    <span>₹{fmtINR(
                       formData.items.reduce((sum, item) => sum + item.totalPrice, 0) +
+                      (formData.freightAmount || 0) +
+                      calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) +
                       (formData.customsDuty || 0) +
                       (formData.otherCharges || 0)
-                    ).toFixed(2)}</span>
+                    )}</span>
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+      )}
+      </div>
+
+      {/* Quick Create Item Modal */}
+      {showQuickCreateItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl">
+            <div className="p-5 border-b flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Create New Item</h3>
+              <button onClick={() => setShowQuickCreateItem(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">SAS Part Number *</label>
+                  <input className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.code}
+                    onChange={e => setQuickCreateItemForm(f => ({ ...f, code: e.target.value }))} placeholder="e.g. RM-001" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Item Name *</label>
+                  <input className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.name}
+                    onChange={e => setQuickCreateItemForm(f => ({ ...f, name: e.target.value }))} placeholder="Item description" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Category *</label>
+                  <select className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.category}
+                    onChange={e => setQuickCreateItemForm(f => ({ ...f, category: e.target.value }))}>
+                    {ITEM_CATEGORY_OPTIONS.map((category) => (
+                      <option key={category.value} value={category.value}>{category.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">UOM *</label>
+                  <input className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.uom}
+                    onChange={e => setQuickCreateItemForm(f => ({ ...f, uom: e.target.value }))} placeholder="e.g. NOS, KG, MTR" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">HSN Code</label>
+                  <input className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.hsn_code}
+                    onChange={e => setQuickCreateItemForm(f => ({ ...f, hsn_code: e.target.value }))} placeholder="4, 6 or 8 digits" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Reorder Level</label>
+                  <input type="number" className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.reorder_level}
+                    onChange={e => setQuickCreateItemForm(f => ({ ...f, reorder_level: e.target.value }))} placeholder="Min stock level" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Description</label>
+                  <input className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.description}
+                    onChange={e => setQuickCreateItemForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional description" />
+                </div>
+              </div>
+            </div>
+            <div className="p-5 border-t flex justify-end gap-3">
+              <button onClick={() => setShowQuickCreateItem(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
+              <button onClick={handleQuickCreateItem} disabled={quickCreateItemSaving}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 disabled:opacity-50">
+                {quickCreateItemSaving ? 'Saving...' : 'Create Item'}
+              </button>
             </div>
           </div>
         </div>
@@ -2497,7 +3429,11 @@ function PurchaseOrdersContent() {
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">PO Number</p>
-                  <p className="font-semibold text-lg">{selectedPO.po_number}</p>
+                  <p className="font-semibold text-lg">
+                  {selectedPO.po_number?.startsWith('DRAFT-')
+                    ? <span className="italic text-gray-400">Not assigned (Draft)</span>
+                    : selectedPO.po_number}
+                </p>
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">PR Reference</p>
@@ -2531,7 +3467,21 @@ function PurchaseOrdersContent() {
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Vendor</p>
                   <p className="font-semibold">{(selectedPO as any)?.vendor?.name || (selectedPO as any)?.vendor_name || '-'}</p>
-                  <p className="text-sm text-gray-500">{(selectedPO as any)?.vendor?.contact_person || (selectedPO as any)?.vendor_contact_person || ''}</p>
+                  {((selectedPO as any)?.vendor?.contact_person || (selectedPO as any)?.vendor_contact_person) && (
+                    <p className="text-sm text-gray-500">{(selectedPO as any)?.vendor?.contact_person || (selectedPO as any)?.vendor_contact_person}</p>
+                  )}
+                  {((selectedPO as any)?.vendor?.billing_line2 || (selectedPO as any)?.vendor?.metadata?.billingLine2) && (
+                    <p className="text-sm text-gray-500">{(selectedPO as any)?.vendor?.billing_line2 || (selectedPO as any)?.vendor?.metadata?.billingLine2}</p>
+                  )}
+                  {((selectedPO as any)?.vendor?.street || (selectedPO as any)?.vendor?.address) && (
+                    <p className="text-sm text-gray-500">{(selectedPO as any)?.vendor?.street || (selectedPO as any)?.vendor?.address}</p>
+                  )}
+                  {((selectedPO as any)?.vendor?.city || (selectedPO as any)?.vendor?.state || (selectedPO as any)?.vendor?.pincode) && (
+                    <p className="text-sm text-gray-500">{[(selectedPO as any)?.vendor?.city, (selectedPO as any)?.vendor?.state, (selectedPO as any)?.vendor?.pincode].filter(Boolean).join(', ')}</p>
+                  )}
+                  {(selectedPO as any)?.vendor?.tax_id && (
+                    <p className="text-sm text-gray-500">GSTIN: {(selectedPO as any)?.vendor?.tax_id}</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Order Date</p>
@@ -2543,9 +3493,15 @@ function PurchaseOrdersContent() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Total Amount</p>
-                  <p className="font-semibold text-lg">₹{selectedPO.total_amount?.toLocaleString() || 0}</p>
+                  <p className="font-semibold text-lg">₹{fmtINR(selectedPO.total_amount)}</p>
                 </div>
               </div>
+              {(selectedPO as any).delivery_address && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Delivery Address</p>
+                  <p className="font-semibold whitespace-pre-line">{(selectedPO as any).delivery_address}</p>
+                </div>
+              )}
 
               {/* Items Table */}
               <div>
@@ -2617,7 +3573,7 @@ function PurchaseOrdersContent() {
                             <td className="px-4 py-2 text-right">{item.quantity || item.ordered_qty || 0}</td>
                             <td className="px-4 py-2 text-center text-sm">{resolveUomFromPOLine(item) || '-'}</td>
                             <td className="px-4 py-2 text-right">
-                              <div>₹{(item.rate || 0).toLocaleString()}</div>
+                              <div>₹{fmtINR(item.rate)}</div>
                               {(() => {
                                 const vendorId = resolveVendorIdFromPO(selectedPO);
                                 const itemId = resolveItemIdFromPOLine(item);
@@ -2629,19 +3585,19 @@ function PurchaseOrdersContent() {
 
                                 const key = `${itemId}-${vendorId}`;
                                 const history = priceHistory[key];
-                                if (!history) return <div className="mt-0.5 ml-auto max-w-[160px] break-words text-[11px] leading-tight text-gray-500">Last: Loading...</div>;
+                                if (!history || history.length === 0) return <div className="mt-0.5 ml-auto max-w-[160px] break-words text-[11px] leading-tight text-gray-400 italic">No previous prices available</div>;
                                 const last = history?.[0];
-                                if (!last) return <div className="mt-0.5 ml-auto max-w-[160px] break-words text-[11px] leading-tight text-gray-500">Last purchase price not available</div>;
+                                if (!last) return <div className="mt-0.5 ml-auto max-w-[160px] break-words text-[11px] leading-tight text-gray-400 italic">No previous prices available</div>;
                                 return (
                                   <div className="mt-0.5 ml-auto max-w-[160px] break-words text-[11px] leading-tight text-gray-600">
-                                    Last: <span className="font-medium text-gray-800">₹{Number(last.unit_price || 0).toFixed(2)}</span>
+                                    Last: <span className="font-medium text-gray-800">₹{fmtINR(last.unit_price)}</span>
                                   </div>
                                 );
                               })()}
                             </td>
                             <td className="px-4 py-2 text-sm text-gray-700">{item.payment_terms || (item as any).paymentTerms || '-'}</td>
                             <td className="px-4 py-2 text-sm text-gray-700">{item.delivery_terms || (item as any).deliveryTerms || '-'}</td>
-                            <td className="px-4 py-2 text-right font-medium">₹{(item.amount || 0).toLocaleString()}</td>
+                            <td className="px-4 py-2 text-right font-medium">₹{fmtINR(item.amount)}</td>
                           </tr>
                         ))
                       ) : (
@@ -2719,12 +3675,79 @@ function PurchaseOrdersContent() {
                   <p className="text-gray-800">{selectedPO.remarks}</p>
                 </div>
               )}
+
+              {/* Procurement Trail (PR-route POs) */}
+              {(selectedPO as any).pr && (
+                <div className="border-t pt-4">
+                  <h3 className="text-lg font-semibold mb-3">Procurement Trail</h3>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-blue-700">Purchase Requisition</span>
+                      <span className="font-semibold text-blue-900">{(selectedPO as any).pr.pr_number}</span>
+                    </div>
+                    {(selectedPO as any).rfq_trail && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-semibold uppercase tracking-wide text-blue-700">RFQ Reference</span>
+                          <span className="font-semibold text-blue-900">{(selectedPO as any).rfq_trail.rfq_number}</span>
+                          <span className={`px-2 py-0.5 text-xs font-semibold rounded ${
+                            (selectedPO as any).rfq_trail.status === 'RESPONDED' ? 'bg-green-100 text-green-800' :
+                            (selectedPO as any).rfq_trail.status === 'SENT' ? 'bg-blue-100 text-blue-800' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>{(selectedPO as any).rfq_trail.status}</span>
+                        </div>
+                        {(selectedPO as any).rfq_trail.response_attachments?.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 mb-1">Vendor Quotation(s)</p>
+                            <div className="flex flex-wrap gap-2">
+                              {(selectedPO as any).rfq_trail.response_attachments.map((att: any, i: number) => (
+                                <a
+                                  key={i}
+                                  href={att.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-300 rounded text-sm text-blue-800 hover:bg-blue-100 max-w-xs truncate"
+                                  title={att.name}
+                                >
+                                  📄 {att.name || 'Quotation'}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* PO Documents / Attachments */}
+              {Array.isArray((selectedPO as any).attachments) && (selectedPO as any).attachments.length > 0 && (
+                <div className="border-t pt-4">
+                  <h3 className="text-lg font-semibold mb-3">Documents / Attachments</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {(selectedPO as any).attachments.map((att: any, i: number) => (
+                      <a
+                        key={i}
+                        href={att.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-300 rounded-lg text-sm text-gray-800 hover:bg-gray-100 max-w-xs truncate"
+                        title={att.name}
+                      >
+                        📎 {att.name || 'Document'}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="p-6 border-t border-gray-200 flex justify-between">
               <div className="flex gap-3">
                 {selectedPO.status === 'DRAFT' && (
                   <>
+                    {canEditPO && (
                     <button
                       onClick={() => {
                         setShowViewModal(false);
@@ -2734,6 +3757,37 @@ function PurchaseOrdersContent() {
                     >
                       Edit
                     </button>
+                    )}
+                    <button
+                      onClick={async () => {
+                        try {
+                          const token = localStorage.getItem('accessToken');
+                          const response = await fetch(`/api/v1/purchase/orders/${selectedPO.id}/status`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ status: 'PENDING' }),
+                          });
+                          if (response.ok) {
+                            setAlertMessage({ type: 'success', message: 'Purchase Order sent for approval!' });
+                            setShowViewModal(false);
+                            fetchOrders();
+                          } else {
+                            const err = await response.json();
+                            setAlertMessage({ type: 'error', message: `Failed: ${err.message || 'Unknown error'}` });
+                          }
+                        } catch {
+                          setAlertMessage({ type: 'error', message: 'Error sending for approval' });
+                        }
+                      }}
+                      className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+                    >
+                      Send for Approval
+                    </button>
+                  </>
+                )}
+
+                {selectedPO.status === 'PENDING' && canApprovePO && (
+                  <>
                     <button
                       onClick={async () => {
                         try {
@@ -2791,22 +3845,22 @@ function PurchaseOrdersContent() {
                   </>
                 )}
 
-                {selectedPO.status !== 'DRAFT' && (
+                {(selectedPO.status === 'APPROVED' || selectedPO.status === 'SENT' || selectedPO.status === 'ACKNOWLEDGED' || selectedPO.status === 'PARTIAL' || selectedPO.status === 'COMPLETED') && (
                   <>
                     <button
-                      onClick={() => handleDownloadPDF(selectedPO.id)}
+                      onClick={() => handleDownloadPDF(selectedPO.id, selectedPO.po_number)}
                       className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
                     >
                       Download PDF
                     </button>
                     <button
-                      onClick={() => handleViewPDF(selectedPO.id)}
+                      onClick={() => handleViewPDF(selectedPO.id, selectedPO.po_number)}
                       className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
                     >
                       View PDF
                     </button>
                     <button
-                      onClick={() => handlePrintPDF(selectedPO.id)}
+                      onClick={() => handlePrintPDF(selectedPO.id, selectedPO.po_number)}
                       className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                     >
                       Print PDF
@@ -3045,7 +4099,7 @@ function PurchaseOrdersContent() {
             <p className="font-semibold">PO #{data.po_number}</p>
             <p className="text-xs text-gray-600">Vendor: {data.vendor?.name}</p>
             <p className="text-xs text-gray-600">Items: {data.purchase_order_items?.length || 0}</p>
-            <p className="text-xs text-gray-600">Total: ₹{data.total_amount?.toLocaleString()}</p>
+            <p className="text-xs text-gray-600">Total: ₹{fmtINR(data.total_amount)}</p>
             <p className="text-xs text-gray-600">Date: {new Date(data.po_date).toLocaleDateString()}</p>
           </div>
         )}

@@ -914,16 +914,17 @@ export class BomService {
       .from('purchase_requisitions')
       .select('pr_number')
       .eq('tenant_id', tenantId)
-      .like('pr_number', `${prefix}%`)
-      .order('pr_number', { ascending: false })
-      .limit(1)
-      .single();
+      .like('pr_number', 'PR-%');
 
-    if (!data) {
-      return `${prefix}-001`;
+    let maxSeq = 0;
+    for (const row of (data || [])) {
+      const match = /^PR-\d{4}-\d{2}-(\d+)$/.exec(row.pr_number || '');
+      if (match) {
+        const seq = parseInt(match[1], 10);
+        if (seq > maxSeq) maxSeq = seq;
+      }
     }
 
-    const lastNumber = parseInt(data.pr_number.split('-').pop() || '0');
-    return `${prefix}-${String(lastNumber + 1).padStart(3, '0')}`;
+    return `${prefix}-${String(maxSeq + 1).padStart(3, '0')}`;
   }
 }

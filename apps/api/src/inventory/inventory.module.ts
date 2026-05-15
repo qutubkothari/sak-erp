@@ -3,9 +3,10 @@ import { InventoryService } from './services/inventory.service';
 import { InventoryController } from './controllers/inventory.controller';
 import { ItemsModule } from '../items/items.module';
 import { EmailModule } from '../email/email.module';
+import { UidModule } from '../uid/uid.module';
 
 @Module({
-  imports: [ItemsModule, EmailModule],
+  imports: [ItemsModule, EmailModule, UidModule],
   providers: [InventoryService],
   controllers: [InventoryController],
   exports: [InventoryService],

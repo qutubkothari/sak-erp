@@ -43,6 +43,7 @@ export const SCREEN_DEFINITIONS: ScreenDefinition[] = [
   { key: 'sales-overview', label: 'Sales', module: 'Sales Management', route: '/dashboard/sales', match: 'exact' },
   { key: 'inventory-overview', label: 'Inventory Overview', module: 'Inventory', route: '/dashboard/inventory', match: 'exact' },
   { key: 'inventory-items', label: 'Stock Master', module: 'Inventory', route: '/dashboard/inventory/items', match: 'exact' },
+  { key: 'inventory-stock-adjustments', label: 'Stock Adjustments', module: 'Inventory', route: '/dashboard/inventory/stock-adjustments', match: 'exact' },
   { key: 'inventory-siv', label: 'SIV', module: 'Inventory', route: '/dashboard/inventory/siv', match: 'exact' },
   { key: 'inventory-srv', label: 'SRV', module: 'Inventory', route: '/dashboard/inventory/srv', match: 'exact' },
   { key: 'inventory-store-vouchers', label: 'Store Vouchers', module: 'Inventory', route: '/dashboard/inventory/store-vouchers', match: 'exact' },
@@ -63,6 +64,7 @@ export const SCREEN_DEFINITIONS: ScreenDefinition[] = [
   { key: 'bom-routing', label: 'BOM Routing', module: 'BOM & Engineering', route: '/dashboard/bom/', match: 'prefix' },
   { key: 'documents-overview', label: 'Documents', module: 'Documents', route: '/dashboard/documents', match: 'exact' },
   { key: 'settings-overview', label: 'Settings', module: 'Settings', route: '/dashboard/settings', match: 'exact' },
+  { key: 'audit-trails', label: 'Audit Trails', module: 'Settings', route: '/dashboard/audit-trails', match: 'exact' },
   { key: 'debug-tools', label: 'Debug', module: 'Settings', route: '/dashboard/debug', match: 'exact' },
   { key: 'manager-dashboard', label: 'Manager Dashboard', module: 'Reports', route: '/dashboard/manager', match: 'exact' },
 ] as const;

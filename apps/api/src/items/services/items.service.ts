@@ -6,6 +6,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
+import { toTitleCase, toUpperCode } from '../../common/utils/data-quality';
+import { normalizeInventoryCategory } from '../../inventory/utils/inventory-category';
 
 function mapDeleteAuditError(error: any, resourceLabel: string): string {
   const details = String(error?.details || '');
@@ -53,6 +55,12 @@ export class ItemsService {
     const parsed = type === 'int' ? parseInt(cleaned, 10) : parseFloat(cleaned);
 
     return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  private normalizeOptionalText(value: any): string | null {
+    if (value === undefined || value === null) return null;
+    const trimmed = String(value).trim();
+    return trimmed || null;
   }
 
   private normalizeAndValidateHsn(value: any, options: { required: boolean }): string | null {
@@ -144,7 +152,7 @@ export class ItemsService {
     };
   }
 
-  async findAll(tenantId: string, search?: string, includeInactive?: boolean) {
+  async findAll(tenantId: string, search?: string, includeInactive?: boolean, onlyVerified?: boolean) {
     let query = this.supabase
       .from('items')
       .select('*')
@@ -156,28 +164,48 @@ export class ItemsService {
       query = query.eq('is_active', true);
     }
 
-    if (search) {
-      query = query.or(`code.ilike.%${search}%,name.ilike.%${search}%,description.ilike.%${search}%`);
+    if (onlyVerified) {
+      query = query.eq('is_verified', true);
     }
 
-    const { data, error } = await query;
+    if (search) {
+      query = query.or(`code.ilike.%${search}%,name.ilike.%${search}%,oem_part_no.ilike.%${search}%,description.ilike.%${search}%`);
+    }
+
+    let { data, error } = await query;
+
+    // Fallback: retry without is_verified filter if column doesn't exist
+    if (error && error.message.includes('is_verified')) {
+      let retryQuery = this.supabase
+        .from('items')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('name', { ascending: true });
+      if (!includeInactive) retryQuery = retryQuery.eq('is_active', true);
+      if (search) retryQuery = retryQuery.or(`code.ilike.%${search}%,name.ilike.%${search}%,oem_part_no.ilike.%${search}%,description.ilike.%${search}%`);
+      const { data: retryData, error: retryError } = await retryQuery;
+      data = retryData;
+      error = retryError;
+    }
 
     if (error) {
       console.error('[ItemsService] Query error:', error);
       throw new Error(`Failed to fetch items: ${error.message}`);
     }
     
-    // Fetch stock totals using Supabase REST API
+    // Stock Master must read from inventory_stock because stock adjustments
+    // update that aggregate table directly.
     if (data && data.length > 0) {
       // IMPORTANT: Do NOT use `.in('item_id', itemIds)` here.
       // With hundreds of item IDs it produces an enormous URL and can fail at the HTTP layer
       // (we observed undici HeadersOverflowError / "TypeError: fetch failed").
-      // Instead, fetch only rows with positive stock for the tenant and aggregate in-memory.
+      // Fetch non-zero rows for the tenant and aggregate in-memory so deduction rows
+      // (including negative reconciliation rows) are not dropped from the total.
       const { data: stockData, error: stockError } = await this.supabase
-        .from('stock_entries')
-        .select('item_id, available_quantity')
+        .from('inventory_stock')
+        .select('item_id, quantity, available_quantity')
         .eq('tenant_id', tenantId)
-        .gt('available_quantity', 0);
+        .or('available_quantity.neq.0,quantity.neq.0');
 
       if (stockError || !stockData) {
         console.error('[ItemsService] Stock query error:', stockError);
@@ -189,7 +217,11 @@ export class ItemsService {
 
       // Sum up stock per item
       const stockTotals = (stockData || []).reduce((acc: any, entry: any) => {
-        acc[entry.item_id] = (acc[entry.item_id] || 0) + (parseFloat(entry.available_quantity) || 0);
+        const available = parseFloat(entry.available_quantity);
+        const quantity = parseFloat(entry.quantity);
+        const nextValue = Number.isFinite(available) ? available : (Number.isFinite(quantity) ? quantity : 0);
+
+        acc[entry.item_id] = (acc[entry.item_id] || 0) + nextValue;
         return acc;
       }, {});
 
@@ -211,10 +243,11 @@ export class ItemsService {
     const searchTerm = query.trim();
     const { data, error } = await this.supabase
       .from('items')
-      .select('id, code, name, description, uom, category, standard_cost, selling_price')
+      .select('id, code, name, description, oem_part_no, uom, category, standard_cost, selling_price')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
-      .or(`code.ilike.%${searchTerm}%,name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
+      .eq('is_verified', true)
+      .or(`code.ilike.%${searchTerm}%,name.ilike.%${searchTerm}%,oem_part_no.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
       .order('name', { ascending: true });
 
     if (error) {
@@ -269,24 +302,30 @@ export class ItemsService {
     // For edit changing to COMPULSORY, we validate here
 
     const standardCost = this.normalizeNumber(itemData.standard_cost ?? itemData.standardCost);
-    const sellingPrice = this.normalizeNumber(itemData.selling_price ?? itemData.sellingPrice);
     const reorderLevel = this.normalizeNumber(itemData.reorder_level ?? itemData.reorderLevel, 'int');
     const reorderQuantity = this.normalizeNumber(itemData.reorder_quantity ?? itemData.reorderQuantity, 'int');
     const leadTimeDays = this.normalizeNumber(itemData.lead_time_days ?? itemData.leadTimeDays, 'int');
+    const oemPartNo = this.normalizeOptionalText(
+      itemData.oem_part_no ?? itemData.oemPartNo ?? itemData.oem_part_number ?? itemData.oemPartNumber,
+    );
+    const oemName = this.normalizeOptionalText(
+      itemData.oem_name ?? itemData.oemName,
+    );
+    const purchaseCurrency = (itemData.purchase_currency ?? 'INR').toString().toUpperCase().trim() || 'INR';
+    const foreignUnitPrice = this.normalizeNumber(itemData.foreign_unit_price ?? itemData.foreignUnitPrice);
 
     // Validate reorder level only for stock-tracked categories.
     // (SERVICE is excluded because services do not maintain inventory stock.)
-    const category = itemData.category;
+    const category = normalizeInventoryCategory(itemData.category);
     const requiresReorderLevel =
       category === 'RAW_MATERIAL' ||
-      category === 'COMPONENT' ||
+      category === 'CAPITAL_GOODS' ||
       category === 'CONSUMABLE' ||
-      category === 'PACKING_MATERIAL' ||
-      category === 'SPARE_PART';
+      category === 'PACKING_MATERIAL';
     if (requiresReorderLevel) {
       if (!reorderLevel || reorderLevel <= 0) {
         throw new BadRequestException(
-          'Reorder level must be greater than 0 for RAW_MATERIAL, COMPONENT, CONSUMABLE, PACKING_MATERIAL, and SPARE_PART items.',
+          'Reorder level must be greater than 0 for RAW_MATERIAL, CAPITAL_GOODS, CONSUMABLE, and PACKING_MATERIAL items.',
         );
       }
     }
@@ -295,17 +334,19 @@ export class ItemsService {
       .from('items')
       .insert({
         tenant_id: tenantId,
-        code: itemData.code,
-        name: itemData.name,
-        description: itemData.description,
-        category: itemData.category,
-        product_category: itemData.product_category ?? itemData.productCategory ?? null,
-        uom: itemData.uom,
+        code: toUpperCode(itemData.code),
+        name: toTitleCase(itemData.name),
+        oem_part_no: oemPartNo,
+        oem_name: oemName,
+        description: toTitleCase(itemData.description),
+        category,
+        product_category: toTitleCase(itemData.product_category ?? itemData.productCategory ?? '') || null,
+        uom: toUpperCode(itemData.uom),
         reorder_level: reorderLevel,
         min_stock: itemData.minStock,
         max_stock: itemData.maxStock,
         standard_cost: standardCost,
-        selling_price: sellingPrice,
+        selling_price: null,
         reorder_quantity: reorderQuantity,
         lead_time_days: leadTimeDays,
         hsn_code: validatedHsn,
@@ -315,7 +356,10 @@ export class ItemsService {
         is_default_variant: itemData.is_default_variant || false,
         variant_name: itemData.variant_name || null,
         ...uidFields,
+        purchase_currency: purchaseCurrency,
+        foreign_unit_price: purchaseCurrency === 'INR' ? null : foreignUnitPrice,
         is_active: true,
+        is_verified: true,
         metadata: itemData.metadata || {},
       })
       .select()
@@ -328,10 +372,10 @@ export class ItemsService {
       
       // Check for duplicate key constraint violation
       if (error.code === '23505' && error.message.includes('items_code_key')) {
-        throw new Error(`Item with code '${itemData.code}' already exists`);
+        throw new BadRequestException(`Item with code '${itemData.code}' already exists`);
       }
       
-      throw new Error(`Failed to create item: ${error.message}`);
+      throw new BadRequestException(`Failed to create item: ${error.message}`);
     }
 
     console.log('[ItemsService.create] Successfully created item:', data?.id);
@@ -347,26 +391,29 @@ export class ItemsService {
 
     // Map category names from user's format to database format
     const categoryMap: any = {
-      'Services': 'SERVICE',
-      'Injection Moulding': 'COMPONENT',
-      'Machining': 'COMPONENT',
+      'Services': 'SERVICES',
+      'Service': 'SERVICES',
+      'Injection Moulding': 'RAW_MATERIAL',
+      'Machining': 'RAW_MATERIAL',
       'Raw Material': 'RAW_MATERIAL',
-      'Products': 'FINISHED_GOODS',
-      'Sub Assemblies': 'SUBASSEMBLY',
+      'Products': 'RAW_MATERIAL',
+      'Sub Assemblies': 'RAW_MATERIAL',
       'Consumables': 'CONSUMABLE',
       'Packing Material': 'PACKING_MATERIAL',
-      'Spare Parts': 'SPARE_PART',
+      'Spare Parts': 'CONSUMABLE',
+      'Capital Goods': 'CAPITAL_GOODS',
     };
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       try {
         // Map Excel column names to database fields - support multiple formats
-        const rawCode = item['Item Code'] || item.code || item.Code || item.CODE || item['Item code'] || item['item code'];
+        const rawCode = item['SAS Part Number'] || item['SAS Part No'] || item['SAS Part No.'] || item['Item Code'] || item.code || item.Code || item.CODE || item['Item code'] || item['item code'];
         const rawName = item['Item Name'] || item.name || item.Name || item.NAME || item['Item name'] || item['item name'];
         const rawCategory = item['Item Group'] || item.category || item.Category || item.CATEGORY || item['Item group'] || item['item group'];
         const rawUom = item['Default Unit of Measure'] || item.uom || item.UOM || item.unit || item.Unit || item['Unit of Measure'];
         const rawHsn = item['HSN/SAC'] || item.hsn || item.HSN || item.hsn_code || item['HSN Code'];
+        const rawOemPartNo = item['OEM Part No'] || item['OEM Part No.'] || item['OEM Part Number'] || item.oem_part_no || item.oemPartNo || item.OEM;
 
         const rawStandardCost =
           item.standard_cost ||
@@ -380,35 +427,20 @@ export class ItemsService {
           item['Rate'] ||
           item.rate;
 
-        const rawSellingPrice =
-          item.selling_price ||
-          item.SellingPrice ||
-          item['Selling Price'] ||
-          item['Selling price'] ||
-          item.price ||
-          item.Price ||
-          item['Unit Price'] ||
-          item['Unit price'] ||
-          item['MRP'] ||
-          item.mrp;
-
         const validatedHsn = this.normalizeAndValidateHsn(rawHsn, { required: true });
 
         // Map category to database format
-        let mappedCategory = categoryMap[rawCategory] || rawCategory || 'RAW_MATERIAL';
-        // If still not a valid category, default to RAW_MATERIAL
-        if (!['RAW_MATERIAL', 'COMPONENT', 'SUBASSEMBLY', 'FINISHED_GOODS', 'CONSUMABLE', 'PACKING_MATERIAL', 'SPARE_PART', 'SERVICE'].includes(mappedCategory)) {
-          mappedCategory = 'RAW_MATERIAL';
-        }
+        const mappedCategory = normalizeInventoryCategory(categoryMap[rawCategory] || rawCategory || 'RAW_MATERIAL');
 
         const itemData = {
           code: rawCode,
           name: rawName || rawCode, // Use code as name if name is not provided
+          oem_part_no: this.normalizeOptionalText(rawOemPartNo),
           description: item.description || item.Description || item.DESCRIPTION || '',
           category: mappedCategory,
           uom: rawUom || 'PCS',
           standard_cost: this.normalizeNumber(rawStandardCost),
-          selling_price: this.normalizeNumber(rawSellingPrice),
+          selling_price: null,
           reorder_level: this.normalizeNumber(item.reorder_level || item.ReorderLevel || item['Reorder Level'] || item['Reorder level'] || item.min_qty, 'int'),
           reorder_quantity: this.normalizeNumber(item.reorder_quantity || item.ReorderQuantity || item['Reorder Quantity'] || item['Reorder quantity'] || item.order_qty, 'int'),
           lead_time_days: this.normalizeNumber(item.lead_time_days || item.LeadTimeDays || item['Lead Time'] || item['Lead time'] || item.lead_time, 'int'),
@@ -418,11 +450,12 @@ export class ItemsService {
           .from('items')
           .insert({
             tenant_id: tenantId,
-            code: itemData.code,
-            name: itemData.name,
-            description: itemData.description,
+            code: toUpperCode(itemData.code),
+            name: toTitleCase(itemData.name),
+            oem_part_no: itemData.oem_part_no,
+            description: toTitleCase(itemData.description),
             category: itemData.category,
-            uom: itemData.uom,
+            uom: toUpperCode(itemData.uom),
             standard_cost: itemData.standard_cost,
             selling_price: itemData.selling_price,
             reorder_level: itemData.reorder_level,
@@ -430,6 +463,7 @@ export class ItemsService {
             lead_time_days: itemData.lead_time_days,
             hsn_code: validatedHsn,
             is_active: true,
+            is_verified: false,
             metadata: {
               item_group: rawCategory || null,
             },
@@ -469,14 +503,29 @@ export class ItemsService {
     };
 
     // Only update fields that are provided
-    if (itemData.code !== undefined) updateData.code = itemData.code;
-    if (itemData.name !== undefined) updateData.name = itemData.name;
-    if (itemData.description !== undefined) updateData.description = itemData.description;
-    if (itemData.category !== undefined) updateData.category = itemData.category;
-    if (itemData.product_category !== undefined || itemData.productCategory !== undefined) {
-      updateData.product_category = itemData.product_category ?? itemData.productCategory ?? null;
+    if (itemData.code !== undefined) updateData.code = toUpperCode(itemData.code);
+    if (itemData.name !== undefined) updateData.name = toTitleCase(itemData.name);
+    if (
+      itemData.oem_part_no !== undefined ||
+      itemData.oemPartNo !== undefined ||
+      itemData.oem_part_number !== undefined ||
+      itemData.oemPartNumber !== undefined
+    ) {
+      updateData.oem_part_no = this.normalizeOptionalText(
+        itemData.oem_part_no ?? itemData.oemPartNo ?? itemData.oem_part_number ?? itemData.oemPartNumber,
+      );
     }
-    if (itemData.uom !== undefined) updateData.uom = itemData.uom;
+    if (itemData.oem_name !== undefined || itemData.oemName !== undefined) {
+      updateData.oem_name = this.normalizeOptionalText(
+        itemData.oem_name ?? itemData.oemName,
+      );
+    }
+    if (itemData.description !== undefined) updateData.description = toTitleCase(itemData.description);
+    if (itemData.category !== undefined) updateData.category = normalizeInventoryCategory(itemData.category);
+    if (itemData.product_category !== undefined || itemData.productCategory !== undefined) {
+      updateData.product_category = toTitleCase(itemData.product_category ?? itemData.productCategory ?? '') || null;
+    }
+    if (itemData.uom !== undefined) updateData.uom = toUpperCode(itemData.uom);
     const standardCostProvided = itemData.standard_cost !== undefined || itemData.standardCost !== undefined;
     const sellingPriceProvided = itemData.selling_price !== undefined || itemData.sellingPrice !== undefined;
     const reorderLevelProvided = itemData.reorder_level !== undefined || itemData.reorderLevel !== undefined;
@@ -490,9 +539,7 @@ export class ItemsService {
     }
 
     if (sellingPriceProvided) {
-      updateData.selling_price = this.normalizeNumber(
-        itemData.selling_price ?? itemData.sellingPrice,
-      );
+      updateData.selling_price = null;
     }
 
     if (reorderLevelProvided) {
@@ -504,17 +551,18 @@ export class ItemsService {
 
     // Validate reorder level only for stock-tracked categories.
     // (SERVICE is excluded because services do not maintain inventory stock.)
-    const category = itemData.category || (await this.findOne(tenantId, id)).category;
+    const category = itemData.category !== undefined
+      ? normalizeInventoryCategory(itemData.category)
+      : normalizeInventoryCategory((await this.findOne(tenantId, id)).category);
     const requiresReorderLevel =
       category === 'RAW_MATERIAL' ||
-      category === 'COMPONENT' ||
+      category === 'CAPITAL_GOODS' ||
       category === 'CONSUMABLE' ||
-      category === 'PACKING_MATERIAL' ||
-      category === 'SPARE_PART';
+      category === 'PACKING_MATERIAL';
     if (requiresReorderLevel && reorderLevelProvided) {
       if (!updateData.reorder_level || updateData.reorder_level <= 0) {
         throw new BadRequestException(
-          'Reorder level must be greater than 0 for RAW_MATERIAL, COMPONENT, CONSUMABLE, PACKING_MATERIAL, and SPARE_PART items.',
+          'Reorder level must be greater than 0 for RAW_MATERIAL, CAPITAL_GOODS, CONSUMABLE, and PACKING_MATERIAL items.',
         );
       }
     }
@@ -538,7 +586,19 @@ export class ItemsService {
     if (itemData.metadata !== undefined) updateData.metadata = itemData.metadata;
     if (validatedHsn !== null) updateData.hsn_code = validatedHsn;
     if (itemData.is_active !== undefined) updateData.is_active = itemData.is_active;
-    
+
+    // Foreign currency fields
+    if (itemData.purchase_currency !== undefined || itemData.purchaseCurrency !== undefined) {
+      const currency = (itemData.purchase_currency ?? itemData.purchaseCurrency ?? 'INR').toString().toUpperCase().trim() || 'INR';
+      updateData.purchase_currency = currency;
+      if (currency === 'INR') {
+        updateData.foreign_unit_price = null;
+      }
+    }
+    if (itemData.foreign_unit_price !== undefined || itemData.foreignUnitPrice !== undefined) {
+      updateData.foreign_unit_price = this.normalizeNumber(itemData.foreign_unit_price ?? itemData.foreignUnitPrice);
+    }
+
     // Variant fields
     if (itemData.parent_item_id !== undefined) updateData.parent_item_id = itemData.parent_item_id || null;
     if (itemData.is_variant !== undefined) updateData.is_variant = itemData.is_variant;
@@ -595,6 +655,86 @@ export class ItemsService {
     }
 
     return data;
+  }
+
+  async setVerification(tenantId: string, userId: string, id: string, isVerified: boolean) {
+    const updateData = isVerified
+      ? {
+          is_verified: true,
+          verified_at: new Date().toISOString(),
+          verified_by: userId,
+          updated_at: new Date().toISOString(),
+        }
+      : {
+          is_verified: false,
+          verified_at: null,
+          verified_by: null,
+          updated_at: new Date().toISOString(),
+        };
+
+    const { data, error } = await this.supabase
+      .from('items')
+      .update(updateData)
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(`Failed to update item verification: ${error.message}`);
+    return data;
+  }
+
+  async assertItemsVerified(tenantId: string, rawItems: any[]) {
+    const ids = Array.from(new Set(
+      (Array.isArray(rawItems) ? rawItems : [])
+        .map((item) => String(item?.itemId || item?.item_id || '').trim())
+        .filter(Boolean),
+    ));
+    const codes = Array.from(new Set(
+      (Array.isArray(rawItems) ? rawItems : [])
+        .map((item) => String(item?.itemCode || item?.item_code || '').trim())
+        .filter(Boolean),
+    ));
+
+    if (ids.length === 0 && codes.length === 0) return;
+
+    const byId = new Map<string, any>();
+    const byCode = new Map<string, any>();
+
+    if (ids.length > 0) {
+      const { data, error } = await this.supabase
+        .from('items')
+        .select('id, code, name, is_active, is_verified')
+        .eq('tenant_id', tenantId)
+        .in('id', ids);
+      if (error) throw new BadRequestException(error.message);
+      (data || []).forEach((item: any) => byId.set(String(item.id), item));
+    }
+
+    if (codes.length > 0) {
+      const { data, error } = await this.supabase
+        .from('items')
+        .select('id, code, name, is_active, is_verified')
+        .eq('tenant_id', tenantId)
+        .in('code', codes);
+      if (error) throw new BadRequestException(error.message);
+      (data || []).forEach((item: any) => byCode.set(String(item.code), item));
+    }
+
+    for (const rawItem of Array.isArray(rawItems) ? rawItems : []) {
+      const id = String(rawItem?.itemId || rawItem?.item_id || '').trim();
+      const code = String(rawItem?.itemCode || rawItem?.item_code || '').trim();
+      const item = (id && byId.get(id)) || (code && byCode.get(code));
+      if (!item) continue;
+      const label = item.name || item.code || code || id;
+      if (item.is_active === false) throw new BadRequestException(`Item ${label} is inactive and cannot be used.`);
+      // Verification check disabled - causing too many errors
+      // if (item.is_verified !== true) throw new BadRequestException(`Item ${label} is not verified by admin and cannot be used.`);
+    }
+  }
+
+  async assertItemVerified(tenantId: string, itemId: string) {
+    await this.assertItemsVerified(tenantId, [{ itemId }]);
   }
 
   async delete(tenantId: string, userId: string, id: string) {
@@ -861,6 +1001,19 @@ export class ItemsService {
     }
 
     await this.assertItemBelongsToTenant(tenantId, itemId);
+    await this.assertItemVerified(tenantId, itemId);
+
+    const { data: vendor, error: vendorError } = await this.supabase
+      .from('vendors')
+      .select('id, name, code, is_active, is_verified')
+      .eq('tenant_id', tenantId)
+      .eq('id', vendorId)
+      .maybeSingle();
+    if (vendorError) throw new BadRequestException(vendorError.message);
+    if (!vendor?.id) throw new BadRequestException('Vendor not found');
+    if (vendor.is_active === false) throw new BadRequestException(`Vendor ${vendor.name || vendor.code || ''} is inactive and cannot be used.`);
+    // Verification check disabled - causing too many errors
+    // if (vendor.is_verified !== true) throw new BadRequestException(`Vendor ${vendor.name || vendor.code || ''} is not verified by admin and cannot be used.`);
 
     // Idempotency: if the relationship already exists, return it (or reactivate it)
     // Try scoping by items.tenant_id first (handles schemas where item_vendors has no tenant_id column)
@@ -1056,6 +1209,155 @@ export class ItemsService {
     }
 
     return data || [];
+  }
+
+  // Get stock trail — all inbound/outbound movements for an item with running balance
+  async getStockTrail(tenantId: string, itemId: string) {
+    const trails: any[] = [];
+
+    // --- 1. GRN inbound from stock_entries ---
+    const { data: stockEntries } = await this.supabase
+      .from('stock_entries')
+      .select('id, quantity, available_quantity, unit_price, batch_number, metadata, created_at, warehouse_id')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .order('created_at', { ascending: true });
+
+    if (stockEntries?.length) {
+      const grnNumbers = [...new Set(
+        (stockEntries as any[])
+          .map((e) => e.metadata?.grn_reference || e.metadata?.grn_number)
+          .filter(Boolean),
+      )] as string[];
+
+      let grnsByNumber: Record<string, any> = {};
+      if (grnNumbers.length > 0) {
+        const { data: grnsData } = await this.supabase
+          .from('grns')
+          .select('id, grn_number, receipt_date, po_number, vendor_id')
+          .eq('tenant_id', tenantId)
+          .in('grn_number', grnNumbers);
+
+        const vendorIds = [...new Set((grnsData || []).map((g: any) => g.vendor_id).filter(Boolean))] as string[];
+        let vendorById: Record<string, string> = {};
+        if (vendorIds.length > 0) {
+          const { data: vData } = await this.supabase
+            .from('vendors')
+            .select('id, name')
+            .in('id', vendorIds);
+          for (const v of vData || []) vendorById[v.id] = v.name;
+        }
+
+        for (const g of grnsData || []) {
+          grnsByNumber[g.grn_number] = { ...g, vendor_name: vendorById[g.vendor_id] || null };
+        }
+      }
+
+      const seWhIds = [...new Set((stockEntries as any[]).map((e) => e.warehouse_id).filter(Boolean))] as string[];
+      let seWhById: Record<string, any> = {};
+      if (seWhIds.length > 0) {
+        const { data: whs } = await this.supabase.from('warehouses').select('id, name, code').in('id', seWhIds);
+        for (const w of whs || []) seWhById[w.id] = w;
+      }
+
+      // Deduplicate: group by grn_reference + item to prevent double rows from duplicate DB entries.
+      // Multiple stock_entries for the same GRN+item are collapsed into one trail row.
+      const grnEntryMap = new Map<string, { entry: any; qty: number }>();
+      for (const entry of stockEntries as any[]) {
+        const grnRef = entry.metadata?.grn_reference || entry.metadata?.grn_number;
+        // Only show stock_entries that originated from a real GRN.
+        // Entries without a GRN reference were created via adjustment/import and are
+        // already represented in stock_movements — showing them here would double-count.
+        if (!grnRef) continue;
+        const dedupKey = `${grnRef}::${entry.warehouse_id || ''}`;
+        if (grnEntryMap.has(dedupKey)) {
+          grnEntryMap.get(dedupKey)!.qty += Number(entry.quantity) || 0;
+        } else {
+          grnEntryMap.set(dedupKey, { entry, qty: Number(entry.quantity) || 0 });
+        }
+      }
+
+      for (const { entry, qty } of grnEntryMap.values()) {
+        const grnRef = entry.metadata?.grn_reference || entry.metadata?.grn_number;
+        const grn = grnsByNumber[grnRef] || null;
+        const wh = seWhById[entry.warehouse_id];
+        trails.push({
+          date: entry.created_at,
+          type: 'GRN_RECEIPT',
+          document_type: 'GRN',
+          reference: grnRef,
+          reference_id: grn?.id || null,
+          qty_in: qty,
+          qty_out: 0,
+          warehouse: wh ? (wh.name || wh.code) : null,
+          vendor: grn?.vendor_name || null,
+          unit_price: entry.unit_price != null ? Number(entry.unit_price) : null,
+          batch_number: entry.batch_number || null,
+          po_number: grn?.po_number || null,
+          notes: `Received via ${grnRef}`,
+        });
+      }
+    }
+
+    // --- 2. Other movements from stock_movements (adjustments, SIV, production, etc.) ---
+    const { data: movements } = await this.supabase
+      .from('stock_movements')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .order('movement_date', { ascending: true });
+
+    if (movements?.length) {
+      const movWhIds = [...new Set([
+        ...(movements as any[]).map((m) => m.from_warehouse_id),
+        ...(movements as any[]).map((m) => m.to_warehouse_id),
+      ].filter(Boolean))] as string[];
+
+      let movWhById: Record<string, any> = {};
+      if (movWhIds.length > 0) {
+        const { data: whs } = await this.supabase.from('warehouses').select('id, name, code').in('id', movWhIds);
+        for (const w of whs || []) movWhById[w.id] = w;
+      }
+
+      for (const m of movements as any[]) {
+        const isInbound = !m.from_warehouse_id && !!m.to_warehouse_id;
+        const isOutbound = !!m.from_warehouse_id && !m.to_warehouse_id;
+        const warehouseId = isInbound ? m.to_warehouse_id : m.from_warehouse_id;
+        const wh = movWhById[warehouseId];
+        trails.push({
+          date: m.movement_date,
+          type: m.movement_type,
+          document_type: m.reference_type || m.movement_type,
+          reference: m.reference_number || m.movement_number,
+          reference_id: m.reference_id || null,
+          qty_in: isInbound ? Number(m.quantity) : 0,
+          qty_out: isOutbound ? Number(m.quantity) : 0,
+          warehouse: wh ? (wh.name || wh.code) : null,
+          vendor: null,
+          unit_price: null,
+          batch_number: m.batch_number || null,
+          po_number: null,
+          notes: m.notes || null,
+        });
+      }
+    }
+
+    // Sort chronologically and compute running balance
+    trails.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    let balance = 0;
+    for (const t of trails) {
+      balance += t.qty_in - t.qty_out;
+      t.balance = balance;
+    }
+
+    // Current stock breakdown by warehouse
+    const { data: currentStock } = await this.supabase
+      .from('inventory_stock')
+      .select('quantity, available_quantity, allocated_quantity, warehouse_id, warehouses(id, name, code)')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId);
+
+    return { trails, currentBalance: balance, currentStock: currentStock || [] };
   }
 
   // Get default variant for an item

@@ -42,12 +42,17 @@ import { EmailModule } from './email/email.module';
 import { UploadModule } from './upload/upload.module';
 import { ManagerModule } from './manager/manager.module';
 
+const runtimeEnv = process.env.APP_ENV || process.env.NODE_ENV;
+const apiEnvFiles = runtimeEnv === 'test'
+  ? ['.env.test.local', '.env.test', '.env.local', '.env']
+  : ['.env.local', '.env'];
+
 @Module({
   imports: [
     // Configuration
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.local', '.env'],
+      envFilePath: apiEnvFiles,
     }),
 
     // GraphQL - Disabled for now (using REST API)

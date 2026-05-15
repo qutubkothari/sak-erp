@@ -69,10 +69,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request password reset' })
   async resetPasswordRequest(
+    @Request() req: any,
     @Body('email') email: string,
-    @Body('tenantId') tenantId: string,
+    @Body('tenantId') tenantId?: string,
   ) {
-    return this.authService.resetPasswordRequest(email, tenantId);
+    return this.authService.resetPasswordRequest(email, tenantId, req?.headers?.origin || req?.headers?.referer);
   }
 
   @Public()

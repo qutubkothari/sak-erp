@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS purchase_requisitions (
     required_date DATE,
     department VARCHAR(100),
     purpose TEXT,
+    delivery_address TEXT,
     status pr_po_status DEFAULT 'DRAFT',
     requested_by UUID NOT NULL,
     approved_by UUID,

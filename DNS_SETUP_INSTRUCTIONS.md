@@ -10,7 +10,6 @@ Configure these A records in your domain registrar's DNS settings for **saksolut
 |------|-----------|-----------------|-----|
 | A | pms | 72.62.192.228 | 3600 |
 | A | www.pms | 72.62.192.228 | 3600 |
-| A | api.pms | 72.62.192.228 | 3600 |
 
 Or if your DNS provider requires full domain names:
 
@@ -18,7 +17,6 @@ Or if your DNS provider requires full domain names:
 |------|-----------|-----------------|-----|
 | A | pms.saksolution.com | 72.62.192.228 | 3600 |
 | A | www.pms.saksolution.com | 72.62.192.228 | 3600 |
-| A | api.pms.saksolution.com | 72.62.192.228 | 3600 |
 
 ---
 
@@ -30,21 +28,21 @@ Or if your DNS provider requires full domain names:
 1. Log in to GoDaddy Domain Manager
 2. Click on your domain `saksolution.com`
 3. Click "DNS" or "Manage DNS"
-4. Add the three A records above
+4. Add the two A records above
 5. Save changes
 
 #### **Namecheap**
 1. Log in to Namecheap account
 2. Click "Domain List" → Select `saksolution.com`
 3. Click "Manage" → "Advanced DNS"
-4. Add the three A records above
+4. Add the two A records above
 5. Save all changes
 
 #### **Cloudflare**
 1. Log in to Cloudflare
 2. Select `saksolution.com` domain
 3. Go to "DNS" → "Records"
-4. Add the three A records above
+4. Add the two A records above
 5. Set Proxy status to "DNS only" (grey cloud) initially
 6. Save records
 
@@ -52,7 +50,7 @@ Or if your DNS provider requires full domain names:
 1. Log in to Hostinger hPanel
 2. Go to "Domains" → Select `saksolution.com`
 3. Click "DNS / Nameservers"
-4. Add the three A records above
+4. Add the two A records above
 5. Save changes
 
 ---
@@ -67,10 +65,6 @@ Or if your DNS provider requires full domain names:
 nslookup pms.saksolution.com
 # Should return: 72.62.192.228
 
-# Check api.pms.saksolution.com
-nslookup api.pms.saksolution.com
-# Should return: 72.62.192.228
-
 # Check www.pms.saksolution.com
 nslookup www.pms.saksolution.com
 # Should return: 72.62.192.228
@@ -81,7 +75,7 @@ nslookup www.pms.saksolution.com
 - https://www.whatsmydns.net - Check from multiple locations
 
 **Expected Result:**
-All three domains should resolve to `72.62.192.228`
+Both domains should resolve to `72.62.192.228`
 
 ---
 
@@ -116,7 +110,7 @@ Once DNS is propagating correctly:
    ```bash
    cd /var/www/sak-erp
    nano apps/web/.env.local
-   # Update NEXT_PUBLIC_API_URL=https://api.pms.saksolution.com/api/v1
+   # Update NEXT_PUBLIC_API_URL=/api/v1
    
    nano apps/api/.env
    # Update FRONTEND_URL=https://pms.saksolution.com
@@ -175,7 +169,6 @@ Before proceeding with HTTPS setup, verify:
 
 - [ ] DNS A records added for pms.saksolution.com
 - [ ] DNS A records added for www.pms.saksolution.com  
-- [ ] DNS A records added for api.pms.saksolution.com
 - [ ] All records point to 72.62.192.228
 - [ ] DNS propagation verified (nslookup or dnschecker.org)
 - [ ] Waited at least 30 minutes after DNS changes

@@ -3,8 +3,10 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import * as bcrypt from 'bcryptjs';
+import { EmailService } from '../email/email.service';
 
 interface RegisterDto {
+  username?: string;
   email: string;
   password: string;
   firstName?: string;
@@ -16,7 +18,8 @@ interface RegisterDto {
 }
 
 interface LoginDto {
-  email: string;
+  username?: string;
+  email?: string;
   password: string;
   tenantId: string;
 }
@@ -25,8 +28,147 @@ interface LoginDto {
 export class AuthService {
   private supabase: SupabaseClient;
 
+  private readonly passwordResetMessage = 'If an account exists for that email, password reset instructions will be sent';
+
   private normalizeEmail(email: unknown): string {
     return String(email ?? '').trim().toLowerCase();
+  }
+
+  private normalizeUsername(username: unknown): string {
+    return String(username ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 100);
+  }
+
+  private escapeHtml(value: unknown): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private isBcryptHash(value: unknown): boolean {
+    return /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(String(value ?? '').trim());
+  }
+
+  private async verifyPassword(candidatePassword: string, storedPassword: unknown): Promise<boolean> {
+    const normalizedCandidate = String(candidatePassword ?? '');
+    const normalizedStored = String(storedPassword ?? '');
+
+    if (!normalizedCandidate || !normalizedStored) {
+      return false;
+    }
+
+    if (this.isBcryptHash(normalizedStored)) {
+      return bcrypt.compare(normalizedCandidate, normalizedStored);
+    }
+
+    return normalizedCandidate === normalizedStored;
+  }
+
+  private async hashPassword(password: string): Promise<string> {
+    const normalizedPassword = String(password ?? '');
+
+    if (normalizedPassword.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters long');
+    }
+
+    return bcrypt.hash(normalizedPassword, 12);
+  }
+
+  private getFrontendBaseUrl(): string {
+    const configuredFrontendUrl = String(this.configService.get<string>('FRONTEND_URL') || '').trim();
+    if (configuredFrontendUrl) {
+      return configuredFrontendUrl.replace(/\/+$/, '');
+    }
+
+    const configuredCorsOrigins = String(this.configService.get<string>('CORS_ORIGIN') || '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => /^https?:\/\//i.test(entry));
+
+    if (configuredCorsOrigins.length > 0) {
+      return configuredCorsOrigins[0].replace(/\/+$/, '');
+    }
+
+    return 'http://localhost:3000';
+  }
+
+  private getFrontendBaseUrlFromRequest(originOrReferer?: string): string {
+    const value = String(originOrReferer ?? '').trim();
+    if (!value) {
+      return this.getFrontendBaseUrl();
+    }
+
+    try {
+      const parsed = new URL(value);
+      return `${parsed.protocol}//${parsed.host}`;
+    } catch {
+      return this.getFrontendBaseUrl();
+    }
+  }
+
+  private buildPasswordResetUrl(token: string, originOrReferer?: string): string {
+    return `${this.getFrontendBaseUrlFromRequest(originOrReferer)}/reset-password?token=${encodeURIComponent(token)}`;
+  }
+
+  private buildPasswordResetEmailHtml(recipientName: string, resetUrl: string): string {
+    const safeRecipientName = this.escapeHtml(recipientName);
+    const safeResetUrl = this.escapeHtml(resetUrl);
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>Reset your password</title>
+        </head>
+        <body style="margin:0;padding:24px;background:#f5f7fb;font-family:Arial,sans-serif;color:#1f2937;">
+          <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;">
+            <div style="padding:24px 24px 8px;">
+              <div style="display:inline-block;padding:8px 12px;border-radius:999px;background:#ede5d8;color:#8b6f47;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">Password reset</div>
+            </div>
+            <div style="padding:0 24px 24px;">
+              <h1 style="margin:0 0 16px;color:#6f4e37;font-size:28px;line-height:1.2;">Reset your password</h1>
+              <p style="margin:0 0 16px;">Hello ${safeRecipientName},</p>
+              <p style="margin:0 0 16px;">We received a request to reset your SAK ERP password. Use the button below to choose a new password.</p>
+              <p style="margin:24px 0;">
+                <a href="${safeResetUrl}" style="display:inline-block;padding:14px 22px;background:#8b6f47;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;">Reset password</a>
+              </p>
+              <p style="margin:0 0 16px;">This link expires in 24 hours. If you did not request a password reset, you can ignore this email.</p>
+              <p style="margin:0;color:#6b7280;font-size:13px;word-break:break-all;">If the button does not work, open this link in your browser:<br /><a href="${safeResetUrl}" style="color:#8b6f47;">${safeResetUrl}</a></p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
+  private async sendPasswordResetEmail(user: {
+    email: string;
+    username?: string;
+    first_name?: string;
+    last_name?: string;
+    tenant_id?: string;
+  }, resetToken: string, originOrReferer?: string): Promise<void> {
+    const recipientName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
+      || user.username
+      || user.email.split('@')[0]
+      || 'there';
+
+    await this.emailService.sendEmail({
+      to: user.email,
+      subject: 'Reset your SAK ERP password',
+      from: 'noreply',
+      tenantId: user.tenant_id,
+      html: this.buildPasswordResetEmailHtml(recipientName, this.buildPasswordResetUrl(resetToken, originOrReferer)),
+    });
   }
 
   private async getRolesForUser(
@@ -82,6 +224,7 @@ export class AuthService {
   constructor(
     private jwtService: JwtService,
     private configService: ConfigService,
+    private emailService: EmailService,
   ) {
     const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
     const supabaseKey = this.configService.get<string>('SUPABASE_KEY');
@@ -94,7 +237,12 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
+    const normalizedUsername = this.normalizeUsername(dto?.username || dto?.email?.split('@')[0]);
     const normalizedEmail = this.normalizeEmail(dto?.email);
+
+    if (!normalizedUsername) {
+      throw new BadRequestException('Username is required');
+    }
 
     if (!normalizedEmail) {
       throw new BadRequestException('Email is required');
@@ -168,6 +316,17 @@ export class AuthService {
 
     const resolvedTenantId = tenantId;
 
+    const { data: existingUsername } = await this.supabase
+      .from('users')
+      .select('id')
+      .ilike('username', normalizedUsername)
+      .eq('tenant_id', resolvedTenantId)
+      .maybeSingle();
+
+    if (existingUsername) {
+      throw new ConflictException('User with this username already exists');
+    }
+
     // Check if user already exists
     const { data: existingUser, error: checkError } = await this.supabase
       .from('users')
@@ -180,8 +339,7 @@ export class AuthService {
       throw new ConflictException('User with this email already exists');
     }
 
-    // Store password as plain text
-    const hashedPassword = dto.password;
+    const hashedPassword = await this.hashPassword(dto.password);
 
     // Parse name if provided as single field
     let firstName = dto.firstName;
@@ -212,6 +370,7 @@ export class AuthService {
     const { data: newUser, error: createError } = await this.supabase
       .from('users')
       .insert({
+        username: normalizedUsername,
         email: normalizedEmail,
         password: hashedPassword,
         first_name: firstName || '',
@@ -220,7 +379,7 @@ export class AuthService {
         role_id: roleId,
         is_active: true,
       })
-      .select('id, email, first_name, last_name, tenant_id')
+      .select('id, username, email, first_name, last_name, tenant_id')
       .single();
 
     if (createError) {
@@ -245,6 +404,7 @@ export class AuthService {
       .from('users')
       .select(`
         id,
+        username,
         email,
         first_name,
         last_name,
@@ -270,6 +430,7 @@ export class AuthService {
     // Transform to match expected format
     const user = {
       id: userWithRole.id,
+      username: (userWithRole as any).username,
       email: userWithRole.email,
       firstName: userWithRole.first_name,
       lastName: userWithRole.last_name,
@@ -279,7 +440,7 @@ export class AuthService {
 
     // Ensure tenantId is set
     // Generate tokens
-    const tokens = await this.generateTokens(user.id, user.email, resolvedTenantId);
+    const tokens = await this.generateTokens(user.id, user.email, (userWithRole as any).username, resolvedTenantId);
 
     return {
       user,
@@ -288,9 +449,9 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const normalizedEmail = this.normalizeEmail(dto?.email);
+    const normalizedUsername = this.normalizeUsername(dto?.username ?? dto?.email);
 
-    if (!normalizedEmail) {
+    if (!normalizedUsername) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -302,7 +463,7 @@ export class AuthService {
       const { data: userTenant } = await this.supabase
         .from('users')
         .select('tenant_id')
-        .ilike('email', normalizedEmail)
+        .ilike('username', normalizedUsername)
         .limit(1)
         .maybeSingle();
 
@@ -315,8 +476,9 @@ export class AuthService {
         .from('tenants')
         .select('id')
         .eq('is_active', true)
+        .order('created_at', { ascending: true })
         .limit(1)
-        .single();
+        .maybeSingle();
       tenantId = defaultTenant?.id;
     }
 
@@ -331,6 +493,7 @@ export class AuthService {
       .from('users')
       .select(`
         id,
+        username,
         email,
         password,
         is_active,
@@ -343,7 +506,7 @@ export class AuthService {
           permissions
         )
       `)
-      .ilike('email', normalizedEmail)
+      .ilike('username', normalizedUsername)
       .eq('tenant_id', resolvedTenantId)
       .maybeSingle();
 
@@ -356,8 +519,7 @@ export class AuthService {
       throw new UnauthorizedException('Account is deactivated');
     }
 
-    // Verify password (plain text)
-    const isPasswordValid = dto.password === user.password;
+    const isPasswordValid = await this.verifyPassword(dto.password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -369,7 +531,7 @@ export class AuthService {
       .eq('id', user.id);
 
     // Generate tokens
-    const tokens = await this.generateTokens(user.id, user.email, resolvedTenantId);
+    const tokens = await this.generateTokens(user.id, user.email, (user as any).username, resolvedTenantId);
 
     // Remove password from response and transform to camelCase
     const { password, ...userWithoutPassword } = user;
@@ -382,6 +544,7 @@ export class AuthService {
 
     const transformedUser = {
       ...userWithoutPassword,
+      username: (user as any).username,
       firstName: user.first_name,
       lastName: user.last_name,
       tenantId: user.tenant_id,
@@ -403,7 +566,7 @@ export class AuthService {
 
       const { data: user, error: userError } = await this.supabase
         .from('users')
-        .select('id, email, is_active, tenant_id')
+        .select('id, username, email, is_active, tenant_id')
         .eq('id', payload.sub)
         .single();
 
@@ -411,7 +574,7 @@ export class AuthService {
         throw new UnauthorizedException('Invalid token');
       }
 
-      return this.generateTokens(user.id, user.email, user.tenant_id);
+      return this.generateTokens(user.id, user.email, (user as any).username, user.tenant_id);
     } catch (error) {
       throw new UnauthorizedException('Invalid refresh token');
     }
@@ -427,6 +590,7 @@ export class AuthService {
       .from('users')
       .select(`
         id,
+        username,
         email,
         first_name,
         last_name,
@@ -456,6 +620,7 @@ export class AuthService {
     // Transform to camelCase format
     const result = {
       id: user.id,
+      username: (user as any).username,
       email: user.email,
       firstName: user.first_name,
       lastName: user.last_name,
@@ -468,8 +633,8 @@ export class AuthService {
     return result;
   }
 
-  private async generateTokens(userId: string, email: string, tenantId: string) {
-    const payload = { sub: userId, email, tenantId };
+  private async generateTokens(userId: string, email: string, username: string, tenantId: string) {
+    const payload = { sub: userId, email, username, tenantId };
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
@@ -499,12 +664,12 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
+    const isPasswordValid = await this.verifyPassword(oldPassword, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    const hashedPassword = await this.hashPassword(newPassword);
 
     const { error: updateError } = await this.supabase
       .from('users')
@@ -518,42 +683,55 @@ export class AuthService {
     return { message: 'Password changed successfully' };
   }
 
-  async resetPasswordRequest(email: string, tenantId: string) {
+  async resetPasswordRequest(email: string, tenantId?: string, originOrReferer?: string) {
     const normalizedEmail = this.normalizeEmail(email);
+    const normalizedTenantId = String(tenantId ?? '').trim();
 
-    const { data: user, error: userError } = await this.supabase
-      .from('users')
-      .select('id, email')
-      .ilike('email', normalizedEmail)
-      .eq('tenant_id', tenantId)
-      .maybeSingle();
-
-    if (userError || !user) {
-      // Don't reveal if user exists
-      return { message: 'If user exists, password reset email will be sent' };
+    if (!normalizedEmail) {
+      return { message: this.passwordResetMessage };
     }
 
-    // Generate reset token (24 hour expiry)
-    const resetToken = this.jwtService.sign(
-      { sub: user.id, type: 'reset' },
-      { expiresIn: '24h' },
-    );
+    let query = this.supabase
+      .from('users')
+      .select('id, email, username, first_name, last_name, tenant_id')
+      .ilike('email', normalizedEmail)
+      .eq('is_active', true);
 
-    // TODO: Send email with reset link
-    // await this.emailService.sendPasswordReset(user.email, resetToken);
+    if (normalizedTenantId) {
+      query = query.eq('tenant_id', normalizedTenantId);
+    }
 
-    return { message: 'If user exists, password reset email will be sent' };
+    const { data: users, error: userError } = await query;
+
+    if (userError || !users?.length) {
+      return { message: this.passwordResetMessage };
+    }
+
+    for (const user of users) {
+      const resetToken = this.jwtService.sign(
+        { sub: user.id, email: user.email, tenantId: user.tenant_id, type: 'reset' },
+        { expiresIn: '24h' },
+      );
+
+      await this.sendPasswordResetEmail(user, resetToken, originOrReferer);
+    }
+
+    return { message: this.passwordResetMessage };
   }
 
   async resetPassword(token: string, newPassword: string) {
     try {
+      if (!String(token ?? '').trim()) {
+        throw new BadRequestException('Reset token is required');
+      }
+
       const payload = this.jwtService.verify(token);
 
-      if (payload.type !== 'reset') {
+      if (payload.type !== 'reset' || !payload.sub) {
         throw new UnauthorizedException('Invalid reset token');
       }
 
-      const hashedPassword = await bcrypt.hash(newPassword, 12);
+      const hashedPassword = await this.hashPassword(newPassword);
 
       const { error: updateError } = await this.supabase
         .from('users')

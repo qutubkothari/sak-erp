@@ -2,6 +2,93 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  .overflow-x-auto,
+  .overflow-x-scroll,
+  .erp-data-table {
+    overflow-x: hidden !important;
+    scrollbar-width: none;
+  }
+
+  .overflow-x-auto::-webkit-scrollbar,
+  .overflow-x-scroll::-webkit-scrollbar,
+  .erp-data-table::-webkit-scrollbar {
+    display: none;
+    height: 0;
+  }
+
+  .overflow-x-auto > table,
+  .overflow-x-scroll > table,
+  .erp-data-table table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+  }
+
+  .overflow-x-auto > table th,
+  .overflow-x-auto > table td,
+  .overflow-x-scroll > table th,
+  .overflow-x-scroll > table td,
+  .erp-data-table table th,
+  .erp-data-table table td {
+    min-width: 0;
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+
+  .overflow-x-auto > table th,
+  .overflow-x-auto > table td,
+  .overflow-x-scroll > table th,
+  .overflow-x-scroll > table td,
+  .erp-data-table table th,
+  .erp-data-table table td {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+
+  .overflow-x-auto > table th,
+  .overflow-x-scroll > table th,
+  .erp-data-table table th {
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    letter-spacing: 0.025em;
+  }
+
+  .erp-list-table-scroll {
+    overflow-x: scroll !important;
+    overflow-y: visible;
+    scrollbar-width: thin;
+    scrollbar-color: #9ca3af #f3f4f6;
+  }
+
+  .erp-list-table-scroll::-webkit-scrollbar {
+    display: block;
+    height: 12px;
+  }
+
+  .erp-list-table-scroll::-webkit-scrollbar-track {
+    background: #f3f4f6;
+  }
+
+  .erp-list-table-scroll::-webkit-scrollbar-thumb {
+    background: #9ca3af;
+    border: 2px solid #f3f4f6;
+    border-radius: 9999px;
+  }
+
+  main .container,
+  main [class*="max-w-7xl"][class*="mx-auto"]:not([class*="max-h"]),
+  main [class*="max-w-6xl"][class*="mx-auto"]:not([class*="max-h"]) {
+    max-width: none !important;
+  }
+}
+
 @layer base {
   :root {
     /* Manufacturing Theme - Warm Industrial Colors */
@@ -87,12 +174,16 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    overflow-x: hidden;
   }
 
-  /* Custom scrollbar styles for better UX */
+  html {
+    overflow-x: hidden;
+  }
+
+  /* Horizontal scrollbars are hidden across ERP screens; tables should fit the page width. */
   .overflow-x-auto {
-    scrollbar-width: thin;
-    scrollbar-color: #d1d5db transparent;
+    scrollbar-width: none;
   }
 
   .overflow-x-auto {
@@ -100,21 +191,8 @@
   }
   
   .overflow-x-auto::-webkit-scrollbar {
-    height: 8px;
-  }
-  
-  .overflow-x-auto::-webkit-scrollbar-track {
-    background: #f3f4f6;
-    border-radius: 4px;
-  }
-  
-  .overflow-x-auto::-webkit-scrollbar-thumb {
-    background: #d1d5db;
-    border-radius: 4px;
-  }
-  
-  .overflow-x-auto::-webkit-scrollbar-thumb:hover {
-    background: #9ca3af;
+    display: none;
+    height: 0;
   }
 
   /* Sticky table headers (global) */
