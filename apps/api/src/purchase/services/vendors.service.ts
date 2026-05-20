@@ -42,6 +42,7 @@ const GST_STATE_CODES: Record<string, string> = {
 };
 
 type VendorContact = {
+  salutation?: string;
   name: string;
   phone: string;
   email: string;
@@ -94,6 +95,7 @@ function safeObject(value: any): Record<string, any> {
 
 function normalizeContact(contact: any): VendorContact {
   return {
+    salutation: String(contact?.salutation || '').trim(),
     name: toTitleCase(contact?.name || ''),
     phone: contact?.phone ? normalizeVendorPhone(contact.phone) : '',
     email: contact?.email ? normalizeEmail(contact.email) : '',
@@ -143,6 +145,13 @@ function normalizeStoredContact(contact: any): VendorContact {
   let name = '';
   let phone = '';
   let email = '';
+  let salutation = '';
+
+  try {
+    salutation = String(contact?.salutation || '').trim();
+  } catch {
+    salutation = String(contact?.salutation || '').trim();
+  }
 
   try {
     name = toTitleCase(contact?.name || '');
@@ -163,6 +172,7 @@ function normalizeStoredContact(contact: any): VendorContact {
   }
 
   return {
+    salutation,
     name,
     phone,
     email,
@@ -354,6 +364,11 @@ export class VendorsService {
     const rawBillingLine2 = data?.billingLine2 !== undefined
       ? data.billingLine2
       : metadata.billingLine2 ?? existingVendor?.billing_line2 ?? '';
+    const bankName = String(data?.bankName ?? metadata.bankName ?? existingVendor?.bank_name ?? '').trim() || null;
+    const bankAccountNumber = String(data?.bankAccountNumber ?? metadata.bankAccountNumber ?? existingVendor?.bank_account_number ?? '').trim() || null;
+    const bankIfscCode = String(data?.bankIfscCode ?? metadata.bankIfscCode ?? existingVendor?.bank_ifsc_code ?? '').trim().toUpperCase() || null;
+    const bankBranch = String(data?.bankBranch ?? metadata.bankBranch ?? existingVendor?.bank_branch ?? '').trim() || null;
+    const bankAccountType = String(data?.bankAccountType ?? metadata.bankAccountType ?? existingVendor?.bank_account_type ?? 'CURRENT').trim() || 'CURRENT';
     const billingLine2 = toTitleCase(rawBillingLine2 || '');
     const useSameAsBilling = data?.sameAsbilling === true || data?.sameAsBilling === true;
     const nextStreet = toTitleCase(data?.street ?? existingVendor?.street ?? '') || null;
@@ -402,11 +417,22 @@ export class VendorsService {
       shipping_country: nextShippingCountry,
       shipping_pincode: nextShippingPincode,
       is_active: data.isActive !== undefined ? data.isActive : existingVendor?.is_active ?? true,
+      bank_name: bankName,
+      bank_account_number: bankAccountNumber,
+      bank_ifsc_code: bankIfscCode,
+      bank_branch: bankBranch,
+      bank_account_type: bankAccountType,
       metadata: {
         ...metadata,
         contacts: vendorContacts,
         billingLine2: billingLine2 || null,
         gstinVerification: data?.gstVerification || metadata.gstinVerification || null,
+        bankName,
+        bankAccountNumber,
+        bankIfscCode,
+        bankBranch,
+        bankAccountType,
+        salutation: String(data?.salutation ?? metadata.salutation ?? '').trim() || null,
       },
     };
   }
@@ -420,12 +446,18 @@ export class VendorsService {
       ...vendor,
       metadata,
       contacts,
+      salutation: metadata.salutation || '',
       billing_line2: vendor.billing_line2 || metadata.billingLine2 || '',
       gst_verification: metadata.gstinVerification || null,
       is_verified: vendor.is_verified === true,
       contact_person: vendor.contact_person || defaultContact?.name || '',
       email: vendor.email || defaultContact?.email || '',
       phone: vendor.phone || defaultContact?.phone || '',
+      bank_name: vendor.bank_name || metadata.bankName || '',
+      bank_account_number: vendor.bank_account_number || metadata.bankAccountNumber || '',
+      bank_ifsc_code: vendor.bank_ifsc_code || metadata.bankIfscCode || '',
+      bank_branch: vendor.bank_branch || metadata.bankBranch || '',
+      bank_account_type: vendor.bank_account_type || metadata.bankAccountType || 'CURRENT',
     };
   }
 

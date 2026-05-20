@@ -411,8 +411,8 @@ export class WorldClassPoPdfService {
       data.vendorPhone ? `Contact : ${data.vendorPhone}` : '',
     ].filter(Boolean);
 
-    const deliveryAddress = branding.address || data.deliveryAddress || data.companyAddress || '';
-    const deliveryLocation = branding.address
+    const deliveryAddress = data.deliveryAddress || branding.address || data.companyAddress || '';
+    const deliveryLocation = data.deliveryAddress
       ? ''
       : [data.deliveryCity || data.companyCity, data.deliveryState || data.companyState, data.deliveryPincode || data.companyPincode].filter(Boolean).join(', ');
     const rightLines = [

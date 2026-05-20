@@ -41,6 +41,8 @@ interface GRN {
   remarks?: string;
   qc_completed?: boolean;
   gross_amount?: number;
+  tax_amount?: number;
+  gst_percentage?: number;
   debit_note_amount?: number;
   net_payable_amount?: number;
   vendor: {
@@ -219,6 +221,7 @@ function GRNContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialGrnSearch = searchParams.get('search') || '';
+  const viewId = searchParams.get('viewId');
   const todayDate = getTodayDateInputValue();
   const currentUser = readStoredUser();
   const canApproveGRN = hasModulePermission(currentUser, 'Inventory', 'approve');
@@ -936,6 +939,32 @@ function GRNContent() {
     fetchWarehouses();
     fetchUsers();
   }, [filterStatus]);
+
+  // Auto-open GRN details if viewId is in URL (from Action Required links)
+  useEffect(() => {
+    if (viewId && !showViewModal && grns.length > 0) {
+      // Find GRN in already loaded data or fetch it
+      const grnFromList = grns.find(g => g.id === viewId);
+      if (grnFromList) {
+        // Fetch full GRN details with items
+        const fetchAndViewGRN = async () => {
+          try {
+            const token = localStorage.getItem('accessToken');
+            const response = await fetch(`/api/v1/purchase/grn/${viewId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            const detailedGRN = await response.json();
+            setSelectedGRN(detailedGRN);
+          } catch {
+            setSelectedGRN(grnFromList); // Fallback to list data
+          }
+          setShowViewModal(true);
+          setEditMode(false);
+        };
+        fetchAndViewGRN();
+      }
+    }
+  }, [viewId, grns, showViewModal]);
 
   useEffect(() => {
     // Used to show container/drum breakdown while entering GRN qty in base UOM.
@@ -1674,6 +1703,47 @@ function GRNContent() {
       setAlertMessage({ type: 'error', message: 'Failed to fetch UIDs. Please check your connection.' });
     } finally {
       setLoadingUIDs(false);
+    }
+  };
+
+  const generateMissingUIDs = async (grnId: string, grnItemId: string) => {
+    try {
+      setAlertMessage({ type: 'info', message: 'Generating missing UIDs...' });
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`/api/v1/purchase/grn/${grnId}/items/${grnItemId}/generate-missing-uids`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAlertMessage({
+          type: 'success',
+          message: data.message || `Generated ${data.generated} additional UID(s)`,
+        });
+        // Refresh GRN data to show updated counts
+        fetchGRNs();
+        // Refresh selected GRN if viewing
+        if (selectedGRN?.id === grnId) {
+          const refreshResponse = await fetch(`/api/v1/purchase/grn/${grnId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (refreshResponse.ok) {
+            setSelectedGRN(await refreshResponse.json());
+          }
+        }
+      } else {
+        const errorData = await response.json();
+        setAlertMessage({
+          type: 'error',
+          message: errorData.message || 'Failed to generate missing UIDs',
+        });
+      }
+    } catch (error) {
+      setAlertMessage({ type: 'error', message: 'Failed to generate missing UIDs' });
     }
   };
 
@@ -2557,6 +2627,13 @@ function GRNContent() {
                   setShowViewModal(false);
                   setSelectedGRN(null);
                   setEditMode(false);
+                  // Clear viewId from URL to prevent reopening
+                  const params = new URLSearchParams(window.location.search);
+                  if (params.has('viewId')) {
+                    params.delete('viewId');
+                    const newUrl = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
+                    window.history.replaceState({}, '', newUrl);
+                  }
                 }}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
               >
@@ -2688,15 +2765,21 @@ function GRNContent() {
               {(selectedGRN.gross_amount || selectedGRN.debit_note_amount || selectedGRN.net_payable_amount) && (
                 <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
                   <h3 className="text-lg font-bold text-blue-900 mb-3">💰 Financial Summary</h3>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-white rounded-lg p-3 border border-blue-200">
-                      <div className="text-xs text-gray-600 mb-1">Gross Amount</div>
+                      <div className="text-xs text-gray-600 mb-1">Subtotal (Items)</div>
                       <div className="text-xl font-bold text-gray-900">
                         ₹{(selectedGRN.gross_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </div>
                     </div>
+                    <div className="bg-white rounded-lg p-3 border border-purple-200">
+                      <div className="text-xs text-gray-600 mb-1">Tax ({selectedGRN.gst_percentage || 18}% GST)</div>
+                      <div className="text-xl font-bold text-purple-600">
+                        ₹{(selectedGRN.tax_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
                     <div className="bg-white rounded-lg p-3 border border-red-200">
-                      <div className="text-xs text-gray-600 mb-1">Debit Notes</div>
+                      <div className="text-xs text-gray-600 mb-1">Less: Debit Notes</div>
                       <div className="text-xl font-bold text-red-600">
                         -₹{(selectedGRN.debit_note_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </div>
@@ -2707,6 +2790,9 @@ function GRNContent() {
                         ₹{(selectedGRN.net_payable_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </div>
                     </div>
+                  </div>
+                  <div className="mt-3 text-xs text-gray-500 text-center">
+                    Net Payable = Subtotal + Tax - Debit Notes
                   </div>
                 </div>
               )}
@@ -2722,8 +2808,9 @@ function GRNContent() {
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Item Name</th>
                       <th className="px-4 py-2 text-center text-xs font-medium text-gray-700">UOM</th>
                       <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Received</th>
-                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Rate (₹)</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Batch Number</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Accepted</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">UIDs</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Batch/UID</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -2776,24 +2863,51 @@ function GRNContent() {
                         </tr>
                       ))
                     ) : (
-                      selectedGRN.grn_items.map((item, idx) => (
-                        <tr key={idx}>
-                          <td className="px-4 py-2 text-sm text-gray-700 text-center">{idx + 1}</td>
-                          <td className="px-4 py-2 text-sm text-gray-900">{item.item_code || item.item?.code || '-'}</td>
-                          <td className="px-4 py-2 text-sm text-gray-900">{item.item_name || item.item?.name || '-'}</td>
-                          <td className="px-4 py-2 text-sm text-gray-900 text-center">{resolveUom({
-                            uom: (item as any).uom || (item as any).uom_name || (item as any).unit || (item as any).unit_name || (item as any).item?.uom,
-                            itemId: (item as any).item_id || (item as any).itemId || (item as any).item?.id,
-                            itemCode: item.item_code || (item as any).item?.code,
-                          }) || '-'}</td>
-                          <td className="px-4 py-2 text-sm text-gray-900 text-right">{Number(item.received_qty || item.received_quantity) || 0}</td>
-                          <td className="px-4 py-2 text-sm">
-                            {item.batch_number && <div className="text-gray-600">Batch: {item.batch_number}</div>}
-                            {item.uid && <div className="font-mono text-blue-600 text-xs">{item.uid}</div>}
-                            {!item.batch_number && !item.uid && <span className="text-gray-400">-</span>}
-                          </td>
-                        </tr>
-                      ))
+                      selectedGRN.grn_items.map((item, idx) => {
+                        const acceptedQty = Number(item.accepted_qty || item.accepted_quantity) || 0;
+                        const uidCount = Number((item as any).uid_count) || 0;
+                        const hasMissingUIDs = acceptedQty > 0 && uidCount < acceptedQty;
+                        return (
+                          <tr key={idx}>
+                            <td className="px-4 py-2 text-sm text-gray-700 text-center">{idx + 1}</td>
+                            <td className="px-4 py-2 text-sm text-gray-900">{item.item_code || item.item?.code || '-'}</td>
+                            <td className="px-4 py-2 text-sm text-gray-900">{item.item_name || item.item?.name || '-'}</td>
+                            <td className="px-4 py-2 text-sm text-gray-900 text-center">{resolveUom({
+                              uom: (item as any).uom || (item as any).uom_name || (item as any).unit || (item as any).unit_name || (item as any).item?.uom,
+                              itemId: (item as any).item_id || (item as any).itemId || (item as any).item?.id,
+                              itemCode: item.item_code || (item as any).item?.code,
+                            }) || '-'}</td>
+                            <td className="px-4 py-2 text-sm text-gray-900 text-right">{Number(item.received_qty || item.received_quantity) || 0}</td>
+                            <td className="px-4 py-2 text-sm text-gray-900 text-right">{acceptedQty}</td>
+                            <td className="px-4 py-2 text-sm text-right">
+                              {uidCount > 0 ? (
+                                <span className={hasMissingUIDs ? 'text-amber-600 font-medium' : 'text-green-600'}>
+                                  {uidCount}
+                                  {hasMissingUIDs && <span className="text-xs ml-1">/ {acceptedQty}</span>}
+                                </span>
+                              ) : acceptedQty > 0 ? (
+                                <span className="text-gray-400">-</span>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-sm">
+                              {item.batch_number && <div className="text-gray-600">Batch: {item.batch_number}</div>}
+                              {item.uid && <div className="font-mono text-blue-600 text-xs">{item.uid}</div>}
+                              {hasMissingUIDs && selectedGRN.status === 'COMPLETED' && (
+                                <button
+                                  onClick={() => generateMissingUIDs(selectedGRN.id, (item as any).id)}
+                                  className="mt-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded font-medium"
+                                  title={`Generate ${acceptedQty - uidCount} missing UID(s)`}
+                                >
+                                  +{acceptedQty - uidCount} Generate
+                                </button>
+                              )}
+                              {!item.batch_number && !item.uid && !hasMissingUIDs && <span className="text-gray-400">-</span>}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -2949,8 +3063,15 @@ function GRNContent() {
                   setShowViewModal(false);
                   setSelectedGRN(null);
                   setEditMode(false);
+                  // Clear viewId from URL to prevent reopening
+                  const params = new URLSearchParams(window.location.search);
+                  if (params.has('viewId')) {
+                    params.delete('viewId');
+                    const newUrl = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
+                    window.history.replaceState({}, '', newUrl);
+                  }
                 }}
-                className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
               >
                 Close
               </button>

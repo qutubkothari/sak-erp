@@ -24,6 +24,7 @@ import { PurchaseModule } from './purchase/purchase.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { ItemsModule } from './items/items.module';
 import { CategoriesModule } from './categories/categories.module';
+import { NomenclatureModule } from './nomenclature/nomenclature.module';
 import { ProductionModule } from './production/production.module';
 import { QualityModule } from './quality/quality.module';
 import { SalesModule } from './sales/sales.module';
@@ -96,6 +97,7 @@ const apiEnvFiles = runtimeEnv === 'test'
     InventoryModule,
     ItemsModule,
     CategoriesModule,
+    NomenclatureModule,
     ProductionModule,
     QualityModule,
     SalesModule,

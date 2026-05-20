@@ -255,4 +255,10 @@ export class GrnController {
   async getUIDsByGRN(@Request() req: any, @Param('id') id: string) {
     return this.grnService.getUIDsByGRN(req.user.tenantId, id);
   }
+
+  @Post(':id/items/:itemId/generate-missing-uids')
+  @RequireUpdate('grns')
+  async generateMissingUIDs(@Request() req: any, @Param('id') grnId: string, @Param('itemId') itemId: string) {
+    return this.grnService.generateMissingUIDs(req.user.tenantId, req.user.userId, grnId, itemId);
+  }
 }

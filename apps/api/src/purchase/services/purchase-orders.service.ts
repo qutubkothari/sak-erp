@@ -1066,7 +1066,7 @@ export class PurchaseOrdersService {
           uom: item.uom,
           ordered_qty: item.orderedQty || item.quantity,
           rate: item.rate || item.unitPrice,
-          tax_percent: item.taxPercent || item.taxRate || 0,
+          tax_percent: item.taxPercent ?? item.taxRate ?? 0,
           discount_percent: item.discountPercent || 0,
           amount: item.amount || item.totalPrice,
           delivery_date: item.deliveryDate,

@@ -29,6 +29,8 @@ interface GRNPayable {
   purchase_order?: { id?: string; po_number?: string; po_date?: string } | null;
   gross_amount: number;
   tax_amount: number;
+  freight_amount?: number;
+  freight_gst_amount?: number;
   debit_note_amount: number;
   net_payable_amount: number;
   paid_amount: number;
@@ -107,6 +109,13 @@ export default function AccountsPayablePage() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [selectedGRNIds, setSelectedGRNIds] = useState<Set<string>>(new Set());
 
+  // Edit payment state
+  const [editingPayment, setEditingPayment] = useState<PaymentEntry | null>(null);
+  const [showEditPaymentModal, setShowEditPaymentModal] = useState(false);
+  const [editPaymentForm, setEditPaymentForm] = useState({ ...BLANK_FORM });
+  const [editingSubmitting, setEditingSubmitting] = useState(false);
+  const [editPaymentError, setEditPaymentError] = useState<string | null>(null);
+
   // Paid invoices state
   const [paidInvoices, setPaidInvoices] = useState<any[]>([]);
   const [loadingPaid, setLoadingPaid] = useState(false);
@@ -149,23 +158,36 @@ export default function AccountsPayablePage() {
     } catch { } finally { setLoadingPending(false); }
   }, []);
 
-  // Advance Payment state
+  // Unified Advances state (replaces separate Advance Payments and Vendor Advances)
   const [activeTab, setActiveTab] = useState<'payables' | 'pending' | 'paid' | 'advances'>('payables');
-  const [advancePayments, setAdvancePayments] = useState<any[]>([]);
+  const [advances, setAdvances] = useState<any[]>([]);
+  const [advanceFilter, setAdvanceFilter] = useState<'ALL' | 'PO' | 'BLANKET'>('ALL');
   const [loadingAdvances, setLoadingAdvances] = useState(false);
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
-  const [advanceForm, setAdvanceForm] = useState({ po_id: '', amount: '', payment_method: 'NEFT', payment_reference: '', payment_date: getTodayDateInputValue(), payment_notes: '' });
+  // Unified advance form with type selection
+  const [advanceForm, setAdvanceForm] = useState({
+    advance_type: 'PO' as 'PO' | 'BLANKET',
+    po_id: '',
+    vendor_id: '',
+    amount: '',
+    payment_method: 'NEFT',
+    payment_reference: '',
+    payment_date: getTodayDateInputValue(),
+    payment_notes: ''
+  });
   const [advancePOs, setAdvancePOs] = useState<any[]>([]);
+  const [advanceVendors, setAdvanceVendors] = useState<any[]>([]);
   const [submittingAdvance, setSubmittingAdvance] = useState(false);
   const [advanceError, setAdvanceError] = useState<string | null>(null);
 
-  const fetchAdvancePayments = useCallback(async () => {
+  // Unified fetch for all advances (PO and BLANKET)
+  const fetchAdvances = useCallback(async () => {
     try {
       setLoadingAdvances(true);
-      const data = await apiClient.get<any[]>('/purchase/debit-notes/po-advances');
-      setAdvancePayments(Array.isArray(data) ? data : []);
+      const data = await apiClient.get<any[]>(`/purchase/debit-notes/advances?type=${advanceFilter}`);
+      setAdvances(Array.isArray(data) ? data : []);
     } catch { } finally { setLoadingAdvances(false); }
-  }, []);
+  }, [advanceFilter]);
 
   const fetchPOsForAdvance = async () => {
     try {
@@ -200,14 +222,26 @@ export default function AccountsPayablePage() {
     } catch { setAdvancePOs([]); }
   };
 
+  // Unified submit function for both PO and BLANKET advances
   const submitAdvancePayment = async () => {
     setAdvanceError(null);
     const amount = parseFloat(advanceForm.amount);
-    if (!advanceForm.po_id) { setAdvanceError('Select a Purchase Order'); return; }
+    
+    // Validation based on advance type
+    if (advanceForm.advance_type === 'PO' && !advanceForm.po_id) { 
+      setAdvanceError('Select a Purchase Order'); return; 
+    }
+    if (advanceForm.advance_type === 'BLANKET' && !advanceForm.vendor_id) { 
+      setAdvanceError('Select a Vendor'); return; 
+    }
     if (!amount || amount <= 0) { setAdvanceError('Enter a valid amount'); return; }
+    
     try {
       setSubmittingAdvance(true);
-      await apiClient.post(`/purchase/debit-notes/po/${advanceForm.po_id}/advance-payment`, {
+      await apiClient.post(`/purchase/debit-notes/advance-payment`, {
+        advance_type: advanceForm.advance_type,
+        po_id: advanceForm.advance_type === 'PO' ? advanceForm.po_id : undefined,
+        vendor_id: advanceForm.advance_type === 'BLANKET' ? advanceForm.vendor_id : undefined,
         amount,
         payment_method: advanceForm.payment_method,
         payment_reference: advanceForm.payment_reference || undefined,
@@ -215,8 +249,18 @@ export default function AccountsPayablePage() {
         payment_notes: advanceForm.payment_notes || undefined,
       });
       setShowAdvanceModal(false);
-      setAdvanceForm({ po_id: '', amount: '', payment_method: 'NEFT', payment_reference: '', payment_date: getTodayDateInputValue(), payment_notes: '' });
-      fetchAdvancePayments();
+      // Reset form
+      setAdvanceForm({
+        advance_type: 'PO',
+        po_id: '',
+        vendor_id: '',
+        amount: '',
+        payment_method: 'NEFT',
+        payment_reference: '',
+        payment_date: getTodayDateInputValue(),
+        payment_notes: ''
+      });
+      fetchAdvances();
     } catch (e: any) {
       setAdvanceError(e.message || 'Failed to record advance payment');
     } finally {
@@ -224,12 +268,24 @@ export default function AccountsPayablePage() {
     }
   };
 
+  // Fetch vendors for blanket advance selection
+  const fetchVendorsForAdvance = async () => {
+    try {
+      const vendors = await apiClient.get<any[]>('/purchase/vendors');
+      setAdvanceVendors(vendors || []);
+    } catch { setAdvanceVendors([]); }
+  };
+
+  // Vendor advance balances state (for use in payment calculations)
+  const [vendorAdvanceBalances, setVendorAdvanceBalances] = useState<Map<string, number>>(new Map());
+
   const fetchVendorPayables = useCallback(async () => {
     try {
       setLoading(true);
-      const [allGRNs, allAdvances] = await Promise.all([
+      const [allGRNs, allAdvances, vendorAdvances] = await Promise.all([
         apiClient.get<any[]>('/purchase/grn'),
         apiClient.get<any[]>('/purchase/debit-notes/po-advances').catch(() => [] as any[]),
+        apiClient.get<any[]>('/purchase/debit-notes/vendor-advances').catch(() => [] as any[]),
       ]);
       console.log('[AP] all grns:', (allGRNs || []).length, '| sample:', (allGRNs || []).slice(0, 3).map((g: any) => ({ grn: g.grn_number, approved: g.invoice_approved, net: g.net_payable_amount, status: g.status })));
 
@@ -239,6 +295,14 @@ export default function AccountsPayablePage() {
         const pid = a.po_id;
         if (pid) advanceByPo.set(pid, (advanceByPo.get(pid) || 0) + +(a.amount || 0));
       });
+
+      // Build vendor-level advance total per vendor
+      const vendorAdvanceMap = new Map<string, number>();
+      (vendorAdvances || []).forEach((a: any) => {
+        const vid = a.vendor_id;
+        if (vid) vendorAdvanceMap.set(vid, +(a.balance_amount || 0));
+      });
+      setVendorAdvanceBalances(vendorAdvanceMap);
 
       const relevant = (allGRNs || []).filter((grn: any) => {
         const st = (grn.status || '').toUpperCase();
@@ -274,6 +338,16 @@ export default function AccountsPayablePage() {
         v.grn_count += 1;
       });
 
+      // Adjust vendor summary to include vendor-level advances
+      const vendorAdvanceBalances = new Map<string, number>();
+      vendorMap.forEach((vendor, vid) => {
+        const vendorAdvance = vendorAdvanceMap.get(vid) || 0;
+        if (vendorAdvance > 0) {
+          vendor.total_outstanding = Math.max(0, vendor.total_outstanding - vendorAdvance);
+          vendorAdvanceBalances.set(vid, vendorAdvance);
+        }
+      });
+
       const summary = Array.from(vendorMap.values()).filter(v => v.total_outstanding > 0.009);
       console.log('[AP] vendor summary:', summary);
       setVendorPayables(summary);
@@ -284,7 +358,12 @@ export default function AccountsPayablePage() {
     }
   }, []);
 
-  useEffect(() => { fetchVendorPayables(); fetchAdvancePayments(); fetchPaidInvoices(); fetchPendingInvoices(); }, [fetchVendorPayables, fetchAdvancePayments, fetchPaidInvoices, fetchPendingInvoices]);
+  useEffect(() => { 
+    fetchVendorPayables(); 
+    fetchAdvances(); 
+    fetchPaidInvoices(); 
+    fetchPendingInvoices(); 
+  }, [fetchVendorPayables, fetchAdvances, fetchPaidInvoices, fetchPendingInvoices]);
 
   const viewVendorDetails = async (vendor: VendorPayable) => {
     try {
@@ -403,6 +482,87 @@ export default function AccountsPayablePage() {
       setPaymentError(e.message || 'Failed to record payment');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Open edit payment modal
+  const openEditPayment = (entry: PaymentEntry) => {
+    if (!canRecordPayment) { alert('You do not have permission to edit payments'); return; }
+    setEditingPayment(entry);
+    setEditPaymentError(null);
+    setEditPaymentForm({
+      amount: entry.amount.toString(),
+      tds_amount: (entry.tds_amount || 0).toString(),
+      short_payment_amount: (entry.short_payment_amount || 0).toString(),
+      short_payment_reason: entry.short_payment_reason || '',
+      payment_method: entry.payment_method || 'NEFT',
+      payment_reference: entry.payment_reference || '',
+      payment_date: entry.payment_date ? entry.payment_date.split('T')[0] : getTodayDateInputValue(),
+      payment_notes: entry.payment_notes || '',
+      close_invoice: false,
+    });
+    setShowEditPaymentModal(true);
+  };
+
+  // Handle update payment
+  const handleUpdatePayment = async () => {
+    if (!selectedGRNDetail || !editingPayment) return;
+
+    const amount = parseFloat(editPaymentForm.amount);
+    const tds = parseFloat(editPaymentForm.tds_amount || '0') || 0;
+    const short = parseFloat(editPaymentForm.short_payment_amount || '0') || 0;
+
+    // Calculate what the new outstanding would be (original outstanding + old payment amount - new payment)
+    const originalOutstanding = selectedGRNDetail.outstanding_amount + editingPayment.amount + (editingPayment.tds_amount || 0) + (editingPayment.short_payment_amount || 0);
+    const otherPayments = selectedGRNDetail.payment_entries
+      .filter(e => e.id !== editingPayment.id && e.entry_type !== 'ADVANCE')
+      .reduce((sum, e) => sum + e.amount + (e.tds_amount || 0) + (e.short_payment_amount || 0), 0);
+    const newSettlement = amount + tds + short + otherPayments;
+
+    if (isNaN(amount) || amount < 0) { setEditPaymentError('Please enter a valid payment amount'); return; }
+    if (newSettlement > originalOutstanding + 0.009) {
+      setEditPaymentError(`Total settlement ₹${newSettlement.toFixed(2)} exceeds net payable ₹${originalOutstanding.toFixed(2)}`);
+      return;
+    }
+
+    try {
+      setEditingSubmitting(true);
+      await apiClient.put(`/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment/${editingPayment.id}`, {
+        amount,
+        tds_amount: tds,
+        short_payment_amount: short,
+        short_payment_reason: editPaymentForm.short_payment_reason || undefined,
+        payment_method: editPaymentForm.payment_method,
+        payment_reference: editPaymentForm.payment_reference || undefined,
+        payment_date: editPaymentForm.payment_date,
+        payment_notes: editPaymentForm.payment_notes || undefined,
+      });
+      setShowEditPaymentModal(false);
+      setEditingPayment(null);
+      setEditPaymentForm({ ...BLANK_FORM });
+      // Refresh data
+      await viewGRNDetail(selectedGRNDetail);
+      await Promise.all([fetchVendorPayables(), fetchPaidInvoices(), fetchPendingInvoices()]);
+    } catch (e: any) {
+      setEditPaymentError(e.message || 'Failed to update payment');
+    } finally {
+      setEditingSubmitting(false);
+    }
+  };
+
+  // Handle delete payment
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!canRecordPayment) { alert('You do not have permission to delete payments'); return; }
+    if (!selectedGRNDetail) return;
+    if (!window.confirm('Are you sure you want to delete this payment? This action cannot be undone.')) return;
+
+    try {
+      await apiClient.delete(`/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment/${paymentId}`);
+      // Refresh data
+      await viewGRNDetail(selectedGRNDetail);
+      await Promise.all([fetchVendorPayables(), fetchPaidInvoices(), fetchPendingInvoices()]);
+    } catch (e: any) {
+      alert(e.message || 'Failed to delete payment');
     }
   };
 
@@ -629,11 +789,45 @@ export default function AccountsPayablePage() {
       align: 'right',
     },
     {
+      id: 'advance_balance',
+      label: 'Advance Available',
+      accessor: (v) => vendorAdvanceBalances.get(v.vendor_id) || 0,
+      cell: (v) => {
+        const balance = vendorAdvanceBalances.get(v.vendor_id) || 0;
+        return balance > 0 ? (
+          <div className="text-sm font-semibold text-blue-600">₹{fmtINR(balance)}</div>
+        ) : (
+          <div className="text-sm text-gray-400">—</div>
+        );
+      },
+      sortAccessor: (v) => vendorAdvanceBalances.get(v.vendor_id) || 0,
+      align: 'right',
+    },
+    {
       id: 'total_outstanding',
-      label: 'Outstanding',
-      accessor: (v) => v.total_outstanding,
-      cell: (v) => <div className="text-lg font-bold text-orange-600">₹{fmtINR(v.total_outstanding)}</div>,
-      sortAccessor: (v) => v.total_outstanding,
+      label: 'Net Outstanding',
+      accessor: (v) => {
+        const advance = vendorAdvanceBalances.get(v.vendor_id) || 0;
+        return Math.max(0, v.total_outstanding - advance);
+      },
+      cell: (v) => {
+        const advance = vendorAdvanceBalances.get(v.vendor_id) || 0;
+        const netOutstanding = Math.max(0, v.total_outstanding - advance);
+        return (
+          <div className="text-lg font-bold text-orange-600">
+            ₹{fmtINR(netOutstanding)}
+            {advance > 0 && (
+              <div className="text-xs font-normal text-blue-600">
+                (after ₹{fmtINR(advance)} advance)
+              </div>
+            )}
+          </div>
+        );
+      },
+      sortAccessor: (v) => {
+        const advance = vendorAdvanceBalances.get(v.vendor_id) || 0;
+        return Math.max(0, v.total_outstanding - advance);
+      },
       align: 'right',
     },
     {
@@ -650,10 +844,30 @@ export default function AccountsPayablePage() {
       id: 'actions',
       label: 'Actions',
       cell: (vendor) => (
-        <button type="button" onClick={() => viewVendorDetails(vendor)}
-          className="text-orange-600 hover:text-orange-800 font-medium transition-colors">
-          View Invoices →
-        </button>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => viewVendorDetails(vendor)}
+            className="text-orange-600 hover:text-orange-800 font-medium transition-colors">
+            View Invoices →
+          </button>
+          {canRecordPayment && (
+            <button 
+              onClick={() => {
+                // Open unified advance modal with BLANKET type pre-selected
+                setAdvanceForm(prev => ({ 
+                  ...prev, 
+                  advance_type: 'BLANKET',
+                  vendor_id: vendor.vendor_id 
+                }));
+                fetchVendorsForAdvance();
+                setShowAdvanceModal(true);
+              }}
+              className="text-blue-600 hover:text-blue-800 font-medium text-xs px-2 py-1 bg-blue-50 rounded transition-colors"
+              title="Add blanket advance payment for this vendor"
+            >
+              + Advance
+            </button>
+          )}
+        </div>
       ),
       sortable: false,
       hideable: false,
@@ -672,7 +886,12 @@ export default function AccountsPayablePage() {
             <p className="text-amber-700 text-sm mt-1">Track outstanding payments to vendors</p>
           </div>
           {canRecordPayment && (
-            <button onClick={() => { fetchPOsForAdvance(); setShowAdvanceModal(true); setAdvanceError(null); }}
+            <button onClick={() => { 
+              fetchPOsForAdvance(); 
+              fetchVendorsForAdvance();
+              setShowAdvanceModal(true); 
+              setAdvanceError(null); 
+            }}
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700">
               + Advance Payment
             </button>
@@ -703,8 +922,8 @@ export default function AccountsPayablePage() {
             className={`px-5 py-2.5 text-sm font-semibold border-b-2 -mb-px flex items-center gap-2 ${
               activeTab === 'advances' ? 'border-indigo-500 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
-            Advance Payments
-            {advancePayments.length > 0 && <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">{advancePayments.length}</span>}
+            Advances
+            {advances.filter(a => (a.balance_amount || 0) > 0).length > 0 && <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">{advances.filter(a => (a.balance_amount || 0) > 0).length}</span>}
           </button>
         </div>
 
@@ -764,7 +983,7 @@ export default function AccountsPayablePage() {
                         <td className="px-3 py-2 text-gray-700">{grn.invoice_number || '—'}</td>
                         <td className="px-3 py-2 text-gray-700">{grn.vendor?.name || '—'}</td>
                         <td className="px-3 py-2 text-gray-600">{grn.purchase_order?.po_number || '—'}</td>
-                        <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{grn.grn_date ? new Date(grn.grn_date).toLocaleDateString('en-IN') : '—'}</td>
+                        <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{grn.receipt_date ? new Date(grn.receipt_date).toLocaleDateString('en-IN') : '—'}</td>
                         <td className="px-3 py-2 text-right font-semibold">₹{fmtINR(grn.net)}</td>
                         <td className="px-3 py-2 text-right text-green-700">₹{fmtINR(grn.settled)}</td>
                         <td className="px-3 py-2 text-right font-bold text-orange-600">₹{fmtINR(grn.outstanding)}</td>
@@ -815,19 +1034,36 @@ export default function AccountsPayablePage() {
 
         {activeTab === 'advances' && (
           <div className="space-y-4">
+            {/* Filter buttons */}
+            <div className="flex gap-2">
+              {(['ALL', 'PO', 'BLANKET'] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setAdvanceFilter(type)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    advanceFilter === type
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {type === 'ALL' ? 'All Advances' : type === 'PO' ? 'PO Advances' : 'Blanket Advances'}
+                </button>
+              ))}
+            </div>
+            
             <div className="bg-white rounded-xl shadow overflow-hidden">
               <div className="p-4 border-b flex justify-between items-center">
                 <div>
-                  <h3 className="font-semibold text-gray-900">Advance Payments to Vendors</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">Payments made against POs before GRN/invoice receipt</p>
+                  <h3 className="font-semibold text-gray-900">Vendor Advances</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">All advance payments (PO-specific and blanket)</p>
                 </div>
                 <div className="text-sm font-bold text-indigo-700">
-                  Total: ₹{fmtINR(advancePayments.reduce((s, a) => s + parseFloat(a.amount || 0), 0))}
+                  Total Available: ₹{fmtINR(advances.reduce((s: number, a: any) => s + (a.balance_amount || 0), 0))}
                 </div>
               </div>
               {loadingAdvances ? (
                 <div className="p-8 text-center text-gray-400">Loading...</div>
-              ) : advancePayments.length === 0 ? (
+              ) : advances.length === 0 ? (
                 <div className="p-10 text-center text-gray-400">
                   <div className="text-4xl mb-2">💳</div>
                   <p>No advance payments recorded yet</p>
@@ -837,24 +1073,38 @@ export default function AccountsPayablePage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Type</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">PO Number</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Vendor</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Method</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Reference</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Amount</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Notes</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Total</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Used</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Balance</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {advancePayments.map((ap) => (
+                    {advances.map((ap: any) => (
                       <tr key={ap.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-gray-700">{ap.payment_date ? new Date(ap.payment_date).toLocaleDateString('en-IN') : '—'}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            ap.advance_type === 'PO' ? 'bg-blue-100 text-blue-800' : 'bg-teal-100 text-teal-800'
+                          }`}>
+                            {ap.advance_type === 'PO' ? 'PO' : 'Blanket'}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 font-medium text-indigo-700">{ap.purchase_order?.po_number || '—'}</td>
                         <td className="px-4 py-3 text-gray-700">{ap.vendor?.name || '—'}</td>
-                        <td className="px-4 py-3 text-gray-600">{ap.payment_method}</td>
-                        <td className="px-4 py-3 text-gray-600">{ap.payment_reference || '—'}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-green-700">₹{fmtINR(parseFloat(ap.amount || 0))}</td>
-                        <td className="px-4 py-3 text-gray-500 text-xs">{ap.payment_notes || '—'}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-gray-700">₹{fmtINR(ap.amount || 0)}</td>
+                        <td className="px-4 py-3 text-right text-amber-600">₹{fmtINR(ap.utilized_amount || 0)}</td>
+                        <td className="px-4 py-3 text-right font-bold text-green-700">₹{fmtINR(ap.balance_amount || 0)}</td>
+                        <td className="px-4 py-3">
+                          {(ap.balance_amount || 0) > 0.009 ? (
+                            <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">Available</span>
+                          ) : (
+                            <span className="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">Fully Used</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -863,6 +1113,7 @@ export default function AccountsPayablePage() {
             </div>
           </div>
         )}
+
       </div>
 
       {/* Vendor Invoices Modal */}
@@ -924,7 +1175,16 @@ export default function AccountsPayablePage() {
                           <td className="px-3 py-2 text-gray-500">{grn.invoice_date ? new Date(grn.invoice_date).toLocaleDateString('en-IN') : '—'}</td>
                           <td className="px-3 py-2 font-semibold text-gray-900">{grn.grn_number}</td>
                           <td className="px-3 py-2 text-gray-500">{grn.receipt_date ? new Date(grn.receipt_date).toLocaleDateString('en-IN') : '—'}</td>
-                          <td className="px-3 py-2 text-right">₹{fmtINR(grn.gross_amount)}</td>
+                          <td className="px-3 py-2 text-right" title={
+                            ((grn.freight_amount||0) > 0 || (grn.freight_gst_amount||0) > 0)
+                              ? `Items: ₹${fmtINR(grn.gross_amount)} + Freight: ₹${fmtINR((grn.freight_amount||0)+(grn.freight_gst_amount||0))}`
+                              : undefined
+                          }>
+                            ₹{fmtINR(+(grn.gross_amount||0) + +(grn.freight_amount||0) + +(grn.freight_gst_amount||0))}
+                            {((grn.freight_amount||0) > 0 || (grn.freight_gst_amount||0) > 0) && (
+                              <div className="text-[10px] text-blue-600">incl. freight</div>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-right text-red-600">-₹{fmtINR(grn.debit_note_amount)}</td>
                           <td className="px-3 py-2 text-right font-semibold">₹{fmtINR(net)}</td>
                           <td className="px-3 py-2 text-right text-green-700">₹{fmtINR(paid + tds + short)}</td>
@@ -1004,19 +1264,43 @@ export default function AccountsPayablePage() {
               ) : selectedGRNDetail ? (
                 <>
                   {/* Amount breakdown */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className={`grid gap-3 ${(selectedGRNDetail.computed_advance || 0) > 0 ? 'grid-cols-2 md:grid-cols-5' : 'grid-cols-2 md:grid-cols-4'}`}>
                     {[
-                      { label: 'Gross', val: selectedGRNDetail.gross_amount, cls: 'text-gray-800' },
+                      { label: 'Items (Gross)', val: selectedGRNDetail.gross_amount, cls: 'text-gray-800' },
                       { label: 'Net Payable', val: selectedGRNDetail.net_payable_amount, cls: 'font-bold text-gray-900' },
+                      ((selectedGRNDetail.computed_advance || 0) > 0 && { label: 'Advance', val: selectedGRNDetail.computed_advance, cls: 'text-blue-600 font-semibold' }),
                       { label: 'Total Paid', val: selectedGRNDetail.computed_paid, cls: 'text-green-700 font-semibold' },
                       { label: 'Outstanding', val: selectedGRNDetail.outstanding_amount, cls: `font-bold ${selectedGRNDetail.outstanding_amount > 0 ? 'text-orange-600' : 'text-green-600'}` },
-                    ].map(({ label, val, cls }) => (
+                    ].filter(Boolean).map(({ label, val, cls }: any) => (
                       <div key={label} className="bg-gray-50 rounded-lg p-3 border">
                         <div className="text-xs text-gray-500 mb-0.5">{label}</div>
                         <div className={`text-base ${cls}`}>₹{fmtINR(val)}</div>
                       </div>
                     ))}
                   </div>
+
+                  {/* Freight breakdown (only show if freight exists) */}
+                  {((selectedGRNDetail.freight_amount || 0) > 0 || (selectedGRNDetail.freight_gst_amount || 0) > 0) && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <div className="text-xs font-semibold text-blue-700 mb-2">Freight / Transportation Charges</div>
+                      <div className="flex gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-500">Freight:</span>
+                          <span className="ml-1 font-semibold text-gray-800">₹{fmtINR(selectedGRNDetail.freight_amount || 0)}</span>
+                        </div>
+                        {(selectedGRNDetail.freight_gst_amount || 0) > 0 && (
+                          <div>
+                            <span className="text-gray-500">Freight GST:</span>
+                            <span className="ml-1 font-semibold text-gray-800">₹{fmtINR(selectedGRNDetail.freight_gst_amount || 0)}</span>
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-gray-500">Total Freight:</span>
+                          <span className="ml-1 font-bold text-blue-800">₹{fmtINR((selectedGRNDetail.freight_amount || 0) + (selectedGRNDetail.freight_gst_amount || 0))}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {(selectedGRNDetail.computed_tds > 0 || selectedGRNDetail.computed_short > 0) && (
                     <div className="flex gap-3">
@@ -1044,18 +1328,20 @@ export default function AccountsPayablePage() {
                       <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
                         <thead className="bg-gray-50">
                           <tr>
-                            {['Date','Method','Ref','Amount','TDS','Short Pmt','Notes'].map(h => (
+                            {['Date','Method','Ref','Amount','TDS','Short Pmt','Notes','Actions'].map(h => (
                               <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-600">{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                           {selectedGRNDetail.payment_entries.map((e) => (
-                            <tr key={e.id} className={e.entry_type === 'ADVANCE' ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'}>
+                            <tr key={e.id} className={e.entry_type === 'ADVANCE' || e.entry_type === 'VENDOR_ADVANCE' ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'}>
                               <td className="px-3 py-2 whitespace-nowrap">{new Date(e.payment_date).toLocaleDateString('en-IN')}</td>
                               <td className="px-3 py-2">
                                 {e.entry_type === 'ADVANCE'
-                                  ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800">Advance</span>
+                                  ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800">PO Advance</span>
+                                  : e.entry_type === 'VENDOR_ADVANCE'
+                                  ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-teal-100 text-teal-800">Vendor Advance</span>
                                   : e.payment_method}
                               </td>
                               <td className="px-3 py-2 text-gray-500 text-xs">{e.payment_reference || '—'}</td>
@@ -1063,6 +1349,26 @@ export default function AccountsPayablePage() {
                               <td className="px-3 py-2 text-sky-700">{(e.tds_amount || 0) > 0 ? `₹${fmtINR(e.tds_amount)}` : '—'}</td>
                               <td className="px-3 py-2 text-amber-700">{(e.short_payment_amount || 0) > 0 ? `₹${fmtINR(e.short_payment_amount)}` : '—'}</td>
                               <td className="px-3 py-2 text-xs text-gray-500">{e.payment_notes || (e.short_payment_reason ? `Short: ${e.short_payment_reason}` : '—')}</td>
+                              <td className="px-3 py-2">
+                                {e.entry_type !== 'ADVANCE' && e.entry_type !== 'VENDOR_ADVANCE' && canRecordPayment && (
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => openEditPayment(e)}
+                                      className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+                                      title="Edit payment"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeletePayment(e.id)}
+                                      className="text-red-600 hover:text-red-800 text-xs font-medium"
+                                      title="Delete payment"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -1104,6 +1410,25 @@ export default function AccountsPayablePage() {
             <div className="overflow-auto flex-1 p-5 space-y-4">
               {paymentError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700">{paymentError}</div>
+              )}
+
+              {/* Advance Payment Info */}
+              {(selectedGRNDetail.computed_advance || 0) > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="text-xs font-semibold text-green-800 mb-1">Advance Payment Applied</div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Net Payable:</span>
+                    <span className="font-medium">₹{fmtINR(selectedGRNDetail.net_payable_amount)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-green-700">
+                    <span>Less: Advance Paid:</span>
+                    <span className="font-medium">-₹{fmtINR(selectedGRNDetail.computed_advance || 0)}</span>
+                  </div>
+                  <div className="border-t border-green-200 mt-1 pt-1 flex justify-between text-sm font-bold">
+                    <span className="text-gray-800">Outstanding:</span>
+                    <span className="text-orange-600">₹{fmtINR(selectedGRNDetail.outstanding_amount)}</span>
+                  </div>
+                </div>
               )}
 
               <div className="grid grid-cols-2 gap-4">
@@ -1209,6 +1534,115 @@ export default function AccountsPayablePage() {
               <button onClick={recordPayment} disabled={submitting || !canRecordPayment}
                 className="px-5 py-2 bg-orange-600 text-white rounded-lg text-sm font-semibold hover:bg-orange-700 disabled:opacity-60">
                 {submitting ? 'Saving…' : '💳 Record Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Payment Modal */}
+      {showEditPaymentModal && selectedGRNDetail && editingPayment && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col">
+            <div className="p-5 border-b">
+              <h2 className="text-lg font-bold text-gray-900">Edit Payment</h2>
+              <p className="text-xs text-gray-600 mt-1">
+                {selectedGRNDetail.grn_number}
+                {selectedGRNDetail.invoice_number && <> · Invoice <strong>{selectedGRNDetail.invoice_number}</strong></>}
+              </p>
+            </div>
+
+            <div className="overflow-auto flex-1 p-5 space-y-4">
+              {editPaymentError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700">{editPaymentError}</div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Amount <span className="text-red-500">*</span></label>
+                  <input type="number" step="0.01"
+                    value={editPaymentForm.amount}
+                    onChange={(e) => setEditPaymentForm(f => ({ ...f, amount: e.target.value }))}
+                    className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-400"
+                    placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Method <span className="text-red-500">*</span></label>
+                  <select value={editPaymentForm.payment_method}
+                    onChange={(e) => setEditPaymentForm(f => ({ ...f, payment_method: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                    <option value="NEFT">NEFT</option>
+                    <option value="RTGS">RTGS</option>
+                    <option value="IMPS">IMPS</option>
+                    <option value="CHEQUE">Cheque</option>
+                    <option value="CASH">Cash</option>
+                    <option value="UPI">UPI</option>
+                    <option value="CARD">Card</option>
+                    <option value="BANK_TRANSFER">Bank Transfer</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Reference</label>
+                  <input type="text" value={editPaymentForm.payment_reference}
+                    onChange={(e) => setEditPaymentForm(f => ({ ...f, payment_reference: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="UTR / Cheque No / Ref" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Date <span className="text-red-500">*</span></label>
+                  <input type="date" value={editPaymentForm.payment_date}
+                    onChange={(e) => setEditPaymentForm(f => ({ ...f, payment_date: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-sky-700 mb-1">TDS Deducted</label>
+                  <input type="number" step="0.01" min={0}
+                    value={editPaymentForm.tds_amount}
+                    onChange={(e) => setEditPaymentForm(f => ({ ...f, tds_amount: e.target.value }))}
+                    className="w-full px-3 py-2 border border-sky-200 rounded-lg text-sm"
+                    placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-amber-700 mb-1">Short Payment</label>
+                  <input type="number" step="0.01" min={0}
+                    value={editPaymentForm.short_payment_amount}
+                    onChange={(e) => setEditPaymentForm(f => ({ ...f, short_payment_amount: e.target.value }))}
+                    className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm"
+                    placeholder="0.00" />
+                  <p className="text-xs text-amber-500 mt-0.5">Amount deducted for other reason</p>
+                </div>
+              </div>
+              {(parseFloat(editPaymentForm.short_payment_amount || '0') > 0) && (
+                <div>
+                  <label className="block text-xs font-semibold text-amber-700 mb-1">Short Payment Reason</label>
+                  <input type="text" value={editPaymentForm.short_payment_reason}
+                    onChange={(e) => setEditPaymentForm(f => ({ ...f, short_payment_reason: e.target.value }))}
+                    className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm"
+                    placeholder="Reason for short payment" />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Notes</label>
+                <textarea value={editPaymentForm.payment_notes}
+                  onChange={(e) => setEditPaymentForm(f => ({ ...f, payment_notes: e.target.value }))}
+                  rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  placeholder="Additional notes" />
+              </div>
+            </div>
+
+            <div className="p-4 border-t flex justify-end gap-3">
+              <button onClick={() => setShowEditPaymentModal(false)} disabled={editingSubmitting}
+                className="px-5 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
+              <button onClick={handleUpdatePayment} disabled={editingSubmitting || !canRecordPayment}
+                className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-60">
+                {editingSubmitting ? 'Saving…' : '💾 Update Payment'}
               </button>
             </div>
           </div>
@@ -1360,7 +1794,11 @@ export default function AccountsPayablePage() {
             <div className="p-5 border-b flex justify-between items-center">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Record Advance Payment</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Payment against an approved PO before invoice/GRN</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {advanceForm.advance_type === 'PO' 
+                    ? 'Payment against a specific Purchase Order' 
+                    : 'General advance payment to vendor'}
+                </p>
               </div>
               <button onClick={() => setShowAdvanceModal(false)} className="text-gray-400 hover:text-gray-700 text-2xl">×</button>
             </div>
@@ -1368,16 +1806,68 @@ export default function AccountsPayablePage() {
               {advanceError && (
                 <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-2 text-sm">{advanceError}</div>
               )}
+              
+              {/* Advance Type Selection */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Purchase Order *</label>
-                <select value={advanceForm.po_id} onChange={(e) => setAdvanceForm(f => ({ ...f, po_id: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                  <option value="">— Select PO —</option>
-                  {advancePOs.map((po: any) => (
-                    <option key={po.id} value={po.id}>{po.po_number} · {po.vendor?.name || po.vendor_name || ''}</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Advance Type</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAdvanceForm(f => ({ ...f, advance_type: 'PO', vendor_id: '' }))}
+                    className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      advanceForm.advance_type === 'PO'
+                        ? 'bg-blue-100 text-blue-800 border-2 border-blue-500'
+                        : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
+                    }`}
+                  >
+                    📋 PO Advance
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdvanceForm(f => ({ ...f, advance_type: 'BLANKET', po_id: '' }))}
+                    className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      advanceForm.advance_type === 'BLANKET'
+                        ? 'bg-teal-100 text-teal-800 border-2 border-teal-500'
+                        : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
+                    }`}
+                  >
+                    🏢 Blanket Advance
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {advanceForm.advance_type === 'PO' 
+                    ? 'Linked to a specific Purchase Order' 
+                    : 'General advance not linked to any PO'}
+                </p>
               </div>
+
+              {/* Conditional: PO Selection for PO advances */}
+              {advanceForm.advance_type === 'PO' && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Purchase Order *</label>
+                  <select value={advanceForm.po_id} onChange={(e) => setAdvanceForm(f => ({ ...f, po_id: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="">— Select PO —</option>
+                    {advancePOs.map((po: any) => (
+                      <option key={po.id} value={po.id}>{po.po_number} · {po.vendor?.name || po.vendor_name || ''}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Conditional: Vendor Selection for Blanket advances */}
+              {advanceForm.advance_type === 'BLANKET' && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Vendor *</label>
+                  <select value={advanceForm.vendor_id} onChange={(e) => setAdvanceForm(f => ({ ...f, vendor_id: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="">— Select Vendor —</option>
+                    {advanceVendors.map((v: any) => (
+                      <option key={v.id} value={v.id}>{v.name} · {v.code || ''}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Amount (₹) *</label>

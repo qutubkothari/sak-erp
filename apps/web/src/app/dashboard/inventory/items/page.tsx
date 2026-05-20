@@ -6,6 +6,7 @@ import { CheckCircle, XCircle } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import DrawingManager from '../../../../components/DrawingManager';
+import NomenclatureManager from '../../../../components/NomenclatureManager';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { hasModulePermission, isAdminLike, readStoredUser } from '@/lib/rbac';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
@@ -112,6 +113,9 @@ function formatItemCategory(category: unknown): string {
   return ITEM_CATEGORY_OPTIONS.find((option) => option.value === normalized)?.label || normalized.replace(/_/g, ' ');
 }
 
+interface NomenclatureSecondary { label: string; acronym: string; hint?: string; }
+interface NomenclaturePrimary { label: string; acronym: string; hint?: string; secondaries: NomenclatureSecondary[]; }
+
 export default function ItemsPage() {
   const router = useRouter();
   const currentUser = readStoredUser();
@@ -129,6 +133,7 @@ export default function ItemsPage() {
   const [showDrawingManager, setShowDrawingManager] = useState(false);
   const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<Item | null>(null);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [showNomenclatureManager, setShowNomenclatureManager] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [newCategory, setNewCategory] = useState('');
   const [editingCategory, setEditingCategory] = useState<{ id: string; name: string } | null>(null);
@@ -243,6 +248,35 @@ export default function ItemsPage() {
     drawing_url: '',
     drawing_file_name: '',
   });
+
+  const [nomenclaturePrimary, setNomenclaturePrimary] = useState('');
+  const [nomenclatureSecondary, setNomenclatureSecondary] = useState('');
+  const [nomenclatureUserDefined, setNomenclatureUserDefined] = useState('');
+  const [nomenclatureData, setNomenclatureData] = useState<NomenclaturePrimary[]>([]);
+
+  // Fetch nomenclature data on mount
+  useEffect(() => {
+    const fetchNomenclature = async () => {
+      try {
+        const data = await apiClient.get<NomenclaturePrimary[]>('/nomenclature');
+        setNomenclatureData(data);
+      } catch (err) {
+        // Silent fail - will use empty array
+        console.warn('Failed to load nomenclature data:', err);
+      }
+    };
+    fetchNomenclature();
+  }, []);
+
+  const selectedPrimaryEntry = nomenclatureData.find(p => p.acronym === nomenclaturePrimary) || null;
+  const availableSecondaries = selectedPrimaryEntry?.secondaries ?? [];
+  const selectedSecondaryEntry = availableSecondaries.find(s => s.acronym === nomenclatureSecondary) || null;
+  const activeHint = selectedSecondaryEntry?.hint || selectedPrimaryEntry?.hint || '';
+
+  const buildGeneratedCode = (primary: string, secondary: string, oemPart: string, userDefined: string = '') => {
+    const parts = [primary, secondary, oemPart, userDefined].filter(Boolean);
+    return parts.join('-').toUpperCase();
+  };
 
   const addCategory = async () => {
     if (newCategory.trim()) {
@@ -1096,6 +1130,9 @@ export default function ItemsPage() {
       drawing_url: '',
       drawing_file_name: '',
     });
+    setNomenclaturePrimary('');
+    setNomenclatureSecondary('');
+    setNomenclatureUserDefined('');
     setDrawingFile(null);
     setDrawingAttachmentMessage(null);
     if (drawingFileInputRef.current) drawingFileInputRef.current.value = '';
@@ -1423,6 +1460,12 @@ export default function ItemsPage() {
               Manage Categories
             </button>
             <button
+              onClick={() => setShowNomenclatureManager(true)}
+              className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+            >
+              Manage SAS Part Numbers
+            </button>
+            <button
               onClick={initBulkInventory}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
             >
@@ -1518,20 +1561,134 @@ export default function ItemsPage() {
               </h2>
               
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      SAS Part Number *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.code}
-                      onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                      placeholder="e.g., RM001"
-                    />
+
+                {/* Nomenclature / Part Number Generator */}
+                {!editingItem && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
+                    <h3 className="text-sm font-semibold text-amber-900">🔖 SAS Part Number Generator</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Primary Category *</label>
+                        <select
+                          value={nomenclaturePrimary}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const newPrimaryEntry = nomenclatureData.find(p => p.acronym === val);
+                            const primaryHint = (newPrimaryEntry?.secondaries.length === 0 ? newPrimaryEntry?.hint : '') || '';
+                            setNomenclaturePrimary(val);
+                            setNomenclatureSecondary('');
+                            setNomenclatureUserDefined(primaryHint);
+                            const newCode = buildGeneratedCode(val, '', formData.oem_part_no, primaryHint);
+                            setFormData(prev => ({ ...prev, code: newCode }));
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-sm"
+                        >
+                          <option value="">— Select Primary —</option>
+                          {nomenclatureData.map(p => (
+                            <option key={p.acronym} value={p.acronym}>{p.label} ({p.acronym})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Secondary Category</label>
+                        <select
+                          value={nomenclatureSecondary}
+                          disabled={availableSecondaries.length === 0}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const newSecEntry = availableSecondaries.find(s => s.acronym === val);
+                            const newHint = newSecEntry?.hint || selectedPrimaryEntry?.hint || '';
+                            setNomenclatureSecondary(val);
+                            setNomenclatureUserDefined(newHint);
+                            const newCode = buildGeneratedCode(nomenclaturePrimary, val, formData.oem_part_no, newHint);
+                            setFormData(prev => ({ ...prev, code: newCode }));
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                        >
+                          <option value="">— Select Secondary —</option>
+                          {availableSecondaries.map(s => (
+                            <option key={s.acronym} value={s.acronym}>{s.label} ({s.acronym})</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* User Defined Strings — shown after secondary (or primary if no secondaries) is selected */}
+                    {(nomenclatureSecondary || (nomenclaturePrimary && availableSecondaries.length === 0)) && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">User Defined Strings</label>
+                        <textarea
+                          rows={3}
+                          value={nomenclatureUserDefined}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setNomenclatureUserDefined(val);
+                            const newCode = buildGeneratedCode(nomenclaturePrimary, nomenclatureSecondary, formData.oem_part_no, val);
+                            setFormData(prev => ({ ...prev, code: newCode }));
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-sm"
+                        />
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">OEM Part No.</label>
+                        <input
+                          type="text"
+                          value={formData.oem_part_no}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const newCode = buildGeneratedCode(nomenclaturePrimary, nomenclatureSecondary, val, nomenclatureUserDefined);
+                            setFormData(prev => ({ ...prev, oem_part_no: val, code: newCode }));
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-sm"
+                          placeholder="e.g., 0003455"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">OEM Name</label>
+                        <input
+                          type="text"
+                          value={(formData as any).oem_name || ''}
+                          onChange={(e) => setFormData({ ...formData, oem_name: e.target.value } as any)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-sm"
+                          placeholder="e.g., Bosch, Siemens"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Generated SAS Part Number</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          required
+                          value={formData.code}
+                          onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                          className="flex-1 px-3 py-2 border-2 border-amber-400 rounded-lg bg-white font-mono font-semibold text-amber-900 focus:ring-2 focus:ring-amber-500 text-sm"
+                          placeholder="Auto-generated or type manually"
+                        />
+                        <span className="text-xs text-gray-500 whitespace-nowrap">Can edit manually</span>
+                      </div>
+                    </div>
                   </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  {editingItem && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        SAS Part Number *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.code}
+                        onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1547,30 +1704,30 @@ export default function ItemsPage() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      OEM Part No.
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.oem_part_no}
-                      onChange={(e) => setFormData({ ...formData, oem_part_no: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                      placeholder="e.g., Robu-866205"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      OEM Name
-                    </label>
-                    <input
-                      type="text"
-                      value={(formData as any).oem_name || ''}
-                      onChange={(e) => setFormData({ ...formData, oem_name: e.target.value } as any)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                      placeholder="e.g., Bosch, Siemens"
-                    />
-                  </div>
+                  {editingItem && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">OEM Part No.</label>
+                        <input
+                          type="text"
+                          value={formData.oem_part_no}
+                          onChange={(e) => setFormData({ ...formData, oem_part_no: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                          placeholder="e.g., Robu-866205"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">OEM Name</label>
+                        <input
+                          type="text"
+                          value={(formData as any).oem_name || ''}
+                          onChange={(e) => setFormData({ ...formData, oem_name: e.target.value } as any)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                          placeholder="e.g., Bosch, Siemens"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div>
@@ -2191,6 +2348,13 @@ export default function ItemsPage() {
             setSelectedItemForDrawing(null);
           }}
           mandatory={false}
+        />
+      )}
+
+      {/* Nomenclature Manager Modal */}
+      {showNomenclatureManager && (
+        <NomenclatureManager
+          onClose={() => setShowNomenclatureManager(false)}
         />
       )}
 

@@ -61,6 +61,7 @@ interface PurchaseOrder {
     pr_number: string;
   } | null;
   vendor: {
+    id?: string;
     name: string;
     contact_person: string;
     billing_line2?: string;
@@ -177,6 +178,7 @@ function PurchaseOrdersContent() {
   const searchParams = useSearchParams();
   const todayDate = getTodayDateInputValue();
   const prId = searchParams?.get('prId');
+  const viewId = searchParams?.get('viewId');
   const currentUser = readStoredUser();
   const canApprovePO = hasModulePermission(currentUser, 'Purchase Management', 'approve');
   const canCreatePO = hasModulePermission(currentUser, 'Purchase Management', 'create');
@@ -253,6 +255,12 @@ function PurchaseOrdersContent() {
 
   // PO attachment upload state
   const [poAttachmentUploading, setPoAttachmentUploading] = useState(false);
+
+  // PO Trail state
+  const [showTrailModal, setShowTrailModal] = useState(false);
+  const [trailData, setTrailData] = useState<any>(null);
+  const [trailLoading, setTrailLoading] = useState(false);
+  const [trailPO, setTrailPO] = useState<PurchaseOrder | null>(null);
 
   const orderSelection = useSelection(orders);
 
@@ -355,6 +363,13 @@ function PurchaseOrdersContent() {
       loadPRData(prId);
     }
   }, [prId]);
+
+  // Auto-open PO details if viewId is in URL (from Action Required links)
+  useEffect(() => {
+    if (viewId && !showViewModal) {
+      handleViewDetails(viewId);
+    }
+  }, [viewId]);
 
   // Backfill missing itemId (and itemName) from itemCode once items master data loads.
   // Some PO payloads provide only item_code/item_name; SearchableSelect needs itemId.
@@ -1597,6 +1612,49 @@ function PurchaseOrdersContent() {
     }
   };
 
+  // Fetch PO Trail data (PR, GRNs, Payments, Invoices)
+  const fetchTrailData = async (po: PurchaseOrder) => {
+    try {
+      setTrailLoading(true);
+      setTrailPO(po);
+      
+      // Fetch related data in parallel
+      const [grnsData, advancesData, vendorBalanceData] = await Promise.all([
+        apiClient.get<any[]>(`/purchase/grn?poId=${po.id}`).catch(() => []),
+        apiClient.get<any[]>(`/purchase/debit-notes/po-advances`).catch(() => []),
+        po.vendor?.id ? apiClient.get<any>(`/purchase/debit-notes/vendor/${po.vendor.id}/advance-balance`).catch(() => null) : Promise.resolve(null),
+      ]);
+
+      // Filter advances for this PO
+      const poAdvances = (advancesData || []).filter((a: any) => a.po_id === po.id);
+
+      // Process GRNs to get payment entries for each
+      const grnsWithPayments = await Promise.all(
+        (grnsData || []).map(async (grn: any) => {
+          try {
+            const paymentEntries = await apiClient.get<any[]>(`/purchase/debit-notes/grn/${grn.id}/payment-entries`).catch(() => []);
+            return { ...grn, payment_entries: paymentEntries || [] };
+          } catch {
+            return { ...grn, payment_entries: [] };
+          }
+        })
+      );
+
+      setTrailData({
+        po,
+        pr: po.pr,
+        grns: grnsWithPayments,
+        advances: poAdvances,
+        vendorAdvanceBalance: vendorBalanceData,
+      });
+      setShowTrailModal(true);
+    } catch (error) {
+      toast.error('Failed to load PO trail');
+    } finally {
+      setTrailLoading(false);
+    }
+  };
+
   const handleSaveTracking = async (poId: string) => {
     try {
       const token = localStorage.getItem('accessToken');
@@ -1666,7 +1724,7 @@ function PurchaseOrdersContent() {
         vendorId: resolvedVendorId, // Use PO's vendor for all items
         quantity: item.ordered_qty || 0,
         unitPrice: item.rate || 0,
-        taxRate: item.tax_percent || 18,
+        taxRate: item.tax_percent != null ? item.tax_percent : 18,
         totalPrice: item.amount || 0,
         specifications: item.remarks || '',
         includeDrawing: item.include_drawing === true || item.includeDrawing === true,
@@ -2316,6 +2374,14 @@ function PurchaseOrdersContent() {
             className="font-medium text-amber-600 hover:text-amber-800"
           >
             View
+          </button>
+          <button
+            type="button"
+            onClick={() => fetchTrailData(o)}
+            className="font-medium text-purple-600 hover:text-purple-800"
+            title="View PO lifecycle trail"
+          >
+            Trail
           </button>
           {canEditPO && (
           <button
@@ -3103,7 +3169,7 @@ function PurchaseOrdersContent() {
                               <input
                                 type="number"
                                 value={item.taxRate}
-                                onChange={(e) => handleUpdateItem(index, 'taxRate', parseFloat(e.target.value))}
+                                onChange={(e) => { const v = parseFloat(e.target.value); handleUpdateItem(index, 'taxRate', Number.isNaN(v) ? 0 : v); }}
                                 placeholder="Tax %"
                                 className="w-full border border-gray-300 rounded px-3 py-2"
                               />
@@ -3496,6 +3562,69 @@ function PurchaseOrdersContent() {
                   <p className="font-semibold text-lg">₹{fmtINR(selectedPO.total_amount)}</p>
                 </div>
               </div>
+
+              {/* Cost Breakdown */}
+              {(selectedPO as any).purchase_order_items?.length > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-blue-900 mb-3">💰 Cost Breakdown</h4>
+                  {(() => {
+                    const items = (selectedPO as any).purchase_order_items || [];
+                    const itemsSubtotal = items.reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
+                    const tc = (selectedPO as any).terms_and_conditions;
+                    let freightData: any = {};
+                    try {
+                      if (tc && typeof tc === 'string' && tc.startsWith('{')) {
+                        freightData = JSON.parse(tc);
+                      } else if (tc && typeof tc === 'object') {
+                        freightData = tc;
+                      }
+                    } catch {}
+                    const freightAmount = freightData.freightAmount || (selectedPO as any).freight_amount || 0;
+                    const freightGstApplicable = freightData.freightGstApplicable === true || (selectedPO as any).freight_gst_applicable === true;
+                    const freightGstPercent = freightData.freightGstPercent || (selectedPO as any).freight_gst_percent || 0;
+                    const freightGstAmount = freightGstApplicable ? Math.round(freightAmount * freightGstPercent) / 100 : 0;
+                    const customsDuty = (selectedPO as any).customs_duty || freightData.additionalExpenses || 0;
+                    const otherCharges = (selectedPO as any).other_charges || 0;
+                    const grandTotal = (selectedPO as any).total_amount || itemsSubtotal + freightAmount + freightGstAmount + customsDuty + otherCharges;
+                    return (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Items Subtotal:</span>
+                          <span className="font-medium">₹{fmtINR(itemsSubtotal)}</span>
+                        </div>
+                        {freightAmount > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Freight/Transportation:</span>
+                            <span className="font-medium">₹{fmtINR(freightAmount)}</span>
+                          </div>
+                        )}
+                        {freightGstAmount > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Freight GST ({freightGstPercent}%):</span>
+                            <span className="font-medium">₹{fmtINR(freightGstAmount)}</span>
+                          </div>
+                        )}
+                        {customsDuty > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Customs Duty:</span>
+                            <span className="font-medium">₹{fmtINR(customsDuty)}</span>
+                          </div>
+                        )}
+                        {otherCharges > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Additional Expenses:</span>
+                            <span className="font-medium">₹{fmtINR(otherCharges)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between border-t border-blue-200 pt-2 mt-2">
+                          <span className="font-semibold text-blue-900">Grand Total:</span>
+                          <span className="font-bold text-blue-900">₹{fmtINR(grandTotal)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
               {(selectedPO as any).delivery_address && (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Delivery Address</p>
@@ -4080,6 +4209,359 @@ function PurchaseOrdersContent() {
                 }`}
               >
                 OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PO Trail Modal */}
+      {showTrailModal && trailPO && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col">
+            <div className="p-5 border-b flex justify-between items-center bg-gradient-to-r from-purple-50 to-indigo-50">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <span className="text-2xl">📋</span> PO Trail: {trailPO.po_number}
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Complete lifecycle from PR to Payments
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowTrailModal(false)} 
+                className="text-gray-400 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="overflow-auto flex-1 p-5">
+              {trailLoading ? (
+                <div className="flex items-center justify-center h-64">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                  <span className="ml-3 text-gray-600">Loading trail data...</span>
+                </div>
+              ) : trailData ? (
+                <div className="space-y-6">
+                  {/* PR Section */}
+                  <div className="border-l-4 border-blue-500 pl-4">
+                    <h3 className="text-sm font-bold text-blue-700 uppercase tracking-wide mb-3 flex items-center gap-2">
+                      <span>📄</span> Source: Purchase Requisition
+                    </h3>
+                    {trailData.pr ? (
+                      <div className="bg-blue-50 rounded-lg p-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div>
+                            <span className="text-gray-500">PR Number:</span>
+                            <button
+                              onClick={() => {
+                                setShowTrailModal(false);
+                                router.push(`/dashboard/purchase/requisitions?viewId=${trailData.pr.id}`);
+                              }}
+                              className="font-semibold text-blue-900 hover:text-blue-600 hover:underline cursor-pointer bg-transparent border-0 p-0 text-left"
+                            >
+                              {trailData.pr.pr_number} ↗
+                            </button>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">PR ID:</span>
+                            <p className="font-medium">{trailData.pr.id}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-gray-50 rounded-lg p-4 text-gray-500 italic">
+                        No PR linked (Direct PO)
+                      </div>
+                    )}
+                  </div>
+
+                  {/* PO Details */}
+                  <div className="border-l-4 border-purple-500 pl-4">
+                    <h3 className="text-sm font-bold text-purple-700 uppercase tracking-wide mb-3 flex items-center gap-2">
+                      <span>📑</span> Purchase Order
+                    </h3>
+                    <div className="bg-purple-50 rounded-lg p-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-500">PO Number:</span>
+                          <button
+                            onClick={() => {
+                              setShowTrailModal(false);
+                              handleViewDetails(trailPO.id);
+                            }}
+                            className="font-semibold text-purple-900 hover:text-purple-600 hover:underline cursor-pointer bg-transparent border-0 p-0 text-left block"
+                          >
+                            {trailPO.po_number} ↗
+                          </button>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Vendor:</span>
+                          <button
+                            onClick={() => {
+                              setShowTrailModal(false);
+                              router.push(`/dashboard/purchase/vendors?editId=${trailPO.vendor?.id}`);
+                            }}
+                            className="font-medium hover:text-amber-600 hover:underline cursor-pointer bg-transparent border-0 p-0 text-left block"
+                          >
+                            {trailPO.vendor?.name} ↗
+                          </button>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Date:</span>
+                          <p className="font-medium">{new Date(trailPO.po_date).toLocaleDateString()}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Amount:</span>
+                          <p className="font-semibold text-purple-900">₹{fmtINR(trailPO.total_amount)}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Status:</span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            trailPO.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                            trailPO.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                            trailPO.status === 'DRAFT' ? 'bg-gray-100 text-gray-800' :
+                            'bg-blue-100 text-blue-800'
+                          }`}>
+                            {trailPO.status}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Items:</span>
+                          <p className="font-medium">{trailPO.purchase_order_items?.length || 0}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* GRNs Section */}
+                  <div className="border-l-4 border-green-500 pl-4">
+                    <h3 className="text-sm font-bold text-green-700 uppercase tracking-wide mb-3 flex items-center gap-2">
+                      <span>📦</span> Goods Receipt Notes (GRN)
+                      {trailData.grns?.length > 0 && (
+                        <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-full text-xs">
+                          {trailData.grns.length}
+                        </span>
+                      )}
+                    </h3>
+                    {trailData.grns?.length > 0 ? (
+                      <div className="space-y-3">
+                        {trailData.grns.map((grn: any, idx: number) => (
+                          <div key={grn.id} className="bg-green-50 rounded-lg p-4 border border-green-100">
+                            <div className="flex justify-between items-start mb-2">
+                              <button
+                                onClick={() => {
+                                  setShowTrailModal(false);
+                                  router.push(`/dashboard/purchase/grn?viewId=${grn.id}`);
+                                }}
+                                className="font-semibold text-green-900 hover:text-green-600 hover:underline cursor-pointer bg-transparent border-0 p-0 text-left"
+                              >
+                                GRN #{grn.grn_number} ↗
+                              </button>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                grn.status === 'COMPLETED' ? 'bg-green-200 text-green-800' :
+                                grn.status === 'QC_PENDING' ? 'bg-yellow-200 text-yellow-800' :
+                                'bg-gray-200 text-gray-800'
+                              }`}>
+                                {grn.status}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
+                              <div>
+                                <span className="text-gray-500">Date:</span>
+                                <p className="font-medium">{new Date(grn.grn_date).toLocaleDateString()}</p>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Invoice:</span>
+                                <p className="font-medium">{grn.invoice_number || 'N/A'}</p>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Net Payable:</span>
+                                <p className="font-semibold">₹{fmtINR(grn.net_payable_amount || grn.gross_amount)}</p>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">QC Status:</span>
+                                <p className="font-medium">{grn.qc_completed ? '✅ Completed' : '⏳ Pending'}</p>
+                              </div>
+                            </div>
+                            {/* Payment Entries for this GRN */}
+                            {grn.payment_entries?.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-green-200">
+                                <div className="flex justify-between items-center mb-2">
+                                  <h5 className="text-xs font-bold text-green-700">💳 Payments:</h5>
+                                  <button
+                                    onClick={() => {
+                                      setShowTrailModal(false);
+                                      router.push(`/dashboard/accounts/payables`);
+                                    }}
+                                    className="text-xs text-green-600 hover:text-green-800 underline cursor-pointer bg-transparent border-0"
+                                  >
+                                    View All Payments ↗
+                                  </button>
+                                </div>
+                                <div className="space-y-2">
+                                  {grn.payment_entries.map((payment: any) => (
+                                    <div key={payment.id} className="flex justify-between items-center text-sm bg-white rounded px-3 py-2">
+                                      <div className="flex gap-3">
+                                        <span className="text-gray-600">{new Date(payment.payment_date).toLocaleDateString()}</span>
+                                        <span className="font-medium">₹{fmtINR(payment.amount)}</span>
+                                        <span className="text-gray-500">{payment.payment_method}</span>
+                                        {payment.payment_reference && (
+                                          <span className="text-gray-400">Ref: {payment.payment_reference}</span>
+                                        )}
+                                      </div>
+                                      <span className={`px-2 py-0.5 rounded text-xs ${
+                                        payment.entry_type === 'ADVANCE' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                                      }`}>
+                                        {payment.entry_type || 'PAYMENT'}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="bg-gray-50 rounded-lg p-4 text-gray-500 italic">
+                        No GRNs received yet
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Advance Payments Section */}
+                  <div className="border-l-4 border-indigo-500 pl-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="text-sm font-bold text-indigo-700 uppercase tracking-wide flex items-center gap-2">
+                        <span>💰</span> Advance Payments
+                        {trailData.advances?.length > 0 && (
+                          <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full text-xs">
+                            {trailData.advances.length}
+                          </span>
+                        )}
+                      </h3>
+                      <button
+                        onClick={() => {
+                          setShowTrailModal(false);
+                          router.push(`/dashboard/accounts/payables`);
+                        }}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 underline cursor-pointer bg-transparent border-0"
+                      >
+                        Manage Advances ↗
+                      </button>
+                    </div>
+                    {trailData.advances?.length > 0 ? (
+                      <div className="bg-indigo-50 rounded-lg p-4">
+                        <div className="space-y-2">
+                          {trailData.advances.map((adv: any) => (
+                            <div key={adv.id} className="flex justify-between items-center text-sm bg-white rounded px-3 py-2">
+                              <div className="flex gap-3">
+                                <span className="text-gray-600">{new Date(adv.payment_date).toLocaleDateString()}</span>
+                                <span className="font-semibold text-indigo-900">₹{fmtINR(adv.amount)}</span>
+                                <span className="text-gray-500">{adv.payment_method}</span>
+                                {adv.payment_reference && (
+                                  <span className="text-gray-400">Ref: {adv.payment_reference}</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 pt-2 border-t border-indigo-200 flex justify-between items-center">
+                          <span className="text-sm text-gray-600">Total Advance for this PO:</span>
+                          <span className="font-bold text-indigo-900">
+                            ₹{fmtINR(trailData.advances.reduce((s: number, a: any) => s + (a.amount || 0), 0))}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-gray-50 rounded-lg p-4 text-gray-500 italic">
+                        No advance payments for this PO
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Vendor Advance Balance */}
+                  {trailData.vendorAdvanceBalance && trailData.vendorAdvanceBalance.balance_amount > 0 && (
+                    <div className="border-l-4 border-amber-500 pl-4">
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-sm font-bold text-amber-700 uppercase tracking-wide flex items-center gap-2">
+                          <span>🏦</span> Vendor Advance Balance
+                        </h3>
+                        <button
+                          onClick={() => {
+                            setShowTrailModal(false);
+                            router.push(`/dashboard/accounts/payables`);
+                          }}
+                          className="text-xs text-amber-600 hover:text-amber-800 underline cursor-pointer bg-transparent border-0"
+                        >
+                          View in Payables ↗
+                        </button>
+                      </div>
+                      <div className="bg-amber-50 rounded-lg p-4">
+                        <div className="grid grid-cols-3 gap-4 text-sm">
+                          <div>
+                            <span className="text-gray-500">Total Advance:</span>
+                            <p className="font-semibold text-amber-900">₹{fmtINR(trailData.vendorAdvanceBalance.total_advance)}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Utilized:</span>
+                            <p className="font-medium">₹{fmtINR(trailData.vendorAdvanceBalance.utilized_amount)}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Available Balance:</span>
+                            <p className="font-bold text-green-700">₹{fmtINR(trailData.vendorAdvanceBalance.balance_amount)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Summary */}
+                  <div className="bg-gray-100 rounded-lg p-4 mt-6">
+                    <h3 className="text-sm font-bold text-gray-700 mb-3">📊 Trail Summary</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-600">{trailData.pr ? '1' : '0'}</div>
+                        <div className="text-gray-500">PRs</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-purple-600">1</div>
+                        <div className="text-gray-500">POs</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">{trailData.grns?.length || 0}</div>
+                        <div className="text-gray-500">GRNs</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-indigo-600">
+                          {trailData.advances?.length || 0}
+                        </div>
+                        <div className="text-gray-500">Advances</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-orange-600">
+                          {trailData.grns?.reduce((t: number, g: any) => t + (g.payment_entries?.length || 0), 0) || 0}
+                        </div>
+                        <div className="text-gray-500">Payments</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  Failed to load trail data
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t flex justify-end gap-3 bg-gray-50">
+              <button 
+                onClick={() => setShowTrailModal(false)} 
+                className="px-5 py-2 bg-gray-600 text-white rounded-lg text-sm font-semibold hover:bg-gray-700"
+              >
+                Close
               </button>
             </div>
           </div>

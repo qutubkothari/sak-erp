@@ -54,7 +54,7 @@ export default function DashboardReminders() {
     };
 
     fetchReminders();
-    const intervalId = window.setInterval(fetchReminders, 60000);
+    const intervalId = window.setInterval(fetchReminders, 30000); // Poll every 30 seconds
 
     return () => {
       cancelled = true;
@@ -94,7 +94,7 @@ export default function DashboardReminders() {
               {pendingPOs.slice(0, 3).map((po) => (
                 <Link
                   key={po.id}
-                  href="/dashboard/purchase/orders"
+                  href={`/dashboard/purchase/orders?viewId=${po.id}`}
                   className="block rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-sm hover:bg-orange-100"
                 >
                   <div className="font-semibold text-orange-950">{po.po_number?.startsWith('DRAFT-') ? 'Draft PO' : po.po_number || 'Purchase Order'}</div>
@@ -115,7 +115,7 @@ export default function DashboardReminders() {
               {pendingQC.slice(0, 3).map((grn) => (
                 <Link
                   key={grn.id}
-                  href="/dashboard/purchase/grn"
+                  href={`/dashboard/purchase/grn?viewId=${grn.id}`}
                   className="block rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-sm hover:bg-sky-100"
                 >
                   <div className="font-semibold text-sky-950">{grn.grn_number || 'GRN'}</div>
