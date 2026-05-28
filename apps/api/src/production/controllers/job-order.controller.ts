@@ -172,6 +172,14 @@ export class JobOrderController {
     return this.jobOrderService.updateStatus(tenantId, id, status);
   }
 
+  @Post(':id/stop')
+  @RequireUpdate('job_orders')
+  async stopJobOrder(@Request() req: any, @Param('id') id: string, @Body() body: { reason?: string }) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
+    return this.jobOrderService.stopJobOrder(tenantId, id, userId, body?.reason);
+  }
+
   @Put(':id/operations/:operationId')
   async updateOperation(
     @Request() req: any,

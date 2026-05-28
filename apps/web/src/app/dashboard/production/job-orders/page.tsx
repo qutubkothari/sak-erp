@@ -202,8 +202,14 @@ function JobOrdersPageContent() {
   const [bomSearchTerm, setBomSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showStopModal, setShowStopModal] = useState(false);
   const [selectedJobOrder, setSelectedJobOrder] = useState<JobOrder | null>(null);
   const [jobOrderToSchedule, setJobOrderToSchedule] = useState<JobOrder | null>(null);
+  const [jobOrderToEdit, setJobOrderToEdit] = useState<JobOrder | null>(null);
+  const [jobOrderToStop, setJobOrderToStop] = useState<JobOrder | null>(null);
+  const [stopReason, setStopReason] = useState('');
+  const [activeTab, setActiveTab] = useState<'active' | 'stopped'>('active');
   const [selectedJobOrderLoading, setSelectedJobOrderLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [completionPreview, setCompletionPreview] = useState<any>(null);
@@ -466,13 +472,12 @@ function JobOrdersPageContent() {
 
     const company = await apiClient.get<any>('/tenant/current').catch(() => null);
     const branding = buildDocumentBranding(company);
-    const generatedOn = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+    const joDateOptions: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true };
+    const generatedOn = new Date().toLocaleString('en-IN', joDateOptions);
     const formatDate = (value?: string | null) => {
       if (!value) return '-';
       const parsed = new Date(value);
-      return Number.isNaN(parsed.getTime())
-        ? '-'
-        : parsed.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+      return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString('en-IN', joDateOptions);
     };
     const workflowRows = [
       ['Status', getJobOrderDisplayStatus(selectedJobOrder, qcSummary)],
@@ -1187,6 +1192,89 @@ function JobOrdersPageContent() {
       alert('Job Order scheduled successfully');
     } catch (error: any) {
       alert(error?.response?.data?.message || error?.message || 'Failed to schedule Job Order');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Edit Job Order
+  const openEditModal = (jo: JobOrder) => {
+    setJobOrderToEdit(jo);
+    setFormData({
+      itemId: jo.itemId,
+      bomId: jo.bomId || '',
+      salesOrderId: '',
+      salesOrderItemId: '',
+      quantity: jo.quantity,
+      startDate: jo.startDate ? formatDateTimeLocalValue(jo.startDate) : `${getTodayDateInputValue()}T09:00`,
+      endDate: jo.endDate ? formatDateTimeLocalValue(jo.endDate) : '',
+      priority: jo.priority,
+      assignedTo: jo.assignedTo || '',
+      notes: jo.notes || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const closeEditModal = () => {
+    setShowEditModal(false);
+    setJobOrderToEdit(null);
+    resetForm();
+  };
+
+  const handleEditJobOrder = async () => {
+    if (!jobOrderToEdit) return;
+
+    if (!formData.quantity || formData.quantity <= 0) {
+      alert('Quantity must be greater than 0');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await apiClient.put(`/job-orders/${jobOrderToEdit.id}`, {
+        quantity: Number(formData.quantity),
+        startDate: formData.startDate,
+        endDate: formData.endDate || undefined,
+        priority: formData.priority,
+        notes: formData.notes || undefined,
+        assignedTo: formData.assignedTo || undefined,
+      });
+      await fetchJobOrders();
+      closeEditModal();
+      alert('Job Order updated successfully');
+    } catch (error: any) {
+      alert(error?.response?.data?.message || error?.message || 'Failed to update Job Order');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Stop Job Order
+  const openStopModal = (jo: JobOrder) => {
+    setJobOrderToStop(jo);
+    setStopReason('');
+    setShowStopModal(true);
+  };
+
+  const closeStopModal = () => {
+    setShowStopModal(false);
+    setJobOrderToStop(null);
+    setStopReason('');
+  };
+
+  const handleStopJobOrder = async () => {
+    if (!jobOrderToStop) return;
+
+    setLoading(true);
+    try {
+      await apiClient.post(`/job-orders/${jobOrderToStop.id}/stop`, {
+        reason: stopReason.trim() || undefined,
+      });
+      await fetchJobOrders();
+      closeStopModal();
+      alert('Job Order stopped successfully');
+    } catch (error: any) {
+      alert(error?.response?.data?.message || error?.message || 'Failed to stop Job Order');
     } finally {
       setLoading(false);
     }
@@ -1965,6 +2053,8 @@ function JobOrdersPageContent() {
       cell: (jo) => {
         const isAssignedToCurrentUser = !!currentUserId && String(jo.assignedTo || '').trim() === currentUserId;
         const canOperateAssignedJob = restrictToAssignedJobs && isAssignedToCurrentUser;
+        const isStopped = jo.status === 'STOPPED' || jo.status === 'CANCELLED';
+        const isCompleted = jo.status === 'COMPLETED';
 
         return (
           <div className="whitespace-nowrap text-sm">
@@ -1975,13 +2065,37 @@ function JobOrdersPageContent() {
             >
               View
             </button>
-            <button
-              type="button"
-              onClick={() => router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(jo.id)}&joNumber=${encodeURIComponent(jo.jobOrderNumber)}`)}
-              className="text-slate-600 hover:text-slate-800 mr-3"
-            >
-              SIV
-            </button>
+            {!isStopped && !isCompleted && (
+              <button
+                type="button"
+                onClick={() => router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(jo.id)}&joNumber=${encodeURIComponent(jo.jobOrderNumber)}`)}
+                className="text-slate-600 hover:text-slate-800 mr-3"
+              >
+                SIV
+              </button>
+            )}
+            {/* Edit button - available for DRAFT, SCHEDULED, IN_PROGRESS */}
+            {['DRAFT', 'SCHEDULED', 'IN_PROGRESS'].includes(jo.status) && canEdit && (
+              <button
+                type="button"
+                onClick={() => openEditModal(jo)}
+                className="text-indigo-600 hover:text-indigo-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                disabled={loading}
+              >
+                Edit
+              </button>
+            )}
+            {/* Stop button - available for DRAFT, SCHEDULED, IN_PROGRESS */}
+            {['DRAFT', 'SCHEDULED', 'IN_PROGRESS'].includes(jo.status) && canEdit && (
+              <button
+                type="button"
+                onClick={() => openStopModal(jo)}
+                className="text-red-600 hover:text-red-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                disabled={loading}
+              >
+                Stop
+              </button>
+            )}
             {jo.status === 'DRAFT' && canEdit && (
               <button
                 type="button"
@@ -2030,25 +2144,69 @@ function JobOrdersPageContent() {
     },
   ];
 
+  // Filter job orders based on active tab
+  const filteredJobOrders = jobOrders.filter((jo) => {
+    const isStopped = jo.status === 'STOPPED' || jo.status === 'CANCELLED';
+    return activeTab === 'active' ? !isStopped : isStopped;
+  });
+
   return (
     <div className="p-6 min-h-screen bg-gradient-to-br from-[#FAF9F6] to-[#E8DCC4]">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-[#36454F]">Job Orders</h1>
       </div>
 
+      {/* Tabs for Active/Stopped Job Orders */}
+      <div className="flex gap-2 mb-4">
+        <button
+          type="button"
+          onClick={() => setActiveTab('active')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'active'
+              ? 'bg-blue-600 text-white'
+              : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+          }`}
+        >
+          Active Job Orders
+          <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-gray-200 text-gray-700">
+            {jobOrders.filter(jo => jo.status !== 'STOPPED' && jo.status !== 'CANCELLED').length}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('stopped')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'stopped'
+              ? 'bg-red-600 text-white'
+              : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+          }`}
+        >
+          Stopped Job Orders
+          <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-gray-200 text-gray-700">
+            {jobOrders.filter(jo => jo.status === 'STOPPED' || jo.status === 'CANCELLED').length}
+          </span>
+        </button>
+      </div>
+
       {/* Job Orders List */}
       <ListTable
-        storageKey="jobOrdersTable"
-        rows={jobOrders}
+        storageKey={`jobOrdersTable_${activeTab}`}
+        rows={filteredJobOrders}
         columns={jobOrdersTableColumns}
         getRowId={(jo) => jo.id}
         defaultPageSize={10}
         pageSizeOptions={[10, 25, 50, 100]}
-        searchPlaceholder="Search by job order #, item, status, priority…"
+        searchPlaceholder={`Search ${activeTab === 'active' ? 'active' : 'stopped'} job orders by #, item, status…`}
         emptyState={
           <div className="py-10">
-            <div className="text-lg font-semibold text-gray-700">No Job Orders Yet</div>
-            <div className="text-sm text-gray-500">Create your first job order to get started</div>
+            <div className="text-lg font-semibold text-gray-700">
+              {activeTab === 'active' ? 'No Active Job Orders' : 'No Stopped Job Orders'}
+            </div>
+            <div className="text-sm text-gray-500">
+              {activeTab === 'active'
+                ? 'Create your first job order to get started'
+                : 'Stopped job orders will appear here'}
+            </div>
           </div>
         }
       />
@@ -3160,6 +3318,179 @@ function JobOrdersPageContent() {
                 className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
               >
                 Go to Inventory
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Job Order Modal */}
+      {showEditModal && jobOrderToEdit && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">Edit Job Order</h2>
+              <button onClick={closeEditModal} className="text-gray-500 hover:text-gray-700">
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Item</label>
+                  <input
+                    type="text"
+                    value={`${jobOrderToEdit.itemCode} - ${jobOrderToEdit.itemName}`}
+                    disabled
+                    className="w-full border rounded px-3 py-2 bg-gray-100 text-gray-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={formData.quantity}
+                    onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
+                    className="w-full border rounded px-3 py-2"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                  <input
+                    type="datetime-local"
+                    value={formData.startDate}
+                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                    className="w-full border rounded px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End Date (Optional)</label>
+                  <input
+                    type="datetime-local"
+                    value={formData.endDate}
+                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    className="w-full border rounded px-3 py-2"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                  <select
+                    value={formData.priority}
+                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                    className="w-full border rounded px-3 py-2"
+                  >
+                    <option value="NORMAL">NORMAL</option>
+                    <option value="HIGH">HIGH</option>
+                    <option value="URGENT">URGENT</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Assigned To</label>
+                  <select
+                    value={formData.assignedTo}
+                    onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
+                    className="w-full border rounded px-3 py-2"
+                  >
+                    <option value="">-- Select --</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  rows={3}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={closeEditModal}
+                className="px-4 py-2 border rounded hover:bg-gray-100"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditJobOrder}
+                disabled={loading}
+                className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {loading ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stop Job Order Modal */}
+      {showStopModal && jobOrderToStop && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Stop Job Order</h2>
+                <p className="text-sm text-gray-500">{jobOrderToStop.jobOrderNumber}</p>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <p className="text-sm text-gray-700 mb-4">
+                Are you sure you want to stop this job order? This action cannot be undone.
+              </p>
+              <div className="bg-gray-50 p-3 rounded mb-4">
+                <p className="text-sm"><strong>Item:</strong> {jobOrderToStop.itemCode}</p>
+                <p className="text-sm"><strong>Quantity:</strong> {jobOrderToStop.quantity}</p>
+                <p className="text-sm"><strong>Status:</strong> {jobOrderToStop.status}</p>
+              </div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Reason for stopping (optional)
+              </label>
+              <textarea
+                value={stopReason}
+                onChange={(e) => setStopReason(e.target.value)}
+                placeholder="Enter reason for stopping this job order..."
+                className="w-full border rounded px-3 py-2"
+                rows={3}
+              />
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={closeStopModal}
+                className="px-4 py-2 border rounded hover:bg-gray-100"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleStopJobOrder}
+                disabled={loading}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+              >
+                {loading ? 'Stopping...' : 'Stop Job Order'}
               </button>
             </div>
           </div>

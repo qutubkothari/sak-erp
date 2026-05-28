@@ -112,7 +112,10 @@ export class PurchaseRequisitionsService {
         .select('id, code, name, is_active, is_verified')
         .eq('tenant_id', tenantId)
         .in('id', ids);
-      if (error) throw new BadRequestException(error.message);
+      if (error) {
+        // Log but don't fail for items lookup errors - job order items may not exist in master
+        console.warn('Items verification lookup warning (job-order items may not exist):', error.message);
+      }
       (data || []).forEach((item: any) => byId.set(String(item.id), item));
     }
 
@@ -122,7 +125,10 @@ export class PurchaseRequisitionsService {
         .select('id, code, name, is_active, is_verified')
         .eq('tenant_id', tenantId)
         .in('code', codes);
-      if (error) throw new BadRequestException(error.message);
+      if (error) {
+        // Log but don't fail for items lookup errors - job order items may not exist in master
+        console.warn('Items verification lookup warning (job-order items may not exist):', error.message);
+      }
       (data || []).forEach((item: any) => byCode.set(String(item.code), item));
     }
 
@@ -544,9 +550,10 @@ export class PurchaseRequisitionsService {
           remarks: item.remarks ?? item.notes ?? null,
         }));
 
-        await this.supabase
+        const { error: itemsError } = await this.supabase
           .from('purchase_requisition_items')
           .insert(items);
+        if (itemsError) throw new BadRequestException(`Failed to save PR items: ${itemsError.message}`);
       }
     }
 

@@ -417,6 +417,24 @@ export default function UIDTrackingPage() {
     return buildDocumentBranding(company);
   };
 
+  const downloadQrImage = useCallback(async (record: UIDRecord) => {
+    const qrUrl = generateQRCode(record.uid);
+    try {
+      const response = await fetch(qrUrl);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = `QR-${record.uid.replace(/[^a-zA-Z0-9_-]/g, '_')}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    } catch {
+      window.open(qrUrl, '_blank');
+    }
+  }, []);
+
   const printQrLabel = useCallback(async (record: UIDRecord) => {
     const printWindow = openPrintWindow(`UID Label - ${record.uid}`, 'The print window was blocked. Please allow pop-ups and try again.');
     if (!printWindow) {
@@ -1075,18 +1093,28 @@ export default function UIDTrackingPage() {
               <p className="text-sm text-gray-500 mb-4">
                 Scan to view complete traceability
               </p>
-              <button
-                onClick={() => printQrLabel(selectedUID)}
-                className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 mr-2"
-              >
-                Print Label
-              </button>
-              <button
-                onClick={() => setShowModal(false)}
-                className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
-              >
-                Close
-              </button>
+              <div className="flex flex-wrap gap-2 justify-center">
+                <button
+                  onClick={() => downloadQrImage(selectedUID)}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm font-semibold"
+                  title="Download QR as PNG – send to phone and print via Phomemo app"
+                >
+                  ⬇ Download QR (Phomemo)
+                </button>
+                <button
+                  onClick={() => printQrLabel(selectedUID)}
+                  className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 text-sm"
+                >
+                  🖨 Print Label
+                </button>
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 text-sm"
+                >
+                  Close
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-3">Tip: Download the QR image, share it to your phone, then open it in the Phomemo app to print.</p>
             </div>
           </div>
         </div>

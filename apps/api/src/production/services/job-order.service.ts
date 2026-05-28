@@ -2486,6 +2486,62 @@ export class JobOrderService {
     return this.findOne(tenantId, id);
   }
 
+  async stopJobOrder(tenantId: string, id: string, userId?: string, reason?: string) {
+    // Get job order to verify it exists and is not already stopped/completed
+    const { data: jobOrder, error: fetchError } = await this.supabase
+      .from('production_job_orders')
+      .select('id, status, job_order_number')
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .single();
+
+    if (fetchError) throw new BadRequestException(fetchError.message);
+    if (!jobOrder) throw new NotFoundException('Job order not found');
+
+    const currentStatus = String(jobOrder.status || '').toUpperCase();
+
+    // Cannot stop already completed, cancelled, or stopped job orders
+    if (['COMPLETED', 'CANCELLED', 'STOPPED'].includes(currentStatus)) {
+      throw new BadRequestException(`Cannot stop a job order that is already ${currentStatus.toLowerCase()}`);
+    }
+
+    // Update job order status to STOPPED
+    const updates: any = {
+      status: 'STOPPED',
+      actual_end_date: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // Add stop reason to notes if provided
+    if (reason?.trim()) {
+      const { data: current } = await this.supabase
+        .from('production_job_orders')
+        .select('notes')
+        .eq('id', id)
+        .single();
+      const currentNotes = String(current?.notes || '');
+      const stopNote = `[STOPPED by ${userId || 'system'} at ${new Date().toISOString()}] Reason: ${reason.trim()}`;
+      updates.notes = currentNotes ? `${currentNotes}\n${stopNote}` : stopNote;
+    }
+
+    const { error } = await this.supabase
+      .from('production_job_orders')
+      .update(updates)
+      .eq('tenant_id', tenantId)
+      .eq('id', id);
+
+    if (error) throw new BadRequestException(error.message);
+
+    this.logger.log(`Job Order ${jobOrder.job_order_number} stopped by ${userId || 'system'}. Reason: ${reason || 'N/A'}`);
+
+    return {
+      id,
+      jobOrderNumber: jobOrder.job_order_number,
+      status: 'STOPPED',
+      message: 'Job order stopped successfully',
+    };
+  }
+
   async updateOperation(tenantId: string, jobOrderId: string, operationId: string, dto: UpdateOperationDto) {
     // Verify job order belongs to tenant
     const { data: jobOrder } = await this.supabase

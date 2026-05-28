@@ -351,6 +351,7 @@ export class ItemsService {
         lead_time_days: leadTimeDays,
         hsn_code: validatedHsn,
         drawing_required: drawingRequired,
+        item_type: itemData.item_type || 'RAW_MATERIAL',
         parent_item_id: itemData.parent_item_id || null,
         is_variant: itemData.is_variant || false,
         is_default_variant: itemData.is_default_variant || false,
@@ -604,6 +605,7 @@ export class ItemsService {
     if (itemData.is_variant !== undefined) updateData.is_variant = itemData.is_variant;
     if (itemData.is_default_variant !== undefined) updateData.is_default_variant = itemData.is_default_variant;
     if (itemData.variant_name !== undefined) updateData.variant_name = itemData.variant_name || null;
+    if (itemData.item_type !== undefined) updateData.item_type = itemData.item_type || 'RAW_MATERIAL';
 
     const drawingRequired = itemData.drawing_required ?? itemData.drawingRequired;
     if (drawingRequired !== undefined) {
@@ -1230,7 +1232,7 @@ export class ItemsService {
           .filter(Boolean),
       )] as string[];
 
-      let grnsByNumber: Record<string, any> = {};
+      const grnsByNumber: Record<string, any> = {};
       if (grnNumbers.length > 0) {
         const { data: grnsData } = await this.supabase
           .from('grns')
@@ -1239,7 +1241,7 @@ export class ItemsService {
           .in('grn_number', grnNumbers);
 
         const vendorIds = [...new Set((grnsData || []).map((g: any) => g.vendor_id).filter(Boolean))] as string[];
-        let vendorById: Record<string, string> = {};
+        const vendorById: Record<string, string> = {};
         if (vendorIds.length > 0) {
           const { data: vData } = await this.supabase
             .from('vendors')
@@ -1254,7 +1256,7 @@ export class ItemsService {
       }
 
       const seWhIds = [...new Set((stockEntries as any[]).map((e) => e.warehouse_id).filter(Boolean))] as string[];
-      let seWhById: Record<string, any> = {};
+      const seWhById: Record<string, any> = {};
       if (seWhIds.length > 0) {
         const { data: whs } = await this.supabase.from('warehouses').select('id, name, code').in('id', seWhIds);
         for (const w of whs || []) seWhById[w.id] = w;
@@ -1313,7 +1315,7 @@ export class ItemsService {
         ...(movements as any[]).map((m) => m.to_warehouse_id),
       ].filter(Boolean))] as string[];
 
-      let movWhById: Record<string, any> = {};
+      const movWhById: Record<string, any> = {};
       if (movWhIds.length > 0) {
         const { data: whs } = await this.supabase.from('warehouses').select('id, name, code').in('id', movWhIds);
         for (const w of whs || []) movWhById[w.id] = w;

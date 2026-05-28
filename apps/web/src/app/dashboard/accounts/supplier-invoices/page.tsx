@@ -20,6 +20,10 @@ interface SupplierInvoice {
   freight_gst_amount?: number;
   debit_note_amount: number;
   net_payable_amount: number;
+  paid_amount?: number;
+  tds_amount?: number;
+  short_payment_amount?: number;
+  payment_status?: string;
   invoice_approved: boolean;
   invoice_approved_at: string | null;
   invoice_approval_notes: string | null;
@@ -59,9 +63,56 @@ export default function SupplierInvoicesPage() {
   const fetchInvoices = async () => {
     try {
       setLoading(true);
-      const grns = await apiClient.get<any[]>('/purchase/grn');
+      const [grns, pos, poAdvances] = await Promise.all([
+        apiClient.get<any[]>('/purchase/grn'),
+        apiClient.get<any[]>('/purchase/po').catch(() => [] as any[]),
+        apiClient.get<any[]>('/purchase/debit-notes/po-advances').catch(() => [] as any[]),
+      ]);
       console.log('[INVOICES] all grns count:', (grns || []).length);
-      const completed = (grns || []).filter((g: any) => g.status === 'COMPLETED');
+
+      // Build PO totals map
+      const poTotals = new Map<string, number>();
+      (pos || []).forEach((po: any) => {
+        poTotals.set(po.id, Number(po.grand_total || po.total_amount || 0));
+      });
+
+      // Calculate total invoiced per PO
+      const invoicedByPo = new Map<string, number>();
+      (grns || []).forEach((g: any) => {
+        if (g.po_id) {
+          invoicedByPo.set(g.po_id, (invoicedByPo.get(g.po_id) || 0) + Number(g.net_payable_amount || 0));
+        }
+      });
+
+      const advanceByPo = new Map<string, number>();
+      (poAdvances || []).forEach((a: any) => {
+        const poId = a.po_id || a.poId;
+        if (poId) advanceByPo.set(poId, (advanceByPo.get(poId) || 0) + Number(a.amount || 0));
+      });
+
+      const advanceUsedByPo = new Map<string, number>();
+      const completed = (grns || [])
+      .sort((a: any, b: any) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())
+      .filter((g: any) => {
+        const netPayable = Number(g.net_payable_amount ?? 0);
+        const paidAmount = Number(g.paid_amount ?? 0);
+        const tdsAmount = Number(g.tds_amount ?? 0);
+        const shortAmount = Number(g.short_payment_amount ?? 0);
+        const totalPoAdvance = g.po_id ? (advanceByPo.get(g.po_id) || 0) : 0;
+        const usedAdvance = g.po_id ? (advanceUsedByPo.get(g.po_id) || 0) : 0;
+        const remainingAdvance = Math.max(0, totalPoAdvance - usedAdvance);
+        const applicableAdvance = Math.min(Math.max(0, netPayable - paidAmount - tdsAmount - shortAmount), remainingAdvance);
+        if (g.po_id) advanceUsedByPo.set(g.po_id, usedAdvance + applicableAdvance);
+        const settledAmount = paidAmount + tdsAmount + shortAmount + applicableAdvance;
+        const isFullyPaid = (g.payment_status || '').toUpperCase() === 'PAID' || settledAmount >= netPayable - 0.009;
+
+        // Check if PO is fully invoiced (total invoices = PO grand_total)
+        const poTotal = poTotals.get(g.po_id) || 0;
+        const totalInvoicedForPo = invoicedByPo.get(g.po_id) || 0;
+        const isPoFullyInvoiced = poTotal > 0 && Math.abs(totalInvoicedForPo - poTotal) < 0.01;
+
+        return g.status === 'COMPLETED' && netPayable > 0 && !isFullyPaid && !isPoFullyInvoiced;
+      });
       console.log('[INVOICES] completed grns:', completed.map((g: any) => ({ id: g.id, grn_number: g.grn_number, invoice_approved: g.invoice_approved, net_payable: g.net_payable_amount })));
       setInvoices(completed);
     } catch (e) {
@@ -360,7 +411,7 @@ export default function SupplierInvoicesPage() {
 
         {/* Info Banner */}
         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-          <strong>Workflow:</strong> Review each invoice → Edit amounts if there's a discrepancy → Sanction → Invoice moves to <strong>Accounts Payable</strong> for payment.
+          <strong>Workflow:</strong> Review each invoice → Edit amounts if there&apos;s a discrepancy → Sanction → Invoice moves to <strong>Accounts Payable</strong> for payment.
         </div>
 
         {/* Table */}

@@ -253,8 +253,8 @@ export class GrnService {
 
     // Fetch PO items to get GST percentage (for setting on GRN)
     let poGstPercentage: number | undefined = undefined;
-    let poFreightAmount = 0;
-    let poFreightGstAmount = 0;
+    const poFreightAmount = 0;
+    const poFreightGstAmount = 0;
     try {
       const { data: poItems } = await this.supabase
         .from('purchase_order_items')
@@ -1926,7 +1926,7 @@ export class GrnService {
     const debitNoteAmount = currentGRN?.debit_note_amount || 0;
     const freightAmount = parseFloat(currentGRN?.freight_amount || 0) || 0;
     const freightGstAmount = parseFloat(currentGRN?.freight_gst_amount || 0) || 0;
-    const netPayableAmount = grossAmount + taxAmount + freightAmount + freightGstAmount - debitNoteAmount;
+    const netPayableAmount = Math.round(grossAmount + taxAmount + freightAmount + freightGstAmount - debitNoteAmount);
 
     // Update GRN with calculated amounts
     await this.supabase
@@ -1983,6 +1983,17 @@ export class GrnService {
     const gstPercentage = data.gst_percentage !== undefined ? parseFloat(data.gst_percentage) : undefined;
     const notes = data.notes ?? null;
 
+    // Fetch current GRN to get PO ID and current amounts
+    const { data: currentGRN, error: fetchError } = await this.supabase
+      .from('grns')
+      .select('po_id, net_payable_amount, freight_amount, freight_gst_amount')
+      .eq('id', grnId)
+      .eq('tenant_id', tenantId)
+      .single();
+    if (fetchError || !currentGRN) {
+      throw new BadRequestException('GRN not found');
+    }
+
     // Use freight from payload if provided, otherwise fall back to current DB value
     let freightAmount: number;
     let freightGstAmount: number;
@@ -1990,21 +2001,54 @@ export class GrnService {
       freightAmount = parseFloat(data.freight_amount ?? 0) || 0;
       freightGstAmount = parseFloat(data.freight_gst_amount ?? 0) || 0;
     } else {
-      const { data: currentGRN } = await this.supabase
-        .from('grns')
-        .select('freight_amount, freight_gst_amount')
-        .eq('id', grnId)
-        .single();
       freightAmount = parseFloat(currentGRN?.freight_amount || 0) || 0;
       freightGstAmount = parseFloat(currentGRN?.freight_gst_amount || 0) || 0;
     }
 
-    // If net_payable_amount is not explicitly provided, calculate including freight
+    // If net_payable_amount is not explicitly provided, calculate including freight (rounded)
     const netPayable = data.net_payable_amount !== undefined
-      ? parseFloat(data.net_payable_amount)
-      : grossAmount + taxAmount + freightAmount + freightGstAmount;
+      ? Math.round(parseFloat(data.net_payable_amount))
+      : Math.round(grossAmount + taxAmount + freightAmount + freightGstAmount);
 
     console.log('[updateInvoiceAmounts] Parsed:', { grossAmount, taxAmount, netPayable, gstPercentage, freightAmount, freightGstAmount });
+
+    // VALIDATION: Total invoices for a PO must not exceed PO grand_total
+    const poId = currentGRN.po_id;
+    if (poId) {
+      // Get PO grand_total
+      const { data: po, error: poError } = await this.supabase
+        .from('purchase_orders')
+        .select('grand_total, po_number')
+        .eq('id', poId)
+        .eq('tenant_id', tenantId)
+        .single();
+      if (poError || !po) {
+        throw new BadRequestException('Purchase Order not found');
+      }
+      const poTotal = parseFloat(po.grand_total || 0);
+
+      // Get sum of all other GRNs' net_payable for this PO (excluding current GRN)
+      const { data: otherGRNs, error: sumError } = await this.supabase
+        .from('grns')
+        .select('net_payable_amount')
+        .eq('po_id', poId)
+        .eq('tenant_id', tenantId)
+        .neq('id', grnId);
+      if (sumError) {
+        throw new BadRequestException('Failed to calculate existing invoices total');
+      }
+      const otherInvoicesTotal = (otherGRNs || []).reduce((sum: number, g: any) => sum + (parseFloat(g.net_payable_amount) || 0), 0);
+      const newTotal = otherInvoicesTotal + netPayable;
+
+      console.log('[updateInvoiceAmounts] PO validation:', { poNumber: po.po_number, poTotal, otherInvoicesTotal, thisInvoice: netPayable, newTotal });
+
+      if (newTotal > poTotal + 0.01) { // Allow 1 paisa tolerance for rounding
+        throw new BadRequestException(
+          `Invoice amount (₹${netPayable.toLocaleString()}) would exceed PO total (₹${poTotal.toLocaleString()}). ` +
+          `Already invoiced: ₹${otherInvoicesTotal.toLocaleString()}, Remaining: ₹${Math.max(0, poTotal - otherInvoicesTotal).toLocaleString()}`
+        );
+      }
+    }
 
     const updateData: any = {
       gross_amount: grossAmount,
@@ -2095,6 +2139,7 @@ export class GrnService {
     }
 
     // Get GRN item details
+    console.log('[generateMissingUIDs] Fetching grn_item:', { grnItemId, grnId });
     const { data: grnItem, error: itemError } = await this.supabase
       .from('grn_items')
       .select('*')
@@ -2107,8 +2152,9 @@ export class GrnService {
       throw new NotFoundException('GRN item not found');
     }
 
+    console.log('[generateMissingUIDs] GRN item found:', { id: grnItem.id, item_code: grnItem.item_code, accepted_qty: grnItem.accepted_qty, accepted_quantity: grnItem.accepted_quantity, uid_count: grnItem.uid_count });
     const acceptedQty = Number(grnItem.accepted_qty ?? grnItem.accepted_quantity ?? 0);
-    console.log('[generateMissingUIDs] acceptedQty:', acceptedQty, 'from fields:', { accepted_qty: grnItem.accepted_qty, accepted_quantity: grnItem.accepted_quantity });
+    console.log('[generateMissingUIDs] acceptedQty calculated:', acceptedQty, 'from fields:', { accepted_qty: grnItem.accepted_qty, accepted_quantity: grnItem.accepted_quantity });
     
     if (acceptedQty === 0) {
       throw new BadRequestException('No accepted quantity to generate UIDs for');
@@ -2132,6 +2178,7 @@ export class GrnService {
     }
 
     // Count existing UIDs
+    console.log('[generateMissingUIDs] Counting UIDs with query:', { grnId, entity_id: item.id, tenantId });
     const { data: existingUIDs, count: existingCount, error: countError } = await this.supabase
       .from('uid_registry')
       .select('uid', { count: 'exact' })
@@ -2139,23 +2186,28 @@ export class GrnService {
       .eq('entity_id', item.id)
       .eq('tenant_id', tenantId);
 
-    console.log('[generateMissingUIDs] Existing UIDs count:', existingCount, 'error:', countError);
+    console.log('[generateMissingUIDs] Existing UIDs count:', existingCount, 'error:', countError, 'sample data:', existingUIDs?.slice(0, 3));
 
-    // Calculate how many UIDs should exist based on strategy
-    let targetUidCount = acceptedQty;
-    if (item.uid_strategy === 'BATCHED' && item.batch_quantity) {
-      targetUidCount = Math.ceil(acceptedQty / item.batch_quantity);
-      console.log('[generateMissingUIDs] BATCHED strategy:', { acceptedQty, batch_quantity: item.batch_quantity, targetUidCount });
-    }
-
+    // Calculate missing UIDs based on accepted quantity (generate one UID per accepted item)
     const currentCount = existingCount || 0;
-    const missingCount = targetUidCount - currentCount;
+    const missingCount = acceptedQty - currentCount;
 
-    console.log('[generateMissingUIDs] Calculation:', { currentCount, targetUidCount, missingCount });
+    console.log('[generateMissingUIDs] Calculation:', { currentCount, acceptedQty, missingCount, willGenerate: missingCount > 0 });
+
+    // Always sync uid_count in grn_items to match actual UID registry count
+    if (grnItem.uid_count !== currentCount) {
+      console.log('[generateMissingUIDs] Syncing uid_count from', grnItem.uid_count, 'to', currentCount);
+      await this.supabase
+        .from('grn_items')
+        .update({ uid_count: currentCount })
+        .eq('id', grnItemId);
+    }
 
     if (missingCount <= 0) {
-      return { generated: 0, message: 'No additional UIDs needed', current: currentCount, target: targetUidCount };
+      console.log('[generateMissingUIDs] Returning early - no UIDs to generate');
+      return { generated: 0, message: 'No additional UIDs needed', current: currentCount, target: acceptedQty };
     }
+    console.log('[generateMissingUIDs] Will generate', missingCount, 'UIDs');
 
     // Generate the missing UIDs
     const uidsCreated: string[] = [];

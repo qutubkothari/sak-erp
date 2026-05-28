@@ -4,6 +4,7 @@ import { PurchaseOrdersController } from './controllers/purchase-orders.controll
 import { VendorsController } from './controllers/vendors.controller';
 import { GrnController } from './controllers/grn.controller';
 import { DebitNoteController } from './controllers/debit-note.controller';
+import { SyncController } from './controllers/sync-controller';
 import { PurchaseRequisitionsService } from './services/purchase-requisitions.service';
 import { PurchaseOrdersService } from './services/purchase-orders.service';
 import { VendorsService } from './services/vendors.service';
@@ -23,6 +24,7 @@ import { PoTrackingReminderJob } from './jobs/po-tracking-reminder.job';
     VendorsController,
     GrnController,
     DebitNoteController,
+    SyncController,
   ],
   providers: [
     PurchaseRequisitionsService,

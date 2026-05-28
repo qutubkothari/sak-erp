@@ -279,7 +279,15 @@ export class DebitNoteController {
     },
   ) {
     const tenantId = req.user.tenantId;
-    return this.debitNoteService.updatePayment(tenantId, grnId, paymentId, body);
+    console.log('[Controller updatePayment]', { tenantId, grnId, paymentId, body });
+    try {
+      const result = await this.debitNoteService.updatePayment(tenantId, grnId, paymentId, body);
+      console.log('[Controller updatePayment] success');
+      return result;
+    } catch (error) {
+      console.error('[Controller updatePayment] error:', error);
+      throw error;
+    }
   }
 
   // Delete a payment entry
@@ -291,5 +299,12 @@ export class DebitNoteController {
   ) {
     const tenantId = req.user.tenantId;
     return this.debitNoteService.deletePayment(tenantId, grnId, paymentId);
+  }
+
+  // Sync payment status for GRNs based on PO advance coverage
+  @Post('sync-payment-status')
+  async syncPaymentStatus(@Req() req: any) {
+    const tenantId = req.user.tenantId;
+    return this.debitNoteService.syncPaymentStatusForPoAdvances(tenantId);
   }
 }

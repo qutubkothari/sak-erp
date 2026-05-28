@@ -43,6 +43,8 @@ interface GRN {
   gross_amount?: number;
   tax_amount?: number;
   gst_percentage?: number;
+  freight_amount?: number;
+  freight_gst_amount?: number;
   debit_note_amount?: number;
   net_payable_amount?: number;
   vendor: {
@@ -1707,22 +1709,27 @@ function GRNContent() {
   };
 
   const generateMissingUIDs = async (grnId: string, grnItemId: string) => {
+    console.log('[Frontend] generateMissingUIDs called:', { grnId, grnItemId });
     try {
       setAlertMessage({ type: 'info', message: 'Generating missing UIDs...' });
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/v1/purchase/grn/${grnId}/items/${grnItemId}/generate-missing-uids`, {
+      const url = `/api/v1/purchase/grn/${grnId}/items/${grnItemId}/generate-missing-uids`;
+      console.log('[Frontend] POST to:', url);
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
+      console.log('[Frontend] Response status:', response.status, response.statusText);
+      const responseData = await response.json();
+      console.log('[Frontend] Response data:', responseData);
 
       if (response.ok) {
-        const data = await response.json();
         setAlertMessage({
           type: 'success',
-          message: data.message || `Generated ${data.generated} additional UID(s)`,
+          message: responseData.message || `Generated ${responseData.generated} additional UID(s)`,
         });
         // Refresh GRN data to show updated counts
         fetchGRNs();
@@ -1736,10 +1743,9 @@ function GRNContent() {
           }
         }
       } else {
-        const errorData = await response.json();
         setAlertMessage({
           type: 'error',
-          message: errorData.message || 'Failed to generate missing UIDs',
+          message: responseData.message || 'Failed to generate missing UIDs',
         });
       }
     } catch (error) {
@@ -2762,40 +2768,55 @@ function GRNContent() {
               </div>
 
               {/* Financial Summary - Only show if financial data exists */}
-              {(selectedGRN.gross_amount || selectedGRN.debit_note_amount || selectedGRN.net_payable_amount) && (
-                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
-                  <h3 className="text-lg font-bold text-blue-900 mb-3">💰 Financial Summary</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-white rounded-lg p-3 border border-blue-200">
-                      <div className="text-xs text-gray-600 mb-1">Subtotal (Items)</div>
-                      <div className="text-xl font-bold text-gray-900">
-                        ₹{(selectedGRN.gross_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              {(selectedGRN.gross_amount || selectedGRN.debit_note_amount || selectedGRN.net_payable_amount) && (() => {
+                const freightTotal = (selectedGRN.freight_amount || 0) + (selectedGRN.freight_gst_amount || 0);
+                const netPayableRounded = Math.round(selectedGRN.net_payable_amount || 0);
+                return (
+                  <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                    <h3 className="text-lg font-bold text-blue-900 mb-3">💰 Financial Summary</h3>
+                    <div className={`grid gap-4 ${freightTotal > 0 ? 'grid-cols-2 md:grid-cols-5' : 'grid-cols-2 md:grid-cols-4'}`}>
+                      <div className="bg-white rounded-lg p-3 border border-blue-200">
+                        <div className="text-xs text-gray-600 mb-1">Subtotal (Items)</div>
+                        <div className="text-xl font-bold text-gray-900">
+                          ₹{(selectedGRN.gross_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 border border-purple-200">
+                        <div className="text-xs text-gray-600 mb-1">Tax ({selectedGRN.gst_percentage ?? 0}% GST)</div>
+                        <div className="text-xl font-bold text-purple-600">
+                          ₹{(selectedGRN.tax_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                      {freightTotal > 0 && (
+                        <div className="bg-white rounded-lg p-3 border border-blue-300">
+                          <div className="text-xs text-gray-600 mb-1">Freight &amp; Charges</div>
+                          <div className="text-xl font-bold text-blue-600">
+                            ₹{freightTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </div>
+                          {(selectedGRN.freight_amount || 0) > 0 && (selectedGRN.freight_gst_amount || 0) > 0 && (
+                            <div className="text-[10px] text-gray-400">₹{(selectedGRN.freight_amount || 0).toLocaleString('en-IN')} + ₹{(selectedGRN.freight_gst_amount || 0).toLocaleString('en-IN')} GST</div>
+                          )}
+                        </div>
+                      )}
+                      <div className="bg-white rounded-lg p-3 border border-red-200">
+                        <div className="text-xs text-gray-600 mb-1">Less: Debit Notes</div>
+                        <div className="text-xl font-bold text-red-600">
+                          -₹{(selectedGRN.debit_note_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 border border-green-200">
+                        <div className="text-xs text-gray-600 mb-1">Net Payable (Rounded)</div>
+                        <div className="text-xl font-bold text-green-600">
+                          ₹{netPayableRounded.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </div>
                       </div>
                     </div>
-                    <div className="bg-white rounded-lg p-3 border border-purple-200">
-                      <div className="text-xs text-gray-600 mb-1">Tax ({selectedGRN.gst_percentage || 18}% GST)</div>
-                      <div className="text-xl font-bold text-purple-600">
-                        ₹{(selectedGRN.tax_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg p-3 border border-red-200">
-                      <div className="text-xs text-gray-600 mb-1">Less: Debit Notes</div>
-                      <div className="text-xl font-bold text-red-600">
-                        -₹{(selectedGRN.debit_note_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg p-3 border border-green-200">
-                      <div className="text-xs text-gray-600 mb-1">Net Payable</div>
-                      <div className="text-xl font-bold text-green-600">
-                        ₹{(selectedGRN.net_payable_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </div>
+                    <div className="mt-3 text-xs text-gray-500 text-center">
+                      Net Payable = Subtotal + Tax{freightTotal > 0 ? ' + Freight' : ''} - Debit Notes (Rounded)
                     </div>
                   </div>
-                  <div className="mt-3 text-xs text-gray-500 text-center">
-                    Net Payable = Subtotal + Tax - Debit Notes
-                  </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Items Table */}
               <div>

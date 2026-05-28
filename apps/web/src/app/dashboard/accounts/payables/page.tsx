@@ -123,15 +123,40 @@ export default function AccountsPayablePage() {
   const fetchPaidInvoices = useCallback(async () => {
     try {
       setLoadingPaid(true);
-      const allGRNs = await apiClient.get<any[]>('/purchase/grn');
+      const [allGRNs, poAdvances] = await Promise.all([
+        apiClient.get<any[]>('/purchase/grn'),
+        apiClient.get<any[]>('/purchase/debit-notes/po-advances').catch(() => [] as any[])
+      ]);
+
+      // Build PO advance map
+      const poAdvanceMap = new Map<string, number>();
+      (poAdvances || []).forEach((adv: any) => {
+        const poId = adv.po_id || adv.poId;
+        if (poId) {
+          const current = poAdvanceMap.get(poId) || 0;
+          poAdvanceMap.set(poId, current + +(adv.amount || 0));
+        }
+      });
+
       const paid = (allGRNs || []).filter((grn: any) => {
-        const st = (grn.payment_status || '').toUpperCase();
-        return st === 'PAID';
-      }).map((grn: any) => ({
-        ...grn,
-        net: +(grn.net_payable_amount || 0),
-        settled: +(grn.paid_amount || 0) + +(grn.tds_amount || 0) + +(grn.short_payment_amount || 0),
-      }));
+        const st = (grn.status || '').toUpperCase();
+        if (st === 'REJECTED' || st === 'CANCELLED') return false;
+        const paymentSt = (grn.payment_status || '').toUpperCase();
+        if (paymentSt === 'PAID') return true;
+        // Also include GRNs fully covered by PO advances
+        const net = +(grn.net_payable_amount || 0);
+        const paid = +(grn.paid_amount || 0) + +(grn.tds_amount || 0) + +(grn.short_payment_amount || 0);
+        const poAdvance = grn.po_id ? (poAdvanceMap.get(grn.po_id) || 0) : 0;
+        return net > 0 && (paid + poAdvance) >= net - 0.009;
+      }).map((grn: any) => {
+        const net = +(grn.net_payable_amount || 0);
+        const poAdvance = grn.po_id ? (poAdvanceMap.get(grn.po_id) || 0) : 0;
+        return {
+          ...grn,
+          net,
+          settled: +(grn.paid_amount || 0) + +(grn.tds_amount || 0) + +(grn.short_payment_amount || 0) + poAdvance,
+        };
+      });
       setPaidInvoices(paid);
     } catch { } finally { setLoadingPaid(false); }
   }, []);
@@ -141,21 +166,52 @@ export default function AccountsPayablePage() {
   const [loadingPending, setLoadingPending] = useState(false);
 
   const fetchPendingInvoices = useCallback(async () => {
+    console.log('[VERSION] CODE v2 - WITH PO ADVANCE FIX');
     try {
       setLoadingPending(true);
-      const allGRNs = await apiClient.get<any[]>('/purchase/grn');
+      const [allGRNs, poAdvances] = await Promise.all([
+        apiClient.get<any[]>('/purchase/grn'),
+        apiClient.get<any[]>('/purchase/debit-notes/po-advances').catch(() => [] as any[])
+      ]);
+
+      // Build PO advance map
+      const poAdvanceMap = new Map<string, number>();
+      (poAdvances || []).forEach((adv: any) => {
+        const poId = adv.po_id || adv.poId;
+        if (poId) {
+          const current = poAdvanceMap.get(poId) || 0;
+          poAdvanceMap.set(poId, current + +(adv.amount || 0));
+        }
+      });
+
+      console.log('[Pending Invoices] PO Advance Map:', Array.from(poAdvanceMap.entries()));
+
       const pending = (allGRNs || []).filter((grn: any) => {
         const st = (grn.status || '').toUpperCase();
         if (st === 'REJECTED' || st === 'CANCELLED') return false;
+        if (!grn.invoice_approved) return false; // Must be sanctioned first
         const paymentSt = (grn.payment_status || '').toUpperCase();
         return paymentSt !== 'PAID';
       }).map((grn: any) => {
         const net = +(grn.net_payable_amount || 0);
         const paid = +(grn.paid_amount || 0) + +(grn.tds_amount || 0) + +(grn.short_payment_amount || 0);
-        return { ...grn, net, settled: paid, outstanding: Math.max(0, net - paid) };
-      });
+        const poAdvance = grn.po_id ? (poAdvanceMap.get(grn.po_id) || 0) : 0;
+        const totalSettled = paid + poAdvance;
+        const outstanding = Math.max(0, net - totalSettled);
+
+        // Debug SAIL
+        if (grn.vendor?.name?.toLowerCase().includes('steel') || grn.vendor?.name?.toLowerCase().includes('sail')) {
+          console.log(`[Pending Invoices] SAIL GRN ${grn.grn_number}:`, {
+            net, paid, poAdvance, totalSettled, outstanding, po_id: grn.po_id
+          });
+        }
+
+        return { ...grn, net, settled: totalSettled, poAdvance, outstanding };
+      }).filter((grn: any) => grn.outstanding > 0.009); // Only show if actually outstanding
+
+      console.log('[Pending Invoices] Final count:', pending.length);
       setPendingInvoices(pending);
-    } catch { } finally { setLoadingPending(false); }
+    } catch (e) { console.error('[Pending Invoices] Error:', e); } finally { setLoadingPending(false); }
   }, []);
 
   // Unified Advances state (replaces separate Advance Payments and Vendor Advances)
@@ -282,12 +338,28 @@ export default function AccountsPayablePage() {
   const fetchVendorPayables = useCallback(async () => {
     try {
       setLoading(true);
-      const [allGRNs, allAdvances, vendorAdvances] = await Promise.all([
+      const [allGRNs, allAdvances, vendorAdvances, allPOs] = await Promise.all([
         apiClient.get<any[]>('/purchase/grn'),
         apiClient.get<any[]>('/purchase/debit-notes/po-advances').catch(() => [] as any[]),
         apiClient.get<any[]>('/purchase/debit-notes/vendor-advances').catch(() => [] as any[]),
+        apiClient.get<any[]>('/purchase/po').catch(() => [] as any[]),
       ]);
       console.log('[AP] all grns:', (allGRNs || []).length, '| sample:', (allGRNs || []).slice(0, 3).map((g: any) => ({ grn: g.grn_number, approved: g.invoice_approved, net: g.net_payable_amount, status: g.status })));
+      console.log('[AP] GRNs with invoice_approved=true:', (allGRNs || []).filter((g: any) => g.invoice_approved).map((g: any) => ({ grn: g.grn_number, vendor: g.vendor?.name, net: g.net_payable_amount })));
+
+      // Build PO totals map
+      const poTotals = new Map<string, number>();
+      (allPOs || []).forEach((po: any) => {
+        poTotals.set(po.id, Number(po.grand_total || po.total_amount || 0));
+      });
+
+      // Calculate total invoiced per PO
+      const invoicedByPo = new Map<string, number>();
+      (allGRNs || []).forEach((g: any) => {
+        if (g.po_id) {
+          invoicedByPo.set(g.po_id, (invoicedByPo.get(g.po_id) || 0) + Number(g.net_payable_amount || 0));
+        }
+      });
 
       // Build advance total per PO
       const advanceByPo = new Map<string, number>();
@@ -304,19 +376,56 @@ export default function AccountsPayablePage() {
       });
       setVendorAdvanceBalances(vendorAdvanceMap);
 
-      const relevant = (allGRNs || []).filter((grn: any) => {
-        const st = (grn.status || '').toUpperCase();
-        if (st === 'REJECTED' || st === 'CANCELLED' || st === 'DRAFT') return false;
-        if (!grn.invoice_approved) return false;
-        const net = grn.net_payable_amount != null ? +(grn.net_payable_amount) : +(grn.gross_amount || 0) + +(grn.tax_amount || 0) - +(grn.debit_note_amount || 0);
-        const paid = +(grn.paid_amount || 0) + +(grn.tds_amount || 0) + +(grn.short_payment_amount || 0);
-        const advance = advanceByPo.get(grn.po_id) || 0;
-        return net > 0.009 && (net - paid - advance) > 0.009;
-      });
-      console.log('[AP] approved+outstanding grns:', relevant.length);
+      // Check if PO is fully invoiced (total invoices = PO grand_total)
+      const isPoFullyInvoiced = (poId: string) => {
+        const poTotal = poTotals.get(poId) || 0;
+        const totalInvoiced = invoicedByPo.get(poId) || 0;
+        return poTotal > 0 && Math.abs(totalInvoiced - poTotal) < 0.01;
+      };
 
-      // Group by vendor
+      // Debug: Log calculation for all approved invoices including Steel Authority
+      // Fix: Apply advance proportionally across GRNs for the same PO
+      const advanceUsedByPo = new Map<string, number>(); // Track advance used per PO
+      const approvedGrns = (allGRNs || []).filter((grn: any) => grn.invoice_approved || isPoFullyInvoiced(grn.po_id)).sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      console.log('[AP] DEBUG all approved:', approvedGrns.map((g: any) => {
+        const net = g.net_payable_amount != null ? +(g.net_payable_amount) : +(g.gross_amount || 0) + +(g.tax_amount || 0) - +(g.debit_note_amount || 0);
+        const paid = +(g.paid_amount || 0) + +(g.tds_amount || 0) + +(g.short_payment_amount || 0);
+        const totalPoAdvance = advanceByPo.get(g.po_id) || 0;
+        const usedAdvance = advanceUsedByPo.get(g.po_id) || 0;
+        const remainingAdvance = Math.max(0, totalPoAdvance - usedAdvance);
+        const applicableAdvance = Math.min(net - paid, remainingAdvance); // Advance can't exceed what's due
+        advanceUsedByPo.set(g.po_id, usedAdvance + applicableAdvance);
+        const outstanding = net - paid - applicableAdvance;
+        return { grn: g.grn_number, vendor: g.vendor?.name?.substring(0, 20), net, paid, totalPoAdvance, applicableAdvance, outstanding, po_id: g.po_id };
+      }));
+
+      // Reset for actual filtering - sort by created_at to ensure consistent advance application order
+      advanceUsedByPo.clear();
+      const relevant = (allGRNs || [])
+        .filter((grn: any) => {
+          const st = (grn.status || '').toUpperCase();
+          if (st === 'REJECTED' || st === 'CANCELLED' || st === 'DRAFT') return false;
+          // Include if invoice_approved OR if PO is fully invoiced (auto-approve)
+          return grn.invoice_approved || isPoFullyInvoiced(grn.po_id);
+        })
+        .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        .filter((grn: any) => {
+          const net = grn.net_payable_amount != null ? +(grn.net_payable_amount) : +(grn.gross_amount || 0) + +(grn.tax_amount || 0) - +(grn.debit_note_amount || 0);
+          const paid = +(grn.paid_amount || 0) + +(grn.tds_amount || 0) + +(grn.short_payment_amount || 0);
+          const totalPoAdvance = advanceByPo.get(grn.po_id) || 0;
+          const usedAdvance = advanceUsedByPo.get(grn.po_id) || 0;
+          const remainingAdvance = Math.max(0, totalPoAdvance - usedAdvance);
+          const applicableAdvance = Math.min(net - paid, remainingAdvance);
+          advanceUsedByPo.set(grn.po_id, usedAdvance + applicableAdvance);
+          const hasOutstanding = net > 0.009 && (net - paid - applicableAdvance) > 0.009;
+          console.log('[AP] filtering:', grn.grn_number, { net, paid, applicableAdvance, outstanding: net - paid - applicableAdvance, hasOutstanding });
+          return hasOutstanding;
+        });
+      console.log('[AP] approved+outstanding grns:', relevant.length, '| list:', relevant.map((g: any) => ({ grn: g.grn_number, vendor: g.vendor?.name, net: g.net_payable_amount, paid: g.paid_amount })));
+
+      // Group by vendor - recalculate outstanding with proper advance tracking
       const vendorMap = new Map<string, VendorPayable>();
+      const advanceUsedByPoForGrouping = new Map<string, number>();
       relevant.forEach((grn: any) => {
         const vid = grn.vendor?.id || grn.vendor_id;
         const vname = grn.vendor?.name || 'Unknown';
@@ -324,8 +433,13 @@ export default function AccountsPayablePage() {
         if (!vid) return;
         const net = grn.net_payable_amount != null ? +(grn.net_payable_amount) : +(grn.gross_amount || 0) + +(grn.tax_amount || 0) - +(grn.debit_note_amount || 0);
         const paid = +(grn.paid_amount || 0) + +(grn.tds_amount || 0) + +(grn.short_payment_amount || 0);
-        const advance = advanceByPo.get(grn.po_id) || 0;
-        const outstanding = Math.max(0, net - paid - advance);
+        // Calculate applicable advance for this GRN
+        const totalPoAdvance = advanceByPo.get(grn.po_id) || 0;
+        const usedAdvance = advanceUsedByPoForGrouping.get(grn.po_id) || 0;
+        const remainingAdvance = Math.max(0, totalPoAdvance - usedAdvance);
+        const applicableAdvance = Math.min(net - paid, remainingAdvance);
+        advanceUsedByPoForGrouping.set(grn.po_id, usedAdvance + applicableAdvance);
+        const outstanding = net - paid - applicableAdvance;
         if (!vendorMap.has(vid)) {
           vendorMap.set(vid, { vendor_id: vid, vendor_name: vname, vendor_code: vcode, total_gross: 0, total_debit: 0, total_payable: 0, total_paid: 0, total_outstanding: 0, grn_count: 0 });
         }
@@ -333,7 +447,7 @@ export default function AccountsPayablePage() {
         v.total_gross += +(grn.gross_amount || 0);
         v.total_debit += +(grn.debit_note_amount || 0);
         v.total_payable += net;
-        v.total_paid += paid + advance;
+        v.total_paid += paid + applicableAdvance;
         v.total_outstanding += outstanding;
         v.grn_count += 1;
       });
@@ -527,7 +641,11 @@ export default function AccountsPayablePage() {
 
     try {
       setEditingSubmitting(true);
-      await apiClient.put(`/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment/${editingPayment.id}`, {
+      const endpoint = `/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment/${editingPayment.id}`;
+      console.log('[Edit Payment] selectedGRNDetail.id:', selectedGRNDetail.id);
+      console.log('[Edit Payment] editingPayment.id:', editingPayment.id);
+      console.log('[Edit Payment] Full endpoint:', endpoint);
+      await apiClient.put(endpoint, {
         amount,
         tds_amount: tds,
         short_payment_amount: short,
@@ -648,22 +766,6 @@ export default function AccountsPayablePage() {
       setSelectedGRNIds(new Set());
       // Refresh vendor GRN list
       if (selectedVendor) await viewVendorDetails(selectedVendor);
-    }
-  };
-
-  const toggleGRNSelection = (id: string) => {
-    setSelectedGRNIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedGRNIds.size === vendorGRNs.length) {
-      setSelectedGRNIds(new Set());
-    } else {
-      setSelectedGRNIds(new Set(vendorGRNs.map(g => g.id)));
     }
   };
 
@@ -874,16 +976,76 @@ export default function AccountsPayablePage() {
     },
   ];
 
+  const pendingInvoiceColumns: ListTableColumn<any>[] = [
+    { id: 'grn_number', label: 'GRN No.', accessor: (g) => g.grn_number, sortAccessor: (g) => g.grn_number, searchAccessor: (g) => g.grn_number, cell: (g) => <span className="font-semibold text-gray-900">{g.grn_number}</span>, minWidth: 150 },
+    { id: 'invoice_number', label: 'Invoice No.', accessor: (g) => g.invoice_number || '—', sortAccessor: (g) => g.invoice_number || '', searchAccessor: (g) => g.invoice_number || '', minWidth: 140 },
+    { id: 'vendor', label: 'Vendor', accessor: (g) => g.vendor?.name || '—', sortAccessor: (g) => g.vendor?.name || '', searchAccessor: (g) => `${g.vendor?.name || ''} ${g.vendor?.code || ''}`, minWidth: 190 },
+    { id: 'po_number', label: 'PO No.', accessor: (g) => g.purchase_order?.po_number || '—', sortAccessor: (g) => g.purchase_order?.po_number || '', searchAccessor: (g) => g.purchase_order?.po_number || '', minWidth: 150 },
+    { id: 'receipt_date', label: 'Receipt Date', accessor: (g) => g.receipt_date ? new Date(g.receipt_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.receipt_date || '', minWidth: 130 },
+    { id: 'net', label: 'Net Payable', accessor: (g) => g.net, cell: (g) => `₹${fmtINR(g.net)}`, sortAccessor: (g) => g.net, align: 'right', minWidth: 140 },
+    { id: 'settled', label: 'Settled', accessor: (g) => g.settled, cell: (g) => <span className="font-semibold text-green-700">₹{fmtINR(g.settled)}</span>, sortAccessor: (g) => g.settled, align: 'right', minWidth: 130 },
+    { id: 'outstanding', label: 'Outstanding', accessor: (g) => g.outstanding, cell: (g) => <span className="font-bold text-orange-600">₹{fmtINR(g.outstanding)}</span>, sortAccessor: (g) => g.outstanding, align: 'right', minWidth: 140 },
+    { id: 'status', label: 'Status', accessor: (g) => g.payment_status || 'UNPAID', cell: (g) => paymentStatusBadge(g.payment_status), sortAccessor: (g) => g.payment_status || '', minWidth: 120 },
+  ];
+
+  const paidInvoiceColumns: ListTableColumn<any>[] = [
+    { id: 'grn_number', label: 'GRN No.', accessor: (g) => g.grn_number, sortAccessor: (g) => g.grn_number, searchAccessor: (g) => g.grn_number, cell: (g) => <span className="font-semibold text-gray-900">{g.grn_number}</span>, minWidth: 150 },
+    { id: 'invoice_number', label: 'Invoice No.', accessor: (g) => g.invoice_number || '—', sortAccessor: (g) => g.invoice_number || '', searchAccessor: (g) => g.invoice_number || '', minWidth: 140 },
+    { id: 'vendor', label: 'Vendor', accessor: (g) => g.vendor?.name || '—', sortAccessor: (g) => g.vendor?.name || '', searchAccessor: (g) => `${g.vendor?.name || ''} ${g.vendor?.code || ''}`, minWidth: 190 },
+    { id: 'po_number', label: 'PO No.', accessor: (g) => g.purchase_order?.po_number || '—', sortAccessor: (g) => g.purchase_order?.po_number || '', searchAccessor: (g) => g.purchase_order?.po_number || '', minWidth: 150 },
+    { id: 'invoice_date', label: 'Invoice Date', accessor: (g) => g.invoice_date ? new Date(g.invoice_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.invoice_date || '', minWidth: 130 },
+    { id: 'net', label: 'Net Payable', accessor: (g) => g.net, cell: (g) => <span className="tabular-nums">₹{fmtINR(g.net)}</span>, sortAccessor: (g) => g.net, align: 'right', minWidth: 160 },
+    { id: 'settled', label: 'Total Paid', accessor: (g) => g.settled, cell: (g) => <span className="font-bold text-green-700 tabular-nums">₹{fmtINR(g.settled)}</span>, sortAccessor: (g) => g.settled, align: 'right', minWidth: 160 },
+    { id: 'payment_method', label: 'Method', accessor: (g) => g.payment_method || '—', sortAccessor: (g) => g.payment_method || '', minWidth: 120 },
+    { id: 'payment_reference', label: 'Reference', accessor: (g) => g.payment_reference || '—', searchAccessor: (g) => g.payment_reference || '', minWidth: 180 },
+    { id: 'payment_date', label: 'Payment Date', accessor: (g) => g.payment_date ? new Date(g.payment_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.payment_date || '', minWidth: 130 },
+  ];
+
+  const advanceColumns: ListTableColumn<any>[] = [
+    { id: 'payment_date', label: 'Date', accessor: (a) => a.payment_date ? new Date(a.payment_date).toLocaleDateString('en-IN') : '—', sortAccessor: (a) => a.payment_date || '', minWidth: 130 },
+    { id: 'advance_type', label: 'Type', accessor: (a) => a.advance_type, sortAccessor: (a) => a.advance_type, cell: (a) => <span className={`px-2 py-0.5 rounded text-xs font-medium ${a.advance_type === 'PO' ? 'bg-blue-100 text-blue-800' : 'bg-teal-100 text-teal-800'}`}>{a.advance_type === 'PO' ? 'PO' : 'Blanket'}</span>, minWidth: 110 },
+    { id: 'po_number', label: 'PO Number', accessor: (a) => a.purchase_order?.po_number || '—', sortAccessor: (a) => a.purchase_order?.po_number || '', searchAccessor: (a) => a.purchase_order?.po_number || '', minWidth: 160 },
+    { id: 'vendor', label: 'Vendor', accessor: (a) => a.vendor?.name || '—', sortAccessor: (a) => a.vendor?.name || '', searchAccessor: (a) => `${a.vendor?.name || ''} ${a.vendor?.code || ''}`, minWidth: 190 },
+    { id: 'amount', label: 'Total', accessor: (a) => a.amount || 0, cell: (a) => `₹${fmtINR(a.amount || 0)}`, sortAccessor: (a) => a.amount || 0, align: 'right', minWidth: 130 },
+    { id: 'utilized_amount', label: 'Used', accessor: (a) => a.utilized_amount || 0, cell: (a) => <span className="text-amber-600">₹{fmtINR(a.utilized_amount || 0)}</span>, sortAccessor: (a) => a.utilized_amount || 0, align: 'right', minWidth: 130 },
+    { id: 'balance_amount', label: 'Balance', accessor: (a) => a.balance_amount || 0, cell: (a) => <span className="font-bold text-green-700">₹{fmtINR(a.balance_amount || 0)}</span>, sortAccessor: (a) => a.balance_amount || 0, align: 'right', minWidth: 130 },
+    { id: 'status', label: 'Status', accessor: (a) => (a.balance_amount || 0) > 0.009 ? 'Available' : 'Fully Used', cell: (a) => (a.balance_amount || 0) > 0.009 ? <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">Available</span> : <span className="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">Fully Used</span>, minWidth: 130 },
+  ];
+
+  const vendorInvoiceColumns: ListTableColumn<GRNPayable>[] = [
+    { id: 'po_number', label: 'PO Number', accessor: (g) => g.purchase_order?.po_number || '—', sortAccessor: (g) => g.purchase_order?.po_number || '', searchAccessor: (g) => g.purchase_order?.po_number || '', minWidth: 150 },
+    { id: 'invoice_number', label: 'Supplier Invoice No.', accessor: (g) => g.invoice_number || '—', sortAccessor: (g) => g.invoice_number || '', searchAccessor: (g) => g.invoice_number || '', minWidth: 170 },
+    { id: 'invoice_date', label: 'Invoice Date', accessor: (g) => g.invoice_date ? new Date(g.invoice_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.invoice_date || '', minWidth: 130 },
+    { id: 'grn_number', label: 'GRN Number', accessor: (g) => g.grn_number, sortAccessor: (g) => g.grn_number, searchAccessor: (g) => g.grn_number, cell: (g) => <span className="font-semibold text-gray-900">{g.grn_number}</span>, minWidth: 150 },
+    { id: 'receipt_date', label: 'Receipt Date', accessor: (g) => g.receipt_date ? new Date(g.receipt_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.receipt_date || '', minWidth: 130 },
+    { id: 'gross', label: 'Gross', accessor: (g) => +(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0), cell: (g) => <span title={((g.freight_amount || 0) > 0 || (g.freight_gst_amount || 0) > 0) ? `Items: ₹${fmtINR(g.gross_amount)} + Freight: ₹${fmtINR((g.freight_amount || 0) + (g.freight_gst_amount || 0))}` : undefined}>₹{fmtINR(+(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0))}</span>, sortAccessor: (g) => +(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0), align: 'right', minWidth: 130 },
+    { id: 'debit', label: 'Debit', accessor: (g) => g.debit_note_amount || 0, cell: (g) => <span className="text-red-600">-₹{fmtINR(g.debit_note_amount)}</span>, sortAccessor: (g) => g.debit_note_amount || 0, align: 'right', minWidth: 120 },
+    { id: 'net', label: 'Net Invoice', accessor: (g) => g.net_payable_amount || 0, cell: (g) => <span className="font-semibold">₹{fmtINR(g.net_payable_amount)}</span>, sortAccessor: (g) => g.net_payable_amount || 0, align: 'right', minWidth: 140 },
+    { id: 'paid', label: 'Paid', accessor: (g) => +(g.paid_amount || 0) + +(g.tds_amount || 0) + +(g.short_payment_amount || 0), cell: (g) => <span className="text-green-700">₹{fmtINR(+(g.paid_amount || 0) + +(g.tds_amount || 0) + +(g.short_payment_amount || 0))}</span>, sortAccessor: (g) => +(g.paid_amount || 0) + +(g.tds_amount || 0) + +(g.short_payment_amount || 0), align: 'right', minWidth: 120 },
+    { id: 'outstanding', label: 'Outstanding', accessor: (g) => Math.max(0, +(g.net_payable_amount || 0) - +(g.paid_amount || 0) - +(g.tds_amount || 0) - +(g.short_payment_amount || 0)), cell: (g) => <span className="font-bold text-orange-600">₹{fmtINR(Math.max(0, +(g.net_payable_amount || 0) - +(g.paid_amount || 0) - +(g.tds_amount || 0) - +(g.short_payment_amount || 0)))}</span>, sortAccessor: (g) => Math.max(0, +(g.net_payable_amount || 0) - +(g.paid_amount || 0) - +(g.tds_amount || 0) - +(g.short_payment_amount || 0)), align: 'right', minWidth: 150 },
+    { id: 'status', label: 'Status', accessor: (g) => g.payment_status || 'UNPAID', cell: (g) => paymentStatusBadge(g.payment_status), sortAccessor: (g) => g.payment_status || '', minWidth: 120 },
+    { id: 'actions', label: 'Actions', hideable: false, sortable: false, cell: (g) => {
+      const outstanding = Math.max(0, +(g.net_payable_amount || 0) - +(g.paid_amount || 0) - +(g.tds_amount || 0) - +(g.short_payment_amount || 0));
+      return (
+        <div className="flex gap-1">
+          <button onClick={() => viewGRNDetail(g)} className="px-2 py-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100">History</button>
+          {canRecordPayment && outstanding > 0.009 && <button onClick={() => openPaymentModal(g)} className="px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700">+ Payment</button>}
+        </div>
+      );
+    }, minWidth: 160 },
+  ];
+
   const totalOutstanding = vendorPayables.reduce((s, v) => s + (v.total_outstanding || 0), 0);
   const totalPaid = vendorPayables.reduce((s, v) => s + (v.total_paid || 0), 0);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 p-6">
+    <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex justify-between items-start">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-amber-900">Accounts Payable</h1>
-            <p className="text-amber-700 text-sm mt-1">Track outstanding payments to vendors</p>
+            <div className="text-xs text-gray-500 mb-1">Dashboard / Accounts / Payables</div>
+            <h1 className="text-2xl font-bold text-gray-900">Accounts Payable</h1>
+            <p className="text-gray-500 text-sm mt-1">Track outstanding, pending, paid invoices and vendor advances.</p>
           </div>
           {canRecordPayment && (
             <button onClick={() => { 
@@ -899,7 +1061,7 @@ export default function AccountsPayablePage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200 flex-wrap gap-y-1">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 px-4 pt-2 flex border-b border-gray-200 flex-wrap gap-y-1">
           <button onClick={() => setActiveTab('payables')}
             className={`px-5 py-2.5 text-sm font-semibold border-b-2 -mb-px ${
               activeTab === 'payables' ? 'border-orange-500 text-orange-700' : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -966,39 +1128,21 @@ export default function AccountsPayablePage() {
         </>)}
 
         {activeTab === 'pending' && (
-          <div className="bg-white rounded-xl shadow overflow-hidden">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-4 border-b"><h3 className="font-semibold text-gray-900">All Pending Invoices</h3><p className="text-xs text-gray-500 mt-0.5">All GRNs not yet fully paid</p></div>
             {loadingPending ? <div className="p-8 text-center text-gray-400">Loading...</div> : pendingInvoices.length === 0 ? (
               <div className="p-10 text-center text-gray-400"><div className="text-4xl mb-2">✅</div><p>No pending invoices</p></div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-amber-50"><tr>
-                    {['GRN No.','Invoice No.','Vendor','PO No.','GRN Date','Net Payable','Paid','Outstanding','Status'].map(h => <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-amber-900 whitespace-nowrap">{h}</th>)}
-                  </tr></thead>
-                  <tbody className="divide-y divide-amber-50">
-                    {pendingInvoices.map((grn: any) => (
-                      <tr key={grn.id} className="hover:bg-amber-50">
-                        <td className="px-3 py-2 font-semibold text-gray-900">{grn.grn_number}</td>
-                        <td className="px-3 py-2 text-gray-700">{grn.invoice_number || '—'}</td>
-                        <td className="px-3 py-2 text-gray-700">{grn.vendor?.name || '—'}</td>
-                        <td className="px-3 py-2 text-gray-600">{grn.purchase_order?.po_number || '—'}</td>
-                        <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{grn.receipt_date ? new Date(grn.receipt_date).toLocaleDateString('en-IN') : '—'}</td>
-                        <td className="px-3 py-2 text-right font-semibold">₹{fmtINR(grn.net)}</td>
-                        <td className="px-3 py-2 text-right text-green-700">₹{fmtINR(grn.settled)}</td>
-                        <td className="px-3 py-2 text-right font-bold text-orange-600">₹{fmtINR(grn.outstanding)}</td>
-                        <td className="px-3 py-2">{paymentStatusBadge(grn.payment_status)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ListTable storageKey="accountsPayablesPendingInvoicesTable" rows={pendingInvoices}
+                columns={pendingInvoiceColumns} getRowId={(r) => r.id}
+                defaultPageSize={25} pageSizeOptions={[10, 25, 50, 100]}
+                searchPlaceholder="Search GRN, invoice, vendor, PO…" exportFilename="pending-invoices.csv" />
             )}
           </div>
         )}
 
         {activeTab === 'paid' && (
-          <div className="bg-white rounded-xl shadow overflow-hidden">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-4 border-b flex justify-between items-center">
               <div><h3 className="font-semibold text-gray-900">Paid Invoices</h3><p className="text-xs text-gray-500 mt-0.5">Fully settled GRN invoices</p></div>
               <div className="text-sm font-bold text-green-700">Total Paid: ₹{fmtINR(paidInvoices.reduce((s: number, g: any) => s + g.settled, 0))}</div>
@@ -1006,28 +1150,10 @@ export default function AccountsPayablePage() {
             {loadingPaid ? <div className="p-8 text-center text-gray-400">Loading...</div> : paidInvoices.length === 0 ? (
               <div className="p-10 text-center text-gray-400"><div className="text-4xl mb-2">💳</div><p>No paid invoices yet</p></div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-green-50"><tr>
-                    {['GRN No.','Invoice No.','Vendor','PO No.','Invoice Date','Net Payable','Total Paid','Method','Reference'].map(h => <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-green-900 whitespace-nowrap">{h}</th>)}
-                  </tr></thead>
-                  <tbody className="divide-y divide-green-50">
-                    {paidInvoices.map((grn: any) => (
-                      <tr key={grn.id} className="hover:bg-green-50">
-                        <td className="px-3 py-2 font-semibold text-gray-900">{grn.grn_number}</td>
-                        <td className="px-3 py-2 text-gray-700">{grn.invoice_number || '—'}</td>
-                        <td className="px-3 py-2 text-gray-700">{grn.vendor?.name || '—'}</td>
-                        <td className="px-3 py-2 text-gray-600">{grn.purchase_order?.po_number || '—'}</td>
-                        <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{grn.invoice_date ? new Date(grn.invoice_date).toLocaleDateString('en-IN') : '—'}</td>
-                        <td className="px-3 py-2 text-right font-semibold">₹{fmtINR(grn.net)}</td>
-                        <td className="px-3 py-2 text-right text-green-700 font-bold">₹{fmtINR(grn.settled)}</td>
-                        <td className="px-3 py-2 text-gray-600">{grn.payment_method || '—'}</td>
-                        <td className="px-3 py-2 text-gray-500 text-xs">{grn.payment_reference || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ListTable storageKey="accountsPayablesPaidInvoicesTable" rows={paidInvoices}
+                columns={paidInvoiceColumns} getRowId={(r) => r.id}
+                defaultPageSize={25} pageSizeOptions={[10, 25, 50, 100]}
+                searchPlaceholder="Search paid invoices…" exportFilename="paid-invoices.csv" />
             )}
           </div>
         )}
@@ -1051,7 +1177,7 @@ export default function AccountsPayablePage() {
               ))}
             </div>
             
-            <div className="bg-white rounded-xl shadow overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-4 border-b flex justify-between items-center">
                 <div>
                   <h3 className="font-semibold text-gray-900">Vendor Advances</h3>
@@ -1069,46 +1195,10 @@ export default function AccountsPayablePage() {
                   <p>No advance payments recorded yet</p>
                 </div>
               ) : (
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Type</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">PO Number</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Vendor</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Total</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Used</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Balance</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {advances.map((ap: any) => (
-                      <tr key={ap.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-gray-700">{ap.payment_date ? new Date(ap.payment_date).toLocaleDateString('en-IN') : '—'}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            ap.advance_type === 'PO' ? 'bg-blue-100 text-blue-800' : 'bg-teal-100 text-teal-800'
-                          }`}>
-                            {ap.advance_type === 'PO' ? 'PO' : 'Blanket'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-medium text-indigo-700">{ap.purchase_order?.po_number || '—'}</td>
-                        <td className="px-4 py-3 text-gray-700">{ap.vendor?.name || '—'}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-gray-700">₹{fmtINR(ap.amount || 0)}</td>
-                        <td className="px-4 py-3 text-right text-amber-600">₹{fmtINR(ap.utilized_amount || 0)}</td>
-                        <td className="px-4 py-3 text-right font-bold text-green-700">₹{fmtINR(ap.balance_amount || 0)}</td>
-                        <td className="px-4 py-3">
-                          {(ap.balance_amount || 0) > 0.009 ? (
-                            <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">Available</span>
-                          ) : (
-                            <span className="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">Fully Used</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <ListTable storageKey="accountsPayablesAdvancesTable" rows={advances}
+                  columns={advanceColumns} getRowId={(r) => r.id}
+                  defaultPageSize={25} pageSizeOptions={[10, 25, 50, 100]}
+                  searchPlaceholder="Search vendor, PO, advance type…" exportFilename="vendor-advances.csv" />
               )}
             </div>
           </div>
@@ -1144,71 +1234,12 @@ export default function AccountsPayablePage() {
               ) : vendorGRNs.length === 0 ? (
                 <div className="p-8 text-center text-gray-400">No outstanding invoices found</div>
               ) : (
-                <table className="w-full text-sm">
-                  <thead className="bg-amber-50 sticky top-0">
-                    <tr>
-                      <th className="px-3 py-2">
-                        <input type="checkbox" checked={vendorGRNs.length > 0 && selectedGRNIds.size === vendorGRNs.length}
-                          onChange={toggleSelectAll}
-                          className="w-4 h-4 accent-orange-600" title="Select all" />
-                      </th>
-                      {['PO Number','Supplier Invoice No.','Invoice Date','GRN Number','Receipt Date','Gross','Debit','Net Invoice','Paid','Outstanding','Status','Actions']
-                        .map(h => <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-amber-900 uppercase whitespace-nowrap">{h}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-amber-100">
-                    {vendorGRNs.map((grn) => {
-                      const net = +(grn.net_payable_amount || 0);
-                      const paid = +(grn.paid_amount || 0);
-                      const tds = +(grn.tds_amount || 0);
-                      const short = +(grn.short_payment_amount || 0);
-                      const outstanding = Math.max(0, net - paid - tds - short);
-                      return (
-                        <tr key={grn.id} className={`hover:bg-amber-50 ${selectedGRNIds.has(grn.id) ? 'bg-orange-50' : ''}`}>
-                          <td className="px-3 py-2">
-                            <input type="checkbox" checked={selectedGRNIds.has(grn.id)}
-                              onChange={() => toggleGRNSelection(grn.id)}
-                              className="w-4 h-4 accent-orange-600" />
-                          </td>
-                          <td className="px-3 py-2 text-gray-700">{grn.purchase_order?.po_number || '—'}</td>
-                          <td className="px-3 py-2 text-gray-700 font-medium">{grn.invoice_number || '—'}</td>
-                          <td className="px-3 py-2 text-gray-500">{grn.invoice_date ? new Date(grn.invoice_date).toLocaleDateString('en-IN') : '—'}</td>
-                          <td className="px-3 py-2 font-semibold text-gray-900">{grn.grn_number}</td>
-                          <td className="px-3 py-2 text-gray-500">{grn.receipt_date ? new Date(grn.receipt_date).toLocaleDateString('en-IN') : '—'}</td>
-                          <td className="px-3 py-2 text-right" title={
-                            ((grn.freight_amount||0) > 0 || (grn.freight_gst_amount||0) > 0)
-                              ? `Items: ₹${fmtINR(grn.gross_amount)} + Freight: ₹${fmtINR((grn.freight_amount||0)+(grn.freight_gst_amount||0))}`
-                              : undefined
-                          }>
-                            ₹{fmtINR(+(grn.gross_amount||0) + +(grn.freight_amount||0) + +(grn.freight_gst_amount||0))}
-                            {((grn.freight_amount||0) > 0 || (grn.freight_gst_amount||0) > 0) && (
-                              <div className="text-[10px] text-blue-600">incl. freight</div>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right text-red-600">-₹{fmtINR(grn.debit_note_amount)}</td>
-                          <td className="px-3 py-2 text-right font-semibold">₹{fmtINR(net)}</td>
-                          <td className="px-3 py-2 text-right text-green-700">₹{fmtINR(paid + tds + short)}</td>
-                          <td className="px-3 py-2 text-right font-bold text-orange-600">₹{fmtINR(outstanding)}</td>
-                          <td className="px-3 py-2">{paymentStatusBadge(grn.payment_status)}</td>
-                          <td className="px-3 py-2">
-                            <div className="flex gap-1">
-                              <button onClick={() => viewGRNDetail(grn)}
-                                className="px-2 py-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100">
-                                History
-                              </button>
-                              {canRecordPayment && outstanding > 0.009 && (
-                                <button onClick={() => openPaymentModal(grn)}
-                                  className="px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700">
-                                  + Payment
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <ListTable storageKey="accountsPayablesVendorInvoicesModalTable" rows={vendorGRNs}
+                  columns={vendorInvoiceColumns} getRowId={(r) => r.id}
+                  defaultPageSize={25} pageSizeOptions={[10, 25, 50, 100]}
+                  searchPlaceholder="Search vendor invoices…"
+                  selectable selectedRowIds={Array.from(selectedGRNIds)}
+                  onSelectionChange={(ids) => setSelectedGRNIds(new Set(ids))} />
               )}
             </div>
             <div className="p-4 border-t flex justify-between items-center">

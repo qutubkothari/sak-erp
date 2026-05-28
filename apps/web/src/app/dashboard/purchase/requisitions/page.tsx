@@ -1449,7 +1449,8 @@ function PRContent() {
       setEditingPRId(null);
       fetchRequisitions(); // Refresh the list
     } catch (error: any) {
-      alert('Failed to save purchase requisition. Please try again.');
+      const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error';
+      alert(`Failed to save purchase requisition: ${errorMessage}`);
     }
   };
 

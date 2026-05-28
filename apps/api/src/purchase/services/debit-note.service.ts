@@ -162,8 +162,8 @@ export class DebitNoteService {
     const { data: dnNumber } = await this.supabase
       .rpc('generate_debit_note_number', { p_tenant_id: tenantId });
 
-    // Calculate GST
-    const gstPercentage = data.gst_percentage || 18;
+    // Calculate GST - preserve 0% GST (don't default to 18% when gst_percentage is 0)
+    const gstPercentage = data.gst_percentage !== undefined && data.gst_percentage !== null ? data.gst_percentage : 18;
     const grossAmount = data.gross_amount || data.total_amount || 0;
     const taxAmount = Math.round(grossAmount * (gstPercentage / 100) * 100) / 100;
     const totalAmount = grossAmount + taxAmount;
@@ -250,7 +250,7 @@ export class DebitNoteService {
   async getVendorPayables(tenantId: string) {
     const { data: grnsData, error: grnsError } = await this.supabase
       .from('grns')
-      .select('id, vendor_id, status, gross_amount, tax_amount, debit_note_amount, net_payable_amount, paid_amount, payment_status, invoice_number')
+      .select('id, vendor_id, po_id, status, gross_amount, tax_amount, debit_note_amount, net_payable_amount, paid_amount, payment_status, invoice_number')
       .eq('tenant_id', tenantId)
       .not('status', 'in', '("REJECTED","CANCELLED")')
       .not('status', 'eq', 'DRAFT');
@@ -263,9 +263,62 @@ export class DebitNoteService {
 
     console.log('[AP] total grns fetched:', grnsData.length);
 
+    // Collect all unique PO IDs that have GRNs
+    const poIds = [...new Set(grnsData.filter((g: any) => g.po_id).map((g: any) => g.po_id))];
+    console.log('[AP] unique po_ids for advance lookup:', poIds.length);
+
+    // Fetch all PO advance payments for these POs
+    const poAdvanceMap = new Map<string, number>();
+    if (poIds.length > 0) {
+      const { data: advances } = await this.supabase
+        .from('po_advance_payments')
+        .select('po_id, amount')
+        .eq('tenant_id', tenantId)
+        .in('po_id', poIds);
+
+      for (const adv of (advances || [])) {
+        const current = poAdvanceMap.get(adv.po_id) || 0;
+        poAdvanceMap.set(adv.po_id, current + parseFloat(adv.amount || 0));
+      }
+    }
+    console.log('[AP] po advance totals:', Array.from(poAdvanceMap.entries()));
+
+    // Calculate outstanding including PO advances
+    const grnsWithOutstanding = grnsData.map((grn: any) => {
+      const gross = parseFloat(grn.gross_amount || 0);
+      const tax = parseFloat(grn.tax_amount || 0);
+      const debit = parseFloat(grn.debit_note_amount || 0);
+      const netPayable = grn.net_payable_amount != null
+        ? parseFloat(grn.net_payable_amount)
+        : gross + tax - debit;
+      const paid = parseFloat(grn.paid_amount || 0);
+      const poAdvance = grn.po_id ? (poAdvanceMap.get(grn.po_id) || 0) : 0;
+      const totalPaid = paid + poAdvance;
+      const outstanding = Math.max(0, netPayable - totalPaid);
+      
+      // Debug logging for SAIL issue
+      if (grn.vendor_id && (String(grn.invoice_number).toLowerCase().includes('sail') || 
+          grn.po_id?.includes('sail') || String(grn.id).includes('sail'))) {
+        console.log(`[AP DEBUG] GRN ${grn.id} (SAIL?):`, {
+          invoice_number: grn.invoice_number,
+          po_id: grn.po_id,
+          vendor_id: grn.vendor_id,
+          netPayable,
+          paid,
+          poAdvance,
+          totalPaid,
+          outstanding,
+          payment_status: grn.payment_status
+        });
+      }
+      
+      return { ...grn, _outstanding: outstanding, _totalPaid: totalPaid, _poAdvance: poAdvance };
+    });
+
     // Keep only GRNs with an outstanding balance — invoice_approved filter is applied client-side
-    const outstandingGrns = grnsData.filter((grn: any) => this.grnOutstanding(grn) > 0.009);
+    const outstandingGrns = grnsWithOutstanding.filter((grn: any) => grn._outstanding > 0.009);
     console.log('[AP] outstandingGrns after balance filter:', outstandingGrns.length);
+    console.log('[AP] GRNs kept:', outstandingGrns.map((g: any) => ({ id: g.id, vendor_id: g.vendor_id, invoice: g.invoice_number, outstanding: g._outstanding })));
     if (outstandingGrns.length === 0) return [];
 
     const vendorIds = [...new Set(outstandingGrns.map((grn: any) => grn.vendor_id).filter(Boolean))];
@@ -303,13 +356,11 @@ export class DebitNoteService {
       const netPayable = grn.net_payable_amount != null
         ? parseFloat(grn.net_payable_amount)
         : gross + tax - debit;
-      const paid = parseFloat(grn.paid_amount || 0);
-      const outstanding = Math.max(0, netPayable - paid);
       vendor.total_gross += gross;
       vendor.total_debit += debit;
       vendor.total_payable += netPayable;
-      vendor.total_paid += paid;
-      vendor.total_outstanding += outstanding;
+      vendor.total_paid += grn._totalPaid;
+      vendor.total_outstanding += grn._outstanding;
       vendor.grn_count += 1;
     });
 
@@ -342,7 +393,7 @@ export class DebitNoteService {
           <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.rejected_qty} ${item.item.unit}</td>
           <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${item.unit_price.toFixed(2)}</td>
           <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${itemAmount.toFixed(2)}</td>
-          <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.gst_percentage || debitNote.gst_percentage || 18}%</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.gst_percentage ?? debitNote.gst_percentage ?? 18}%</td>
           <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${itemTax.toFixed(2)}</td>
           <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">₹${itemTotal.toFixed(2)}</td>
           <td style="border: 1px solid #ddd; padding: 8px;">${item.rejection_reason}</td>
@@ -416,7 +467,7 @@ export class DebitNoteService {
               </tr>
               <tr>
                 <td colspan="3" style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">
-                  GST (${debitNote.gst_percentage || 18}%):
+                  GST (${debitNote.gst_percentage ?? 18}%):
                 </td>
                 <td colspan="5" style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">
                   ₹${taxAmount.toFixed(2)}
@@ -489,7 +540,7 @@ export class DebitNoteService {
     // Fetch GRN — look across all statuses (not just COMPLETED) to avoid false 404
     const { data: grn, error: grnError } = await this.supabase
       .from('grns')
-      .select('id, gross_amount, tax_amount, debit_note_amount, net_payable_amount, paid_amount, tds_amount, short_payment_amount, payment_status')
+      .select('id, po_id, gross_amount, tax_amount, debit_note_amount, net_payable_amount, paid_amount, tds_amount, short_payment_amount, payment_status')
       .eq('id', grnId)
       .eq('tenant_id', tenantId)
       .maybeSingle();
@@ -512,9 +563,21 @@ export class DebitNoteService {
     const shortAmount = parseFloat(String(paymentData.short_payment_amount || 0));
     const entryAmount = parseFloat(String(paymentData.amount));
 
-    // Total effective settlement = cash paid + TDS + short payment (including already recorded)
-    const totalSettlement = currentPaid + entryAmount + tdsAmount + shortAmount;
-    const outstanding = Math.max(0, netPayable - currentPaid - currentTds - currentShort);
+    // Fetch PO advance for this GRN's PO
+    let poAdvanceAmount = 0;
+    if (grn.po_id) {
+      const { data: advances } = await this.supabase
+        .from('po_advance_payments')
+        .select('amount')
+        .eq('po_id', grn.po_id)
+        .eq('tenant_id', tenantId);
+      poAdvanceAmount = (advances || []).reduce((sum: number, a: any) => sum + parseFloat(a.amount || 0), 0);
+    }
+
+    // Total effective settlement = cash paid + TDS + short payment + PO advance
+    const totalSettlement = currentPaid + entryAmount + tdsAmount + shortAmount + poAdvanceAmount;
+    const outstanding = Math.max(0, netPayable - currentPaid - currentTds - currentShort - poAdvanceAmount);
+    console.log('[recordPayment]', { grnId, netPayable, currentPaid, poAdvanceAmount, totalSettlement, outstanding });
 
     if (entryAmount <= 0) throw new Error('Payment amount must be greater than 0');
     if (entryAmount + tdsAmount + shortAmount > outstanding + 0.009) {
@@ -612,99 +675,126 @@ export class DebitNoteService {
       short_payment_reason?: string;
     },
   ) {
-    // Verify payment entry exists and belongs to this GRN/tenant
-    const { data: existingEntry, error: fetchError } = await this.supabase
-      .from('grn_payment_entries')
-      .select('*')
-      .eq('id', paymentEntryId)
-      .eq('grn_id', grnId)
-      .eq('tenant_id', tenantId)
-      .maybeSingle();
+    console.log('[updatePayment] START', { tenantId, grnId, paymentEntryId, paymentData });
+    try {
+      // Verify payment entry exists and belongs to this GRN/tenant
+      const { data: existingEntry, error: fetchError } = await this.supabase
+        .from('grn_payment_entries')
+        .select('*')
+        .eq('id', paymentEntryId)
+        .eq('grn_id', grnId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
 
-    if (fetchError) throw new Error(`Database error: ${fetchError.message}`);
-    if (!existingEntry) throw new NotFoundException(`Payment entry not found (id: ${paymentEntryId})`);
+      console.log('[updatePayment] fetch existing entry:', { existingEntry: !!existingEntry, fetchError });
 
-    // Update the payment entry
-    const { error: updateError } = await this.supabase
-      .from('grn_payment_entries')
-      .update({
-        amount: paymentData.amount !== undefined ? paymentData.amount : existingEntry.amount,
-        payment_method: paymentData.payment_method || existingEntry.payment_method,
-        payment_reference: paymentData.payment_reference !== undefined ? paymentData.payment_reference : existingEntry.payment_reference,
-        payment_date: paymentData.payment_date || existingEntry.payment_date,
-        payment_notes: paymentData.payment_notes !== undefined ? paymentData.payment_notes : existingEntry.payment_notes,
-        tds_amount: paymentData.tds_amount !== undefined ? paymentData.tds_amount : existingEntry.tds_amount,
-        short_payment_amount: paymentData.short_payment_amount !== undefined ? paymentData.short_payment_amount : existingEntry.short_payment_amount,
-        short_payment_reason: paymentData.short_payment_reason !== undefined ? paymentData.short_payment_reason : existingEntry.short_payment_reason,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', paymentEntryId)
-      .eq('tenant_id', tenantId);
+      if (fetchError) throw new Error(`Database error: ${fetchError.message}`);
+      if (!existingEntry) throw new NotFoundException(`Payment entry not found (id: ${paymentEntryId})`);
 
-    if (updateError) throw new Error(`Failed to update payment entry: ${updateError.message}`);
+      // Update the payment entry
+      const { error: updateError } = await this.supabase
+        .from('grn_payment_entries')
+        .update({
+          amount: paymentData.amount !== undefined ? paymentData.amount : existingEntry.amount,
+          payment_method: paymentData.payment_method || existingEntry.payment_method,
+          payment_reference: paymentData.payment_reference !== undefined ? paymentData.payment_reference : existingEntry.payment_reference,
+          payment_date: paymentData.payment_date || existingEntry.payment_date,
+          payment_notes: paymentData.payment_notes !== undefined ? paymentData.payment_notes : existingEntry.payment_notes,
+          tds_amount: paymentData.tds_amount !== undefined ? paymentData.tds_amount : existingEntry.tds_amount,
+          short_payment_amount: paymentData.short_payment_amount !== undefined ? paymentData.short_payment_amount : existingEntry.short_payment_amount,
+          short_payment_reason: paymentData.short_payment_reason !== undefined ? paymentData.short_payment_reason : existingEntry.short_payment_reason,
+        })
+        .eq('id', paymentEntryId)
+        .eq('tenant_id', tenantId);
 
-    // Recalculate all aggregates
-    const { data: allEntries, error: entriesError } = await this.supabase
-      .from('grn_payment_entries')
-      .select('amount, tds_amount, short_payment_amount')
-      .eq('grn_id', grnId)
-      .eq('tenant_id', tenantId);
+      console.log('[updatePayment] update payment entry:', { updateError });
 
-    if (entriesError) throw new Error(`Failed to fetch entries: ${entriesError.message}`);
+      if (updateError) throw new Error(`Failed to update payment entry: ${updateError.message}`);
 
-    const { data: grn } = await this.supabase
-      .from('grns')
-      .select('gross_amount, tax_amount, debit_note_amount, net_payable_amount')
-      .eq('id', grnId)
-      .eq('tenant_id', tenantId)
-      .maybeSingle();
+      // Recalculate all aggregates
+      const { data: allEntries, error: entriesError } = await this.supabase
+        .from('grn_payment_entries')
+        .select('amount, tds_amount, short_payment_amount')
+        .eq('grn_id', grnId)
+        .eq('tenant_id', tenantId);
 
-    const gross = parseFloat(grn?.gross_amount || 0);
-    const tax = parseFloat(grn?.tax_amount || 0);
-    const debit = parseFloat(grn?.debit_note_amount || 0);
-    const netPayable = grn?.net_payable_amount != null
-      ? parseFloat(grn.net_payable_amount)
-      : gross + tax - debit;
+      console.log('[updatePayment] fetch all entries:', { count: allEntries?.length, entriesError });
 
-    const totalPaid = (allEntries || []).reduce((s: number, e: any) => s + parseFloat(e.amount || 0), 0);
-    const totalTds = (allEntries || []).reduce((s: number, e: any) => s + parseFloat(e.tds_amount || 0), 0);
-    const totalShort = (allEntries || []).reduce((s: number, e: any) => s + parseFloat(e.short_payment_amount || 0), 0);
-    const totalSettled = totalPaid + totalTds + totalShort;
+      if (entriesError) throw new Error(`Failed to fetch entries: ${entriesError.message}`);
 
-    let paymentStatus = 'UNPAID';
-    if (totalSettled >= netPayable - 0.009) {
-      paymentStatus = 'PAID';
-    } else if (totalPaid > 0) {
-      paymentStatus = 'PARTIAL';
-    }
+      const { data: grn } = await this.supabase
+        .from('grns')
+        .select('gross_amount, tax_amount, debit_note_amount, net_payable_amount')
+        .eq('id', grnId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
 
-    // Update GRN aggregate columns
-    const { error: grnUpdateError } = await this.supabase
-      .from('grns')
-      .update({
+      console.log('[updatePayment] fetch GRN:', { grn, hasData: !!grn });
+
+      const gross = parseFloat(grn?.gross_amount || 0);
+      const tax = parseFloat(grn?.tax_amount || 0);
+      const debit = parseFloat(grn?.debit_note_amount || 0);
+      const netPayable = grn?.net_payable_amount != null
+        ? parseFloat(grn.net_payable_amount)
+        : gross + tax - debit;
+
+      console.log('[updatePayment] calculated values:', { gross, tax, debit, netPayable });
+
+      const totalPaid = (allEntries || []).reduce((s: number, e: any) => s + parseFloat(e.amount || 0), 0);
+      const totalTds = (allEntries || []).reduce((s: number, e: any) => s + parseFloat(e.tds_amount || 0), 0);
+      const totalShort = (allEntries || []).reduce((s: number, e: any) => s + parseFloat(e.short_payment_amount || 0), 0);
+      const totalSettled = totalPaid + totalTds + totalShort;
+
+      console.log('[updatePayment] totals:', { totalPaid, totalTds, totalShort, totalSettled });
+
+      let paymentStatus = 'UNPAID';
+      if (totalSettled >= netPayable - 0.009) {
+        paymentStatus = 'PAID';
+      } else if (totalPaid > 0) {
+        paymentStatus = 'PARTIAL';
+      }
+
+      // Update GRN aggregate columns
+      const { error: grnUpdateError } = await this.supabase
+        .from('grns')
+        .update({
+          paid_amount: totalPaid,
+          tds_amount: totalTds,
+          short_payment_amount: totalShort,
+          payment_status: paymentStatus,
+        })
+        .eq('id', grnId)
+        .eq('tenant_id', tenantId);
+
+      console.log('[updatePayment] GRN update:', { grnUpdateError, paymentStatus });
+
+      if (grnUpdateError) {
+        console.error('[updatePayment] GRN update error:', grnUpdateError.message);
+        throw new Error(`Failed to update GRN: ${grnUpdateError.message}`);
+      }
+
+      console.log('[updatePayment] SUCCESS');
+
+      const remaining = Math.max(0, netPayable - totalSettled);
+      return {
+        message: 'Payment updated successfully',
         paid_amount: totalPaid,
         tds_amount: totalTds,
         short_payment_amount: totalShort,
+        total_settled: totalSettled,
+        remaining_amount: remaining,
         payment_status: paymentStatus,
-      })
-      .eq('id', grnId)
-      .eq('tenant_id', tenantId);
-
-    if (grnUpdateError) {
-      console.error('[updatePayment] GRN update error:', grnUpdateError.message);
-      throw new Error(`Failed to update GRN: ${grnUpdateError.message}`);
+      };
+    } catch (error) {
+      console.error('[updatePayment] ERROR DETAILS:', {
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
+      throw error;
     }
-
-    const remaining = Math.max(0, netPayable - totalSettled);
-    return {
-      message: 'Payment updated successfully',
-      paid_amount: totalPaid,
-      tds_amount: totalTds,
-      short_payment_amount: totalShort,
-      total_settled: totalSettled,
-      remaining_amount: remaining,
-      payment_status: paymentStatus,
-    };
   }
 
   // Delete a payment entry (for removing incorrect payments)
@@ -1369,6 +1459,95 @@ export class DebitNoteService {
       throw new Error(`Failed to get advances: ${error.message}`);
     }
 
-    return data || [];
+    const advances = data || [];
+
+    // Dynamically compute utilized_amount and balance_amount per PO
+    // by summing up net payable of all invoice-approved GRNs for that PO
+    const poIds = [...new Set(advances.filter((a: any) => a.po_id).map((a: any) => a.po_id as string))];
+    const poGrnMap = new Map<string, number>();
+
+    if (poIds.length > 0) {
+      const { data: grns } = await this.supabase
+        .from('grns')
+        .select('po_id, net_payable_amount, paid_amount, tds_amount, short_payment_amount')
+        .eq('tenant_id', tenantId)
+        .in('po_id', poIds);
+
+      for (const grn of grns || []) {
+        if (!grn.po_id) continue;
+        const net = parseFloat(grn.net_payable_amount || 0);
+        const cashPaid = parseFloat(grn.paid_amount || 0) + parseFloat(grn.tds_amount || 0) + parseFloat(grn.short_payment_amount || 0);
+        // Amount covered by advance = net - cash paid (floored at 0)
+        const coveredByAdvance = Math.max(0, net - cashPaid);
+        poGrnMap.set(grn.po_id, (poGrnMap.get(grn.po_id) || 0) + coveredByAdvance);
+      }
+    }
+
+    return advances.map((adv: any) => {
+      if (!adv.po_id) return adv;
+      const totalAdvance = parseFloat(adv.amount || 0);
+      const coveredByGRNs = poGrnMap.get(adv.po_id) || 0;
+      const utilized = Math.min(totalAdvance, coveredByGRNs);
+      const balance = Math.max(0, totalAdvance - utilized);
+      return { ...adv, utilized_amount: utilized, balance_amount: balance };
+    });
+  }
+
+  // Sync payment status for GRNs based on PO advance coverage
+  // Marks GRNs as PAID if PO advance covers the full invoice amount
+  async syncPaymentStatusForPoAdvances(tenantId: string) {
+    // Get all GRNs with their PO advances
+    const { data: grns, error: grnError } = await this.supabase
+      .from('grns')
+      .select('id, po_id, net_payable_amount, paid_amount, tds_amount, short_payment_amount, payment_status')
+      .eq('tenant_id', tenantId)
+      .not('po_id', 'is', null);
+
+    if (grnError) throw new Error(`Failed to fetch GRNs: ${grnError.message}`);
+
+    const updates: { id: string; payment_status: string; paid_amount: number }[] = [];
+
+    for (const grn of grns || []) {
+      if (!grn.po_id) continue;
+
+      // Get total advance for this PO
+      const { data: advances } = await this.supabase
+        .from('po_advance_payments')
+        .select('amount')
+        .eq('po_id', grn.po_id)
+        .eq('tenant_id', tenantId);
+
+      const poAdvance = (advances || []).reduce((sum: number, a: any) => sum + parseFloat(a.amount || 0), 0);
+
+      const netPayable = parseFloat(grn.net_payable_amount || 0);
+      const paid = parseFloat(grn.paid_amount || 0);
+      const tds = parseFloat(grn.tds_amount || 0);
+      const short = parseFloat(grn.short_payment_amount || 0);
+
+      // Total settlement including advance
+      const totalSettled = paid + tds + short + poAdvance;
+
+      // Check if advance covers the invoice
+      if (totalSettled >= netPayable - 0.009 && grn.payment_status !== 'PAID') {
+        // Set paid_amount = netPayable so outstanding shows as 0
+        updates.push({ id: grn.id, payment_status: 'PAID', paid_amount: netPayable });
+      }
+    }
+
+    // Batch update all GRNs that should be PAID
+    for (const update of updates) {
+      await this.supabase
+        .from('grns')
+        .update({
+          payment_status: update.payment_status,
+          paid_amount: update.paid_amount,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', update.id)
+        .eq('tenant_id', tenantId);
+    }
+
+    console.log(`[syncPaymentStatus] Updated ${updates.length} GRNs to PAID based on PO advances`);
+    return { updated: updates.length };
   }
 }
