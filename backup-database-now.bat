@@ -26,14 +26,52 @@ echo Database: %DB%
 echo Output: %BACKUP_FILE%
 echo.
 
-REM Check if pg_dump is available
+REM Check if pg_dump is available (search common locations)
+set PGDUMP_FOUND=0
+set PGDUMP_PATH=
+
+REM Check if in PATH
 where pg_dump >nul 2>nul
 if %errorlevel% == 0 (
-    echo Using local PostgreSQL...
-    pg_dump -h %HOST% -U %USER% -d %DB% --clean --if-exists -f "%BACKUP_FILE%"
+    set PGDUMP_FOUND=1
+    for /f "tokens=*" %%a in ('where pg_dump') do set PGDUMP_PATH=%%a
+)
+
+REM Check common PostgreSQL installation locations
+if %PGDUMP_FOUND% == 0 (
+    if exist "C:\Program Files\PostgreSQL\15\bin\pg_dump.exe" (
+        set PGDUMP_PATH=C:\Program Files\PostgreSQL\15\bin\pg_dump.exe
+        set PGDUMP_FOUND=1
+    )
+)
+
+if %PGDUMP_FOUND% == 0 (
+    if exist "C:\Program Files\PostgreSQL\14\bin\pg_dump.exe" (
+        set PGDUMP_PATH=C:\Program Files\PostgreSQL\14\bin\pg_dump.exe
+        set PGDUMP_FOUND=1
+    )
+)
+
+if %PGDUMP_FOUND% == 0 (
+    if exist "C:\Program Files\PostgreSQL\16\bin\pg_dump.exe" (
+        set PGDUMP_PATH=C:\Program Files\PostgreSQL\16\bin\pg_dump.exe
+        set PGDUMP_FOUND=1
+    )
+)
+
+if %PGDUMP_FOUND% == 1 (
+    echo Found PostgreSQL at: %PGDUMP_PATH%
+    "%PGDUMP_PATH%" -h %HOST% -U %USER% -d %DB% --clean --if-exists --no-owner --no-privileges -f "%BACKUP_FILE%"
 ) else (
-    echo PostgreSQL not found locally. Using Docker...
-    docker run --rm -e PGPASSWORD=%PGPASSWORD% postgres:15-alpine pg_dump -h %HOST% -U %USER% -d %DB% --clean --if-exists --no-owner --no-privileges > "%BACKUP_FILE%"
+    echo PostgreSQL not found. Checking if you installed it...
+    echo.
+    echo Please install PostgreSQL command line tools:
+    echo 1. Download from: https://www.enterprisedb.com/downloads/postgres-postgresql-downloads
+    echo 2. Run installer
+    echo 3. Select ONLY "Command Line Tools" (uncheck Server, pgAdmin, StackBuilder)
+    echo.
+    pause
+    exit /b 1
 )
 
 if %errorlevel% == 0 (
