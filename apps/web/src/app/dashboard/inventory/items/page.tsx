@@ -10,6 +10,8 @@ import NomenclatureManager from '../../../../components/NomenclatureManager';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { hasModulePermission, isAdminLike, readStoredUser } from '@/lib/rbac';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
+import { useEscapeKey } from '../../../../hooks/useEscapeKey';
+import { exportToExcel } from '../../../../lib/export-excel';
 
 interface Item {
   id: string;
@@ -44,6 +46,8 @@ interface Item {
   is_variant?: boolean;
   is_default_variant?: boolean;
   variant_name?: string;
+  updated_at?: string;
+  updated_by?: string;
 }
 
 interface Vendor {
@@ -123,6 +127,7 @@ export default function ItemsPage() {
   const canEdit = hasModulePermission(currentUser, 'Inventory', 'edit');
   const canDelete = hasModulePermission(currentUser, 'Inventory', 'delete');
   const canVerify = isAdminLike(currentUser) && hasModulePermission(currentUser, 'Inventory', 'approve');
+  const canExport = isAdminLike(currentUser); // Only admins can export data
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -353,6 +358,16 @@ export default function ItemsPage() {
     'PCS', 'KG', 'GRAM', 'LITER', 'METER', 'CM', 'MM',
     'BOX', 'SET', 'PACK', 'ROLL', 'SHEET', 'FEET', 'INCH'
   ];
+
+  // Close modals on Escape key
+  useEscapeKey(showForm, () => setShowForm(false));
+  useEscapeKey(!!viewingItem, () => setViewingItem(null));
+  useEscapeKey(showDrawingManager, () => { setShowDrawingManager(false); setSelectedItemForDrawing(null); });
+  useEscapeKey(showCategoryManager, () => setShowCategoryManager(false));
+  useEscapeKey(showNomenclatureManager, () => setShowNomenclatureManager(false));
+  useEscapeKey(showBulkInventory, () => setShowBulkInventory(false));
+  useEscapeKey(showImportModal, () => setShowImportModal(false));
+  useEscapeKey(stockTrail.open, () => setStockTrail(s => ({ ...s, open: false })));
 
   useEffect(() => {
     fetchItems();
@@ -1378,6 +1393,37 @@ export default function ItemsPage() {
       minWidth: 140,
     },
     {
+      id: 'updated_at',
+      label: 'Date Modified',
+      accessor: (item) => item.updated_at || item.created_at || '',
+      sortAccessor: (item) => item.updated_at ? new Date(item.updated_at).getTime() : (item.created_at ? new Date(item.created_at).getTime() : 0),
+      cell: (item) => {
+        const d = item.updated_at || item.created_at;
+        if (!d) return <span className="text-xs text-gray-400">—</span>;
+        const dt = new Date(d);
+        return (
+          <span className="text-xs text-gray-700 whitespace-nowrap">
+            {dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+            <span className="block text-gray-400">{dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          </span>
+        );
+      },
+      defaultVisible: false,
+      minWidth: 140,
+    },
+    {
+      id: 'updated_by',
+      label: 'Modified By',
+      accessor: (item) => (item as any).updated_by || '',
+      cell: (item) => {
+        const user = (item as any).updated_by;
+        if (!user) return <span className="text-xs text-gray-400">—</span>;
+        return <span className="text-xs text-gray-700 truncate block" title={user}>{user}</span>;
+      },
+      defaultVisible: false,
+      minWidth: 130,
+    },
+    {
       id: 'actions',
       label: 'Actions',
       sortable: false,
@@ -1453,6 +1499,42 @@ export default function ItemsPage() {
             <p className="text-sm text-amber-700">Create and manage item masters, inventory attributes, drawings, and variants</p>
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-3">
+            {canExport && (
+              <button
+                onClick={() => {
+                  exportToExcel(
+                    items,
+                    [
+                      { header: 'SAS Part Number', key: 'code' },
+                      { header: 'Name', key: 'name' },
+                      { header: 'Description', key: 'description' },
+                      { header: 'Category', key: 'category' },
+                      { header: 'UOM', key: 'uom' },
+                      { header: 'HSN Code', key: 'hsn_code' },
+                      { header: 'Standard Cost', key: 'standard_cost' },
+                      { header: 'Selling Price', key: 'selling_price' },
+                      { header: 'Reorder Level', key: 'reorder_level' },
+                      { header: 'Reorder Qty', key: 'reorder_quantity' },
+                      { header: 'Lead Time (Days)', key: 'lead_time_days' },
+                      { header: 'Total Stock', key: 'total_stock' },
+                      { header: 'UID Tracking', key: 'uid_tracking' },
+                      { header: 'UID Strategy', key: 'uid_strategy' },
+                      { header: 'Active', key: 'is_active' },
+                      { header: 'Verified', key: 'is_verified' },
+                      { header: 'OEM Part No', key: 'oem_part_no' },
+                      { header: 'OEM Name', key: 'oem_name' },
+                      { header: 'Date Modified', key: 'updated_at' },
+                      { header: 'Modified By', key: 'updated_by' },
+                      { header: 'Created At', key: 'created_at' },
+                    ],
+                    `Items_${new Date().toISOString().slice(0, 10)}.csv`
+                  );
+                }}
+                className="rounded-md bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800"
+              >
+                ⬇ Download Excel
+              </button>
+            )}
             <button
               onClick={() => setShowCategoryManager(true)}
               className="rounded-md bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#6F4E37]"

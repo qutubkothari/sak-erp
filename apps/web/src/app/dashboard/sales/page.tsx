@@ -9,6 +9,7 @@ import { getTodayDateInputValue } from '@/lib/date';
 import { buildDocumentBranding, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { useEscapeKey } from '../../../hooks/useEscapeKey';
 
 type TabType = 'customers' | 'quotations' | 'orders' | 'dispatch' | 'warranties';
 
@@ -497,6 +498,18 @@ export default function SalesPage() {
       alert(err?.message || 'Failed to print warranty certificate');
     }
   };
+
+  // Close modals on Escape key
+  useEscapeKey(showCustomerForm, () => setShowCustomerForm(false));
+  useEscapeKey(showQuotationForm, () => setShowQuotationForm(false));
+  useEscapeKey(!!viewingQuotation, () => setViewingQuotation(null));
+  useEscapeKey(showSOConversionForm, () => setShowSOConversionForm(false));
+  useEscapeKey(showDispatchForm, () => setShowDispatchForm(false));
+  useEscapeKey(showOrderEditForm, () => setShowOrderEditForm(false));
+  useEscapeKey(showDispatchEditForm, () => setShowDispatchEditForm(false));
+  useEscapeKey(showWarrantyForm, () => setShowWarrantyForm(false));
+  useEscapeKey(showWarrantyEditForm, () => setShowWarrantyEditForm(false));
+  useEscapeKey(showDirectSOForm, () => setShowDirectSOForm(false));
 
   useEffect(() => {
     fetchItems(); // Fetch items on mount for all forms
@@ -1311,6 +1324,7 @@ export default function SalesPage() {
 
   // Smart Job Order (from Sales Order) state
   const [showSmartJOModal, setShowSmartJOModal] = useState(false);
+  useEscapeKey(showSmartJOModal, () => setShowSmartJOModal(false));
   const [smartJOOrder, setSmartJOOrder] = useState<SalesOrder | null>(null);
   const [smartJOSOItems, setSmartJOSOItems] = useState<any[]>([]);
   const [smartJOSelectedSOItemId, setSmartJOSelectedSOItemId] = useState<string>('');

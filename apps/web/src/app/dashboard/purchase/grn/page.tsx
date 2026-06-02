@@ -9,6 +9,7 @@ import { hasModulePermission, hasScreenPermission, readStoredUser } from '@/lib/
 import { getTodayDateInputValue } from '@/lib/date';
 import DateInput from '../../../../components/ui/DateInput';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
+import { useEscapeKey } from '../../../../hooks/useEscapeKey';
 
 function getApiV1BaseUrl(): string | null {
   const raw = (process.env.NEXT_PUBLIC_API_URL || '').trim();
@@ -935,6 +936,24 @@ function GRNContent() {
     setQcFormData(newData);
   };
 
+  // Close modals on Escape key
+  useEscapeKey(showModal, () => setShowModal(false));
+  useEscapeKey(showViewModal, () => {
+    setShowViewModal(false);
+    setSelectedGRN(null);
+    setEditMode(false);
+    // Clear viewId from URL to prevent reopening
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('viewId')) {
+      params.delete('viewId');
+      const newUrl = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
+      window.history.replaceState({}, '', newUrl);
+    }
+  });
+  useEscapeKey(showUIDsModal, () => setShowUIDsModal(false));
+  useEscapeKey(showTrailModal, () => setShowTrailModal(false));
+  useEscapeKey(showQCModal, () => setShowQCModal(false));
+
   useEffect(() => {
     fetchGRNs();
     fetchPurchaseOrders();
@@ -943,6 +962,7 @@ function GRNContent() {
   }, [filterStatus]);
 
   // Auto-open GRN details if viewId is in URL (from Action Required links)
+  // Note: showViewModal is NOT in deps to prevent reopening when closing modal
   useEffect(() => {
     if (viewId && !showViewModal && grns.length > 0) {
       // Find GRN in already loaded data or fetch it
@@ -966,7 +986,8 @@ function GRNContent() {
         fetchAndViewGRN();
       }
     }
-  }, [viewId, grns, showViewModal]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewId, grns]); // Intentionally excluding showViewModal to prevent reopen loop
 
   useEffect(() => {
     // Used to show container/drum breakdown while entering GRN qty in base UOM.

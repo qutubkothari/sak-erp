@@ -11,6 +11,7 @@ import DateInput from '../../../../components/ui/DateInput';
 import DrawingManager from '../../../../components/DrawingManager';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { useSelection } from '../../../../hooks/useSelection';
+import { useEscapeKey } from '../../../../hooks/useEscapeKey';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
@@ -86,6 +87,10 @@ interface PurchaseOrder {
   payment_notes?: string;
   customs_duty?: number;
   other_charges?: number;
+  freight_amount?: number;
+  freight_gst_applicable?: boolean;
+  freight_gst_percent?: number;
+  terms_and_conditions?: string | object;
   updated_by?: string;
   edit_count?: number;
   last_edited_at?: string;
@@ -108,6 +113,7 @@ interface PurchaseOrder {
     received_qty?: number;
     remaining_qty?: number;
     rate?: number;
+    amount?: number;
     uom?: string;
     serial_no?: number;
     pr_item_id?: string;
@@ -192,7 +198,7 @@ function PurchaseOrdersContent() {
   
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<Array<{ id: string; name: string; contact_person: string }>>([]);
-  const [users, setUsers] = useState<Array<{ id: string; employee_name: string; employee_code?: string }>>([]);
+  const [users, setUsers] = useState<Array<{ id: string; employee_name: string; employee_code?: string; phone?: string }>>([]);
   const [items, setItems] = useState<Array<{
     id: string;
     code: string;
@@ -220,6 +226,7 @@ function PurchaseOrdersContent() {
   const [editingPOId, setEditingPOId] = useState<string | null>(null);
   const [editingMode, setEditingMode] = useState<'create' | 'edit' | 'tracking'>('create');
   const [filterStatus, setFilterStatus] = useState('ALL');
+  const [filterVendor, setFilterVendor] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [loadingPR, setLoadingPR] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -312,6 +319,13 @@ function PurchaseOrdersContent() {
       .catch(() => setDeliveryAddresses([]));
   }, [showModal]);
 
+  // Close modals on Escape key
+  useEscapeKey(showViewModal, () => { setShowViewModal(false); setSelectedPO(null); });
+  useEscapeKey(showTrailModal, () => setShowTrailModal(false));
+  useEscapeKey(showPOEmailPreview, () => setShowPOEmailPreview(false));
+  useEscapeKey(showDrawingManager, () => { setShowDrawingManager(false); setSelectedItemForDrawing(null); setPendingItemIndex(null); });
+  useEscapeKey(showQuickCreateItem, () => setShowQuickCreateItem(false));
+
   // Fetch vendors on component mount
   useEffect(() => {
     fetchVendors();
@@ -342,7 +356,7 @@ function PurchaseOrdersContent() {
   // Fetch orders on mount and when filters change
   useEffect(() => {
     fetchOrders();
-  }, [filterStatus, searchTerm]);
+  }, [filterStatus, filterVendor, searchTerm]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -507,6 +521,21 @@ function PurchaseOrdersContent() {
       toast.error(error?.message || 'Failed to save delivery address');
     } finally {
       setDeliveryAddressSaving(false);
+    }
+  };
+
+  const handleDeleteDeliveryAddress = async (id: string) => {
+    if (!confirm('Delete this saved address?')) return;
+    try {
+      const response = await fetch(`/api/v1/vendors/delivery-addresses/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` }
+      });
+      if (!response.ok) throw new Error('Failed to delete address');
+      setDeliveryAddresses(prev => prev.filter(a => a.id !== id));
+      toast.success('Address deleted');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to delete address');
     }
   };
 
@@ -755,6 +784,7 @@ function PurchaseOrdersContent() {
       }
       const params = new URLSearchParams();
       if (filterStatus !== 'ALL') params.append('status', filterStatus);
+      if (filterVendor) params.append('vendorId', filterVendor);
       if (searchTerm) params.append('search', searchTerm);
 
       const data = await apiClient.get(`/purchase/orders?${params}`);
@@ -2271,11 +2301,52 @@ function PurchaseOrdersContent() {
     {
       id: 'total_amount',
       label: 'Amount',
-      accessor: (o) => o.total_amount || 0,
+      accessor: (o) => {
+        // Calculate grand total including freight from terms_and_conditions
+        const items = o.purchase_order_items || [];
+        const itemsSubtotal = items.reduce((sum: number, item: any) => sum + (item.total_amount || item.amount || 0), 0);
+        const tc = o.terms_and_conditions;
+        let freightData: any = {};
+        try {
+          if (tc && typeof tc === 'string' && tc.startsWith('{')) {
+            freightData = JSON.parse(tc);
+          } else if (tc && typeof tc === 'object') {
+            freightData = tc;
+          }
+        } catch {}
+        const freightAmount = freightData.freightAmount || o.freight_amount || 0;
+        const freightGstApplicable = freightData.freightGstApplicable === true || o.freight_gst_applicable === true;
+        const freightGstPercent = freightData.freightGstPercent || o.freight_gst_percent || 0;
+        const freightGstAmount = freightGstApplicable ? Math.round(freightAmount * freightGstPercent) / 100 : 0;
+        const customsDuty = o.customs_duty || freightData.additionalExpenses || 0;
+        const otherCharges = o.other_charges || 0;
+        return itemsSubtotal + freightAmount + freightGstAmount + customsDuty + otherCharges;
+      },
       align: 'right',
-      cell: (o) => (
-        <span className="whitespace-nowrap font-semibold text-gray-900">₹{fmtINR(o.total_amount)}</span>
-      ),
+      cell: (o) => {
+        // Calculate grand total including freight from terms_and_conditions
+        const items = o.purchase_order_items || [];
+        const itemsSubtotal = items.reduce((sum: number, item: any) => sum + (item.total_amount || item.amount || 0), 0);
+        const tc = o.terms_and_conditions;
+        let freightData: any = {};
+        try {
+          if (tc && typeof tc === 'string' && tc.startsWith('{')) {
+            freightData = JSON.parse(tc);
+          } else if (tc && typeof tc === 'object') {
+            freightData = tc;
+          }
+        } catch {}
+        const freightAmount = freightData.freightAmount || o.freight_amount || 0;
+        const freightGstApplicable = freightData.freightGstApplicable === true || o.freight_gst_applicable === true;
+        const freightGstPercent = freightData.freightGstPercent || o.freight_gst_percent || 0;
+        const freightGstAmount = freightGstApplicable ? Math.round(freightAmount * freightGstPercent) / 100 : 0;
+        const customsDuty = o.customs_duty || freightData.additionalExpenses || 0;
+        const otherCharges = o.other_charges || 0;
+        const grandTotal = itemsSubtotal + freightAmount + freightGstAmount + customsDuty + otherCharges;
+        return (
+          <span className="whitespace-nowrap font-semibold text-gray-900">₹{fmtINR(grandTotal)}</span>
+        );
+      },
       minWidth: 150,
       headerClassName: 'w-[10%]',
       cellClassName: 'w-[10%]',
@@ -2340,6 +2411,44 @@ function PurchaseOrdersContent() {
       minWidth: 150,
       headerClassName: 'w-[9%]',
       cellClassName: 'w-[9%]',
+    },
+    {
+      id: 'last_edited_at',
+      label: 'Date Modified',
+      accessor: (o) => (o as any).last_edited_at || '',
+      sortAccessor: (o) => ((o as any).last_edited_at ? new Date((o as any).last_edited_at).getTime() : 0),
+      cell: (o) => {
+        const d = (o as any).last_edited_at;
+        if (!d) return <span className="text-xs text-gray-400">—</span>;
+        const dt = new Date(d);
+        return (
+          <span className="text-xs text-gray-700 whitespace-nowrap">
+            {dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+            <span className="block text-gray-400">{dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          </span>
+        );
+      },
+      defaultVisible: false,
+      minWidth: 140,
+    },
+    {
+      id: 'edit_count',
+      label: 'Modified',
+      accessor: (o) => (o as any).edit_count ?? 0,
+      sortAccessor: (o) => (o as any).edit_count ?? 0,
+      cell: (o) => {
+        const count = (o as any).edit_count;
+        const user = (o as any).updated_by;
+        if (!count) return <span className="text-xs text-gray-400">—</span>;
+        return (
+          <span className="text-xs text-gray-700">
+            {count} time{count !== 1 ? 's' : ''}
+            {user && <span className="block text-gray-400 truncate" title={user}>{user}</span>}
+          </span>
+        );
+      },
+      defaultVisible: false,
+      minWidth: 130,
     },
     {
       id: 'status',
@@ -2447,7 +2556,20 @@ function PurchaseOrdersContent() {
 
         {/* Filters */}
         <div className="mb-4 rounded-lg bg-white p-4 shadow-md">
-          <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Vendor</label>
+              <select
+                value={filterVendor}
+                onChange={(e) => setFilterVendor(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2"
+              >
+                <option value="">All Vendors</option>
+                {vendors.map((v) => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
               <select
@@ -2634,19 +2756,6 @@ function PurchaseOrdersContent() {
                   </p>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Payment Status</label>
-                  <select
-                    value={formData.paymentStatus}
-                    onChange={(e) => setFormData({ ...formData, paymentStatus: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                  >
-                    <option value="UNPAID">Unpaid</option>
-                    <option value="PAID">Paid</option>
-                    <option value="CHEQUE_ISSUED">Cheque Issued</option>
-                    <option value="OTHER">Other</option>
-                  </select>
-                </div>
-                <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Order Date <span className="text-red-500">*</span></label>
                   <DateInput
                     min={todayDate}
@@ -2675,18 +2784,27 @@ function PurchaseOrdersContent() {
                       <p className="text-xs text-gray-500 mb-1">📍 Quick-select saved address:</p>
                       <div className="flex flex-wrap gap-2">
                         {deliveryAddresses.map((entry) => (
-                          <button
-                            key={entry.id}
-                            type="button"
-                            onClick={() => setFormData({ ...formData, deliveryAddress: entry.address })}
-                            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                              formData.deliveryAddress === entry.address
+                          <div key={entry.id} className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, deliveryAddress: entry.address })}
+                              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                                formData.deliveryAddress === entry.address
                                 ? 'bg-amber-700 text-white border-amber-700'
                                 : 'bg-white text-amber-800 border-amber-300 hover:bg-amber-50'
                             }`}
-                          >
-                            📍 {entry.name}
-                          </button>
+                            >
+                              📍 {entry.name}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDeliveryAddress(entry.id)}
+                              className="text-red-500 hover:text-red-700 text-xs p-1"
+                              title="Delete address"
+                            >
+                              ×
+                            </button>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -2727,7 +2845,14 @@ function PurchaseOrdersContent() {
                   {users.length > 0 ? (
                     <select
                       value={formData.deliveryContactPerson}
-                      onChange={(e) => setFormData({ ...formData, deliveryContactPerson: e.target.value })}
+                      onChange={(e) => {
+                        const selectedUser = users.find(u => u.employee_name === e.target.value);
+                        setFormData({
+                          ...formData,
+                          deliveryContactPerson: e.target.value,
+                          deliveryContactPhone: selectedUser?.phone || formData.deliveryContactPhone
+                        });
+                      }}
                       className="w-full border border-gray-300 rounded-lg px-4 py-2"
                     >
                       <option value="">Select or type below...</option>
@@ -2862,18 +2987,8 @@ function PurchaseOrdersContent() {
                 </div>
               )}
 
-              {formData.paymentStatus === 'OTHER' && (
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Payment Notes</label>
-                  <textarea
-                    value={formData.paymentNotes}
-                    onChange={(e) => setFormData({ ...formData, paymentNotes: e.target.value })}
-                    rows={2}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    placeholder="Enter payment details or notes..."
-                  />
-                </div>
-              )}
+              {/* Payment status removed - managed through Accounts module */}
+
               {/* Items */}
               {editingMode !== 'tracking' && (
                 <div>
@@ -3390,7 +3505,7 @@ function PurchaseOrdersContent() {
               </div>
             </div>
           </div>
-      )}
+        )}
       </div>
 
       {/* Quick Create Item Modal */}
@@ -3569,7 +3684,7 @@ function PurchaseOrdersContent() {
                   <h4 className="text-sm font-semibold text-blue-900 mb-3">💰 Cost Breakdown</h4>
                   {(() => {
                     const items = (selectedPO as any).purchase_order_items || [];
-                    const itemsSubtotal = items.reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
+                    const itemsSubtotal = items.reduce((sum: number, item: any) => sum + (item.total_amount || item.amount || 0), 0);
                     const tc = (selectedPO as any).terms_and_conditions;
                     let freightData: any = {};
                     try {
@@ -3585,7 +3700,7 @@ function PurchaseOrdersContent() {
                     const freightGstAmount = freightGstApplicable ? Math.round(freightAmount * freightGstPercent) / 100 : 0;
                     const customsDuty = (selectedPO as any).customs_duty || freightData.additionalExpenses || 0;
                     const otherCharges = (selectedPO as any).other_charges || 0;
-                    const grandTotal = (selectedPO as any).total_amount || itemsSubtotal + freightAmount + freightGstAmount + customsDuty + otherCharges;
+                    const grandTotal = itemsSubtotal + freightAmount + freightGstAmount + customsDuty + otherCharges;
                     return (
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">

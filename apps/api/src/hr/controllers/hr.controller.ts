@@ -33,7 +33,61 @@ export class HrController {
     return this.hrService.deleteEmployee(req.user.tenantId, id);
   }
 
-  // Attendance
+  // Attendance with Geo-tagging
+  @Post('attendance/check-in')
+  async checkIn(@Request() req: any, @Body() body: {
+    lat?: number;
+    lng?: number;
+    location?: string;
+    photoUrl?: string;
+    notes?: string;
+    isOutsideZone?: boolean;
+    outsideZoneReason?: string;
+  }) {
+    try {
+      this.logger.log(`Check-in attempt by user: ${req.user.userId}, tenant: ${req.user.tenantId}`);
+      const employee = await this.hrService.getEmployeeByUserId(req.user.tenantId, req.user.userId);
+      if (!employee) {
+        this.logger.error(`Employee not found for user: ${req.user.userId}`);
+        throw new BadRequestException('Employee record not found');
+      }
+      this.logger.log(`Found employee: ${employee.id} for check-in`);
+      return await this.hrService.checkIn(req.user.tenantId, req.user.userId, employee.id, body);
+    } catch (error) {
+      this.logger.error(`Check-in error: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  @Post('attendance/check-out')
+  checkOut(@Request() req: any, @Body() body: {
+    lat?: number;
+    lng?: number;
+    location?: string;
+    photoUrl?: string;
+    notes?: string;
+  }) {
+    return this.hrService.checkOut(req.user.userId, body);
+  }
+
+  @Get('attendance/today')
+  getTodayAttendance(@Request() req: any) {
+    return this.hrService.getTodayAttendance(req.user.userId);
+  }
+
+  @Get('attendance/my')
+  getMyAttendance(@Request() req: any, @Query('month') month?: string) {
+    const currentMonth = month || new Date().toISOString().slice(0, 7);
+    return this.hrService.getMyAttendance(req.user.userId, currentMonth);
+  }
+
+  @Get('attendance')
+  getAttendance(@Request() req: any, @Query('month') month?: string) {
+    const currentMonth = month || new Date().toISOString().slice(0, 7);
+    return this.hrService.getAttendance(req.user.tenantId, currentMonth);
+  }
+
+  // Legacy attendance endpoints
   @Post('attendance')
   recordAttendance(@Request() req: any, @Body() body: any) {
     return this.hrService.recordAttendance(req.user.tenantId, body);
@@ -42,11 +96,6 @@ export class HrController {
   @Post('attendance/import')
   importAttendance(@Request() req: any, @Body() body: { records: any[] }) {
     return this.hrService.importBiometricAttendance(req.user.tenantId, body);
-  }
-
-  @Get('attendance')
-  getAttendance(@Request() req: any, @Query('employeeId') employeeId?: string, @Query('month') month?: string) {
-    return this.hrService.getAttendance(req.user.tenantId, employeeId, month);
   }
 
   @Put('attendance/:id')

@@ -68,34 +68,62 @@ const nextConfig = {
       },
     ];
 
+    // Security headers to prevent XSS, clickjacking, data leakage
+    const securityHeaders = [
+      {
+        key: 'X-Frame-Options',
+        value: 'DENY', // Prevent clickjacking
+      },
+      {
+        key: 'X-Content-Type-Options',
+        value: 'nosniff', // Prevent MIME type sniffing
+      },
+      {
+        key: 'X-XSS-Protection',
+        value: '1; mode=block', // Enable XSS filter
+      },
+      {
+        key: 'Referrer-Policy',
+        value: 'strict-origin-when-cross-origin', // Limit referrer info
+      },
+      {
+        key: 'Permissions-Policy',
+        value: 'camera=(), microphone=(), geolocation=(), payment=()', // Disable unnecessary APIs
+      },
+      {
+        key: 'Strict-Transport-Security',
+        value: 'max-age=31536000; includeSubDomains', // HTTPS only
+      },
+    ];
+
     return [
       {
         source: '/',
-        headers: noStoreHeaders,
+        headers: [...noStoreHeaders, ...securityHeaders],
       },
       {
         source: '/dashboard',
-        headers: noStoreHeaders,
+        headers: [...noStoreHeaders, ...securityHeaders],
       },
       {
         source: '/dashboard/:path*',
-        headers: noStoreHeaders,
+        headers: [...noStoreHeaders, ...securityHeaders],
       },
       {
         source: '/login',
-        headers: noStoreHeaders,
+        headers: [...noStoreHeaders, ...securityHeaders],
       },
       {
         source: '/register',
-        headers: noStoreHeaders,
+        headers: [...noStoreHeaders, ...securityHeaders],
       },
       {
         source: '/forgot-password',
-        headers: noStoreHeaders,
+        headers: [...noStoreHeaders, ...securityHeaders],
       },
       {
         source: '/reset-password',
-        headers: noStoreHeaders,
+        headers: [...noStoreHeaders, ...securityHeaders],
       },
     ];
   },

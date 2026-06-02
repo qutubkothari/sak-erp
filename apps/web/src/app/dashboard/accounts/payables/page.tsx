@@ -6,6 +6,7 @@ import { ListTable, type ListTableColumn } from '../../../../components/ui/ListT
 import { getTodayDateInputValue } from '@/lib/date';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import { buildDocumentBranding } from '@/lib/document-branding';
+import { useEscapeKey } from '../../../../hooks/useEscapeKey';
 
 interface VendorPayable {
   vendor_id: string;
@@ -472,6 +473,13 @@ export default function AccountsPayablePage() {
     }
   }, []);
 
+  // Close modals on Escape key
+  useEscapeKey(showDetailsModal, () => setShowDetailsModal(false));
+  useEscapeKey(showGRNDetailModal, () => setShowGRNDetailModal(false));
+  useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
+  useEscapeKey(showEditPaymentModal, () => setShowEditPaymentModal(false));
+  useEscapeKey(showAdvanceModal, () => setShowAdvanceModal(false));
+
   useEffect(() => { 
     fetchVendorPayables(); 
     fetchAdvances(); 
@@ -686,6 +694,7 @@ export default function AccountsPayablePage() {
 
   // Bulk Settlement
   const [showSettlementModal, setShowSettlementModal] = useState(false);
+  useEscapeKey(showSettlementModal, () => setShowSettlementModal(false));
   const [settlementForm, setSettlementForm] = useState({ amount: '', payment_method: 'NEFT', payment_reference: '', payment_date: getTodayDateInputValue(), payment_notes: '', tds_amount: '', short_payment_amount: '' });
   const [settlementError, setSettlementError] = useState<string | null>(null);
   const [settlementSubmitting, setSettlementSubmitting] = useState(false);

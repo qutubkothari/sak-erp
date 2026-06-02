@@ -78,7 +78,7 @@ export class ItemsController {
   @Put(':id')
   @RequireUpdate('items')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.itemsService.update(req.user.tenantId, id, body);
+    return this.itemsService.update(req.user.tenantId, id, body, req.user.userId);
   }
 
   @Put(':id/verify')

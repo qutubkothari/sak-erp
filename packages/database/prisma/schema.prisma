@@ -173,6 +173,7 @@ model User {
   managedDepts    Department[] @relation("DepartmentManager")
   sessions        UserSession[]
   auditLogs       AuditLog[]
+  attendanceRecords Attendance[]
 
   @@index([tenantId])
   @@index([email])
@@ -1055,6 +1056,63 @@ enum ApprovalStatus {
   REJECTED
   SENT_BACK
   ESCALATED
+}
+
+// ============================================================================
+// HR MODULE - ATTENDANCE WITH GEO-TAGGING
+// ============================================================================
+
+model Attendance {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @db.Uuid
+  employeeId      String   @db.Uuid
+  userId          String   @db.Uuid
+  attendanceDate  DateTime @default(now())
+  
+  // Check-in details
+  checkInTime     DateTime?
+  checkInLat      Decimal? @db.Decimal(10, 8)
+  checkInLng      Decimal? @db.Decimal(11, 8)
+  checkInLocation String?  @db.VarChar(255)
+  checkInPhotoUrl String?  @db.VarChar(500)
+  checkInNotes    String?
+  
+  // Check-out details
+  checkOutTime    DateTime?
+  checkOutLat     Decimal? @db.Decimal(10, 8)
+  checkOutLng     Decimal? @db.Decimal(11, 8)
+  checkOutLocation String? @db.VarChar(255)
+  checkOutPhotoUrl String? @db.VarChar(500)
+  checkOutNotes   String?
+  
+  // Status tracking
+  status          AttendanceStatus @default(ABSENT)
+  workHours       Decimal? @db.Decimal(5, 2)
+  isOutsideZone   Boolean  @default(false)
+  outsideZoneReason String?
+  
+  // Metadata
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  user            User     @relation(fields: [userId], references: [id])
+  
+  @@unique([tenantId, employeeId, attendanceDate])
+  @@index([tenantId, attendanceDate])
+  @@index([userId])
+  @@index([status])
+  @@map("attendance")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  ON_LEAVE
+  WORK_FROM_HOME
 }
 
 // ============================================================================

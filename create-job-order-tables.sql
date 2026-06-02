@@ -12,7 +12,8 @@ DO $$ BEGIN
     'STORE_ISSUED',
     'COMPLETED',
     'CANCELLED',
-    'ON_HOLD'
+    'ON_HOLD',
+    'STOPPED'
   );
 EXCEPTION
   WHEN duplicate_object THEN null;

@@ -5996,6 +5996,21 @@ export class JobOrderService {
     const delta = Math.max(0, invAvailable - entriesAvailable);
     if (delta <= 0.0001) return;
 
+    // DISABLED: This reconcile logic was creating duplicate stock entries.
+    // When inventory_stock is corrupted (doubled), it adds synthetic entries,
+    // which then makes the next reconcile add even more. Creates infinite loop.
+    // TODO: Implement proper fix that rebuilds inventory_stock from stock_entries instead.
+    console.warn('[StockReconcile] SKIPPED - Disabled due to duplicate entry bug', {
+      tenantId,
+      itemId,
+      invAvailable,
+      entriesAvailable,
+      delta,
+      message: 'Manual cleanup required: inventory_stock should be rebuilt from stock_entries, not the reverse',
+    });
+    return;
+
+    /*
     const best = invList
       .filter((r: any) => this.isUuid(String(r?.warehouse_id || '')))
       .sort((a: any, b: any) => (Number(b?.available_quantity) || 0) - (Number(a?.available_quantity) || 0))[0];
@@ -6030,17 +6045,15 @@ export class JobOrderService {
           reconciled_at: new Date().toISOString(),
         },
       });
+    */
 
-    if (insertErr) {
-      // Don't block the flow; caller will still rely on stock_entries and may throw a shortage.
-      console.error('[StockReconcile] Failed inserting synthetic stock entry', {
-        tenantId,
-        itemId,
-        warehouseId,
-        delta,
-        error: formatErr(insertErr, 'ensureStock:insert'),
-      });
-    }
+    // Error handling disabled along with reconcile logic above
+    // if (insertErr) {
+    //   console.error('[StockReconcile] Failed inserting synthetic stock entry', {
+    //     tenantId, itemId, warehouseId, delta,
+    //     error: formatErr(insertErr, 'ensureStock:insert'),
+    //   });
+    // }
   }
 
   private async normalizeJobOrderMaterialRows(tenantId: string, materials: any[]): Promise<any[]> {

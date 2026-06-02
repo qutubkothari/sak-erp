@@ -11,6 +11,7 @@ import DuplicateWarning, { useDuplicateDetection } from '../../../../components/
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import DateInput from '../../../../components/ui/DateInput';
+import { useEscapeKey } from '../../../../hooks/useEscapeKey';
 
 interface PRItem {
   id: string;
@@ -235,6 +236,7 @@ function PRContent() {
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
   const [loadingRequisitions, setLoadingRequisitions] = useState(true);
   const [filterStatus, setFilterStatus] = useState('');
+  const [filterVendor, setFilterVendor] = useState('');
   const [selectedPR, setSelectedPR] = useState<PRDetail | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -367,6 +369,17 @@ function PRContent() {
       cell: (r) => <span>{new Date(r.created_at).toLocaleDateString()}</span>,
     },
     {
+      id: 'purpose',
+      label: 'Notes',
+      accessor: (r) => r.purpose || '',
+      cell: (r) => (
+        <span className="text-gray-600 text-sm truncate max-w-[150px] block" title={r.purpose || ''}>
+          {r.purpose || '-'}
+        </span>
+      ),
+      hideable: true,
+    },
+    {
       id: 'actions',
       label: 'Actions',
       sortable: false,
@@ -427,6 +440,12 @@ function PRContent() {
     return Array.from(new Set(allVendorIds));
   };
 
+  // Close modals on Escape key
+  useEscapeKey(showDetailModal, () => { setShowDetailModal(false); setSelectedPR(null); });
+  useEscapeKey(showRfqPreview, () => setShowRfqPreview(false));
+  useEscapeKey(showRfqResponses, () => setShowRfqResponses(false));
+  useEscapeKey(showCreateForm, () => setShowCreateForm(false));
+
   useEffect(() => {
     fetchRequisitions();
   }, []);
@@ -449,7 +468,14 @@ function PRContent() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterStatus]);
+  }, [filterStatus, filterVendor]);
+
+  // Load vendors on mount for filter dropdown
+  useEffect(() => {
+    if (rfqVendors.length === 0) {
+      fetchRFQVendors();
+    }
+  }, []);
 
   useEffect(() => {
     if (showCreateForm) {
@@ -1998,26 +2024,42 @@ function PRContent() {
         ) : (
           <ListTable
             storageKey="requisitionsTable"
-            rows={requisitions.filter((r) => (!filterStatus ? true : getPrWorkflowStatus(r) === filterStatus))}
+            rows={requisitions.filter((r: any) => {
+              const statusMatch = !filterStatus ? true : getPrWorkflowStatus(r) === filterStatus;
+              const vendorMatch = !filterVendor ? true : (r.purchase_requisition_items || r.items || [])?.some((item: any) => item.vendor_id === filterVendor || item.vendorId === filterVendor);
+              return statusMatch && vendorMatch;
+            })}
             columns={requisitionsTableColumns}
             getRowId={(r) => r.id}
             defaultPageSize={10}
             pageSizeOptions={[10, 25, 50, 100]}
             searchPlaceholder="Search by PR number, department, status…"
             toolbarRight={
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="">All Status</option>
-                <option value="DRAFT">Draft</option>
-                <option value="RFQ_ISSUED">RFQ Issued</option>
-                <option value="RFQ_RCVD">RFQ Rcvd</option>
-                <option value="PO_DONE">PO Done</option>
-                <option value="GOODS_RCVD">Goods Recvd</option>
-                <option value="REJECTED">Rejected</option>
-              </select>
+              <div className="flex gap-2">
+                <select
+                  value={filterVendor}
+                  onChange={(e) => setFilterVendor(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="">All Vendors</option>
+                  {rfqVendors.map((v) => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </select>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="">All Status</option>
+                  <option value="DRAFT">Draft</option>
+                  <option value="RFQ_ISSUED">RFQ Issued</option>
+                  <option value="RFQ_RCVD">RFQ Rcvd</option>
+                  <option value="PO_DONE">PO Done</option>
+                  <option value="GOODS_RCVD">Goods Recvd</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+              </div>
             }
           />
         )}

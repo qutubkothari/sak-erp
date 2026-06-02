@@ -447,9 +447,7 @@ export class ItemsService {
           lead_time_days: this.normalizeNumber(item.lead_time_days || item.LeadTimeDays || item['Lead Time'] || item['Lead time'] || item.lead_time, 'int'),
         };
 
-        const { error } = await this.supabase
-          .from('items')
-          .insert({
+        const rowData: any = {
             tenant_id: tenantId,
             code: toUpperCode(itemData.code),
             name: toTitleCase(itemData.name),
@@ -468,7 +466,11 @@ export class ItemsService {
             metadata: {
               item_group: rawCategory || null,
             },
-          });
+          };
+
+        const { error } = await this.supabase
+          .from('items')
+          .upsert(rowData, { onConflict: 'tenant_id,code', ignoreDuplicates: false });
 
         if (error) {
           results.failed++;
@@ -493,7 +495,7 @@ export class ItemsService {
     return results;
   }
 
-  async update(tenantId: string, id: string, itemData: any) {
+  async update(tenantId: string, id: string, itemData: any, userId?: string) {
     const hsnProvided = itemData.hsnCode !== undefined || itemData.hsn_code !== undefined;
     const validatedHsn = hsnProvided
       ? this.normalizeAndValidateHsn(itemData.hsnCode ?? itemData.hsn_code, { required: true })
@@ -501,6 +503,7 @@ export class ItemsService {
 
     const updateData: any = {
       updated_at: new Date().toISOString(),
+      ...(userId ? { updated_by: userId } : {}),
     };
 
     // Only update fields that are provided

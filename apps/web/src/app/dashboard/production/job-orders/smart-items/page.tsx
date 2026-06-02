@@ -1096,12 +1096,12 @@ function SmartJobOrdersItemsPageContent() {
     setTimeout(() => {
       if (shouldShowPurchaseRequisitionNotice && linkedPr.hasLinkedPr) {
         alert(
-          `✅ Job Order created successfully!\n\nPurchase Requisition issued${
-            linkedPr.prNumber ? `: ${linkedPr.prNumber}` : '.'
-          }`,
+          `✅ PR created and JO Created!\n\nPurchase Requisition: ${
+            linkedPr.prNumber || 'Created'
+          }\nJob Order: Created successfully`,
         );
       } else {
-        alert('✅ Job Order(s) created successfully!');
+        alert('✅ PR created and JO Created successfully!');
       }
 
       router.push('/dashboard/production/job-orders');

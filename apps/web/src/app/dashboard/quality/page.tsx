@@ -6,6 +6,7 @@ import { apiClient } from '../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../components/ui/ListTable';
 import { getTodayDateInputValue } from '@/lib/date';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { useEscapeKey } from '../../../hooks/useEscapeKey';
 
 interface Inspection {
   id: string;
@@ -133,6 +134,14 @@ export default function QualityPage() {
   const [viewingInspection, setViewingInspection] = useState<any>(null);
   const [viewingNCR, setViewingNCR] = useState<any>(null);
   const [editingNCR, setEditingNCR] = useState<any>(null);
+
+  // Close modals on Escape key
+  useEscapeKey(showInspectionForm, () => setShowInspectionForm(false));
+  useEscapeKey(showNcrForm, () => setShowNcrForm(false));
+  useEscapeKey(showCompleteForm, () => setShowCompleteForm(false));
+  useEscapeKey(!!viewingInspection, () => setViewingInspection(null));
+  useEscapeKey(!!viewingNCR, () => setViewingNCR(null));
+  useEscapeKey(!!editingNCR, () => setEditingNCR(null));
 
   useEffect(() => {
     fetchData();

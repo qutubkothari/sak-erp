@@ -23,6 +23,10 @@ export class PoTrackingReminderJob {
   // Runs daily at 09:00 IST
   @Cron('0 0 9 * * *', { timeZone: 'Asia/Kolkata' })
   async sendDailyReminders() {
+    // DISABLED: Reminder emails stopped as per user request (June 1, 2026)
+    this.logger.log('PO tracking reminders are currently disabled');
+    return;
+
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
       this.logger.warn('Missing SUPABASE_URL/SUPABASE_KEY; skipping reminder job');
       return;

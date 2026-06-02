@@ -106,6 +106,8 @@ export default function SivPage() {
   const [materialRequests, setMaterialRequests] = useState<MaterialReq[]>([]);
   const [sivHistory, setSivHistory] = useState<SivHistoryRow[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [users, setUsers] = useState<Array<{ id: string; displayName: string; employeeCode?: string }>>([]);
+  const [filterAssignedTo, setFilterAssignedTo] = useState<string>('');
   const [activeSivView, setActiveSivView] = useState<'open' | 'history'>('open');
   const [selectedMaterialJobId, setSelectedMaterialJobId] = useState<string | null>(null);
   const [busyJobId, setBusyJobId] = useState<string | null>(null);
@@ -153,7 +155,7 @@ export default function SivPage() {
     try {
       // Fetch all issuable UID statuses in one call
       // Valid enum values: GENERATED (just created), IN_STOCK (received into inventory)
-      const r1 = await apiClient.get<any>(`/uid?itemId=${itemId}&status=GENERATED,IN_STOCK&limit=200`).catch(() => []);
+      const r1 = await apiClient.get<any>(`/uid?itemId=${itemId}&status=GENERATED,IN_STOCK&limit=10000`).catch(() => []);
       const l1 = Array.isArray(r1) ? r1 : (r1?.data ?? []);
       const seen = new Set<string>();
       const list = [...l1].filter((u: any) => {
@@ -172,9 +174,13 @@ export default function SivPage() {
 
   const confirmUidPicker = useCallback(() => {
     if (!uidPickerLineId) return;
-    setScannedUidsByLine((prev) => ({ ...prev, [uidPickerLineId]: uidPickerSelected }));
+    if (uidPickerLineId === 'manual-draft') {
+      setManualIssueUids(uidPickerSelected);
+    } else {
+      setScannedUidsByLine((prev) => ({ ...prev, [uidPickerLineId]: uidPickerSelected }));
+    }
     setUidPickerOpen(false);
-  }, [uidPickerLineId, uidPickerSelected]);
+  }, [uidPickerLineId, uidPickerSelected, setManualIssueUids]);
 
   const loadAll = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) {
@@ -213,6 +219,20 @@ export default function SivPage() {
       setInventoryItems(mapped);
     } catch {
       setInventoryItems([]);
+    }
+  }, []);
+
+  const loadUsers = useCallback(async () => {
+    try {
+      const data = await apiClient.get<any[]>('/hr/employees');
+      const mapped = (Array.isArray(data) ? data : []).map((u: any) => ({
+        id: String(u?.id || '').trim(),
+        displayName: String(u?.employee_name || u?.displayName || u?.name || '').trim(),
+        employeeCode: String(u?.employee_code || u?.employeeCode || '').trim(),
+      })).filter((u) => u.id);
+      setUsers(mapped);
+    } catch {
+      setUsers([]);
     }
   }, []);
 
@@ -277,7 +297,8 @@ export default function SivPage() {
   useEffect(() => {
     loadAll();
     loadInventoryItems();
-  }, [loadAll, loadInventoryItems]);
+    loadUsers();
+  }, [loadAll, loadInventoryItems, loadUsers]);
 
   useEffect(() => {
     if (!manualIssueItemId || itemRequiresUid(manualIssueItemId)) return;
@@ -1070,9 +1091,28 @@ export default function SivPage() {
     });
   };
 
+  const assignMaterialRequest = async (reqId: string, userId: string) => {
+    try {
+      await apiClient.put(`/job-orders/store/material-requisitions/${reqId}/assign`, {
+        assignedTo: userId || null,
+      });
+      // Refresh the list
+      await loadAll({ silent: true });
+    } catch (err: any) {
+      alert('Failed to assign: ' + (err.message || err));
+    }
+  };
+
   // Display only JOs that still have pending lines to issue. The full materialRequests list
   // (including JOs with pendingLines=0) is kept for sub-JO matching.
-  const openMaterialReqs = materialRequests.filter((r) => (r.pendingLines || 0) > 0);
+  // Also filter by assigned user if filter is set.
+  const openMaterialReqs = materialRequests.filter((r) => {
+    const hasPending = (r.pendingLines || 0) > 0;
+    if (!hasPending) return false;
+    if (!filterAssignedTo) return true;
+    if (filterAssignedTo === 'unassigned') return !r.assigned_to;
+    return r.assigned_to === filterAssignedTo;
+  });
 
   return (
     <div className="min-h-screen bg-[#E8DCC4] p-8">
@@ -1096,27 +1136,46 @@ export default function SivPage() {
 
         {/* Sub-tabs: Open / History */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6 border-2 border-[#8B6F47]/20">
-          <div className="flex gap-4">
-            <button
-              onClick={() => setActiveSivView('open')}
-              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                activeSivView === 'open'
-                  ? 'bg-[#8B6F47] text-white shadow-sm'
-                  : 'bg-[#E8DCC4] text-[#6F4E37] hover:bg-[#D4C4A8]'
-              }`}
-            >
-              Open ({openMaterialReqs.length})
-            </button>
-            <button
-              onClick={() => setActiveSivView('history')}
-              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                activeSivView === 'history'
-                  ? 'bg-[#8B6F47] text-white shadow-sm'
-                  : 'bg-[#E8DCC4] text-[#6F4E37] hover:bg-[#D4C4A8]'
-              }`}
-            >
-              History ({sivHistory.length})
-            </button>
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+            <div className="flex gap-4">
+              <button
+                onClick={() => setActiveSivView('open')}
+                className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                  activeSivView === 'open'
+                    ? 'bg-[#8B6F47] text-white shadow-sm'
+                    : 'bg-[#E8DCC4] text-[#6F4E37] hover:bg-[#D4C4A8]'
+                }`}
+              >
+                Open ({openMaterialReqs.length})
+              </button>
+              <button
+                onClick={() => setActiveSivView('history')}
+                className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                  activeSivView === 'history'
+                    ? 'bg-[#8B6F47] text-white shadow-sm'
+                    : 'bg-[#E8DCC4] text-[#6F4E37] hover:bg-[#D4C4A8]'
+                }`}
+              >
+                History ({sivHistory.length})
+              </button>
+            </div>
+            {activeSivView === 'open' && (
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-[#6F4E37]">Filter by User:</label>
+                <select
+                  value={filterAssignedTo}
+                  onChange={(e) => setFilterAssignedTo(e.target.value)}
+                  className="border border-[#8B6F47]/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#8B6F47]"
+                >
+                  <option value="">All Users</option>
+                  <option value={(currentUser as any)?.id}>Assigned to Me</option>
+                  <option value="unassigned">Unassigned</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.displayName}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1172,28 +1231,46 @@ export default function SivPage() {
                           }
                         }}
                         className="flex-1 border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
-                        placeholder="Scan UID"
+                        placeholder="Scan UID and press Enter"
                       />
                       <button
                         type="button"
                         onClick={addManualIssueUid}
                         className="px-3 py-2 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37] text-sm font-medium shadow-sm"
+                        title="Add scanned UID"
                       >
-                        Add UID
+                        +
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const item = inventoryItems.find((row) => row.id === manualIssueItemId);
+                          if (item) {
+                            openUidPicker('manual-draft', item.id, item.code || '', Number(manualIssueQty || 0));
+                          }
+                        }}
+                        className="px-3 py-2 bg-[#5A6B7A] text-white rounded-lg hover:bg-[#4A5B6A] text-sm font-medium shadow-sm"
+                        title="Pick UIDs from Inventory"
+                      >
+                        Pick UID
                       </button>
                     </div>
                     {manualIssueUids.length > 0 ? (
                       <div className="mt-2 text-xs text-gray-700">
-                        UIDs: {manualIssueUids.join(', ')}{' '}
+                        <span className="font-medium">{manualIssueUids.length} UID(s) selected:</span> {manualIssueUids.join(', ')}{' '}
                         <button
                           type="button"
                           onClick={() => setManualIssueUids([])}
                           className="ml-2 text-red-600 hover:underline"
                         >
-                          Clear
+                          Clear All
                         </button>
                       </div>
-                    ) : null}
+                    ) : (
+                      <div className="mt-2 text-xs text-gray-500">
+                        Tip: Scan UIDs manually or click "Pick UID" to select from available inventory.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1296,9 +1373,21 @@ export default function SivPage() {
                       <p className="text-[#6F4E37] mt-1">
                         {req.item_code} - {req.item_name}
                       </p>
-                      <p className="text-sm text-[#8B6F47] mt-1 font-medium">
-                        Assigned To: {String(req.assigned_to_name || '').trim() || 'Unassigned'}
-                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-sm text-[#8B6F47] font-medium">
+                          Assigned To:
+                        </span>
+                        <select
+                          value={req.assigned_to || ''}
+                          onChange={(e) => assignMaterialRequest(req.id, e.target.value)}
+                          className="text-sm border border-[#8B6F47]/30 rounded px-2 py-1 bg-white focus:ring-2 focus:ring-[#8B6F47]"
+                        >
+                          <option value="">-- Unassigned --</option>
+                          {users.map((u) => (
+                            <option key={u.id} value={u.id}>{u.displayName}</option>
+                          ))}
+                        </select>
+                      </div>
                       <p className="text-sm text-gray-600 mt-1">
                         Pending: {req.pendingQuantity || 0} | Issued: {req.issuedQuantity || 0} | Required:{' '}
                         {req.requiredQuantity || 0}

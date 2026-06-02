@@ -98,6 +98,7 @@ interface JobOrder {
   notes?: string;
   assignedTo?: string;
   assignedToName?: string;
+  expectedDurationHours?: number;
   operations?: Operation[];
   materials?: Material[];
   createdAt: string;
@@ -257,6 +258,7 @@ function JobOrdersPageContent() {
     endDate: '',
     priority: 'NORMAL',
     assignedTo: '',
+    expectedDurationHours: '',
     notes: '',
   });
 
@@ -322,6 +324,7 @@ function JobOrdersPageContent() {
       sivReady: Boolean(jo.siv_ready ?? jo.sivReady),
       assignedTo: jo.assigned_to || jo.assignedTo,
       assignedToName: jo.assigned_to_name || jo.assignedToName,
+      expectedDurationHours: jo.expected_duration_hours ?? jo.expectedDurationHours,
       notes: jo.notes,
       createdAt: jo.created_at || jo.createdAt,
       operations: operationsRaw.map((op: any) => ({
@@ -1019,6 +1022,7 @@ function JobOrdersPageContent() {
         startDate: new Date(formData.startDate).toISOString(),
         priority: formData.priority,
         assignedTo: formData.assignedTo || undefined,
+        expectedDurationHours: formData.expectedDurationHours ? Number(formData.expectedDurationHours) : undefined,
         notes: formData.notes,
       };
       
@@ -1210,6 +1214,7 @@ function JobOrdersPageContent() {
       endDate: jo.endDate ? formatDateTimeLocalValue(jo.endDate) : '',
       priority: jo.priority,
       assignedTo: jo.assignedTo || '',
+      expectedDurationHours: jo.expectedDurationHours !== undefined ? String(jo.expectedDurationHours) : '',
       notes: jo.notes || '',
     });
     setShowEditModal(true);
@@ -1238,6 +1243,7 @@ function JobOrdersPageContent() {
         priority: formData.priority,
         notes: formData.notes || undefined,
         assignedTo: formData.assignedTo || undefined,
+        expectedDurationHours: formData.expectedDurationHours ? Number(formData.expectedDurationHours) : undefined,
       });
       await fetchJobOrders();
       closeEditModal();
@@ -1450,6 +1456,7 @@ function JobOrdersPageContent() {
       endDate: '',
       priority: 'NORMAL',
       assignedTo: '',
+      expectedDurationHours: '',
       notes: '',
     });
     setOperations([]);
@@ -2020,6 +2027,16 @@ function JobOrdersPageContent() {
       ),
     },
     {
+      id: 'expectedDurationHours',
+      label: 'Est. Hours',
+      accessor: (jo) => jo.expectedDurationHours || 0,
+      cell: (jo) => (
+        <span className="text-xs text-gray-700">
+          {jo.expectedDurationHours ? `${jo.expectedDurationHours}h` : '-'}
+        </span>
+      ),
+    },
+    {
       id: 'priority',
       label: 'Priority',
       accessor: (jo) => jo.priority,
@@ -2495,6 +2512,19 @@ function JobOrdersPageContent() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Expected Duration (Hours)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={formData.expectedDurationHours}
+                  onChange={(e) => setFormData({...formData, expectedDurationHours: e.target.value})}
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="Hours for completion"
+                />
               </div>
 
               <div>

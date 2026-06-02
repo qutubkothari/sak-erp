@@ -1,0 +1,53 @@
+# =====================================================
+# FREE Automated Database Backup via GitHub Actions
+# Runs daily at midnight UTC and saves to GitHub Releases
+# =====================================================
+
+name: Database Backup
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Create database backup
+        env:
+          # GitHub Secrets needed:
+          # SUPABASE_HOST: db.nwkaruzvzwwuftjquypk.supabase.co
+          # SUPABASE_PASSWORD: (your database password)
+          PGPASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
+        run: |
+          DATE=$(date +%Y-%m-%d_%H-%M)
+          pg_dump -h ${{ secrets.SUPABASE_HOST }} \
+            -U postgres \
+            -d postgres \
+            --clean --if-exists \
+            --no-owner --no-privileges \
+            -f sak-erp-backup-$DATE.sql
+          
+          # Compress
+          gzip sak-erp-backup-$DATE.sql
+          
+          # Save filename for next step
+          echo "BACKUP_FILE=sak-erp-backup-$DATE.sql.gz" >> $GITHUB_ENV
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: db-backup-${{ github.run_number }}
+          name: Database Backup ${{ env.BACKUP_FILE }}
+          files: ${{ env.BACKUP_FILE }}
+          body: |
+            Automated database backup
+            Date: ${{ github.event.repository.updated_at }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

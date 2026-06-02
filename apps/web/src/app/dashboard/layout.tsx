@@ -7,6 +7,7 @@ import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { CommandPalette } from '@/components/CommandPalette';
 import DashboardReminders from '@/components/DashboardReminders';
 import { ConfirmDialogProvider } from '@/components/ui/ConfirmDialog';
+import { SecurityWrapper } from '@/components/SecurityWrapper';
 import { useAuthStore } from '@/stores/auth.store';
 import {
   getDefaultLandingPath,
@@ -89,31 +90,96 @@ export default function DashboardLayout({
   // Don't show breadcrumbs on the root dashboard page
   const showBreadcrumbs = pathname !== '/dashboard';
 
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Command palette — global Cmd+K */}
-      <CommandPalette />
-      {/* Confirm dialog portal */}
-      <ConfirmDialogProvider />
-      <DashboardReminders />
+  // Update page title based on current route
+  useEffect(() => {
+    if (!pathname) return;
+    
+    const getPageTitle = (path: string): string => {
+      // Remove /dashboard prefix and get the last segment
+      const cleanPath = path.replace('/dashboard/', '').replace('/dashboard', '');
+      
+      // Map paths to titles
+      const pathTitles: Record<string, string> = {
+        '': 'Dashboard',
+        'purchase': 'Purchase',
+        'purchase/requisitions': 'Purchase Requisitions',
+        'purchase/orders': 'Purchase Orders',
+        'purchase/vendors': 'Vendors',
+        'purchase/grn': 'GRN',
+        'purchase/debit-notes': 'Debit Notes',
+        'inventory': 'Inventory',
+        'inventory/siv': 'Store Issue Vouchers',
+        'inventory/srv': 'Store Receipt Vouchers',
+        'inventory/stock-adjustments': 'Stock Adjustments',
+        'inventory/store-vouchers': 'Store Vouchers',
+        'production': 'Production',
+        'production/job-orders': 'Job Orders',
+        'production/work-stations': 'Work Stations',
+        'production/shop-floor': 'Shop Floor',
+        'quality': 'Quality Control',
+        'sales': 'Sales',
+        'service': 'Service',
+        'accounts': 'Accounts',
+        'accounts/payables': 'Accounts Payable',
+        'accounts/supplier-invoices': 'Supplier Invoices',
+        'hr': 'HR',
+        'documents': 'Documents',
+        'uid': 'UID',
+        'uid/trace': 'UID Trace',
+        'settings': 'Settings',
+        'manager': 'Manager Dashboard',
+      };
+      
+      // Check for exact match first
+      if (pathTitles[cleanPath]) {
+        return pathTitles[cleanPath];
+      }
+      
+      // Check for partial matches (e.g., purchase/orders/123 should show "Purchase Orders")
+      for (const [key, title] of Object.entries(pathTitles)) {
+        if (cleanPath.startsWith(key + '/') || cleanPath === key) {
+          return title;
+        }
+      }
+      
+      // Fallback: capitalize each segment
+      return cleanPath
+        .split('/')
+        .map(s => s.charAt(0).toUpperCase() + s.slice(1).replace(/-/g, ' '))
+        .join(' - ') || 'Dashboard';
+    };
+    
+    const pageTitle = getPageTitle(pathname);
+    document.title = `${pageTitle} | SAK ERP`;
+  }, [pathname]);
 
-      <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
-      <main
-        className={`min-h-screen transition-all duration-300 ${
-          sidebarCollapsed ? 'ml-16' : 'ml-56'
-        }`}
-      >
-        {/* Top sub-header with breadcrumbs */}
-        {showBreadcrumbs && (
-          <div className="sticky top-0 z-30 border-b border-gray-200 bg-white/80 backdrop-blur-sm px-4 lg:px-6 py-2.5 flex items-center">
-            <Breadcrumbs />
+  return (
+    <SecurityWrapper>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        {/* Command palette — global Cmd+K */}
+        <CommandPalette />
+        {/* Confirm dialog portal */}
+        <ConfirmDialogProvider />
+        <DashboardReminders />
+
+        <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
+        <main
+          className={`min-h-screen transition-all duration-300 ${
+            sidebarCollapsed ? 'ml-16' : 'ml-56'
+          }`}
+        >
+          {/* Top sub-header with breadcrumbs */}
+          {showBreadcrumbs && (
+            <div className="sticky top-0 z-30 border-b border-gray-200 bg-white/80 backdrop-blur-sm px-4 lg:px-6 py-2.5 flex items-center">
+              <Breadcrumbs />
+            </div>
+          )}
+          <div className="p-4 lg:p-6">
+            {children}
           </div>
-        )}
-        <div className="p-4 lg:p-6">
-          {children}
-        </div>
-      </main>
-    </div>
+        </main>
+      </div>
+    </SecurityWrapper>
   );
 }
 

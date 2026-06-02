@@ -12,6 +12,8 @@ import { TableSkeleton } from '../../../../components/ui/Skeleton';
 import { EmptyState } from '../../../../components/ui/EmptyState';
 import { hasModulePermission, isAdminLike, readStoredUser } from '@/lib/rbac';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
+import { useEscapeKey } from '../../../../hooks/useEscapeKey';
+import { exportToExcel } from '../../../../lib/export-excel';
 
 interface Vendor {
   id: string;
@@ -277,6 +279,7 @@ export default function VendorsPage() {
   const canEdit = hasModulePermission(currentUser, 'Purchase Management', 'edit');
   const canDelete = hasModulePermission(currentUser, 'Purchase Management', 'delete');
   const canVerify = isAdminLike(currentUser) && hasModulePermission(currentUser, 'Purchase Management', 'approve');
+  const canExport = isAdminLike(currentUser); // Only admins can export data
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -293,6 +296,10 @@ export default function VendorsPage() {
 
   const selection = useSelection(vendors);
   const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
+
+  // Close modals on Escape key
+  useEscapeKey(showModal, () => setShowModal(false));
+  useEscapeKey(!!viewingVendor, () => setViewingVendor(null));
 
   useEffect(() => {
     fetchVendors();
@@ -814,6 +821,40 @@ export default function VendorsPage() {
         ) : undefined}
         secondaryAction={
           <div className="flex items-center gap-2">
+            {canExport && (
+              <button
+                onClick={() => {
+                  exportToExcel(
+                    vendors,
+                    [
+                      { header: 'Vendor Code', key: 'code' },
+                      { header: 'Name', key: 'name' },
+                      { header: 'Legal Name', key: 'legal_name' },
+                      { header: 'Category', key: 'category' },
+                      { header: 'GST / Tax ID', key: 'tax_id' },
+                      { header: 'Contact Person', key: 'contact_person' },
+                      { header: 'Email', key: 'email' },
+                      { header: 'Phone', key: 'phone' },
+                      { header: 'Address', key: 'address' },
+                      { header: 'Street', key: 'street' },
+                      { header: 'City', key: 'city' },
+                      { header: 'State', key: 'state' },
+                      { header: 'Country', key: 'country' },
+                      { header: 'Pincode', key: 'pincode' },
+                      { header: 'Payment Terms', key: 'payment_terms' },
+                      { header: 'Credit Limit', key: 'credit_limit' },
+                      { header: 'Rating', key: 'rating' },
+                      { header: 'Active', key: 'is_active' },
+                      { header: 'Verified', key: 'is_verified' },
+                    ],
+                    `Vendors_${new Date().toISOString().slice(0, 10)}.csv`
+                  );
+                }}
+                className="rounded-md bg-green-700 px-3 py-2 text-xs font-semibold text-white hover:bg-green-800"
+              >
+                ⬇ Download Excel
+              </button>
+            )}
             {selection.hasSelections && canDelete && (
               <DangerButton onClick={handleDeleteAll}>
                 <Trash2 className="h-4 w-4" />

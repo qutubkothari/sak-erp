@@ -277,6 +277,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     if (error) throw new Error(error.message);
     return data;
   }
+
+  async getEmployeeByUserId(tenantId: string, userId: string) {
+    const { data, error } = await this.supabase
+      .from('employees')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('user_id', userId)
+      .single();
+    if (error && error.code !== 'PGRST116') throw new Error(error.message);
+    return data || null;
+  }
   
   async updateEmployee(tenantId: string, id: string, data: any) {
     const { data: result, error } = await this.supabase
@@ -1279,5 +1290,142 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       .eq('id', id);
     if (error) throw new Error(error.message);
     return { message: 'Merit/Demerit type deleted successfully' };
+  }
+
+  // Attendance with Geo-tagging
+  async getAttendance(tenantId: string, month: string) {
+    const { start, end } = monthToRange(month);
+    const { data, error } = await this.supabase
+      .from('attendance')
+      .select(`
+        *,
+        user:userId (employee_name, email)
+      `)
+      .eq('tenant_id', tenantId)
+      .gte('attendance_date', start)
+      .lte('attendance_date', end)
+      .order('attendance_date', { ascending: false });
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  async getMyAttendance(userId: string, month: string) {
+    const { start, end } = monthToRange(month);
+    const { data, error } = await this.supabase
+      .from('attendance')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('attendance_date', start)
+      .lte('attendance_date', end)
+      .order('attendance_date', { ascending: false });
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  async getTodayAttendance(userId: string) {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data, error } = await this.supabase
+      .from('attendance')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('attendance_date', today)
+      .single();
+    if (error && error.code !== 'PGRST116') throw new Error(error.message);
+    return data || null;
+  }
+
+  async checkIn(tenantId: string, userId: string, employeeId: string, data: {
+    lat?: number;
+    lng?: number;
+    location?: string;
+    photoUrl?: string;
+    notes?: string;
+    isOutsideZone?: boolean;
+    outsideZoneReason?: string;
+  }) {
+    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date().toISOString();
+    
+    // Check if already checked in today
+    const existing = await this.getTodayAttendance(userId);
+    if (existing && existing.check_in_time) {
+      throw new Error('Already checked in today');
+    }
+
+    const payload: any = {
+      tenant_id: tenantId,
+      user_id: userId,
+      employee_id: employeeId,
+      attendance_date: today,
+      check_in_time: now,
+      check_in_lat: data.lat,
+      check_in_lng: data.lng,
+      check_in_location: data.location,
+      check_in_photo_url: data.photoUrl,
+      check_in_notes: data.notes,
+      is_outside_zone: data.isOutsideZone || false,
+      outside_zone_reason: data.outsideZoneReason,
+      status: 'PRESENT',
+    };
+
+    if (existing) {
+      // Update existing record
+      const { data: result, error } = await this.supabase
+        .from('attendance')
+        .update(payload)
+        .eq('id', existing.id)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return result;
+    } else {
+      // Create new record
+      const { data: result, error } = await this.supabase
+        .from('attendance')
+        .insert([payload])
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return result;
+    }
+  }
+
+  async checkOut(userId: string, data: {
+    lat?: number;
+    lng?: number;
+    location?: string;
+    photoUrl?: string;
+    notes?: string;
+  }) {
+    const existing = await this.getTodayAttendance(userId);
+    if (!existing || !existing.check_in_time) {
+      throw new Error('Not checked in yet');
+    }
+    if (existing.check_out_time) {
+      throw new Error('Already checked out today');
+    }
+
+    const now = new Date();
+    const checkIn = new Date(existing.check_in_time);
+    const workHours = (now.getTime() - checkIn.getTime()) / (1000 * 60 * 60); // hours
+
+    const payload = {
+      check_out_time: now.toISOString(),
+      check_out_lat: data.lat,
+      check_out_lng: data.lng,
+      check_out_location: data.location,
+      check_out_photo_url: data.photoUrl,
+      check_out_notes: data.notes,
+      work_hours: workHours.toFixed(2),
+    };
+
+    const { data: result, error } = await this.supabase
+      .from('attendance')
+      .update(payload)
+      .eq('id', existing.id)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return result;
   }
 }

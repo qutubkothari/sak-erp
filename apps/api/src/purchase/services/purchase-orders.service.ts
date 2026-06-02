@@ -751,7 +751,11 @@ export class PurchaseOrdersService {
           const freightGstPercent = freightGstApplicable ? this.safeNumber(data.freightGstPercent) : 0;
           const freightGstAmount = freightGstApplicable ? this.safeNumber(data.freightGstAmount) : 0;
           const additionalExpenses = this.safeNumber(data.otherCharges);
-          if (project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses) return JSON.stringify({ project, freight, freightAmount, freightGstApplicable, freightGstPercent, freightGstAmount, additionalExpenses });
+          // Check if any freight-related field was explicitly provided (including 0 values)
+          const hasFreightData = data.freightAmount !== undefined || data.freightGstApplicable !== undefined || data.freightGstPercent !== undefined || data.freightGstAmount !== undefined || data.freightTerms !== undefined || data.projectName !== undefined || data.otherCharges !== undefined;
+          if (hasFreightData || project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses) {
+            return JSON.stringify({ project, freight, freightAmount, freightGstApplicable, freightGstPercent, freightGstAmount, additionalExpenses });
+          }
           return data.termsAndConditions;
         })(),
         status: data.status || 'DRAFT',
@@ -827,7 +831,7 @@ export class PurchaseOrdersService {
       .select(`
         *,
         vendor:vendors(id, code, name, contact_person, email),
-        purchase_order_items(id, item_id, item_code, item_name, uom, ordered_qty, received_qty, rate, payment_terms, delivery_terms, item:items(hsn_code, uom, category))
+        purchase_order_items(*, item:items(hsn_code, uom, category))
       `)
       .eq('tenant_id', tenantId);
 
@@ -1024,7 +1028,11 @@ export class PurchaseOrdersService {
           const freightGstPercent = freightGstApplicable ? this.safeNumber(data.freightGstPercent) : 0;
           const freightGstAmount = freightGstApplicable ? this.safeNumber(data.freightGstAmount) : 0;
           const additionalExpenses = this.safeNumber(data.otherCharges);
-          if (project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses) return JSON.stringify({ project, freight, freightAmount, freightGstApplicable, freightGstPercent, freightGstAmount, additionalExpenses });
+          // Check if any freight-related field was explicitly provided (including 0 values for removal)
+          const hasFreightData = data.freightAmount !== undefined || data.freightGstApplicable !== undefined || data.freightGstPercent !== undefined || data.freightGstAmount !== undefined || data.freightTerms !== undefined || data.projectName !== undefined || data.otherCharges !== undefined;
+          if (hasFreightData || project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses) {
+            return JSON.stringify({ project, freight, freightAmount, freightGstApplicable, freightGstPercent, freightGstAmount, additionalExpenses });
+          }
           return data.termsAndConditions ?? undefined;
         })(),
         remarks: data.remarks || data.notes,

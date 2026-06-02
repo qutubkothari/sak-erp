@@ -9,6 +9,7 @@ import { getTodayDateInputValue } from '@/lib/date';
 import { buildDocumentBranding, escapeHtml, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 import { getUserRoleNames as getStoredUserRoleNames, hasModulePermission as hasRbacPermission, readStoredUser } from '@/lib/rbac';
+import { useEscapeKey } from '../../../hooks/useEscapeKey';
 
 // Import HR module utilities
 import {
@@ -43,6 +44,9 @@ interface AttendanceRecord {
   attendance_date: string;
   check_in_time: string;
   check_out_time: string;
+  check_in_location?: string;
+  check_out_location?: string;
+  work_hours?: number;
   status: string;
 }
 
@@ -289,6 +293,17 @@ function HrPageContent() {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [payslips, setPayslips] = useState<Payslip[]>([]);
 
+  // Geo-tagging attendance state
+  const [todayAttendance, setTodayAttendance] = useState<any>(null);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isOutsideZone, setIsOutsideZone] = useState(false);
+  const [outsideZoneReason, setOutsideZoneReason] = useState('');
+
   const isEmployeePortal = activeSection === 'employees';
   const canManage = userCanAccessManagement(currentUser);
   const canCreateHR = hasModulePermission(currentUser, 'HR Management', 'create');
@@ -317,6 +332,153 @@ function HrPageContent() {
     // UAE has no PF/ESI/PT
     return { pf: 0, esi: 0, pt: 0 };
   };
+
+  // Geo-tagging attendance helpers
+  const getCurrentPosition = (): Promise<{ lat: number; lng: number }> => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Geolocation is not supported'));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+        },
+        (error) => reject(error),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+  };
+
+  const fetchTodayAttendance = async () => {
+    try {
+      const data = await apiClient.get('/hr/attendance/today');
+      setTodayAttendance(data);
+    } catch {
+      setTodayAttendance(null);
+    }
+  };
+
+  const handleCheckIn = async () => {
+    try {
+      setCheckingIn(true);
+      setLocationError(null);
+
+      // Get current location
+      const position = await getCurrentPosition();
+      let address = '';
+      
+      // Try to get address from coordinates (reverse geocoding)
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.lat}&lon=${position.lng}&zoom=18&addressdetails=1`);
+        const data = await response.json();
+        address = data.display_name || `${position.lat.toFixed(6)}, ${position.lng.toFixed(6)}`;
+      } catch {
+        address = `${position.lat.toFixed(6)}, ${position.lng.toFixed(6)}`;
+      }
+
+      setCurrentLocation({ lat: position.lat, lng: position.lng, address });
+
+      // Handle photo upload if outside zone
+      let photoUrl = '';
+      if (isOutsideZone && photoFile) {
+        const formData = new FormData();
+        formData.append('file', photoFile);
+        const uploadRes = await apiClient.post('/upload/attendance', formData);
+        photoUrl = uploadRes.url || '';
+      }
+
+      // Call check-in API
+      await apiClient.post('/hr/attendance/check-in', {
+        lat: position.lat,
+        lng: position.lng,
+        location: address,
+        photoUrl,
+        notes: outsideZoneReason,
+        isOutsideZone,
+        outsideZoneReason: isOutsideZone ? outsideZoneReason : undefined,
+      });
+
+      // Refresh today's attendance
+      await fetchTodayAttendance();
+      
+      // Reset states
+      setPhotoFile(null);
+      setPhotoPreview(null);
+      setIsOutsideZone(false);
+      setOutsideZoneReason('');
+      alert('✅ Checked in successfully!');
+    } catch (err: any) {
+      setLocationError(err.message || 'Failed to check in');
+      alert('❌ ' + (err.message || 'Failed to check in'));
+    } finally {
+      setCheckingIn(false);
+    }
+  };
+
+  const handleCheckOut = async () => {
+    try {
+      setCheckingOut(true);
+      setLocationError(null);
+
+      // Get current location
+      const position = await getCurrentPosition();
+      let address = '';
+      
+      // Try to get address from coordinates
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.lat}&lon=${position.lng}&zoom=18&addressdetails=1`);
+        const data = await response.json();
+        address = data.display_name || `${position.lat.toFixed(6)}, ${position.lng.toFixed(6)}`;
+      } catch {
+        address = `${position.lat.toFixed(6)}, ${position.lng.toFixed(6)}`;
+      }
+
+      // Handle photo upload if provided
+      let photoUrl = '';
+      if (photoFile) {
+        const formData = new FormData();
+        formData.append('file', photoFile);
+        const uploadRes = await apiClient.post('/upload/attendance', formData);
+        photoUrl = uploadRes.url || '';
+      }
+
+      // Call check-out API
+      await apiClient.post('/hr/attendance/check-out', {
+        lat: position.lat,
+        lng: position.lng,
+        location: address,
+        photoUrl,
+      });
+
+      // Refresh today's attendance
+      await fetchTodayAttendance();
+      
+      // Reset states
+      setPhotoFile(null);
+      setPhotoPreview(null);
+      alert('✅ Checked out successfully!');
+    } catch (err: any) {
+      setLocationError(err.message || 'Failed to check out');
+      alert('❌ ' + (err.message || 'Failed to check out'));
+    } finally {
+      setCheckingOut(false);
+    }
+  };
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPhotoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setPhotoPreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
   const [salaryComponents, setSalaryComponents] = useState<SalaryComponent[]>([]);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [monthlyPayrolls, setMonthlyPayrolls] = useState<MonthlyPayroll[]>([]);
@@ -537,6 +699,24 @@ function HrPageContent() {
     professional_tax: 200
   });
 
+  // Close modals on Escape key
+  useEscapeKey(showEmployeeForm, () => setShowEmployeeForm(false));
+  useEscapeKey(showEmployeeDetails, () => setShowEmployeeDetails(false));
+  useEscapeKey(showEditEmployee, () => setShowEditEmployee(false));
+  useEscapeKey(showAttendanceDetails, () => setShowAttendanceDetails(false));
+  useEscapeKey(showEditAttendance, () => setShowEditAttendance(false));
+  useEscapeKey(showAttendanceImport, () => setShowAttendanceImport(false));
+  useEscapeKey(showLeaveDetails, () => setShowLeaveDetails(false));
+  useEscapeKey(showEditLeave, () => setShowEditLeave(false));
+  useEscapeKey(showHolidayForm, () => setShowHolidayForm(false));
+  useEscapeKey(showSalaryForm, () => setShowSalaryForm(false));
+  useEscapeKey(showComprehensiveSalaryForm, () => setShowComprehensiveSalaryForm(false));
+  useEscapeKey(showPayrollRunForm, () => setShowPayrollRunForm(false));
+  useEscapeKey(showMonthlyPayrollForm, () => setShowMonthlyPayrollForm(false));
+  useEscapeKey(showKPICalculator, () => setShowKPICalculator(false));
+  useEscapeKey(showAttendanceForm, () => setShowAttendanceForm(false));
+  useEscapeKey(showLeaveForm, () => setShowLeaveForm(false));
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -581,6 +761,13 @@ function HrPageContent() {
       setPayrollSubTab('payslips');
     }
   }, [isEmployeePortal, activeTab, payrollSubTab]);
+
+  // Fetch today's attendance when on attendance tab
+  useEffect(() => {
+    if (activeTab === 'attendance') {
+      fetchTodayAttendance();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const token = typeof window === 'undefined' ? null : localStorage.getItem('accessToken');
@@ -3127,54 +3314,275 @@ function HrPageContent() {
         )
       )}
 
-      {/* Attendance Tab */}
+      {/* Attendance Tab with Mobile-Friendly Geo-Tagging */}
       {activeTab === 'attendance' && (
-        <div className="bg-white rounded-lg shadow">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Check In</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Check Out</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {attendance.map((record) => (
-                  <tr key={record.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(record.attendance_date).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{record.employee_name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString() : '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString() : '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded ${getStatusColor(record.status)}`}>
-                        {record.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex space-x-2">
-                        <button onClick={() => { setSelectedAttendance(record); setShowAttendanceDetails(true); }} className="text-blue-600 hover:text-blue-800" title="View Details">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                        </button>
-                        {!isEmployeePortal && (
-                          <>
-                            {canEditHR && <button onClick={() => { setSelectedAttendance(record); setAttendanceForm({ employee_id: record.employee_id, attendance_date: record.attendance_date, check_in_time: record.check_in_time ? new Date(record.check_in_time).toTimeString().slice(0,5) : '', check_out_time: record.check_out_time ? new Date(record.check_out_time).toTimeString().slice(0,5) : '', status: record.status, remarks: '' }); setShowEditAttendance(true); }} className="text-amber-600 hover:text-amber-800" title="Edit">
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                            </button>}
-                            {canDeleteHR && <button onClick={async () => { if (confirm('Delete this attendance record?')) { try { await apiClient.delete(`/hr/attendance/${record.id}`); fetchData(); } catch (err: any) { alert('Failed to delete attendance'); } } }} className="text-red-600 hover:text-red-800" title="Delete">
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            </button>}
-                          </>
-                        )}
+        <div className="space-y-4">
+          {/* Mobile-First Check-In/Out Card */}
+          <div className="bg-white rounded-lg shadow p-4 md:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Today's Attendance</h3>
+              <span className="text-sm text-gray-500">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+            </div>
+
+            {/* Status Badge */}
+            <div className="mb-4">
+              {todayAttendance?.check_in_time ? (
+                todayAttendance?.check_out_time ? (
+                  <div className="flex items-center gap-2 text-green-600 bg-green-50 p-3 rounded-lg">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <span className="font-medium">Day Complete - Checked Out</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-blue-600 bg-blue-50 p-3 rounded-lg">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <span className="font-medium">Currently Checked In</span>
+                  </div>
+                )
+              ) : (
+                <div className="flex items-center gap-2 text-gray-500 bg-gray-50 p-3 rounded-lg">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                  <span className="font-medium">Not Checked In Yet</span>
+                </div>
+              )}
+            </div>
+
+            {/* Location Info */}
+            {currentLocation && (
+              <div className="mb-4 p-3 bg-blue-50 rounded-lg text-sm">
+                <div className="flex items-start gap-2">
+                  <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  <div>
+                    <p className="font-medium text-blue-900">Current Location</p>
+                    <p className="text-blue-700">{currentLocation.address}</p>
+                    <p className="text-xs text-blue-600 mt-1">Lat: {currentLocation.lat.toFixed(6)}, Lng: {currentLocation.lng.toFixed(6)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {locationError && (
+              <div className="mb-4 p-3 bg-red-50 rounded-lg text-sm text-red-700">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                  {locationError}
+                </div>
+              </div>
+            )}
+
+            {/* Check In/Out Buttons */}
+            <div className="grid gap-3">
+              {/* Check In Button */}
+              {!todayAttendance?.check_in_time && (
+                <>
+                  <button
+                    onClick={handleCheckIn}
+                    disabled={checkingIn}
+                    className="w-full py-4 px-6 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-3"
+                  >
+                    {checkingIn ? (
+                      <>
+                        <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                        <span>Getting Location...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" /></svg>
+                        <span>Check In</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Outside Zone Toggle */}
+                  <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg">
+                    <input
+                      type="checkbox"
+                      id="outsideZone"
+                      checked={isOutsideZone}
+                      onChange={(e) => setIsOutsideZone(e.target.checked)}
+                      className="w-5 h-5 text-amber-600 rounded focus:ring-amber-500"
+                    />
+                    <label htmlFor="outsideZone" className="text-sm text-amber-900 font-medium flex-1">
+                      I am outside the office zone
+                    </label>
+                  </div>
+
+                  {/* Photo Upload for Outside Zone */}
+                  {isOutsideZone && (
+                    <div className="p-3 border-2 border-dashed border-amber-300 rounded-lg bg-amber-50/50">
+                      <label className="block text-sm font-medium text-amber-900 mb-2">
+                        Upload Photo (Required for outside zone)
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handlePhotoChange}
+                        className="w-full text-sm text-amber-700 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-100 file:text-amber-700 hover:file:bg-amber-200"
+                      />
+                      {photoPreview && (
+                        <div className="mt-3">
+                          <img src={photoPreview} alt="Preview" className="w-full max-w-xs rounded-lg shadow" />
+                        </div>
+                      )}
+                      <textarea
+                        placeholder="Reason for being outside zone..."
+                        value={outsideZoneReason}
+                        onChange={(e) => setOutsideZoneReason(e.target.value)}
+                        className="w-full mt-3 p-2 text-sm border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                        rows={2}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Check Out Button */}
+              {todayAttendance?.check_in_time && !todayAttendance?.check_out_time && (
+                <>
+                  <div className="p-3 bg-green-50 rounded-lg text-center">
+                    <p className="text-green-800">
+                      Checked in at: <span className="font-semibold">{new Date(todayAttendance.check_in_time).toLocaleTimeString('en-IN')}</span>
+                    </p>
+                    {todayAttendance.check_in_location && (
+                      <p className="text-xs text-green-600 mt-1">{todayAttendance.check_in_location}</p>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={handleCheckOut}
+                    disabled={checkingOut}
+                    className="w-full py-4 px-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-semibold rounded-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-3"
+                  >
+                    {checkingOut ? (
+                      <>
+                        <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                        <span>Processing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                        <span>Check Out</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Optional Photo for Check Out */}
+                  <div className="p-3 border-2 border-dashed border-gray-300 rounded-lg">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Upload Photo (Optional)
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handlePhotoChange}
+                      className="w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
+                    />
+                    {photoPreview && (
+                      <div className="mt-3">
+                        <img src={photoPreview} alt="Preview" className="w-full max-w-xs rounded-lg shadow" />
                       </div>
-                    </td>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Completed Day Info */}
+              {todayAttendance?.check_in_time && todayAttendance?.check_out_time && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-green-50 rounded-lg text-center">
+                      <p className="text-xs text-green-600">Check In</p>
+                      <p className="font-semibold text-green-800">{new Date(todayAttendance.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+                    <div className="p-3 bg-red-50 rounded-lg text-center">
+                      <p className="text-xs text-red-600">Check Out</p>
+                      <p className="font-semibold text-red-800">{new Date(todayAttendance.check_out_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+                  </div>
+                  {todayAttendance.work_hours && (
+                    <div className="p-3 bg-blue-50 rounded-lg text-center">
+                      <p className="text-xs text-blue-600">Total Hours</p>
+                      <p className="font-semibold text-blue-800 text-lg">{todayAttendance.work_hours} hrs</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Attendance History Table (Desktop View) */}
+          <div className="bg-white rounded-lg shadow hidden md:block">
+            <div className="px-4 py-3 border-b border-gray-200">
+              <h4 className="font-semibold text-gray-900">Attendance History</h4>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Check In</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Check Out</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Hours</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {attendance.slice(0, 10).map((record) => (
+                    <tr key={record.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(record.attendance_date).toLocaleDateString()}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {record.check_in_time ? (
+                          <div>
+                            <span>{new Date(record.check_in_time).toLocaleTimeString()}</span>
+                            {record.check_in_location && (
+                              <p className="text-xs text-gray-500 truncate max-w-[150px]">{record.check_in_location}</p>
+                            )}
+                          </div>
+                        ) : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString() : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">{record.work_hours || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs rounded ${getStatusColor(record.status)}`}>
+                          {record.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile Attendance History Cards */}
+          <div className="space-y-3 md:hidden">
+            <h4 className="font-semibold text-gray-900 px-2">Recent History</h4>
+            {attendance.slice(0, 5).map((record) => (
+              <div key={record.id} className="bg-white rounded-lg shadow p-4">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="font-medium">{new Date(record.attendance_date).toLocaleDateString()}</span>
+                  <span className={`px-2 py-1 text-xs rounded ${getStatusColor(record.status)}`}>
+                    {record.status}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm text-gray-600">
+                  <div>
+                    <span className="text-gray-400">In:</span>{' '}
+                    {record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
+                  </div>
+                  <div>
+                    <span className="text-gray-400">Out:</span>{' '}
+                    {record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
+                  </div>
+                </div>
+                {record.work_hours && (
+                  <p className="text-sm text-gray-500 mt-2">{record.work_hours} hrs worked</p>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
