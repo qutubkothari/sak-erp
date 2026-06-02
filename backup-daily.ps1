@@ -25,18 +25,18 @@ Write-Host "  SAK ERP - DATABASE BACKUP" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Step 1: Resolve IP using Google DNS (bypass Windows DNS issues)
-Write-Host "Resolving IP via Google DNS (8.8.8.8)..." -ForegroundColor Yellow
+# Step 1: Resolve IPv6 using Google DNS (Supabase requires IPv6)
+Write-Host "Resolving IPv6 via Google DNS (8.8.8.8)..." -ForegroundColor Yellow
 try {
-    $dnsResult = Resolve-DnsName -Name $DBHost -Server 8.8.8.8 -Type A -ErrorAction Stop | Where-Object { $_.Type -eq 'A' } | Select-Object -First 1
+    $dnsResult = Resolve-DnsName -Name $DBHost -Server 8.8.8.8 -Type AAAA -ErrorAction Stop | Where-Object { $_.Type -eq 'AAAA' } | Select-Object -First 1
     if ($dnsResult -and $dnsResult.IPAddress) {
         $ResolvedIP = $dnsResult.IPAddress
-        Write-Host "Resolved IP: $ResolvedIP" -ForegroundColor Green
+        Write-Host "Resolved IPv6: $ResolvedIP" -ForegroundColor Green
     } else {
-        throw "No A record found"
+        throw "No AAAA record found"
     }
 } catch {
-    Write-Host "Failed to resolve IP via Google DNS: $_" -ForegroundColor Red
+    Write-Host "Failed to resolve IPv6 via Google DNS: $_" -ForegroundColor Red
     Write-Host "Using hostname directly..." -ForegroundColor Yellow
     $ResolvedIP = $DBHost
 }
