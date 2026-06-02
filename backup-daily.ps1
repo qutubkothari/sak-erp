@@ -28,10 +28,15 @@ Write-Host ""
 # Step 1: Resolve IP using Google DNS (bypass Windows DNS issues)
 Write-Host "Resolving IP via Google DNS (8.8.8.8)..." -ForegroundColor Yellow
 try {
-    $ResolvedIP = (Resolve-DnsName -Name $DBHost -Server 8.8.8.8 -Type A -ErrorAction Stop | Select-Object -First 1).IPAddress
-    Write-Host "Resolved IP: $ResolvedIP" -ForegroundColor Green
+    $dnsResult = Resolve-DnsName -Name $DBHost -Server 8.8.8.8 -Type A -ErrorAction Stop | Where-Object { $_.Type -eq 'A' } | Select-Object -First 1
+    if ($dnsResult -and $dnsResult.IPAddress) {
+        $ResolvedIP = $dnsResult.IPAddress
+        Write-Host "Resolved IP: $ResolvedIP" -ForegroundColor Green
+    } else {
+        throw "No A record found"
+    }
 } catch {
-    Write-Host "Failed to resolve IP via Google DNS" -ForegroundColor Red
+    Write-Host "Failed to resolve IP via Google DNS: $_" -ForegroundColor Red
     Write-Host "Using hostname directly..." -ForegroundColor Yellow
     $ResolvedIP = $DBHost
 }
@@ -78,20 +83,12 @@ Write-Host ""
 
 $env:PGPASSWORD = $DBPassword
 
-$arguments = @(
-    "-h", $ResolvedIP,
-    "-p", $DBPort,
-    "-U", $DBUser,
-    "-d", $DBName,
-    "--clean",
-    "--if-exists",
-    "--no-owner",
-    "--no-privileges",
-    "-f", $BackupFile
-)
+# Build command arguments as a single string
+$arguments = "-h `"$ResolvedIP`" -p $DBPort -U `"$DBUser`" -d `"$DBName`" --clean --if-exists --no-owner --no-privileges -f `"$BackupFile`""
 
 try {
-    & $pgDumpPath @arguments
+    Write-Host "Running: pg_dump $arguments" -ForegroundColor Gray
+    Invoke-Expression "& `$pgDumpPath $arguments"
     
     if (Test-Path $BackupFile) {
         $fileSize = (Get-Item $BackupFile).Length
