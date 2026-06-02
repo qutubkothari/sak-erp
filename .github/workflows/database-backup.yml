@@ -20,6 +20,7 @@ jobs:
           sudo apt-get install -y postgresql-client
 
       - name: Create database backup
+        id: backup
         env:
           # GitHub Secrets needed:
           # SUPABASE_HOST: db.nwkaruzvzwwuftjquypk.supabase.co
@@ -27,27 +28,30 @@ jobs:
           PGPASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
         run: |
           DATE=$(date +%Y-%m-%d_%H-%M)
+          BACKUP_NAME="sak-erp-backup-$DATE.sql"
           pg_dump -h ${{ secrets.SUPABASE_HOST }} \
             -U postgres \
             -d postgres \
             --clean --if-exists \
             --no-owner --no-privileges \
-            -f sak-erp-backup-$DATE.sql
+            -f "$BACKUP_NAME"
           
           # Compress
-          gzip sak-erp-backup-$DATE.sql
+          gzip "$BACKUP_NAME"
           
           # Save filename for next step
-          echo "BACKUP_FILE=sak-erp-backup-$DATE.sql.gz" >> $GITHUB_ENV
+          echo "backup_file=sak-erp-backup-$DATE.sql.gz" >> $GITHUB_OUTPUT
+          echo "backup_date=$DATE" >> $GITHUB_OUTPUT
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: db-backup-${{ github.run_number }}
-          name: Database Backup ${{ env.BACKUP_FILE }}
-          files: ${{ env.BACKUP_FILE }}
+          name: Database Backup ${{ steps.backup.outputs.backup_date }}
+          files: ${{ steps.backup.outputs.backup_file }}
           body: |
             Automated database backup
-            Date: ${{ github.event.repository.updated_at }}
+            Date: ${{ steps.backup.outputs.backup_date }}
+            File: ${{ steps.backup.outputs.backup_file }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

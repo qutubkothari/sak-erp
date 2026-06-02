@@ -1,0 +1,116 @@
+# =====================================================
+# Automatic Versioning and Release on Every Push
+# Creates version tags and releases for easy rollback
+# =====================================================
+
+name: Version and Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  version-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate version
+        id: version
+        run: |
+          # Get latest tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $LATEST_TAG"
+          
+          # Parse version numbers
+          VERSION=${LATEST_TAG#v}
+          MAJOR=$(echo $VERSION | cut -d. -f1)
+          MINOR=$(echo $VERSION | cut -d. -f2)
+          PATCH=$(echo $VERSION | cut -d. -f3)
+          
+          # Determine bump type
+          BUMP_TYPE="${{ github.event.inputs.version_type || 'patch' }}"
+          
+          # Calculate new version
+          if [ "$BUMP_TYPE" = "major" ]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif [ "$BUMP_TYPE" = "minor" ]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+          
+          NEW_VERSION="v$MAJOR.$MINOR.$PATCH"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+      - name: Create version tag
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -a ${{ steps.version.outputs.new_version }} -m "Release ${{ steps.version.outputs.new_version }}"
+          git push origin ${{ steps.version.outputs.new_version }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.new_version }}
+          name: "Release ${{ steps.version.outputs.new_version }}"
+          body: |
+            ## Changes in this release
+            
+            See [commit history](https://github.com/${{ github.repository }}/commits/${{ steps.version.outputs.new_version }}) for details.
+            
+            ## Quick Restore Commands
+            
+            ```bash
+            # Restore to this version
+            git fetch origin
+            git checkout ${{ steps.version.outputs.new_version }}
+            
+            # Or create a branch from this version
+            git checkout -b restore-${{ steps.version.outputs.new_version }} ${{ steps.version.outputs.new_version }}
+            ```
+            
+            ## Database Backup
+            
+            Database backups are saved separately as artifacts.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create deployment marker
+        run: |
+          echo "${{ steps.version.outputs.new_version }}" > VERSION.txt
+          echo "Deployed at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> VERSION.txt
+          echo "Commit: ${{ github.sha }}" >> VERSION.txt
+
+      - name: Upload version artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: version-${{ steps.version.outputs.new_version }}
+          path: VERSION.txt
