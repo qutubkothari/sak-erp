@@ -10,8 +10,8 @@ set USER=postgres
 set DB=postgres
 set PGPASSWORD=Sak3998515253#
 
-REM Create backup directory
-set BACKUP_DIR=%~dp0backups
+REM Create backup directory in QK Docs for easy Google Drive sync
+set BACKUP_DIR=C:\Users\QK\Documents\QK Docs\SAK-ERP-Backups
 if not exist "%BACKUP_DIR%" mkdir "%BACKUP_DIR%"
 
 REM Generate timestamp
