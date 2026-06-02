@@ -26,6 +26,27 @@ echo Database: %DB%
 echo Output: %BACKUP_FILE%
 echo.
 
+REM Try to resolve IP address using Google DNS (workaround for DNS issues)
+echo Resolving host IP using Google DNS...
+set HOST_IP=
+for /f "tokens=* skip=4" %%a in ('nslookup -type=A %HOST% 8.8.8.8 2^>nul') do (
+    if not defined HOST_IP (
+        for /f "tokens=2 delims=: " %%b in ("%%a") do (
+            set HOST_IP=%%b
+            goto :gotip
+        )
+    )
+)
+:gotip
+
+if defined HOST_IP (
+    echo Found IP: %HOST_IP%
+    echo Using IP address directly to bypass DNS...
+    set HOST=%HOST_IP%
+) else (
+    echo Warning: Could not resolve IP, trying hostname anyway...
+)
+
 REM Check if pg_dump is available (search common locations)
 set PGDUMP_FOUND=0
 set PGDUMP_PATH=
