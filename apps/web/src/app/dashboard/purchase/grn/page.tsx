@@ -1678,16 +1678,17 @@ function GRNContent() {
       return;
     }
 
-    // Prepare payload for duplicate check
-    const checkPayload = {
-      purchaseOrderId: formData.poId,
-      items: formData.items.map(item => ({
-        itemId: item.itemId,
-        quantity: item.receivedQuantity,
-      })),
-    };
+    // DUPLICATE DETECTION: Check if GRN already exists for this Invoice + PO combination
+    const existingGRN = grns.find(g => 
+      g.invoice_number?.toLowerCase().trim() === formData.invoiceNumber?.toLowerCase().trim() &&
+      g.purchase_order?.po_number === purchaseOrders.find(po => po.id === formData.poId)?.po_number
+    );
+    
+    if (existingGRN) {
+      alert(`GRN already exists for this Invoice (${formData.invoiceNumber}) and PO combination.\n\nExisting GRN: ${existingGRN.grn_number}\nCreated: ${existingGRN.created_at ? new Date(existingGRN.created_at).toLocaleString('en-IN') : 'N/A'}\n\nPlease check the GRN list or use a different invoice number.`);
+      return;
+    }
 
-    // Directly create GRN (duplicate detection temporarily disabled)
     await actuallyCreateGRN();
   };
 
