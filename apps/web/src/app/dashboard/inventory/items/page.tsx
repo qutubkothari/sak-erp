@@ -333,7 +333,10 @@ export default function ItemsPage() {
     try {
       // Vendors live under the purchase module routes
       const data = await apiClient.get('/purchase/vendors?isActive=true');
-      setVendors(Array.isArray(data) ? data.filter((vendor: Vendor) => vendor.is_verified === true) : []);
+      const verifiedVendors = Array.isArray(data) ? data.filter((vendor: Vendor) => vendor.is_verified === true) : [];
+      // Sort alphabetically by name
+      verifiedVendors.sort((a: Vendor, b: Vendor) => a.name.localeCompare(b.name));
+      setVendors(verifiedVendors);
     } catch (error) {
       setVendors([]);
     }

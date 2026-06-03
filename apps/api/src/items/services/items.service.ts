@@ -335,7 +335,7 @@ export class ItemsService {
       .insert({
         tenant_id: tenantId,
         code: toUpperCode(itemData.code),
-        name: toTitleCase(itemData.name),
+        name: itemData.name,
         oem_part_no: oemPartNo,
         oem_name: oemName,
         description: toTitleCase(itemData.description),
@@ -450,7 +450,7 @@ export class ItemsService {
         const rowData: any = {
             tenant_id: tenantId,
             code: toUpperCode(itemData.code),
-            name: toTitleCase(itemData.name),
+            name: itemData.name,
             oem_part_no: itemData.oem_part_no,
             description: toTitleCase(itemData.description),
             category: itemData.category,
@@ -508,7 +508,7 @@ export class ItemsService {
 
     // Only update fields that are provided
     if (itemData.code !== undefined) updateData.code = toUpperCode(itemData.code);
-    if (itemData.name !== undefined) updateData.name = toTitleCase(itemData.name);
+    if (itemData.name !== undefined) updateData.name = itemData.name;
     if (
       itemData.oem_part_no !== undefined ||
       itemData.oemPartNo !== undefined ||
