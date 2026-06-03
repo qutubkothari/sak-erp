@@ -1996,7 +1996,8 @@ function GRNContent() {
     {
       id: 'created_at',
       label: 'Created Date',
-      render: (grn) => grn.created_at ? new Date(grn.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '-',
+      accessor: (grn) => grn.created_at || '',
+      cell: (grn) => grn.created_at ? new Date(grn.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '-',
     },
     {
       id: 'grn_number',
