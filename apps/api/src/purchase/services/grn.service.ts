@@ -338,28 +338,42 @@ export class GrnService {
         receivedByPoItemId,
       });
 
-      const items = data.items.map((item: any) => ({
-        grn_id: grn.id,
-        po_item_id: item.poItemId,
-        item_id: item.itemId, // Add item_id UUID
-        item_code: item.itemCode,
-        item_name: item.itemName,
-        description: item.description,
-        uom: item.uom,
-        ordered_qty: item.orderedQty,
-        received_qty: item.receivedQty,
-        accepted_qty: item.acceptedQty || 0,
-        rejected_qty: item.rejectedQty || 0,
-        rejection_reason: item.rejectionReason || null,
-        inspection_status: item.inspectionStatus || 'PENDING',
-        inspection_remarks: item.inspectionRemarks || null,
-        batch_number: item.batchNumber || null,
-        manufacturing_date: item.manufacturingDate || null,
-        expiry_date: item.expiryDate || null,
-        rate: item.rate,
-        amount: (item.receivedQty || 0) * (item.rate || 0),
-        remarks: item.remarks || null,
-      }));
+      // Filter and validate items - ensure valid UUIDs for po_item_id and item_id
+      const validItem = (id: any) => {
+        if (!id || typeof id !== 'string') return false;
+        // UUID format validation: 8-4-4-4-12 hex characters
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        return uuidRegex.test(id.trim());
+      };
+
+      const items = data.items
+        .filter((item: any) => validItem(item.poItemId) && validItem(item.itemId))
+        .map((item: any) => ({
+          grn_id: grn.id,
+          po_item_id: item.poItemId.trim(),
+          item_id: item.itemId.trim(),
+          item_code: item.itemCode,
+          item_name: item.itemName,
+          description: item.description,
+          uom: item.uom,
+          ordered_qty: item.orderedQty,
+          received_qty: item.receivedQty,
+          accepted_qty: item.acceptedQty || 0,
+          rejected_qty: item.rejectedQty || 0,
+          rejection_reason: item.rejectionReason || null,
+          inspection_status: item.inspectionStatus || 'PENDING',
+          inspection_remarks: item.inspectionRemarks || null,
+          batch_number: item.batchNumber || null,
+          manufacturing_date: item.manufacturingDate || null,
+          expiry_date: item.expiryDate || null,
+          rate: item.rate,
+          amount: (item.receivedQty || 0) * (item.rate || 0),
+          remarks: item.remarks || null,
+        }));
+
+      if (items.length === 0) {
+        throw new BadRequestException('No valid items to save. Items must have valid PO Item ID and Item ID.');
+      }
       
       console.log('GRN Items before insert:', JSON.stringify(items.map((i: any) => ({ 
         item_code: i.item_code, 

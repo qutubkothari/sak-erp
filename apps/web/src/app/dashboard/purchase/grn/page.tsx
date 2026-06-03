@@ -45,6 +45,7 @@ interface GRN {
   tax_amount?: number;
   gst_percentage?: number;
   freight_amount?: number;
+  created_at?: string;
   freight_gst_amount?: number;
   debit_note_amount?: number;
   net_payable_amount?: number;
@@ -1991,6 +1992,11 @@ function GRNContent() {
   };
 
   const grnTableColumns: Array<ListTableColumn<GRN>> = [
+    {
+      id: 'created_at',
+      label: 'Created Date',
+      render: (grn) => grn.created_at ? new Date(grn.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '-',
+    },
     {
       id: 'grn_number',
       label: 'GRN Number',
