@@ -282,8 +282,8 @@ export class GrnService {
       .insert({
         tenant_id: tenantId,
         grn_number: grnNumber,
-        po_id: data.poId,
-        vendor_id: data.vendorId,
+        po_id: data.poId?.trim() || null,
+        vendor_id: data.vendorId?.trim() || null,
         receipt_date: data.grnDate || new Date().toISOString().split('T')[0],
         invoice_number: data.invoiceNumber || null,
         invoice_date: data.invoiceDate || null,
@@ -291,10 +291,10 @@ export class GrnService {
         invoice_file_name: data.invoiceFileName || null,
         invoice_file_type: data.invoiceFileType || null,
         invoice_file_size: data.invoiceFileSize || null,
-        warehouse_id: data.warehouseId,
+        warehouse_id: data.warehouseId?.trim() || null,
         status: data.status || 'DRAFT',
         notes: data.remarks || null,
-        received_by: userId,
+        received_by: userId?.trim() || null,
         gst_percentage: poGstPercentage, // Will be undefined if not fetched, defaults to 18% later
         freight_amount: poFreightAmount,
         freight_gst_amount: poFreightGstAmount,
@@ -585,7 +585,7 @@ export class GrnService {
         invoice_file_name: data.invoiceFileName || null,
         invoice_file_type: data.invoiceFileType || null,
         invoice_file_size: data.invoiceFileSize || null,
-        warehouse_id: data.warehouseId,
+        warehouse_id: data.warehouseId?.trim() || null,
         notes: data.remarks || null,
         updated_at: new Date().toISOString(),
       })
