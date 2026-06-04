@@ -119,7 +119,9 @@ export default function DashboardReminders() {
                   className="block rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-sm hover:bg-sky-100"
                 >
                   <div className="font-semibold text-sky-950">{grn.grn_number || 'GRN'}</div>
-                  <div className="mt-0.5 text-xs text-sky-800">QC is pending for {grn.purchase_order?.po_number || grn.vendor?.name || 'received material'}</div>
+                  <div className="mt-0.5 text-xs text-sky-800">
+                    {grn.vendor?.name || 'Vendor not available'} - QC is pending for {grn.purchase_order?.po_number || 'received material'}
+                  </div>
                 </Link>
               ))}
             </div>
