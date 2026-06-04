@@ -449,9 +449,11 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const normalizedUsername = this.normalizeUsername(dto?.username ?? dto?.email);
+    const rawLogin = String(dto?.username ?? dto?.email ?? '').trim();
+    const normalizedUsername = this.normalizeUsername(rawLogin);
+    const normalizedEmail = this.normalizeEmail(rawLogin);
 
-    if (!normalizedUsername) {
+    if (!normalizedUsername && !normalizedEmail) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -463,7 +465,7 @@ export class AuthService {
       const { data: userTenant } = await this.supabase
         .from('users')
         .select('tenant_id')
-        .ilike('username', normalizedUsername)
+        .or(`username.ilike.${normalizedUsername},email.ilike.${normalizedEmail}`)
         .limit(1)
         .maybeSingle();
 
@@ -506,7 +508,7 @@ export class AuthService {
           permissions
         )
       `)
-      .ilike('username', normalizedUsername)
+      .or(`username.ilike.${normalizedUsername},email.ilike.${normalizedEmail}`)
       .eq('tenant_id', resolvedTenantId)
       .maybeSingle();
 

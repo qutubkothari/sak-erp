@@ -23,7 +23,7 @@ export default function LoginPage() {
 
     try {
       const response = await apiClient.login({
-        username: username.trim().toLowerCase(),
+        username: username.trim(),
         password,
       });
 
