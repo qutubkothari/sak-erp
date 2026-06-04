@@ -22,6 +22,15 @@ export function SecurityWrapper({ children }: { children: React.ReactNode }) {
   const [showWarning, setShowWarning] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(WARNING_BEFORE_LOGOUT);
   const [lastActivity, setLastActivity] = useState(Date.now());
+  const [isSecurityEnabled, setIsSecurityEnabled] = useState(false);
+
+  useEffect(() => {
+    const hostname = window.location.hostname;
+    // Enable security ONLY on test environment and localhost
+    if (hostname.includes('test') || hostname === 'localhost' || hostname === '127.0.0.1') {
+      setIsSecurityEnabled(true);
+    }
+  }, []);
 
   // Get user info for watermark (name may come from various fields)
   const userEmail = user?.email || 'Unknown';
@@ -30,6 +39,8 @@ export function SecurityWrapper({ children }: { children: React.ReactNode }) {
 
   // Session timeout logic
   useEffect(() => {
+    if (!isSecurityEnabled) return;
+
     let warningTimer: NodeJS.Timeout;
     let logoutTimer: NodeJS.Timeout;
     let countdownInterval: NodeJS.Timeout;
@@ -93,10 +104,12 @@ export function SecurityWrapper({ children }: { children: React.ReactNode }) {
         document.removeEventListener(event, handleActivity);
       });
     };
-  }, [router]);
+  }, [router, isSecurityEnabled]);
 
   // Disable right-click
   useEffect(() => {
+    if (!isSecurityEnabled) return;
+
     const disableRightClick = (e: MouseEvent) => {
       e.preventDefault();
       return false;
@@ -106,10 +119,12 @@ export function SecurityWrapper({ children }: { children: React.ReactNode }) {
     return () => {
       document.removeEventListener('contextmenu', disableRightClick);
     };
-  }, []);
+  }, [isSecurityEnabled]);
 
   // Disable common screenshot shortcuts
   useEffect(() => {
+    if (!isSecurityEnabled) return;
+
     const disableShortcuts = (e: KeyboardEvent) => {
       // PrintScreen
       if (e.key === 'PrintScreen') {
@@ -139,10 +154,12 @@ export function SecurityWrapper({ children }: { children: React.ReactNode }) {
     return () => {
       document.removeEventListener('keydown', disableShortcuts);
     };
-  }, []);
+  }, [isSecurityEnabled]);
 
   // Detect DevTools opening (basic detection)
   useEffect(() => {
+    if (!isSecurityEnabled) return;
+
     const threshold = 160;
     const checkDevTools = () => {
       const widthThreshold = window.outerWidth - window.innerWidth > threshold;
@@ -157,10 +174,12 @@ export function SecurityWrapper({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener('resize', checkDevTools);
     };
-  }, []);
+  }, [isSecurityEnabled]);
 
   // Prevent copy/paste of sensitive data
   useEffect(() => {
+    if (!isSecurityEnabled) return;
+
     const preventCopy = (e: ClipboardEvent) => {
       // Allow copy on input fields for usability, block elsewhere
       const target = e.target as HTMLElement;
@@ -175,14 +194,14 @@ export function SecurityWrapper({ children }: { children: React.ReactNode }) {
     return () => {
       document.removeEventListener('copy', preventCopy);
     };
-  }, []);
+  }, [isSecurityEnabled]);
 
   return (
     <>
       {children}
 
       {/* Session Timeout Warning Modal */}
-      {showWarning && (
+      {isSecurityEnabled && showWarning && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50">
           <div className="rounded-lg bg-white p-6 shadow-xl max-w-md">
             <h3 className="mb-2 text-lg font-bold text-red-600">Session Timeout Warning</h3>
@@ -203,45 +222,49 @@ export function SecurityWrapper({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Watermark Overlay - Repeating diagonal text */}
-      <div
-        className="fixed inset-0 pointer-events-none z-[9000] overflow-hidden"
-        style={{
-          background: 'transparent',
-        }}
-      >
-        {/* Repeating watermark pattern */}
+      {isSecurityEnabled && (
         <div
-          className="absolute inset-0 opacity-[0.08] select-none"
+          className="fixed inset-0 pointer-events-none z-[9000] overflow-hidden"
           style={{
-            backgroundImage: `repeating-linear-gradient(
-              -45deg,
-              transparent,
-              transparent 150px,
-              rgba(0,0,0,0.3) 150px,
-              rgba(0,0,0,0.3) 300px
-            )`,
+            background: 'transparent',
           }}
-        />
-        {/* Text watermarks */}
-        {Array.from({ length: 20 }).map((_, i) => (
+        >
+          {/* Repeating watermark pattern */}
           <div
-            key={i}
-            className="absolute select-none whitespace-nowrap text-lg font-bold text-red-500/20 rotate-[-45deg]"
+            className="absolute inset-0 opacity-[0.08] select-none"
             style={{
-              left: `${(i % 5) * 25}%`,
-              top: `${Math.floor(i / 5) * 25}%`,
-              transform: 'rotate(-45deg)',
+              backgroundImage: `repeating-linear-gradient(
+                -45deg,
+                transparent,
+                transparent 150px,
+                rgba(0,0,0,0.3) 150px,
+                rgba(0,0,0,0.3) 300px
+              )`,
             }}
-          >
-            {watermarkText}
-          </div>
-        ))}
-      </div>
+          />
+          {/* Text watermarks */}
+          {Array.from({ length: 20 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute select-none whitespace-nowrap text-lg font-bold text-red-500/20 rotate-[-45deg]"
+              style={{
+                left: `${(i % 5) * 25}%`,
+                top: `${Math.floor(i / 5) * 25}%`,
+                transform: 'rotate(-45deg)',
+              }}
+            >
+              {watermarkText}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Bottom right user indicator */}
-      <div className="fixed bottom-2 right-2 z-[9001] select-none rounded bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800 border border-yellow-300">
-        👤 {userName} | 🕐 Auto-logout: {SESSION_TIMEOUT_MINUTES}min
-      </div>
+      {isSecurityEnabled && (
+        <div className="fixed bottom-2 right-2 z-[9001] select-none rounded bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800 border border-yellow-300">
+          👤 {userName} | 🕐 Auto-logout: {SESSION_TIMEOUT_MINUTES}min
+        </div>
+      )}
     </>
   );
 }
