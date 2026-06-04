@@ -1438,6 +1438,9 @@ export default function ItemsPage() {
           <button type="button" onClick={() => setViewingItem(item)} className="text-blue-600 hover:text-blue-900">
             View
           </button>
+          <button type="button" onClick={() => void openStockTrail(item)} className="text-green-700 hover:text-green-900">
+            Trail
+          </button>
           {item.is_active ? (
             <>
               {canEdit && (
