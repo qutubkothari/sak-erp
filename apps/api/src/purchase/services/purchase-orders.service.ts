@@ -1044,6 +1044,7 @@ export class PurchaseOrdersService {
         customs_duty: data.customsDuty !== undefined ? this.safeNumber(data.customsDuty) : undefined,
         other_charges: data.otherCharges !== undefined ? this.safeNumber(data.otherCharges) : undefined,
         updated_at: new Date().toISOString(),
+        ...(existingPO?.status === 'REJECTED' ? { status: 'PENDING' } : {}),
       })
       .eq('tenant_id', tenantId)
       .eq('id', id);
