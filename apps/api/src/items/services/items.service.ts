@@ -63,6 +63,56 @@ export class ItemsService {
     return trimmed || null;
   }
 
+  private async getLedgerStockTotals(tenantId: string, itemIds: string[]) {
+    const itemIdSet = new Set(itemIds);
+    const totals: Record<string, number> = {};
+
+    for (const itemId of itemIds) {
+      totals[itemId] = 0;
+    }
+
+    const { data: stockEntries } = await this.supabase
+      .from('stock_entries')
+      .select('item_id, quantity, metadata, warehouse_id')
+      .eq('tenant_id', tenantId);
+
+    const grnEntryMap = new Map<string, number>();
+    for (const entry of stockEntries || []) {
+      const itemId = (entry as any).item_id;
+      if (!itemIdSet.has(itemId)) continue;
+
+      const grnRef = (entry as any).metadata?.grn_reference || (entry as any).metadata?.grn_number;
+      if (!grnRef) continue;
+
+      const dedupKey = `${itemId}::${grnRef}::${(entry as any).warehouse_id || ''}`;
+      grnEntryMap.set(dedupKey, (grnEntryMap.get(dedupKey) || 0) + (Number((entry as any).quantity) || 0));
+    }
+
+    for (const [key, qty] of grnEntryMap.entries()) {
+      const itemId = key.split('::')[0];
+      totals[itemId] = (totals[itemId] || 0) + qty;
+    }
+
+    const { data: movements } = await this.supabase
+      .from('stock_movements')
+      .select('item_id, quantity, from_warehouse_id, to_warehouse_id')
+      .eq('tenant_id', tenantId);
+
+    for (const movement of movements || []) {
+      const itemId = (movement as any).item_id;
+      if (!itemIdSet.has(itemId)) continue;
+
+      const qty = Number((movement as any).quantity) || 0;
+      const isInbound = !(movement as any).from_warehouse_id && !!(movement as any).to_warehouse_id;
+      const isOutbound = !!(movement as any).from_warehouse_id && !(movement as any).to_warehouse_id;
+
+      if (isInbound) totals[itemId] = (totals[itemId] || 0) + qty;
+      if (isOutbound) totals[itemId] = (totals[itemId] || 0) - qty;
+    }
+
+    return totals;
+  }
+
   private normalizeAndValidateHsn(value: any, options: { required: boolean }): string | null {
     if (value === undefined || value === null || value === '') {
       if (options.required) {
@@ -196,34 +246,8 @@ export class ItemsService {
     // Stock Master must read from inventory_stock because stock adjustments
     // update that aggregate table directly.
     if (data && data.length > 0) {
-      // IMPORTANT: Do NOT use `.in('item_id', itemIds)` here.
-      // With hundreds of item IDs it produces an enormous URL and can fail at the HTTP layer
-      // (we observed undici HeadersOverflowError / "TypeError: fetch failed").
-      // Fetch non-zero rows for the tenant and aggregate in-memory so deduction rows
-      // (including negative reconciliation rows) are not dropped from the total.
-      const { data: stockData, error: stockError } = await this.supabase
-        .from('inventory_stock')
-        .select('item_id, quantity, available_quantity')
-        .eq('tenant_id', tenantId)
-        .or('available_quantity.neq.0,quantity.neq.0');
-
-      if (stockError || !stockData) {
-        console.error('[ItemsService] Stock query error:', stockError);
-        return data.map(item => ({
-          ...item,
-          total_stock: 0
-        }));
-      }
-
-      // Sum up stock per item
-      const stockTotals = (stockData || []).reduce((acc: any, entry: any) => {
-        const available = parseFloat(entry.available_quantity);
-        const quantity = parseFloat(entry.quantity);
-        const nextValue = Number.isFinite(available) ? available : (Number.isFinite(quantity) ? quantity : 0);
-
-        acc[entry.item_id] = (acc[entry.item_id] || 0) + nextValue;
-        return acc;
-      }, {});
+      const itemIds = data.map((item: any) => item.id).filter(Boolean);
+      const stockTotals = await this.getLedgerStockTotals(tenantId, itemIds);
 
       // Add total_stock to each item
       return data.map(item => ({
