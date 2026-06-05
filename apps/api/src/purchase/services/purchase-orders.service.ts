@@ -636,12 +636,29 @@ export class PurchaseOrdersService {
     }
   }
 
+  // In-memory cache to track recent PO creations (prevents rapid duplicates)
+  private recentCreations = new Map<string, number>();
+
   async create(tenantId: string, userId: string, data: any) {
     console.log('=== PO CREATE - Payment data received:', {
       paymentStatus: data.paymentStatus,
       paymentNotes: data.paymentNotes,
       paymentTerms: data.paymentTerms
     });
+
+    // Layer 1: Timestamp-based duplicate prevention (within 10 seconds)
+    const creationKey = `${tenantId}:${data.vendorId}:${(data.items ?? []).map((i: any) => `${i.itemId || i.item_code}:${i.orderedQty || i.quantity}`).join('|')}`;
+    const lastCreation = this.recentCreations.get(creationKey);
+    const now = Date.now();
+    if (lastCreation && (now - lastCreation) < 10000) {
+      console.error('[PO CREATE] Blocked: Duplicate submission within 10 seconds');
+      throw new BadRequestException('A Purchase Order with these items was just created. Please wait 10 seconds before creating another.');
+    }
+    this.recentCreations.set(creationKey, now);
+    // Cleanup old entries (older than 60 seconds)
+    for (const [key, ts] of this.recentCreations.entries()) {
+      if (now - ts > 60000) this.recentCreations.delete(key);
+    }
     
     // VERIFICATION DISABLED TEMPORARILY - uncomment below to re-enable
     // const isDraftCreate = (data.status || 'DRAFT') === 'DRAFT';

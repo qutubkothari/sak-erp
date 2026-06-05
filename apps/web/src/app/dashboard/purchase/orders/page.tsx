@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { apiClient } from '../../../../../lib/api-client';
@@ -234,6 +234,10 @@ function PurchaseOrdersContent() {
   const [sortColumn, setSortColumn] = useState<string>('po_date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [submitting, setSubmitting] = useState(false);
+  // Synchronous guard to prevent rapid double-clicks before state updates
+  const isSubmittingRef = useRef(false);
+  // Idempotency key to prevent duplicate API calls
+  const [lastSubmitKey, setLastSubmitKey] = useState<string | null>(null);
   const [showDrawingManager, setShowDrawingManager] = useState(false);
   const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string; mandatory: boolean } | null>(null);
   const [drawingOptionsByItemId, setDrawingOptionsByItemId] = useState<Record<string, DrawingOption[]>>({});
@@ -814,7 +818,35 @@ function PurchaseOrdersContent() {
   };
 
   const actuallyCreatePO = async (poStatus: 'DRAFT' | 'PENDING' = 'DRAFT') => {
-    if (submitting) return; // Prevent duplicate submissions
+    // Layer 1: Synchronous ref check (prevents race conditions)
+    if (isSubmittingRef.current) {
+      console.log('[PO Create] Blocked by ref guard');
+      return;
+    }
+    // Layer 2: React state check
+    if (submitting) {
+      console.log('[PO Create] Blocked by state guard');
+      return;
+    }
+    
+    // Generate idempotency key from form data
+    const submitKey = JSON.stringify({
+      vendorId: formData.vendorId,
+      items: formData.items.map(i => ({ id: i.itemId, qty: i.quantity })),
+      total: formData.items.reduce((s, i) => s + i.totalPrice, 0),
+      status: poStatus,
+      ts: Date.now(), // Still allow if 5+ seconds passed
+    });
+    
+    // Layer 3: Idempotency check (prevent exact duplicate within 5 seconds)
+    if (lastSubmitKey && Math.abs(Date.now() - parseInt(lastSubmitKey.split('"ts":')[1]?.split(',')[0] || '0')) < 5000) {
+      console.log('[PO Create] Blocked by idempotency (same data within 5s)');
+      setAlertMessage({ type: 'error', message: 'Duplicate submission blocked. Please wait a moment.' });
+      return;
+    }
+    
+    isSubmittingRef.current = true;
+    setLastSubmitKey(submitKey);
     
     try {
       setSubmitting(true);
@@ -1071,6 +1103,7 @@ function PurchaseOrdersContent() {
       setAlertMessage({ type: 'error', message: error.message || 'Failed to create PO. Please try again.' });
     } finally {
       setSubmitting(false);
+      isSubmittingRef.current = false;
     }
   };
 
