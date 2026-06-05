@@ -3123,17 +3123,17 @@ export default function ItemsPage() {
                     </div>
                   ) : (
                     <div className="overflow-x-auto rounded-lg border border-gray-200">
-                      <table className="min-w-full divide-y divide-gray-200 text-sm">
+                      <table className="w-full divide-y divide-gray-200 text-sm" style={{ tableLayout: 'auto' }}>
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Vendor / Note</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Warehouse</th>
-                            <th className="px-4 py-3 text-right text-xs font-semibold text-emerald-700 uppercase">In (+)</th>
-                            <th className="px-4 py-3 text-right text-xs font-semibold text-red-700 uppercase">Out (−)</th>
-                            <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Balance</th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Date</th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Type</th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Vendor / Note</th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Warehouse</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-emerald-700 uppercase whitespace-nowrap">In (+)</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-red-700 uppercase whitespace-nowrap">Out (−)</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">Balance</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 bg-white">
@@ -3163,24 +3163,24 @@ export default function ItemsPage() {
                               : '-';
                             return (
                               <tr key={i} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 whitespace-nowrap text-gray-700">{dtStr}</td>
-                                <td className="px-4 py-3">
+                                <td className="px-3 py-3 text-gray-700 whitespace-nowrap">{dtStr}</td>
+                                <td className="px-3 py-3 whitespace-nowrap">
                                   <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
                                     isIn ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
                                   }`}>{label}</span>
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap font-medium text-[#36454F]">{t.reference || '-'}</td>
-                                <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate" title={t.vendor || t.notes || ''}>
+                                <td className="px-3 py-3 font-medium text-[#36454F]">{t.reference || '-'}</td>
+                                <td className="px-3 py-3 text-gray-600" title={t.vendor || t.notes || ''}>
                                   {t.vendor || t.notes || '-'}
                                 </td>
-                                <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{t.warehouse || '-'}</td>
-                                <td className="px-4 py-3 text-right font-semibold text-emerald-700">
+                                <td className="px-3 py-3 text-gray-600">{t.warehouse || '-'}</td>
+                                <td className="px-3 py-3 text-right font-semibold text-emerald-700 whitespace-nowrap">
                                   {isIn ? `+${t.qty_in}` : ''}
                                 </td>
-                                <td className="px-4 py-3 text-right font-semibold text-red-700">
+                                <td className="px-3 py-3 text-right font-semibold text-red-700 whitespace-nowrap">
                                   {isOut ? `−${t.qty_out}` : ''}
                                 </td>
-                                <td className="px-4 py-3 text-right font-bold text-[#36454F]">{t.balance}</td>
+                                <td className="px-3 py-3 text-right font-bold text-[#36454F] whitespace-nowrap">{t.balance}</td>
                               </tr>
                             );
                           })}
