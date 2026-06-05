@@ -65,6 +65,14 @@ export class DebitNoteController {
     );
   }
 
+  // Unified GRN payment status - SINGLE SOURCE OF TRUTH
+  // All frontend pages must use this for consistent payment status
+  @Get('grns-with-payment-status')
+  async getGrnsWithPaymentStatus(@Req() req: any, @Query() query: any) {
+    const tenantId = req.user.tenantId;
+    return this.debitNoteService.getGrnsWithPaymentStatus(tenantId, query);
+  }
+
   // Legacy endpoints (keep for backward compatibility)
   @Get('po-advances')
   async getAllAdvancePayments(@Req() req: any) {

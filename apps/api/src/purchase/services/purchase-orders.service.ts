@@ -428,7 +428,33 @@ export class PurchaseOrdersService {
     return pdfData;
   }
 
-  private computeReceiptSummary(po: any) {
+  private async fetchGrnReceivedByPoItem(tenantId: string, poItemIds: string[]): Promise<Map<string, number>> {
+    if (poItemIds.length === 0) return new Map();
+    
+    const { data: grnItems, error } = await this.supabase
+      .from('grn_items')
+      .select('po_item_id, received_qty, received_quantity')
+      .eq('tenant_id', tenantId)
+      .in('po_item_id', poItemIds)
+      .eq('inspection_status', 'ACCEPTED');
+    
+    if (error) {
+      console.error('[PO] Failed to fetch GRN received quantities:', error);
+      return new Map();
+    }
+    
+    const receivedByPoItem = new Map<string, number>();
+    for (const item of grnItems || []) {
+      const poItemId = String(item.po_item_id || '').trim();
+      if (!poItemId) continue;
+      const qty = this.toNumber(item.received_qty ?? item.received_quantity ?? 0);
+      receivedByPoItem.set(poItemId, (receivedByPoItem.get(poItemId) || 0) + qty);
+    }
+    
+    return receivedByPoItem;
+  }
+
+  private async computeReceiptSummary(tenantId: string, po: any) {
     const items: any[] = Array.isArray(po?.purchase_order_items) ? po.purchase_order_items : [];
     if (items.length === 0) {
       return {
@@ -438,17 +464,23 @@ export class PurchaseOrdersService {
       };
     }
 
+    // Fetch actual received quantities from GRN ledger
+    const poItemIds = items.map((it: any) => String(it?.id || '').trim()).filter(Boolean);
+    const grnReceivedByPoItem = await this.fetchGrnReceivedByPoItem(tenantId, poItemIds);
+
     let orderedTotal = 0;
     let receivedTotal = 0;
 
     const patchedItems = items.map((it: any) => {
       const ordered = this.toNumber(it?.ordered_qty);
-      const received = this.toNumber(it?.received_qty);
+      const poItemId = String(it?.id || '').trim();
+      const received = grnReceivedByPoItem.get(poItemId) || 0;
       const remaining = Math.max(0, ordered - received);
       orderedTotal += ordered;
       receivedTotal += Math.min(received, ordered);
       return {
         ...it,
+        received_qty: received,
         remaining_qty: remaining,
       };
     });
@@ -884,16 +916,18 @@ export class PurchaseOrdersService {
       rows.map((po: any) => po?.vendor_id),
     );
 
-    return rows.map((po: any) => {
-      po = this.hydratePODrawingSelections(po);
-      const receipt = this.computeReceiptSummary(po);
-      return {
-        ...po,
+    const result = [];
+    for (const po of rows) {
+      const hydratedPo = this.hydratePODrawingSelections(po);
+      const receipt = await this.computeReceiptSummary(tenantId, hydratedPo);
+      result.push({
+        ...hydratedPo,
         ...receipt,
         vendor: po?.vendor_id ? vendorById.get(po.vendor_id) ?? null : null,
         pr: po?.pr_id ? prById.get(po.pr_id) ?? null : null,
-      };
-    });
+      });
+    }
+    return result;
   }
 
   async findOne(tenantId: string, id: string) {
@@ -913,7 +947,7 @@ export class PurchaseOrdersService {
       throw new NotFoundException('Purchase order not found');
     }
     const hydratedData = this.hydratePODrawingSelections(data);
-    const receipt = this.computeReceiptSummary(hydratedData);
+    const receipt = await this.computeReceiptSummary(tenantId, hydratedData);
 
     // Attach PR (see note in findAll about multiple relationships)
     let pr: any = null;

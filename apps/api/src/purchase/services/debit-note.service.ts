@@ -1550,4 +1550,118 @@ export class DebitNoteService {
     console.log(`[syncPaymentStatus] Updated ${updates.length} GRNs to PAID based on PO advances`);
     return { updated: updates.length };
   }
+
+  // Unified method to calculate GRN payment status - SINGLE SOURCE OF TRUTH
+  // All frontend pages must use this for consistent payment status display
+  async calculateGrnPaymentStatus(tenantId: string, grn: any, poAdvanceMap?: Map<string, number>): Promise<{
+    net_payable: number;
+    paid_amount: number;
+    tds_amount: number;
+    short_payment_amount: number;
+    po_advance_applied: number;
+    total_settled: number;
+    outstanding: number;
+    is_fully_paid: boolean;
+    payment_status: 'PAID' | 'PARTIAL' | 'UNPAID';
+  }> {
+    const netPayable = parseFloat(grn?.net_payable_amount || 0);
+    const paidAmount = parseFloat(grn?.paid_amount || 0);
+    const tdsAmount = parseFloat(grn?.tds_amount || 0);
+    const shortAmount = parseFloat(grn?.short_payment_amount || 0);
+    
+    // Get PO advance if map not provided
+    let poAdvance = 0;
+    if (poAdvanceMap && grn?.po_id) {
+      poAdvance = poAdvanceMap.get(grn.po_id) || 0;
+    } else if (grn?.po_id) {
+      const { data: advances } = await this.supabase
+        .from('po_advance_payments')
+        .select('amount')
+        .eq('po_id', grn.po_id)
+        .eq('tenant_id', tenantId);
+      poAdvance = (advances || []).reduce((sum: number, a: any) => sum + parseFloat(a.amount || 0), 0);
+    }
+    
+    const totalSettled = paidAmount + tdsAmount + shortAmount + poAdvance;
+    const outstanding = Math.max(0, netPayable - totalSettled);
+    const isFullyPaid = totalSettled >= netPayable - 0.009 || (grn?.payment_status || '').toUpperCase() === 'PAID';
+    
+    let paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID';
+    if (isFullyPaid) {
+      paymentStatus = 'PAID';
+    } else if (totalSettled > 0) {
+      paymentStatus = 'PARTIAL';
+    } else {
+      paymentStatus = 'UNPAID';
+    }
+    
+    return {
+      net_payable: netPayable,
+      paid_amount: paidAmount,
+      tds_amount: tdsAmount,
+      short_payment_amount: shortAmount,
+      po_advance_applied: poAdvance,
+      total_settled: totalSettled,
+      outstanding: outstanding,
+      is_fully_paid: isFullyPaid,
+      payment_status: paymentStatus,
+    };
+  }
+
+  // Get all GRNs with unified payment status for a tenant
+  async getGrnsWithPaymentStatus(tenantId: string, filters?: any) {
+    // Fetch all GRNs
+    let query = this.supabase
+      .from('grns')
+      .select(`
+        *,
+        purchase_order:purchase_orders(id, po_number),
+        vendor:vendors(id, name, code)
+      `)
+      .eq('tenant_id', tenantId);
+
+    if (filters?.status) {
+      query = query.eq('status', filters.status);
+    }
+
+    if (filters?.vendorId) {
+      query = query.eq('vendor_id', filters.vendorId);
+    }
+
+    if (filters?.search) {
+      query = query.or(`grn_number.ilike.%${filters.search}%,invoice_number.ilike.%${filters.search}%`);
+    }
+
+    const { data: grns, error } = await query;
+    if (error) throw error;
+
+    // Fetch all PO advances once for efficiency
+    const poIds = [...new Set((grns || []).filter((g: any) => g.po_id).map((g: any) => g.po_id))];
+    const poAdvanceMap = new Map<string, number>();
+    
+    if (poIds.length > 0) {
+      const { data: advances } = await this.supabase
+        .from('po_advance_payments')
+        .select('po_id, amount')
+        .eq('tenant_id', tenantId)
+        .in('po_id', poIds);
+      
+      for (const advance of advances || []) {
+        const current = poAdvanceMap.get(advance.po_id) || 0;
+        poAdvanceMap.set(advance.po_id, current + parseFloat(advance.amount || 0));
+      }
+    }
+
+    // Calculate unified payment status for each GRN
+    const results = [];
+    for (const grn of grns || []) {
+      const paymentStatus = await this.calculateGrnPaymentStatus(tenantId, grn, poAdvanceMap);
+      results.push({
+        ...grn,
+        _payment_calculation: paymentStatus,
+      });
+    }
+
+    return results;
+  }
 }
