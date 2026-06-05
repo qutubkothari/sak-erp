@@ -52,6 +52,10 @@ export default function SupplierInvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DUE' | 'SETTLED' | 'PENDING_APPROVAL' | 'APPROVED'>('ALL');
 
+  // Multi-selection state for bulk sanction
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
+  const [bulkSanctionSubmitting, setBulkSanctionSubmitting] = useState(false);
+
   // Edit modal state
   const [editingInvoice, setEditingInvoice] = useState<SupplierInvoice | null>(null);
   const [editForm, setEditForm] = useState({ gross_amount: '', tax_amount: '', freight_amount: '', freight_gst_amount: '', net_payable_amount: '', gst_percentage: '', notes: '' });
@@ -162,10 +166,54 @@ export default function SupplierInvoicesPage() {
       const result = await apiClient.post(`/purchase/grn/${inv.id}/approve-invoice`, {});
       console.log('[APPROVE] response:', result);
       console.log('[APPROVE] invoice_approved on result:', (result as any)?.invoice_approved);
+      // Remove from selection if it was selected
+      setSelectedInvoiceIds(prev => {
+        const next = new Set(prev);
+        next.delete(inv.id);
+        return next;
+      });
       await fetchInvoices();
     } catch (e: any) {
       console.error('[APPROVE] ERROR:', e);
       alert(e.message || 'Failed to sanction payment');
+    }
+  };
+
+  // Bulk sanction selected invoices
+  const handleBulkSanction = async () => {
+    const selected = invoices.filter(inv => selectedInvoiceIds.has(inv.id) && !inv.invoice_approved);
+    if (selected.length === 0) {
+      alert('No invoices selected for sanction. Please select invoices with "Payment Due" status.');
+      return;
+    }
+    
+    const totalAmount = selected.reduce((sum, inv) => sum + Number(inv.net_payable_amount || 0), 0);
+    const confirmMsg = `Sanction payment for ${selected.length} invoice${selected.length > 1 ? 's' : ''}?\n\n` +
+      selected.map(inv => `• ${inv.grn_number}: ₹${formatAmount(inv.net_payable_amount)}`).join('\n') +
+      `\n\nTotal: ₹${formatAmount(totalAmount)}\n\nThese will move to Accounts Payable.`;
+    
+    if (!window.confirm(confirmMsg)) return;
+    
+    setBulkSanctionSubmitting(true);
+    const results = { success: [] as string[], failed: [] as string[] };
+    
+    for (const inv of selected) {
+      try {
+        await apiClient.post(`/purchase/grn/${inv.id}/approve-invoice`, {});
+        results.success.push(inv.grn_number);
+      } catch (e: any) {
+        results.failed.push(`${inv.grn_number}: ${e.message || 'Failed'}`);
+      }
+    }
+    
+    setBulkSanctionSubmitting(false);
+    setSelectedInvoiceIds(new Set()); // Clear selection
+    await fetchInvoices();
+    
+    if (results.failed.length === 0) {
+      alert(`✓ Successfully sanctioned ${results.success.length} invoice${results.success.length > 1 ? 's' : ''}`);
+    } else {
+      alert(`Sanction Results:\n✓ Success: ${results.success.length}\n✗ Failed: ${results.failed.length}\n\nFailed items:\n${results.failed.join('\n')}`);
     }
   };
 
@@ -192,6 +240,10 @@ export default function SupplierInvoicesPage() {
   const totalPayable = filtered.reduce((s, i) => s + Number(i.net_payable_amount ?? 0), 0);
   const pendingApprovalCount = invoices.filter((i) => !i.invoice_approved).length;
   const approvedCount = invoices.filter((i) => i.invoice_approved).length;
+  
+  // Get pending invoices that can be sanctioned (not yet approved)
+  const sanctionableInvoices = invoices.filter(inv => !inv.invoice_approved);
+  const selectedSanctionableCount = invoices.filter(inv => selectedInvoiceIds.has(inv.id) && !inv.invoice_approved).length;
 
   const columns: ListTableColumn<SupplierInvoice>[] = [
     {
@@ -386,6 +438,50 @@ export default function SupplierInvoicesPage() {
           <strong>Workflow:</strong> Review each invoice → Edit amounts if there&apos;s a discrepancy → Sanction → Invoice moves to <strong>Accounts Payable</strong> for payment.
         </div>
 
+        {/* Bulk Actions Bar */}
+        {canApprove && selectedInvoiceIds.size > 0 && (
+          <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-orange-800">
+                {selectedSanctionableCount} invoice{selectedSanctionableCount !== 1 ? 's' : ''} selected
+              </span>
+              {selectedSanctionableCount > 0 && (
+                <span className="text-xs text-orange-600">
+                  Total: ₹{formatAmount(
+                    invoices
+                      .filter(inv => selectedInvoiceIds.has(inv.id) && !inv.invoice_approved)
+                      .reduce((sum, inv) => sum + Number(inv.net_payable_amount || 0), 0)
+                  )}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {canApprove && selectedSanctionableCount > 0 && (
+                <button
+                  onClick={handleBulkSanction}
+                  disabled={bulkSanctionSubmitting}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-semibold disabled:opacity-60 flex items-center gap-2">
+                  {bulkSanctionSubmitting ? (
+                    <>
+                      <span className="animate-spin">⏳</span>
+                      Sanctioning…
+                    </>
+                  ) : (
+                    <>
+                      ✓ Sanction {selectedSanctionableCount > 1 ? `(${selectedSanctionableCount})` : ''}
+                    </>
+                  )}
+                </button>
+              )}
+              <button
+                onClick={() => setSelectedInvoiceIds(new Set())}
+                className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm text-gray-600">
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
           {loading ? (
@@ -405,6 +501,9 @@ export default function SupplierInvoicesPage() {
               defaultPageSize={25}
               pageSizeOptions={[10, 25, 50, 100]}
               searchPlaceholder="Search vendor, GRN, invoice no…"
+              selectable={canApprove}
+              selectedRowIds={Array.from(selectedInvoiceIds)}
+              onSelectionChange={(ids) => setSelectedInvoiceIds(new Set(ids))}
             />
           )}
         </div>
