@@ -124,38 +124,21 @@ export default function AccountsPayablePage() {
   const fetchPaidInvoices = useCallback(async () => {
     try {
       setLoadingPaid(true);
-      const [allGRNs, poAdvances] = await Promise.all([
-        apiClient.get<any[]>('/purchase/grn'),
-        apiClient.get<any[]>('/purchase/debit-notes/po-advances').catch(() => [] as any[])
-      ]);
+      // Use unified payment status API - single source of truth
+      const grnsWithStatus = await apiClient.get<any[]>('/purchase/debit-notes/grns-with-payment-status');
 
-      // Build PO advance map
-      const poAdvanceMap = new Map<string, number>();
-      (poAdvances || []).forEach((adv: any) => {
-        const poId = adv.po_id || adv.poId;
-        if (poId) {
-          const current = poAdvanceMap.get(poId) || 0;
-          poAdvanceMap.set(poId, current + +(adv.amount || 0));
-        }
-      });
-
-      const paid = (allGRNs || []).filter((grn: any) => {
+      const paid = (grnsWithStatus || []).filter((grn: any) => {
         const st = (grn.status || '').toUpperCase();
         if (st === 'REJECTED' || st === 'CANCELLED') return false;
-        const paymentSt = (grn.payment_status || '').toUpperCase();
-        if (paymentSt === 'PAID') return true;
-        // Also include GRNs fully covered by PO advances
-        const net = +(grn.net_payable_amount || 0);
-        const paid = +(grn.paid_amount || 0) + +(grn.tds_amount || 0) + +(grn.short_payment_amount || 0);
-        const poAdvance = grn.po_id ? (poAdvanceMap.get(grn.po_id) || 0) : 0;
-        return net > 0 && (paid + poAdvance) >= net - 0.009;
+        const calc = grn._payment_calculation || {};
+        return calc.is_fully_paid === true;
       }).map((grn: any) => {
-        const net = +(grn.net_payable_amount || 0);
-        const poAdvance = grn.po_id ? (poAdvanceMap.get(grn.po_id) || 0) : 0;
+        const calc = grn._payment_calculation || {};
         return {
           ...grn,
-          net,
-          settled: +(grn.paid_amount || 0) + +(grn.tds_amount || 0) + +(grn.short_payment_amount || 0) + poAdvance,
+          net: calc.net_payable || 0,
+          settled: calc.total_settled || 0,
+          outstanding: calc.outstanding || 0,
         };
       });
       setPaidInvoices(paid);
@@ -167,47 +150,39 @@ export default function AccountsPayablePage() {
   const [loadingPending, setLoadingPending] = useState(false);
 
   const fetchPendingInvoices = useCallback(async () => {
-    console.log('[VERSION] CODE v2 - WITH PO ADVANCE FIX');
+    console.log('[VERSION] CODE v3 - UNIFIED PAYMENT STATUS API');
     try {
       setLoadingPending(true);
-      const [allGRNs, poAdvances] = await Promise.all([
-        apiClient.get<any[]>('/purchase/grn'),
-        apiClient.get<any[]>('/purchase/debit-notes/po-advances').catch(() => [] as any[])
-      ]);
+      // Use unified payment status API - single source of truth
+      const grnsWithStatus = await apiClient.get<any[]>('/purchase/debit-notes/grns-with-payment-status');
 
-      // Build PO advance map
-      const poAdvanceMap = new Map<string, number>();
-      (poAdvances || []).forEach((adv: any) => {
-        const poId = adv.po_id || adv.poId;
-        if (poId) {
-          const current = poAdvanceMap.get(poId) || 0;
-          poAdvanceMap.set(poId, current + +(adv.amount || 0));
-        }
-      });
-
-      console.log('[Pending Invoices] PO Advance Map:', Array.from(poAdvanceMap.entries()));
-
-      const pending = (allGRNs || []).filter((grn: any) => {
+      const pending = (grnsWithStatus || []).filter((grn: any) => {
         const st = (grn.status || '').toUpperCase();
         if (st === 'REJECTED' || st === 'CANCELLED') return false;
         if (!grn.invoice_approved) return false; // Must be sanctioned first
-        const paymentSt = (grn.payment_status || '').toUpperCase();
-        return paymentSt !== 'PAID';
+        const calc = grn._payment_calculation || {};
+        return !calc.is_fully_paid; // Not fully paid
       }).map((grn: any) => {
-        const net = +(grn.net_payable_amount || 0);
-        const paid = +(grn.paid_amount || 0) + +(grn.tds_amount || 0) + +(grn.short_payment_amount || 0);
-        const poAdvance = grn.po_id ? (poAdvanceMap.get(grn.po_id) || 0) : 0;
-        const totalSettled = paid + poAdvance;
-        const outstanding = Math.max(0, net - totalSettled);
+        const calc = grn._payment_calculation || {};
 
         // Debug SAIL
         if (grn.vendor?.name?.toLowerCase().includes('steel') || grn.vendor?.name?.toLowerCase().includes('sail')) {
           console.log(`[Pending Invoices] SAIL GRN ${grn.grn_number}:`, {
-            net, paid, poAdvance, totalSettled, outstanding, po_id: grn.po_id
+            net: calc.net_payable,
+            settled: calc.total_settled,
+            outstanding: calc.outstanding,
+            po_advance: calc.po_advance_applied,
+            po_id: grn.po_id
           });
         }
 
-        return { ...grn, net, settled: totalSettled, poAdvance, outstanding };
+        return {
+          ...grn,
+          net: calc.net_payable || 0,
+          settled: calc.total_settled || 0,
+          poAdvance: calc.po_advance_applied || 0,
+          outstanding: calc.outstanding || 0,
+        };
       }).filter((grn: any) => grn.outstanding > 0.009); // Only show if actually outstanding
 
       console.log('[Pending Invoices] Final count:', pending.length);
