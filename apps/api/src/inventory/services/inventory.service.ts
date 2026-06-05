@@ -86,6 +86,84 @@ export class InventoryService {
     );
   }
 
+  private stockKey(itemId: string, warehouseId: string) {
+    return `${itemId}::${warehouseId}`;
+  }
+
+  private splitStockKey(key: string) {
+    const [itemId, warehouseId] = key.split('::');
+    return { itemId, warehouseId };
+  }
+
+  private async getLedgerStockByWarehouse(tenantId: string, filters?: any) {
+    const totals = new Map<string, number>();
+
+    let entriesQuery = this.supabase
+      .from('stock_entries')
+      .select('item_id, warehouse_id, quantity, metadata')
+      .eq('tenant_id', tenantId);
+
+    if (filters?.item_id) entriesQuery = entriesQuery.eq('item_id', filters.item_id);
+    if (filters?.warehouse_id) entriesQuery = entriesQuery.eq('warehouse_id', filters.warehouse_id);
+
+    const { data: stockEntries, error: entriesError } = await entriesQuery;
+    if (entriesError) throw new BadRequestException(entriesError.message);
+
+    const grnEntryMap = new Map<string, number>();
+    for (const entry of stockEntries || []) {
+      const itemId = toValidUuid((entry as any).item_id);
+      const warehouseId = toValidUuid((entry as any).warehouse_id);
+      if (!itemId || !warehouseId) continue;
+
+      const grnRef = (entry as any).metadata?.grn_reference || (entry as any).metadata?.grn_number;
+      if (!grnRef) continue;
+
+      const key = `${itemId}::${warehouseId}::${grnRef}`;
+      grnEntryMap.set(key, (grnEntryMap.get(key) || 0) + (Number((entry as any).quantity) || 0));
+    }
+
+    for (const [key, qty] of grnEntryMap.entries()) {
+      const [itemId, warehouseId] = key.split('::');
+      const stockKey = this.stockKey(itemId, warehouseId);
+      totals.set(stockKey, (totals.get(stockKey) || 0) + qty);
+    }
+
+    let movementsQuery = this.supabase
+      .from('stock_movements')
+      .select('item_id, quantity, from_warehouse_id, to_warehouse_id')
+      .eq('tenant_id', tenantId);
+
+    if (filters?.item_id) movementsQuery = movementsQuery.eq('item_id', filters.item_id);
+
+    const { data: movements, error: movementsError } = await movementsQuery;
+    if (movementsError) throw new BadRequestException(movementsError.message);
+
+    for (const movement of movements || []) {
+      const itemId = toValidUuid((movement as any).item_id);
+      if (!itemId) continue;
+
+      const qty = Number((movement as any).quantity) || 0;
+      const fromWarehouseId = toValidUuid((movement as any).from_warehouse_id);
+      const toWarehouseId = toValidUuid((movement as any).to_warehouse_id);
+
+      if (filters?.warehouse_id && fromWarehouseId !== filters.warehouse_id && toWarehouseId !== filters.warehouse_id) {
+        continue;
+      }
+
+      if (toWarehouseId) {
+        const key = this.stockKey(itemId, toWarehouseId);
+        totals.set(key, (totals.get(key) || 0) + qty);
+      }
+
+      if (fromWarehouseId) {
+        const key = this.stockKey(itemId, fromWarehouseId);
+        totals.set(key, (totals.get(key) || 0) - qty);
+      }
+    }
+
+    return totals;
+  }
+
   private isMissingColumnError(error: { message?: string; code?: string } | null | undefined, columnName: string) {
     const msg = String(error?.message || '').toLowerCase();
     return (
@@ -187,26 +265,24 @@ export class InventoryService {
   async getStockLevels(req: Request, filters?: any) {
     const { tenantId } = req.user as any;
 
-    // Get stock entries first
-    let query = this.supabase
-      .from('inventory_stock')
-      .select('*')
-      .eq('tenant_id', tenantId);
-
-    if (filters?.warehouse_id) {
-      query = query.eq('warehouse_id', filters.warehouse_id);
-    }
-
-    if (filters?.item_id) {
-      query = query.eq('item_id', filters.item_id);
-    }
+    const ledgerTotals = await this.getLedgerStockByWarehouse(tenantId, filters);
+    let stockEntries = Array.from(ledgerTotals.entries()).map(([key, quantity]) => {
+      const { itemId, warehouseId } = this.splitStockKey(key);
+      return {
+        id: key,
+        tenant_id: tenantId,
+        item_id: itemId,
+        warehouse_id: warehouseId,
+        quantity,
+        available_quantity: quantity,
+        reserved_quantity: 0,
+        allocated_quantity: 0,
+      };
+    });
 
     if (filters?.low_stock) {
-      query = query.lt('available_quantity', 10); // Low stock threshold
+      stockEntries = stockEntries.filter((entry) => Number(entry.available_quantity || 0) < 10);
     }
-
-    const { data: stockEntries, error: stockError } = await query;
-    if (stockError) throw new BadRequestException(stockError.message);
 
     if (!stockEntries || stockEntries.length === 0) {
       return [];

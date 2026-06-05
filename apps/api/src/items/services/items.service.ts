@@ -1379,14 +1379,22 @@ export class ItemsService {
       t.balance = balance;
     }
 
-    // Current stock breakdown by warehouse
-    const { data: currentStock } = await this.supabase
-      .from('inventory_stock')
-      .select('quantity, available_quantity, allocated_quantity, warehouse_id, warehouses(id, name, code)')
-      .eq('tenant_id', tenantId)
-      .eq('item_id', itemId);
+    const stockByWarehouse = new Map<string, number>();
+    for (const t of trails) {
+      const warehouse = String(t.warehouse || '').trim();
+      if (!warehouse) continue;
+      stockByWarehouse.set(warehouse, (stockByWarehouse.get(warehouse) || 0) + Number(t.qty_in || 0) - Number(t.qty_out || 0));
+    }
 
-    return { trails, currentBalance: balance, currentStock: currentStock || [] };
+    const currentStock = Array.from(stockByWarehouse.entries()).map(([warehouseName, quantity]) => ({
+      quantity,
+      available_quantity: quantity,
+      allocated_quantity: 0,
+      warehouse_id: null,
+      warehouses: { id: null, name: warehouseName, code: warehouseName },
+    }));
+
+    return { trails, currentBalance: balance, currentStock };
   }
 
   // Get default variant for an item
