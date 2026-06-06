@@ -242,6 +242,28 @@ export class ItemsService {
       console.error('[ItemsService] Query error:', error);
       throw new Error(`Failed to fetch items: ${error.message}`);
     }
+
+    // Resolve updated_by user IDs to names
+    let userMap = new Map<string, string>();
+    if (data && data.length > 0) {
+      const userIds = Array.from(new Set(
+        data
+          .filter((item: any) => item.updated_by)
+          .map((item: any) => item.updated_by)
+      ));
+
+      if (userIds.length > 0) {
+        const { data: users } = await this.supabase
+          .from('users')
+          .select('id, first_name, last_name, username, email')
+          .in('id', userIds);
+
+        for (const user of users || []) {
+          const displayName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || user.email || user.id;
+          userMap.set(user.id, displayName);
+        }
+      }
+    }
     
     // Stock Master must read from inventory_stock because stock adjustments
     // update that aggregate table directly.
@@ -249,10 +271,11 @@ export class ItemsService {
       const itemIds = data.map((item: any) => item.id).filter(Boolean);
       const stockTotals = await this.getLedgerStockTotals(tenantId, itemIds);
 
-      // Add total_stock to each item
+      // Add total_stock and resolved user names to each item
       return data.map(item => ({
         ...item,
-        total_stock: stockTotals[item.id] || 0
+        total_stock: stockTotals[item.id] || 0,
+        updated_by: item.updated_by ? userMap.get(item.updated_by) || item.updated_by : null,
       }));
     }
 
