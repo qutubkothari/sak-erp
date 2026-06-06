@@ -78,7 +78,6 @@ export class ItemsController {
   @Put(':id')
   @RequireUpdate('items')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
-    console.log('[ItemsController.update] userId:', req.user?.userId, 'user:', req.user);
     return this.itemsService.update(req.user.tenantId, id, body, req.user.userId);
   }
 

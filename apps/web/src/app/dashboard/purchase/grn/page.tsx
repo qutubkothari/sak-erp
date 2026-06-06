@@ -1185,8 +1185,8 @@ function GRNContent() {
     try {
       const token = localStorage.getItem('accessToken');
       
-      // Fetch all approved POs
-      const poResponse = await fetch('/api/v1/purchase/orders?status=APPROVED', {
+      // Fetch only pending (not fully received) approved POs for GRN creation
+      const poResponse = await fetch('/api/v1/purchase/orders?status=APPROVED&pendingOnly=true', {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -1209,12 +1209,11 @@ function GRNContent() {
       }
       setPurchaseOrdersById(nextById);
       
-      // Filter POs: Only show APPROVED POs that are not fully received.
-      // The API returns receipt_status = OPEN | PARTIALLY_RECEIVED | FULLY_RECEIVED.
-      // Exclude FULLY_RECEIVED (no remaining items to receive).
+      // The API now filters out FULLY_RECEIVED POs when pendingOnly=true
+      // We keep this as a safety check for any edge cases
       const availablePOs = allPOsList.filter((po: any) => {
         if (po.status !== 'APPROVED') return false;
-        // If API computed receipt_status, use it directly
+        // Double-check: exclude FULLY_RECEIVED
         if (po.receipt_status === 'FULLY_RECEIVED') return false;
         // Fallback: check purchase_order_items directly
         const items: any[] = po.purchase_order_items || po.po_items || [];

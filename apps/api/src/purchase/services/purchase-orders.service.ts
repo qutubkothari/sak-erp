@@ -937,6 +937,12 @@ export class PurchaseOrdersService {
     for (const po of rows) {
       const hydratedPo = this.hydratePODrawingSelections(po);
       const receipt = await this.computeReceiptSummary(tenantId, hydratedPo);
+      
+      // Filter out fully received POs if pendingOnly is requested (for GRN creation)
+      if (filters?.pendingOnly && receipt.receipt_status === 'FULLY_RECEIVED') {
+        continue;
+      }
+      
       result.push({
         ...hydratedPo,
         ...receipt,
