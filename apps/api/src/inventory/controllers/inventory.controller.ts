@@ -37,7 +37,7 @@ export class InventoryController {
 
   @Put('items/:id')
   async updateItem(@Request() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.itemsService.update(req.user.tenantId, id, body);
+    return this.itemsService.update(req.user.tenantId, id, body, req.user.userId);
   }
 
   @Delete('items/:id')
