@@ -252,15 +252,20 @@ export class ItemsService {
           .map((item: any) => item.updated_by)
       ));
 
+      console.log('[ItemsService.findAll] User IDs to resolve:', userIds);
+
       if (userIds.length > 0) {
-        const { data: users } = await this.supabase
+        const { data: users, error: userError } = await this.supabase
           .from('users')
           .select('id, first_name, last_name, username, email')
           .in('id', userIds);
 
+        console.log('[ItemsService.findAll] Users query result:', { users: users?.length, error: userError?.message });
+
         for (const user of users || []) {
           const displayName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || user.email || user.id;
           userMap.set(user.id, displayName);
+          console.log('[ItemsService.findAll] Mapped user:', user.id, '->', displayName);
         }
       }
     }
@@ -272,11 +277,13 @@ export class ItemsService {
       const stockTotals = await this.getLedgerStockTotals(tenantId, itemIds);
 
       // Add total_stock and resolved user names to each item
-      return data.map(item => ({
+      const mapped = data.map(item => ({
         ...item,
         total_stock: stockTotals[item.id] || 0,
         updated_by: item.updated_by ? userMap.get(item.updated_by) || item.updated_by : null,
       }));
+      console.log('[ItemsService.findAll] First 3 items updated_by:', mapped.slice(0, 3).map((i: any) => ({ id: i.id, updated_by: i.updated_by })));
+      return mapped;
     }
 
     return data || [];
@@ -552,6 +559,7 @@ export class ItemsService {
       updated_at: new Date().toISOString(),
       ...(userId ? { updated_by: userId } : {}),
     };
+    console.log('[ItemsService.update] Setting updated_by:', userId, 'for item:', id);
 
     // Only update fields that are provided
     if (itemData.code !== undefined) updateData.code = toUpperCode(itemData.code);
