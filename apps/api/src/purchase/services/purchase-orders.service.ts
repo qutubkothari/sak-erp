@@ -514,7 +514,9 @@ export class PurchaseOrdersService {
     const patchedItems = items.map((it: any) => {
       const ordered = this.toNumber(it?.ordered_qty);
       const poItemId = String(it?.id || '').trim();
-      const received = grnReceivedByPoItem.get(poItemId) || 0;
+      const grnLedgerReceived = grnReceivedByPoItem.get(poItemId) || 0;
+      const storedPoReceived = this.toNumber(it?.received_qty ?? it?.received_quantity);
+      const received = Math.max(grnLedgerReceived, storedPoReceived);
       const remaining = Math.max(0, ordered - received);
       orderedTotal += ordered;
       receivedTotal += Math.min(received, ordered);
