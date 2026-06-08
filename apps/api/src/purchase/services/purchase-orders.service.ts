@@ -434,7 +434,7 @@ export class PurchaseOrdersService {
     // Join grn_items -> grns to exclude REJECTED/CANCELLED GRNs from received qty
     const { data: grnItems, error } = await this.supabase
       .from('grn_items')
-      .select('po_item_id, received_qty, received_quantity, accepted_qty, accepted_quantity, grn:grns!inner(status)')
+      .select('po_item_id, received_qty, accepted_qty, grn:grns!inner(status)')
       .eq('tenant_id', tenantId)
       .in('po_item_id', poItemIds)
       .not('grn.status', 'in', '("REJECTED","CANCELLED")');
@@ -448,7 +448,7 @@ export class PurchaseOrdersService {
     for (const item of grnItems || []) {
       const poItemId = String(item.po_item_id || '').trim();
       if (!poItemId) continue;
-      const qty = this.toNumber(item.received_qty ?? item.received_quantity ?? item.accepted_qty ?? item.accepted_quantity ?? 0);
+      const qty = this.toNumber(item.received_qty ?? item.accepted_qty ?? 0);
       receivedByPoItem.set(poItemId, (receivedByPoItem.get(poItemId) || 0) + qty);
     }
 
@@ -476,7 +476,7 @@ export class PurchaseOrdersService {
 
     const { data: grnItems, error: grnItemsError } = await this.supabase
       .from('grn_items')
-      .select('received_qty, received_quantity, accepted_qty, accepted_quantity')
+      .select('received_qty, accepted_qty')
       .in('grn_id', grnIds);
 
     if (grnItemsError) {
@@ -486,7 +486,7 @@ export class PurchaseOrdersService {
 
     return (grnItems || []).reduce(
       (sum: number, item: any) =>
-        sum + this.toNumber(item.received_qty ?? item.received_quantity ?? item.accepted_qty ?? item.accepted_quantity ?? 0),
+        sum + this.toNumber(item.received_qty ?? item.accepted_qty ?? 0),
       0,
     );
   }
