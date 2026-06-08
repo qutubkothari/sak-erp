@@ -130,6 +130,7 @@ type PurchaseOrderFormItem = {
   vendorId?: string;
   quantity: number;
   unitPrice: number;
+  discount: number;
   taxRate: number;
   totalPrice: number;
   specifications?: string;
@@ -198,7 +199,7 @@ function PurchaseOrdersContent() {
   
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<Array<{ id: string; name: string; contact_person: string }>>([]);
-  const [users, setUsers] = useState<Array<{ id: string; employee_name: string; employee_code?: string; phone?: string }>>([]);
+  const [users, setUsers] = useState<Array<{ id: string; employee_name: string; employee_code?: string; phone?: string; mobile?: string; phone_number?: string; contact_number?: string; mobile_number?: string }>>([]);
   const [items, setItems] = useState<Array<{
     id: string;
     code: string;
@@ -1324,6 +1325,7 @@ function PurchaseOrdersContent() {
           vendorId: prev.vendorId,
           quantity: 1,
           unitPrice: 0,
+          discount: 0,
           taxRate: 18,
           totalPrice: 0,
           specifications: '',
@@ -1548,10 +1550,12 @@ function PurchaseOrdersContent() {
       }
     }
 
-    // Recalculate total price
-    if (field === 'quantity' || field === 'unitPrice' || field === 'taxRate' || field === 'itemId' || field === 'vendorId') {
+    // Recalculate total price (including discount)
+    if (field === 'quantity' || field === 'unitPrice' || field === 'taxRate' || field === 'discount' || field === 'itemId' || field === 'vendorId') {
       const item = updatedItems[index];
-      const subtotal = item.quantity * item.unitPrice;
+      const grossAmount = item.quantity * item.unitPrice;
+      const discount = item.discount || 0;
+      const subtotal = Math.max(0, grossAmount - discount);
       item.totalPrice = subtotal + (subtotal * item.taxRate) / 100;
     }
 
@@ -1592,7 +1596,9 @@ function PurchaseOrdersContent() {
       items: prev.items.map(item => {
         const rfqPrice = item.prItemId ? rfqPriceByPrItemId[String(item.prItemId)] : undefined;
         const effectivePrice = rfqPrice != null ? rfqPrice : item.unitPrice;
-        const subtotal = item.quantity * effectivePrice;
+        const grossAmount = item.quantity * effectivePrice;
+        const discount = item.discount || 0;
+        const subtotal = Math.max(0, grossAmount - discount);
         const totalPrice = subtotal + (subtotal * item.taxRate) / 100;
         return {
           ...item,
@@ -1787,9 +1793,12 @@ function PurchaseOrdersContent() {
         vendorId: resolvedVendorId, // Use PO's vendor for all items
         quantity: item.ordered_qty || 0,
         unitPrice: item.rate || 0,
+        discount: item.discount || 0,
         taxRate: item.tax_percent != null ? item.tax_percent : 18,
         totalPrice: item.amount || 0,
         specifications: item.remarks || '',
+        paymentTerms: item.payment_terms || '',
+        deliveryTerms: item.delivery_terms || '',
         includeDrawing: item.include_drawing === true || item.includeDrawing === true,
         selectedDrawingId: item.selected_drawing_id || item.selectedDrawingId || '',
       })) || [];
@@ -2817,7 +2826,7 @@ function PurchaseOrdersContent() {
                       <p className="text-xs text-gray-500 mb-1">📍 Quick-select saved address:</p>
                       <div className="flex flex-wrap gap-2">
                         {deliveryAddresses.map((entry) => (
-                          <div key={entry.id} className="flex items-center gap-1">
+                          <div key={entry.id} className="flex items-center gap-1 bg-gray-50 rounded-full border border-gray-200 pr-1">
                             <button
                               type="button"
                               onClick={() => setFormData({ ...formData, deliveryAddress: entry.address })}
@@ -2832,8 +2841,8 @@ function PurchaseOrdersContent() {
                             <button
                               type="button"
                               onClick={() => handleDeleteDeliveryAddress(entry.id)}
-                              className="text-red-500 hover:text-red-700 text-xs p-1"
-                              title="Delete address"
+                              className="w-6 h-6 flex items-center justify-center rounded-full bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-800 text-sm font-bold transition-colors"
+                              title="Delete this saved address"
                             >
                               ×
                             </button>
@@ -2879,11 +2888,14 @@ function PurchaseOrdersContent() {
                     <select
                       value={formData.deliveryContactPerson}
                       onChange={(e) => {
-                        const selectedUser = users.find(u => u.employee_name === e.target.value);
+                        const selectedName = e.target.value;
+                        const selectedUser = users.find(u => u.employee_name === selectedName);
+                        // Try multiple possible phone field names
+                        const phone = selectedUser?.phone || selectedUser?.mobile || selectedUser?.phone_number || selectedUser?.contact_number || selectedUser?.mobile_number || '';
                         setFormData({
                           ...formData,
-                          deliveryContactPerson: e.target.value,
-                          deliveryContactPhone: selectedUser?.phone || formData.deliveryContactPhone
+                          deliveryContactPerson: selectedName,
+                          deliveryContactPhone: phone
                         });
                       }}
                       className="w-full border border-gray-300 rounded-lg px-4 py-2"
@@ -3041,11 +3053,12 @@ function PurchaseOrdersContent() {
                     <div className="text-sm text-gray-500">No items added yet.</div>
                   ) : (
                     <div className="rounded-xl border border-gray-200 bg-white p-3 overflow-visible">
-                      <div className="hidden lg:grid grid-cols-[minmax(12rem,2fr)_4.75rem_6rem_minmax(8rem,1fr)_4.75rem_6rem_2.5rem] gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600 shadow-sm">
+                      <div className="hidden lg:grid grid-cols-[minmax(12rem,2fr)_4.75rem_6rem_minmax(8rem,1fr)_5rem_4.75rem_6rem_2.5rem] gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600 shadow-sm">
                           <div>Item</div>
                           <div>Qty</div>
                           <div>UOM</div>
                           <div>Unit Price</div>
+                          <div className="text-right">Disc (₹)</div>
                           <div>GST %</div>
                           <div className="text-right">Total</div>
                           <div></div>
@@ -3053,7 +3066,7 @@ function PurchaseOrdersContent() {
                         <div className="mt-3 space-y-4">
                       {formData.items.map((item, index) => (
                         <div key={index} className="relative border border-gray-200 rounded-lg p-4 bg-white">
-                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-[minmax(12rem,2fr)_4.75rem_6rem_minmax(8rem,1fr)_4.75rem_6rem_2.5rem] lg:gap-3">
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-[minmax(12rem,2fr)_4.75rem_6rem_minmax(8rem,1fr)_5rem_4.75rem_6rem_2.5rem] lg:gap-3">
                             <div className="min-w-0 md:col-span-2 lg:col-span-1">
                               {item.itemId ? (
                                 <div className="flex flex-col gap-2 min-w-0">
@@ -3312,6 +3325,16 @@ function PurchaseOrdersContent() {
                                   </div>
                                 );
                               })()}
+                            </div>
+                            <div className="min-w-0">
+                              <input
+                                type="number"
+                                value={item.discount || 0}
+                                onChange={(e) => handleUpdateItem(index, 'discount', parseFloat(e.target.value) || 0)}
+                                placeholder="Disc"
+                                className="w-full border border-gray-300 rounded px-3 py-2"
+                                min="0"
+                              />
                             </div>
                             <div className="min-w-0">
                               <input

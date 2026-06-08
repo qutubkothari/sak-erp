@@ -728,6 +728,9 @@ export class GrnService {
     // Calculate and update financial amounts with GST
     await this.updateGRNFinancialAmounts(tenantId, id);
 
+    // Auto-apply PO advance against this GRN invoice
+    await this.applyPoAdvanceToGrn(tenantId, id);
+
     // Ensure stock entries exist for accepted quantities.
     await this.ensureStockEntriesForGrnAccepted(tenantId, grn);
 
@@ -741,6 +744,70 @@ export class GrnService {
     }
 
     return this.findOne(tenantId, id);
+  }
+
+  /**
+   * Auto-apply PO advance against a GRN when it is submitted (COMPLETED).
+   *
+   * Rules:
+   *   advance >= net_payable  → payment_status = PAID, auto-approve invoice (no approval queue)
+   *   0 < advance < net_payable → payment_status = PARTIAL, paid_amount = advance,
+   *                               balance remains unapproved (goes to Supplier Invoices for approval)
+   *   no advance              → no change (payment_status stays DUE)
+   */
+  private async applyPoAdvanceToGrn(tenantId: string, grnId: string) {
+    const { data: grn } = await this.supabase
+      .from('grns')
+      .select('id, po_id, net_payable_amount, paid_amount, payment_status, invoice_approved')
+      .eq('tenant_id', tenantId)
+      .eq('id', grnId)
+      .maybeSingle();
+
+    if (!grn || !grn.po_id) return;
+
+    const netPayable = this.toNumber(grn.net_payable_amount);
+    if (netPayable <= 0) return;
+
+    // Sum balance_amount across all advance records for this PO
+    const { data: advances } = await this.supabase
+      .from('po_advance_payments')
+      .select('amount, balance_amount')
+      .eq('po_id', grn.po_id)
+      .eq('tenant_id', tenantId);
+
+    const totalAdvanceBalance = (advances || []).reduce(
+      (sum: number, a: any) => sum + this.toNumber(a.balance_amount ?? a.amount),
+      0,
+    );
+
+    if (totalAdvanceBalance <= 0) return;
+
+    const advanceApplied = Math.min(totalAdvanceBalance, netPayable);
+    const isFullyCovered = advanceApplied >= netPayable - 0.009;
+    const paymentStatus = isFullyCovered ? 'PAID' : 'PARTIAL';
+
+    console.log(
+      `[applyPoAdvanceToGrn] GRN ${grnId}: netPayable=${netPayable}, ` +
+      `advanceBalance=${totalAdvanceBalance}, applied=${advanceApplied}, status=${paymentStatus}`,
+    );
+
+    const updates: any = {
+      paid_amount: advanceApplied,
+      payment_status: paymentStatus,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (isFullyCovered) {
+      updates.invoice_approved = true;
+      updates.invoice_approved_at = new Date().toISOString();
+      updates.invoice_approval_notes = 'Auto-approved: fully covered by PO advance payment';
+    }
+
+    await this.supabase
+      .from('grns')
+      .update(updates)
+      .eq('tenant_id', tenantId)
+      .eq('id', grnId);
   }
 
   async updateStatus(tenantId: string, id: string, status: string, userId: string) {

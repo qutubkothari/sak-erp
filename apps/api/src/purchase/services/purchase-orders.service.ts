@@ -430,33 +430,73 @@ export class PurchaseOrdersService {
 
   private async fetchGrnReceivedByPoItem(tenantId: string, poItemIds: string[]): Promise<Map<string, number>> {
     if (poItemIds.length === 0) return new Map();
-    
+
+    // Join grn_items -> grns to exclude REJECTED/CANCELLED GRNs from received qty
     const { data: grnItems, error } = await this.supabase
       .from('grn_items')
-      .select('po_item_id, received_qty, received_quantity')
+      .select('po_item_id, received_qty, received_quantity, accepted_qty, accepted_quantity, grn:grns!inner(status)')
       .eq('tenant_id', tenantId)
       .in('po_item_id', poItemIds)
-      .eq('inspection_status', 'ACCEPTED');
-    
+      .not('grn.status', 'in', '("REJECTED","CANCELLED")');
+
     if (error) {
       console.error('[PO] Failed to fetch GRN received quantities:', error);
       return new Map();
     }
-    
+
     const receivedByPoItem = new Map<string, number>();
     for (const item of grnItems || []) {
       const poItemId = String(item.po_item_id || '').trim();
       if (!poItemId) continue;
-      const qty = this.toNumber(item.received_qty ?? item.received_quantity ?? 0);
+      const qty = this.toNumber(item.received_qty ?? item.received_quantity ?? item.accepted_qty ?? item.accepted_quantity ?? 0);
       receivedByPoItem.set(poItemId, (receivedByPoItem.get(poItemId) || 0) + qty);
     }
-    
+
     return receivedByPoItem;
+  }
+
+  private async fetchGrnReceivedTotalByPoId(tenantId: string, poId?: string | null): Promise<number> {
+    const normalizedPoId = String(poId || '').trim();
+    if (!normalizedPoId) return 0;
+
+    const { data: grns, error: grnError } = await this.supabase
+      .from('grns')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('po_id', normalizedPoId)
+      .not('status', 'in', '("REJECTED","CANCELLED")');
+
+    if (grnError) {
+      console.error('[PO] Failed to fetch GRNs for receipt summary:', grnError);
+      return 0;
+    }
+
+    const grnIds = (grns || []).map((grn: any) => String(grn.id || '').trim()).filter(Boolean);
+    if (grnIds.length === 0) return 0;
+
+    const { data: grnItems, error: grnItemsError } = await this.supabase
+      .from('grn_items')
+      .select('received_qty, received_quantity, accepted_qty, accepted_quantity')
+      .in('grn_id', grnIds);
+
+    if (grnItemsError) {
+      console.error('[PO] Failed to fetch GRN items for receipt summary:', grnItemsError);
+      return 0;
+    }
+
+    return (grnItems || []).reduce(
+      (sum: number, item: any) =>
+        sum + this.toNumber(item.received_qty ?? item.received_quantity ?? item.accepted_qty ?? item.accepted_quantity ?? 0),
+      0,
+    );
   }
 
   private async computeReceiptSummary(tenantId: string, po: any) {
     const items: any[] = Array.isArray(po?.purchase_order_items) ? po.purchase_order_items : [];
+    const poNumber = po?.po_number;
+    
     if (items.length === 0) {
+      console.log(`[computeReceiptSummary] PO ${poNumber}: No items, status=OPEN`);
       return {
         receipt_status: 'OPEN',
         receipt_progress: { ordered_qty: 0, received_qty: 0, remaining_qty: 0, received_percent: 0 },
@@ -485,18 +525,33 @@ export class PurchaseOrdersService {
       };
     });
 
+    const poLevelReceivedTotal = await this.fetchGrnReceivedTotalByPoId(tenantId, po?.id);
+    const effectiveReceivedTotal = Math.max(receivedTotal, Math.min(poLevelReceivedTotal, orderedTotal));
+    if (poLevelReceivedTotal > receivedTotal && orderedTotal > 0) {
+      let remainingPoLevelReceived = poLevelReceivedTotal;
+      for (const item of patchedItems) {
+        const ordered = this.toNumber(item.ordered_qty);
+        const received = Math.min(ordered, remainingPoLevelReceived);
+        item.received_qty = Math.max(this.toNumber(item.received_qty), received);
+        item.remaining_qty = Math.max(0, ordered - this.toNumber(item.received_qty));
+        remainingPoLevelReceived = Math.max(0, remainingPoLevelReceived - received);
+      }
+    }
+
     const allFullyReceived = patchedItems.every((it: any) => this.toNumber(it.ordered_qty) <= this.toNumber(it.received_qty) + 1e-9);
     const anyReceived = patchedItems.some((it: any) => this.toNumber(it.received_qty) > 0);
 
     const receiptStatus = allFullyReceived ? 'FULLY_RECEIVED' : anyReceived ? 'PARTIALLY_RECEIVED' : 'OPEN';
-    const receivedPercent = orderedTotal > 0 ? Math.round((receivedTotal / orderedTotal) * 1000) / 10 : 0;
+    const receivedPercent = orderedTotal > 0 ? Math.round((effectiveReceivedTotal / orderedTotal) * 1000) / 10 : 0;
+
+    console.log(`[computeReceiptSummary] PO ${poNumber}: receipt_status=${receiptStatus}, ordered=${orderedTotal}, received=${effectiveReceivedTotal}, percent=${receivedPercent}%`);
 
     return {
       receipt_status: receiptStatus,
       receipt_progress: {
         ordered_qty: orderedTotal,
-        received_qty: receivedTotal,
-        remaining_qty: Math.max(0, orderedTotal - receivedTotal),
+        received_qty: effectiveReceivedTotal,
+        remaining_qty: Math.max(0, orderedTotal - effectiveReceivedTotal),
         received_percent: receivedPercent,
       },
       purchase_order_items: patchedItems,
