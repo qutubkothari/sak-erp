@@ -1589,37 +1589,6 @@ export default function ItemsPage() {
           </div>
         </div>
 
-        <div className="mb-3 rounded-lg bg-white p-3 shadow-md">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <label className="flex items-end">
-              <button
-                type="button"
-                onClick={() => setShowDeleted(!showDeleted)}
-                className={`w-full rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${
-                  showDeleted
-                    ? 'bg-red-600 text-white hover:bg-red-700'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {showDeleted ? 'Showing Deleted' : 'Show Deleted'}
-              </button>
-            </label>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Type</label>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="">All Types</option>
-                {ITEM_CATEGORY_OPTIONS.map((cat) => (
-                  <option key={cat.value} value={cat.value}>{cat.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
         <ListTable
           storageKey="stockMasterTable:poStyle:v1"
           rows={filteredItems}
@@ -1629,6 +1598,21 @@ export default function ItemsPage() {
           pageSizeOptions={[10, 25, 50, 100]}
           searchPlaceholder="Search by code, name, OEM part no., HSN, category…"
           exportFilename={`stock-master-${new Date().toISOString().slice(0, 10)}`}
+          toolbarRight={
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">Type:</span>
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="w-40 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-transparent focus:ring-2 focus:ring-amber-500"
+              >
+                <option value="">All</option>
+                {ITEM_CATEGORY_OPTIONS.map((cat) => (
+                  <option key={cat.value} value={cat.value}>{cat.label}</option>
+                ))}
+              </select>
+            </div>
+          }
           emptyState={
             <div className="p-12 text-center">
               <div className="mb-2 text-lg font-semibold text-gray-700">No items found</div>
