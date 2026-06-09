@@ -273,6 +273,7 @@ function GRNContent() {
     itemId: string;
     itemCode: string;
     itemName: string;
+    notes?: string;
     receivedQty: number;
     acceptedQty: number;
     rejectedQty: number;
@@ -2928,7 +2929,7 @@ function GRNContent() {
                             <td className="px-4 py-2 text-sm text-gray-900">{item.item_code || item.item?.code || '-'}</td>
                             <td className="px-4 py-2 text-sm text-gray-900">
                               <div>{item.item_name || item.item?.name || '-'}</div>
-                              {item.notes && <div className="text-xs text-gray-500 mt-1 italic whitespace-pre-wrap">{item.notes}</div>}
+                              {(item as any).notes && <div className="text-xs text-gray-500 mt-1 italic whitespace-pre-wrap">{(item as any).notes}</div>}
                             </td>
                             <td className="px-4 py-2 text-sm text-gray-900 text-center">{resolveUom({
                               uom: (item as any).uom || (item as any).uom_name || (item as any).unit || (item as any).unit_name || (item as any).item?.uom,
@@ -3073,7 +3074,7 @@ function GRNContent() {
                             itemId: item.id,
                             itemCode: item.item_code || item.item?.code,
                             itemName: item.item_name || item.item?.name,
-                            notes: item.notes || '',
+                            notes: (item as any).notes || '',
                             receivedQty: receivedQty,
                             acceptedQty: acceptedQty,
                             rejectedQty: rejectedQty,
