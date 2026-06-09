@@ -40,6 +40,7 @@ interface GRNPayable {
   payment_status?: string;
   status: string;
   outstanding_amount?: number;
+  po_id?: string | null;
 }
 
 interface PaymentEntry {
@@ -961,10 +962,10 @@ export default function AccountsPayablePage() {
   ];
 
   const pendingInvoiceColumns: ListTableColumn<any>[] = [
-    { id: 'grn_number', label: 'GRN No.', accessor: (g) => g.grn_number, sortAccessor: (g) => g.grn_number, searchAccessor: (g) => g.grn_number, cell: (g) => <span className="font-semibold text-gray-900">{g.grn_number}</span>, minWidth: 150 },
-    { id: 'invoice_number', label: 'Invoice No.', accessor: (g) => g.invoice_number || '—', sortAccessor: (g) => g.invoice_number || '', searchAccessor: (g) => g.invoice_number || '', minWidth: 140 },
+    { id: 'grn_number', label: 'GRN No.', accessor: (g) => g.grn_number, sortAccessor: (g) => g.grn_number, searchAccessor: (g) => g.grn_number, cell: (g) => <a href={`/dashboard/purchase/grn?viewId=${g.id}`} target="_blank" className="font-semibold text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.grn_number}</a>, minWidth: 150 },
+    { id: 'invoice_number', label: 'Invoice No.', accessor: (g) => g.invoice_number || '—', sortAccessor: (g) => g.invoice_number || '', searchAccessor: (g) => g.invoice_number || '', cell: (g) => g.invoice_number ? <a href={`/dashboard/purchase/grn?viewId=${g.id}`} target="_blank" className="text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.invoice_number}</a> : '—', minWidth: 140 },
     { id: 'vendor', label: 'Vendor', accessor: (g) => g.vendor?.name || '—', sortAccessor: (g) => g.vendor?.name || '', searchAccessor: (g) => `${g.vendor?.name || ''} ${g.vendor?.code || ''}`, minWidth: 190 },
-    { id: 'po_number', label: 'PO No.', accessor: (g) => g.purchase_order?.po_number || '—', sortAccessor: (g) => g.purchase_order?.po_number || '', searchAccessor: (g) => g.purchase_order?.po_number || '', minWidth: 150 },
+    { id: 'po_number', label: 'PO No.', accessor: (g) => g.purchase_order?.po_number || '—', sortAccessor: (g) => g.purchase_order?.po_number || '', searchAccessor: (g) => g.purchase_order?.po_number || '', cell: (g) => g.purchase_order?.po_number ? <a href={`/dashboard/purchase/orders?viewId=${g.purchase_order.id || g.po_id}`} target="_blank" className="text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.purchase_order.po_number}</a> : '—', minWidth: 150 },
     { id: 'receipt_date', label: 'Receipt Date', accessor: (g) => g.receipt_date ? new Date(g.receipt_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.receipt_date || '', minWidth: 130 },
     { id: 'net', label: 'Net Payable', accessor: (g) => g.net, cell: (g) => `₹${fmtINR(g.net)}`, sortAccessor: (g) => g.net, align: 'right', minWidth: 140 },
     { id: 'settled', label: 'Settled', accessor: (g) => g.settled, cell: (g) => <span className="font-semibold text-green-700">₹{fmtINR(g.settled)}</span>, sortAccessor: (g) => g.settled, align: 'right', minWidth: 130 },
@@ -973,10 +974,10 @@ export default function AccountsPayablePage() {
   ];
 
   const paidInvoiceColumns: ListTableColumn<any>[] = [
-    { id: 'grn_number', label: 'GRN No.', accessor: (g) => g.grn_number, sortAccessor: (g) => g.grn_number, searchAccessor: (g) => g.grn_number, cell: (g) => <span className="font-semibold text-gray-900">{g.grn_number}</span>, minWidth: 150 },
-    { id: 'invoice_number', label: 'Invoice No.', accessor: (g) => g.invoice_number || '—', sortAccessor: (g) => g.invoice_number || '', searchAccessor: (g) => g.invoice_number || '', minWidth: 140 },
+    { id: 'grn_number', label: 'GRN No.', accessor: (g) => g.grn_number, sortAccessor: (g) => g.grn_number, searchAccessor: (g) => g.grn_number, cell: (g) => <a href={`/dashboard/purchase/grn?viewId=${g.id}`} target="_blank" className="font-semibold text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.grn_number}</a>, minWidth: 150 },
+    { id: 'invoice_number', label: 'Invoice No.', accessor: (g) => g.invoice_number || '—', sortAccessor: (g) => g.invoice_number || '', searchAccessor: (g) => g.invoice_number || '', cell: (g) => g.invoice_number ? <a href={`/dashboard/purchase/grn?viewId=${g.id}`} target="_blank" className="text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.invoice_number}</a> : '—', minWidth: 140 },
     { id: 'vendor', label: 'Vendor', accessor: (g) => g.vendor?.name || '—', sortAccessor: (g) => g.vendor?.name || '', searchAccessor: (g) => `${g.vendor?.name || ''} ${g.vendor?.code || ''}`, minWidth: 190 },
-    { id: 'po_number', label: 'PO No.', accessor: (g) => g.purchase_order?.po_number || '—', sortAccessor: (g) => g.purchase_order?.po_number || '', searchAccessor: (g) => g.purchase_order?.po_number || '', minWidth: 150 },
+    { id: 'po_number', label: 'PO No.', accessor: (g) => g.purchase_order?.po_number || '—', sortAccessor: (g) => g.purchase_order?.po_number || '', searchAccessor: (g) => g.purchase_order?.po_number || '', cell: (g) => g.purchase_order?.po_number ? <a href={`/dashboard/purchase/orders?viewId=${g.purchase_order.id || g.po_id}`} target="_blank" className="text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.purchase_order.po_number}</a> : '—', minWidth: 150 },
     { id: 'invoice_date', label: 'Invoice Date', accessor: (g) => g.invoice_date ? new Date(g.invoice_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.invoice_date || '', minWidth: 130 },
     { id: 'net', label: 'Net Payable', accessor: (g) => g.net, cell: (g) => <span className="tabular-nums">₹{fmtINR(g.net)}</span>, sortAccessor: (g) => g.net, align: 'right', minWidth: 160 },
     { id: 'settled', label: 'Total Paid', accessor: (g) => g.settled, cell: (g) => <span className="font-bold text-green-700 tabular-nums">₹{fmtINR(g.settled)}</span>, sortAccessor: (g) => g.settled, align: 'right', minWidth: 160 },
@@ -997,10 +998,10 @@ export default function AccountsPayablePage() {
   ];
 
   const vendorInvoiceColumns: ListTableColumn<GRNPayable>[] = [
-    { id: 'po_number', label: 'PO Number', accessor: (g) => g.purchase_order?.po_number || '—', sortAccessor: (g) => g.purchase_order?.po_number || '', searchAccessor: (g) => g.purchase_order?.po_number || '', minWidth: 150 },
-    { id: 'invoice_number', label: 'Supplier Invoice No.', accessor: (g) => g.invoice_number || '—', sortAccessor: (g) => g.invoice_number || '', searchAccessor: (g) => g.invoice_number || '', minWidth: 170 },
+    { id: 'po_number', label: 'PO Number', accessor: (g) => g.purchase_order?.po_number || '—', sortAccessor: (g) => g.purchase_order?.po_number || '', searchAccessor: (g) => g.purchase_order?.po_number || '', cell: (g) => g.purchase_order?.po_number ? <a href={`/dashboard/purchase/orders?viewId=${g.purchase_order.id || g.po_id}`} target="_blank" className="text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.purchase_order.po_number}</a> : '—', minWidth: 150 },
+    { id: 'invoice_number', label: 'Supplier Invoice No.', accessor: (g) => g.invoice_number || '—', sortAccessor: (g) => g.invoice_number || '', searchAccessor: (g) => g.invoice_number || '', cell: (g) => g.invoice_number ? <a href={`/dashboard/purchase/grn?viewId=${g.id}`} target="_blank" className="text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.invoice_number}</a> : '—', minWidth: 170 },
     { id: 'invoice_date', label: 'Invoice Date', accessor: (g) => g.invoice_date ? new Date(g.invoice_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.invoice_date || '', minWidth: 130 },
-    { id: 'grn_number', label: 'GRN Number', accessor: (g) => g.grn_number, sortAccessor: (g) => g.grn_number, searchAccessor: (g) => g.grn_number, cell: (g) => <span className="font-semibold text-gray-900">{g.grn_number}</span>, minWidth: 150 },
+    { id: 'grn_number', label: 'GRN Number', accessor: (g) => g.grn_number, sortAccessor: (g) => g.grn_number, searchAccessor: (g) => g.grn_number, cell: (g) => <a href={`/dashboard/purchase/grn?viewId=${g.id}`} target="_blank" className="font-semibold text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.grn_number}</a>, minWidth: 150 },
     { id: 'receipt_date', label: 'Receipt Date', accessor: (g) => g.receipt_date ? new Date(g.receipt_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.receipt_date || '', minWidth: 130 },
     { id: 'gross', label: 'Gross', accessor: (g) => +(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0), cell: (g) => <span title={((g.freight_amount || 0) > 0 || (g.freight_gst_amount || 0) > 0) ? `Items: ₹${fmtINR(g.gross_amount)} + Freight: ₹${fmtINR((g.freight_amount || 0) + (g.freight_gst_amount || 0))}` : undefined}>₹{fmtINR(+(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0))}</span>, sortAccessor: (g) => +(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0), align: 'right', minWidth: 130 },
     { id: 'debit', label: 'Debit', accessor: (g) => g.debit_note_amount || 0, cell: (g) => <span className="text-red-600">-₹{fmtINR(g.debit_note_amount)}</span>, sortAccessor: (g) => g.debit_note_amount || 0, align: 'right', minWidth: 120 },
