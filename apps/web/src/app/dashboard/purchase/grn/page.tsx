@@ -2756,10 +2756,10 @@ function GRNContent() {
                       placeholder="Additional notes..."
                     />
                   </div>
-                ) : (selectedGRN?.remarks || selectedGRN?.notes) ? (
+                ) : (selectedGRN?.remarks || (selectedGRN as any)?.notes) ? (
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700">GRN Notes / Remarks</label>
-                    <p className="mt-1 text-sm text-gray-600 italic whitespace-pre-wrap">{selectedGRN?.remarks || selectedGRN?.notes}</p>
+                    <p className="mt-1 text-sm text-gray-600 italic whitespace-pre-wrap">{selectedGRN?.remarks || (selectedGRN as any)?.notes}</p>
                   </div>
                 ) : null}
 
@@ -3423,10 +3423,10 @@ function GRNContent() {
                     />
                   </div>
                 </div>
-                {(selectedGRN?.remarks || selectedGRN?.notes) && (
+                {(selectedGRN?.remarks || (selectedGRN as any)?.notes) && (
                   <div className="mt-4 pt-4 border-t border-amber-200">
                     <label className="block text-sm font-medium text-gray-700 mb-1">GRN Notes</label>
-                    <p className="text-sm text-gray-600 italic whitespace-pre-wrap">{selectedGRN?.remarks || selectedGRN?.notes}</p>
+                    <p className="text-sm text-gray-600 italic whitespace-pre-wrap">{selectedGRN?.remarks || (selectedGRN as any)?.notes}</p>
                   </div>
                 )}
               </div>
