@@ -2744,6 +2744,12 @@ function GRNContent() {
                     <p className="mt-1 text-gray-900">{selectedGRN.invoice_date ? new Date(selectedGRN.invoice_date).toLocaleDateString() : '-'}</p>
                   )}
                 </div>
+                {selectedGRN.remarks && !editMode && (
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700">GRN Notes / Remarks</label>
+                    <p className="mt-1 text-sm text-gray-600 italic whitespace-pre-wrap">{selectedGRN.remarks}</p>
+                  </div>
+                )}
 
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700">
@@ -2920,7 +2926,10 @@ function GRNContent() {
                           <tr key={idx}>
                             <td className="px-4 py-2 text-sm text-gray-700 text-center">{idx + 1}</td>
                             <td className="px-4 py-2 text-sm text-gray-900">{item.item_code || item.item?.code || '-'}</td>
-                            <td className="px-4 py-2 text-sm text-gray-900">{item.item_name || item.item?.name || '-'}</td>
+                            <td className="px-4 py-2 text-sm text-gray-900">
+                              <div>{item.item_name || item.item?.name || '-'}</div>
+                              {item.notes && <div className="text-xs text-gray-500 mt-1 italic whitespace-pre-wrap">{item.notes}</div>}
+                            </td>
                             <td className="px-4 py-2 text-sm text-gray-900 text-center">{resolveUom({
                               uom: (item as any).uom || (item as any).uom_name || (item as any).unit || (item as any).unit_name || (item as any).item?.uom,
                               itemId: (item as any).item_id || (item as any).itemId || (item as any).item?.id,
@@ -3064,6 +3073,7 @@ function GRNContent() {
                             itemId: item.id,
                             itemCode: item.item_code || item.item?.code,
                             itemName: item.item_name || item.item?.name,
+                            notes: item.notes || '',
                             receivedQty: receivedQty,
                             acceptedQty: acceptedQty,
                             rejectedQty: rejectedQty,
@@ -3388,6 +3398,12 @@ function GRNContent() {
                     />
                   </div>
                 </div>
+                {selectedGRN.remarks && (
+                  <div className="mt-4 pt-4 border-t border-amber-200">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">GRN Notes</label>
+                    <p className="text-sm text-gray-600 italic whitespace-pre-wrap">{selectedGRN.remarks}</p>
+                  </div>
+                )}
               </div>
 
 
@@ -3398,6 +3414,7 @@ function GRNContent() {
                       <div>
                         <div className="font-semibold text-gray-900">{item.itemName}</div>
                         <div className="text-sm text-gray-600">Code: {item.itemCode}</div>
+                        {item.notes && <div className="text-sm text-gray-500 italic mt-1 bg-white p-2 rounded border border-gray-200">Item Note: {item.notes}</div>}
                       </div>
                       <div className="text-sm text-gray-600">
                         Received: <span className="font-semibold">{item.receivedQty}</span>
