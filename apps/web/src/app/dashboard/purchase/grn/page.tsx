@@ -3429,6 +3429,25 @@ function GRNContent() {
                     <p className="text-sm text-gray-600 italic whitespace-pre-wrap">{selectedGRN?.remarks || (selectedGRN as any)?.notes}</p>
                   </div>
                 )}
+                {(selectedGRN?.invoice_file_url || (selectedGRN as any)?.additional_invoice_files?.length > 0) && (
+                  <div className="mt-4 pt-4 border-t border-amber-200">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">GRN Attachments</label>
+                    <div className="flex flex-col gap-1 mt-1">
+                      {selectedGRN?.invoice_file_url && (
+                        <button onClick={() => handleViewInvoice(selectedGRN.invoice_file_url!, selectedGRN.invoice_file_name)}
+                          className="inline-block text-blue-600 hover:text-blue-800 underline cursor-pointer text-left text-sm">
+                          View Invoice {selectedGRN.invoice_file_name ? `(${selectedGRN.invoice_file_name})` : ''}
+                        </button>
+                      )}
+                      {Array.isArray((selectedGRN as any).additional_invoice_files) && (selectedGRN as any).additional_invoice_files.map((f: any, i: number) => (
+                        <button key={i} onClick={() => handleViewInvoice(f.url, f.name)}
+                          className="inline-block text-blue-600 hover:text-blue-800 underline cursor-pointer text-left text-sm">
+                          Additional Attachment {i + 1} {f.name ? `(${f.name})` : ''}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
 
