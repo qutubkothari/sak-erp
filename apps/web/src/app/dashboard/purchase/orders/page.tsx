@@ -2566,7 +2566,6 @@ function PurchaseOrdersContent() {
         <div className="mb-3 flex items-start justify-between gap-4">
           <div className="pt-1">
             <h1 className="text-xl font-bold text-amber-900">Purchase Orders</h1>
-            <p className="text-xs text-amber-700">Create and manage purchase orders to vendors</p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2 justify-end">
             {orderSelection.hasSelections && canDeletePO && (
@@ -2596,66 +2595,6 @@ function PurchaseOrdersContent() {
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="mb-3 rounded-lg bg-white p-3 shadow-md">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
-              <select
-                value={filterVendor}
-                onChange={(e) => setFilterVendor(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
-              >
-                <option value="">All Vendors</option>
-                {vendors.map((v) => (
-                  <option key={v.id} value={v.id}>{v.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
-              >
-                <option value="ALL">All Status</option>
-                <option value="DRAFT">Draft</option>
-                <option value="PENDING">Pending Approval</option>
-                <option value="APPROVED">Approved</option>
-                <option value="REJECTED">Rejected</option>
-                <option value="SENT">Sent</option>
-                <option value="ACKNOWLEDGED">Acknowledged</option>
-                <option value="PARTIAL">Partial</option>
-                <option value="COMPLETED">Completed</option>
-              </select>
-            </div>
-          </div>
-          {orders.length > 0 && (
-            <div className="mt-3 flex items-center gap-3">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={orderSelection.isAllSelected}
-                  onChange={orderSelection.toggleSelectAll}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm font-medium text-gray-700">
-                  Select All ({orders.length} orders)
-                </span>
-              </label>
-              {orderSelection.hasSelections && (
-                <button
-                  onClick={orderSelection.deselectAll}
-                  className="text-sm text-amber-600 hover:text-amber-800"
-                >
-                  Deselect All
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
         {/* Orders List */}
         {loading ? (
           <div className="bg-white rounded-lg shadow-md border border-gray-200">
@@ -2670,6 +2609,64 @@ function PurchaseOrdersContent() {
             defaultPageSize={10}
             pageSizeOptions={[10, 25, 50, 100]}
             searchPlaceholder="Search by PO number, vendor, PR ref, status…"
+            toolbarRight={
+              <div className="flex flex-wrap items-center gap-3">
+                {orders.length > 0 && (
+                  <div className="flex items-center gap-2 border-r border-gray-300 pr-3">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={orderSelection.isAllSelected}
+                        onChange={orderSelection.toggleSelectAll}
+                        className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                        Select All ({orders.length})
+                      </span>
+                    </label>
+                    {orderSelection.hasSelections && (
+                      <button
+                        onClick={orderSelection.deselectAll}
+                        className="text-xs text-amber-600 hover:text-amber-800 font-medium whitespace-nowrap"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">Vendor:</span>
+                  <select
+                    value={filterVendor}
+                    onChange={(e) => setFilterVendor(e.target.value)}
+                    className="w-32 lg:w-48 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="">All</option>
+                    {vendors.map((v) => (
+                      <option key={v.id} value={v.id}>{v.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">Status:</span>
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="w-32 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="ALL">All</option>
+                    <option value="DRAFT">Draft</option>
+                    <option value="PENDING">Pending Approval</option>
+                    <option value="APPROVED">Approved</option>
+                    <option value="REJECTED">Rejected</option>
+                    <option value="SENT">Sent</option>
+                    <option value="ACKNOWLEDGED">Acknowledged</option>
+                    <option value="PARTIAL">Partial</option>
+                    <option value="COMPLETED">Completed</option>
+                  </select>
+                </div>
+              </div>
+            }
             emptyState={
               <div className="p-12 text-center">
                 <div className="text-6xl mb-4">📋</div>
