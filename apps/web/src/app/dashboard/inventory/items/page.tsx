@@ -1499,12 +1499,11 @@ export default function ItemsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 px-3 py-4 lg:px-4">
       <div className="w-full max-w-none">
-        <div className="mb-4 flex items-center justify-between gap-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-amber-900">Stock Master</h1>
-            <p className="text-sm text-amber-700">Create and manage item masters, inventory attributes, drawings, and variants</p>
+            <h1 className="text-xl font-bold text-amber-900">Stock Master</h1>
           </div>
-          <div className="flex shrink-0 flex-wrap justify-end gap-3">
+          <div className="flex shrink-0 flex-wrap justify-end gap-2">
             {canExport && (
               <button
                 onClick={() => {
@@ -1536,26 +1535,26 @@ export default function ItemsPage() {
                     `Items_${new Date().toISOString().slice(0, 10)}.csv`
                   );
                 }}
-                className="rounded-md bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800"
+                className="rounded-md bg-green-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-800"
               >
                 ⬇ Download Excel
               </button>
             )}
             <button
               onClick={() => setShowCategoryManager(true)}
-              className="rounded-md bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#6F4E37]"
+              className="rounded-md bg-[#8B6F47] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#6F4E37]"
             >
               Manage Categories
             </button>
             <button
               onClick={() => setShowNomenclatureManager(true)}
-              className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+              className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
             >
               Manage SAS Part Numbers
             </button>
             <button
               onClick={initBulkInventory}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
             >
               Bulk Inventory
             </button>
@@ -1563,13 +1562,13 @@ export default function ItemsPage() {
               <>
                 <button
                   onClick={downloadItemTemplate}
-                  className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                 >
                   ⬇ CSV Template
                 </button>
                 <button
                   onClick={() => { setShowImportModal(true); setImportPreview([]); setImportResult(null); setImportFile(null); }}
-                  className="rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
+                  className="rounded-md bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700"
                 >
                   ⬆ Import Items
                 </button>
@@ -1582,7 +1581,7 @@ export default function ItemsPage() {
                   resetForm();
                   setShowForm(true);
                 }}
-                className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+                className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
               >
                 + Add Item
               </button>
@@ -1590,13 +1589,13 @@ export default function ItemsPage() {
           </div>
         </div>
 
-        <div className="mb-4 rounded-lg bg-white p-4 shadow-md">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="mb-3 rounded-lg bg-white p-3 shadow-md">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <label className="flex items-end">
               <button
                 type="button"
                 onClick={() => setShowDeleted(!showDeleted)}
-                className={`w-full rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+                className={`w-full rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${
                   showDeleted
                     ? 'bg-red-600 text-white hover:bg-red-700'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1606,11 +1605,11 @@ export default function ItemsPage() {
               </button>
             </label>
             <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">Type</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Type</label>
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-amber-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-amber-500"
               >
                 <option value="">All Types</option>
                 {ITEM_CATEGORY_OPTIONS.map((cat) => (

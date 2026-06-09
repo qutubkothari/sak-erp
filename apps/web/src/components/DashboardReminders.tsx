@@ -22,6 +22,7 @@ export default function DashboardReminders() {
   const [pendingPOs, setPendingPOs] = useState<PendingPO[]>([]);
   const [pendingQC, setPendingQC] = useState<PendingGRN[]>([]);
   const [dismissed, setDismissed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const user = useMemo(() => readStoredUser(), []);
   const canApprovePO = hasModulePermission(user, 'Purchase Management', 'approve');
@@ -66,6 +67,38 @@ export default function DashboardReminders() {
 
   if (dismissed || total === 0) return null;
 
+  if (!expanded) {
+    return (
+      <div className="fixed bottom-5 right-5 z-50 w-[320px] max-w-[calc(100vw-2rem)] rounded-xl border border-amber-200 bg-white shadow-xl">
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="flex w-full items-center justify-between gap-3 rounded-xl bg-amber-50 px-4 py-3 text-left hover:bg-amber-100"
+        >
+          <div>
+            <h2 className="text-sm font-bold text-amber-900">Action Required</h2>
+            <p className="mt-0.5 text-xs text-amber-800">
+              {total} reminder{total === 1 ? '' : 's'} pending
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {pendingPOs.length > 0 && (
+              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-800">
+                PO {pendingPOs.length}
+              </span>
+            )}
+            {pendingQC.length > 0 && (
+              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800">
+                QC {pendingQC.length}
+              </span>
+            )}
+            <span className="text-xs font-semibold text-amber-900">Open</span>
+          </div>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed bottom-5 right-5 z-50 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-amber-200 bg-white shadow-2xl">
       <div className="border-b border-amber-100 bg-amber-50 px-4 py-3">
@@ -74,6 +107,13 @@ export default function DashboardReminders() {
             <h2 className="text-sm font-bold text-amber-900">Action Required</h2>
             <p className="mt-0.5 text-xs text-amber-800">Pending approvals and QC reminders</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="rounded px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+          >
+            Collapse
+          </button>
           <button
             type="button"
             onClick={() => setDismissed(true)}

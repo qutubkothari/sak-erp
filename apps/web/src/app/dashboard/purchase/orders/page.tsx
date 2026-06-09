@@ -2563,16 +2563,16 @@ function PurchaseOrdersContent() {
         {!showModal && (
           <>
         {/* Header */}
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-amber-900">Purchase Orders</h1>
-            <p className="text-sm text-amber-700">Create and manage purchase orders to vendors</p>
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <div className="pt-1">
+            <h1 className="text-xl font-bold text-amber-900">Purchase Orders</h1>
+            <p className="text-xs text-amber-700">Create and manage purchase orders to vendors</p>
           </div>
-          <div className="flex shrink-0 gap-3">
+          <div className="flex shrink-0 flex-wrap gap-2 justify-end">
             {orderSelection.hasSelections && canDeletePO && (
               <button
                 onClick={handleDeleteAll}
-                className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
               >
                 Delete Selected ({orderSelection.selectedItems.length})
               </button>
@@ -2588,7 +2588,7 @@ function PurchaseOrdersContent() {
                   fetchItems();
                 }
               }}
-              className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+              className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
             >
               + Create Purchase Order
             </button>
@@ -2597,14 +2597,14 @@ function PurchaseOrdersContent() {
         </div>
 
         {/* Filters */}
-        <div className="mb-4 rounded-lg bg-white p-4 shadow-md">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="mb-3 rounded-lg bg-white p-3 shadow-md">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Vendor</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
               <select
                 value={filterVendor}
                 onChange={(e) => setFilterVendor(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
               >
                 <option value="">All Vendors</option>
                 {vendors.map((v) => (
@@ -2613,11 +2613,11 @@ function PurchaseOrdersContent() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
               >
                 <option value="ALL">All Status</option>
                 <option value="DRAFT">Draft</option>
@@ -2632,7 +2632,7 @@ function PurchaseOrdersContent() {
             </div>
           </div>
           {orders.length > 0 && (
-            <div className="mt-4 flex items-center gap-4">
+            <div className="mt-3 flex items-center gap-3">
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -2739,9 +2739,9 @@ function PurchaseOrdersContent() {
                 )}
               </div>
             </div>
-            <div className="p-6 space-y-6">
+            <div className="p-4 space-y-4">
               {/* Order Details */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 {editingMode === 'create' && (
                   <div className="col-span-2">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">
@@ -2766,15 +2766,12 @@ function PurchaseOrdersContent() {
                       }))}
                       placeholder={loadingPrList ? 'Loading PRs...' : 'Select PR...'}
                     />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Shows only PR items not already used in any PO.
-                    </p>
                   </div>
                 )}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">
                     Vendor <span className="text-red-500">*</span>
-                    {currentPrId && <span className="ml-2 text-xs font-normal text-indigo-600 normal-case">Selecting a vendor will auto-load RFQ prices</span>}
+                    {currentPrId && <span className="ml-2 text-xs font-normal text-indigo-600">RFQ prices will auto-load</span>}
                   </label>
                   <SearchableSelect
                     value={formData.vendorId}
@@ -2791,12 +2788,7 @@ function PurchaseOrdersContent() {
                     })()}
                     placeholder="Search vendor to apply to all items..."
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    {rfqRespondedVendorIds.length > 0
-                      ? `Showing ${rfqRespondedVendorIds.length} vendor(s) who responded to the RFQ.`
-                      : 'Applies to all items in this purchase order.'}
-                  </p>
-                </div>
+                                  </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Order Date <span className="text-red-500">*</span></label>
                   <DateInput
@@ -2823,7 +2815,6 @@ function PurchaseOrdersContent() {
                   {/* Saved addresses quick-select */}
                   {deliveryAddresses.length > 0 && (
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">📍 Quick-select saved address:</p>
                       <div className="flex flex-wrap gap-2">
                         {deliveryAddresses.map((entry) => (
                           <div key={entry.id} className="flex items-center gap-1 bg-gray-50 rounded-full border border-gray-200 pr-1">
@@ -2875,13 +2866,10 @@ function PurchaseOrdersContent() {
                       {deliveryAddressSaving ? 'Saving…' : '💾 Save for reuse'}
                     </button>
                   </div>
-                  {deliveryAddresses.length === 0 && (
-                    <p className="text-xs text-gray-400">Enter an address above, give it a label, and click "Save for reuse" to build your saved address list.</p>
-                  )}
-                </div>
+                                  </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Consignee POC Name</label>
                   {users.length > 0 ? (
@@ -2928,7 +2916,7 @@ function PurchaseOrdersContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Quotation Ref No.</label>
                   <input
@@ -2965,7 +2953,7 @@ function PurchaseOrdersContent() {
               {editingMode !== 'create' && (
                 <div className="border-t pt-4">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Tracking Information</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Tracking Number</label>
                       <input
@@ -3914,7 +3902,7 @@ function PurchaseOrdersContent() {
               {(selectedPO as any).status && (selectedPO as any).status !== 'DRAFT' && (
                 <div className="border-t pt-4">
                   <h3 className="text-lg font-semibold mb-3">Tracking Information</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <p className="text-sm text-gray-600">Tracking Number</p>
                       <p className="font-semibold">{(selectedPO as any).tracking_number || '-'}</p>
