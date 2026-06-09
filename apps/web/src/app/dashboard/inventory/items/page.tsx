@@ -372,19 +372,19 @@ export default function ItemsPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Items Master</h1>
-        <div className="flex gap-3">
+    <div className="p-4">
+      <div className="flex justify-between items-center mb-3">
+        <h1 className="text-xl font-bold text-gray-800">Items Master</h1>
+        <div className="flex flex-wrap justify-end gap-2">
           <button
             onClick={() => setShowCategoryManager(true)}
-            className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 font-medium flex items-center gap-2"
+            className="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 text-xs font-semibold flex items-center gap-2"
           >
             🏷️ Manage Categories
           </button>
           <button
             onClick={() => router.push('/dashboard/inventory/items/import')}
-            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium flex items-center gap-2"
+            className="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-xs font-semibold flex items-center gap-2"
           >
             📊 Import Excel
           </button>
@@ -394,7 +394,7 @@ export default function ItemsPage() {
               resetForm();
               setShowForm(true);
             }}
-            className="bg-amber-600 text-white px-6 py-2 rounded-lg hover:bg-amber-700 font-medium"
+            className="bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 text-xs font-semibold"
           >
             + Add Item
           </button>
@@ -402,10 +402,10 @@ export default function ItemsPage() {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 bg-white p-4 rounded-lg shadow flex gap-4">
+      <div className="mb-3 bg-white p-3 rounded-lg shadow flex gap-3">
         <button
           onClick={() => setShowDeleted(!showDeleted)}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
             showDeleted 
               ? 'bg-red-600 text-white hover:bg-red-700' 
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -418,12 +418,12 @@ export default function ItemsPage() {
           placeholder="Search by code or name..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+          className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
         />
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
         >
           <option value="">All Categories</option>
           {categories.map(cat => (
