@@ -2745,12 +2745,23 @@ function GRNContent() {
                     <p className="mt-1 text-gray-900">{selectedGRN.invoice_date ? new Date(selectedGRN.invoice_date).toLocaleDateString() : '-'}</p>
                   )}
                 </div>
-                {selectedGRN.remarks && !editMode && (
+                {editMode ? (
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700">GRN Notes / Remarks</label>
-                    <p className="mt-1 text-sm text-gray-600 italic whitespace-pre-wrap">{selectedGRN.remarks}</p>
+                    <textarea
+                      value={editFormData.notes || ''}
+                      onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+                      rows={2}
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Additional notes..."
+                    />
                   </div>
-                )}
+                ) : selectedGRN?.remarks ? (
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700">GRN Notes / Remarks</label>
+                    <p className="mt-1 text-sm text-gray-600 italic whitespace-pre-wrap">{selectedGRN?.remarks}</p>
+                  </div>
+                ) : null}
 
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700">
@@ -2875,7 +2886,20 @@ function GRNContent() {
                         <tr key={idx}>
                           <td className="px-4 py-2 text-sm text-gray-700 text-center">{idx + 1}</td>
                           <td className="px-4 py-2 text-sm text-gray-900">{item.itemCode}</td>
-                          <td className="px-4 py-2 text-sm text-gray-900">{item.itemName}</td>
+                          <td className="px-4 py-2 text-sm text-gray-900">
+                            <div>{item.itemName}</div>
+                            <input
+                              type="text"
+                              value={item.notes || ''}
+                              onChange={(e) => {
+                                const newItems = [...editFormData.items];
+                                newItems[idx].notes = e.target.value;
+                                setEditFormData({ ...editFormData, items: newItems });
+                              }}
+                              className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                              placeholder="Item note..."
+                            />
+                          </td>
                           <td className="px-4 py-2 text-sm text-gray-900 text-center">{resolveUom(item) || '-'}</td>
                           <td className="px-4 py-2 text-sm text-gray-900 text-right">
                             <input
