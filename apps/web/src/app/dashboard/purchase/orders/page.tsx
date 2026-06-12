@@ -4373,8 +4373,8 @@ function PurchaseOrdersContent() {
 
       {/* PO Trail Modal */}
       {showTrailModal && trailPO && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-0">
+          <div className="bg-white shadow-2xl w-screen h-screen max-w-none max-h-none flex flex-col">
             <div className="p-5 border-b flex justify-between items-center bg-gradient-to-r from-purple-50 to-indigo-50">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -4506,15 +4506,14 @@ function PurchaseOrdersContent() {
                         {trailData.grns.map((grn: any, idx: number) => (
                           <div key={grn.id} className="bg-green-50 rounded-lg p-4 border border-green-100">
                             <div className="flex justify-between items-start mb-2">
-                              <button
-                                onClick={() => {
-                                  setShowTrailModal(false);
-                                  router.push(`/dashboard/purchase/grn?viewId=${grn.id}`);
-                                }}
+                              <a
+                                href={`/dashboard/purchase/grn?viewId=${grn.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className="font-semibold text-green-900 hover:text-green-600 hover:underline cursor-pointer bg-transparent border-0 p-0 text-left"
                               >
                                 GRN #{grn.grn_number} ↗
-                              </button>
+                              </a>
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                                 grn.status === 'COMPLETED' ? 'bg-green-200 text-green-800' :
                                 grn.status === 'QC_PENDING' ? 'bg-yellow-200 text-yellow-800' :
