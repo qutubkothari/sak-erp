@@ -84,6 +84,133 @@ export class GrnService {
     }
   }
 
+  private async resolveGrnItemStockIdentity(
+    tenantId: string,
+    grnItem: any,
+  ): Promise<{ itemId: string; itemCode?: string; category?: string } | null> {
+    const grnItemId = String(grnItem?.id || '').trim();
+    const storedItemId = String(grnItem?.item_id || grnItem?.item?.id || '').trim();
+    const itemCode = String(grnItem?.item_code || grnItem?.itemCode || grnItem?.item?.code || '').trim();
+    const poItemId = String(grnItem?.po_item_id || grnItem?.poItemId || '').trim();
+
+    const candidates = new Map<string, { itemId: string; itemCode?: string; category?: string; source: string }>();
+
+    const addCandidate = (source: string, row: any) => {
+      const itemId = String(row?.id || row?.item_id || '').trim();
+      if (!itemId) return;
+      candidates.set(source, {
+        itemId,
+        itemCode: row?.code ? String(row.code).trim() : undefined,
+        category: row?.category ? String(row.category).trim() : undefined,
+        source,
+      });
+    };
+
+    if (storedItemId) {
+      const { data: storedItem, error } = await this.supabase
+        .from('items')
+        .select('id, code, category')
+        .eq('tenant_id', tenantId)
+        .eq('id', storedItemId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Failed to validate GRN stored item_id:', { grnItemId, storedItemId, error });
+      } else if (storedItem) {
+        addCandidate('stored', storedItem);
+      }
+    }
+
+    if (itemCode) {
+      const { data: codeMatches, error } = await this.supabase
+        .from('items')
+        .select('id, code, category')
+        .eq('tenant_id', tenantId)
+        .eq('code', itemCode)
+        .limit(2);
+
+      if (error) {
+        console.error('Failed to resolve GRN item by code:', { grnItemId, itemCode, error });
+      } else if (Array.isArray(codeMatches) && codeMatches.length === 1) {
+        addCandidate('code', codeMatches[0]);
+      } else if (Array.isArray(codeMatches) && codeMatches.length > 1) {
+        console.error('Multiple items match GRN item code; refusing stock update', { grnItemId, itemCode });
+      }
+    }
+
+    if (poItemId) {
+      const { data: poItem, error } = await this.supabase
+        .from('purchase_order_items')
+        .select('item_id, item:items(id, code, category)')
+        .eq('id', poItemId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Failed to resolve GRN item by PO item:', { grnItemId, poItemId, error });
+      } else if (poItem) {
+        addCandidate('po', (poItem as any).item || { id: (poItem as any).item_id });
+      }
+    }
+
+    const codeCandidate = candidates.get('code');
+    const storedCandidate = candidates.get('stored');
+    const poCandidate = candidates.get('po');
+
+    let resolved = codeCandidate || poCandidate || storedCandidate;
+
+    if (itemCode && storedCandidate && codeCandidate && storedCandidate.itemId !== codeCandidate.itemId) {
+      console.error('Correcting mismatched GRN item_id before stock update', {
+        grnItemId,
+        itemCode,
+        storedItemId: storedCandidate.itemId,
+        codeItemId: codeCandidate.itemId,
+      });
+      resolved = codeCandidate;
+    }
+
+    if (codeCandidate && poCandidate && codeCandidate.itemId !== poCandidate.itemId) {
+      console.error('GRN item code and PO item resolve to different items; refusing stock update', {
+        grnItemId,
+        itemCode,
+        codeItemId: codeCandidate.itemId,
+        poItemId: poCandidate.itemId,
+      });
+      return null;
+    }
+
+    if (!resolved?.itemId) {
+      console.error('Unable to resolve GRN item identity; refusing stock update', {
+        grnItemId,
+        storedItemId,
+        itemCode,
+        poItemId,
+      });
+      return null;
+    }
+
+    if (grnItemId && storedItemId !== resolved.itemId) {
+      const { error } = await this.supabase
+        .from('grn_items')
+        .update({ item_id: resolved.itemId })
+        .eq('tenant_id', tenantId)
+        .eq('id', grnItemId);
+
+      if (error) {
+        console.error('Failed to backfill corrected GRN item_id:', {
+          grnItemId,
+          itemId: resolved.itemId,
+          error,
+        });
+      }
+    }
+
+    return {
+      itemId: resolved.itemId,
+      itemCode: resolved.itemCode || itemCode || undefined,
+      category: resolved.category,
+    };
+  }
+
   async uploadInvoice(tenantId: string, userId: string, file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('No file uploaded');
@@ -1121,16 +1248,15 @@ export class GrnService {
         const acceptedQty = Number(item?.accepted_qty ?? item?.accepted_quantity ?? 0) || 0;
         if (acceptedQty <= 0) continue;
 
-        const itemCode = item?.item_code ?? item?.itemCode ?? item?.item?.code;
-        const itemId = item?.item_id || item?.item?.id || (itemCode ? itemIdByCode.get(String(itemCode)) : undefined);
+        const resolvedItem = await this.resolveGrnItemStockIdentity(tenantId, item);
         const grnItemId = item?.id;
-        if (!itemId || !grnItemId) continue;
+        if (!resolvedItem?.itemId || !grnItemId) continue;
 
         const unitPrice = Number(item?.rate ?? item?.unit_price ?? item?.unitPrice ?? 0) || 0;
 
         await this.createStockEntry({
           tenant_id: tenantId,
-          item_id: itemId,
+          item_id: resolvedItem.itemId,
           warehouse_id: effectiveWarehouseId,
           quantity: acceptedQty,
           available_quantity: acceptedQty,
@@ -1142,7 +1268,7 @@ export class GrnService {
           created_from: 'GRN_APPROVE',
           metadata: {
             grn_item_id: grnItemId,
-            item_code: item?.item_code ?? item?.item?.code,
+            item_code: resolvedItem.itemCode || item?.item_code || item?.item?.code,
           },
         });
       }
@@ -1278,13 +1404,20 @@ export class GrnService {
           
           const { data: grnItem, error: grnItemError } = await this.supabase
             .from('grn_items')
-            .select('item_id, grn_id, rate, batch_number, item_code')
+            .select('id, item_id, po_item_id, grn_id, rate, batch_number, item_code')
             .eq('id', item.itemId)
+            .eq('tenant_id', tenantId)
             .single();
 
           if (grnItemError || !grnItem) {
             console.error(`Failed to retrieve GRN item details for id: ${item.itemId}`, grnItemError);
             continue; // Skip to next item
+          }
+
+          const resolvedItem = await this.resolveGrnItemStockIdentity(tenantId, grnItem);
+          if (!resolvedItem) {
+            console.error('Skipping stock entry because GRN item identity could not be verified:', item.itemId);
+            continue;
           }
 
           const { data: grn } = await this.supabase
@@ -1300,7 +1433,7 @@ export class GrnService {
 
           await this.createStockEntry({
             tenant_id: tenantId,
-            item_id: grnItem.item_id,
+            item_id: resolvedItem.itemId,
             warehouse_id: grn.warehouse_id,
             quantity: item.acceptedQty,
             available_quantity: item.acceptedQty,
@@ -1311,7 +1444,7 @@ export class GrnService {
             created_from: 'GRN_QC_ACCEPT',
             metadata: {
               grn_item_id: item.itemId,
-              item_code: grnItem.item_code,
+              item_code: resolvedItem.itemCode || grnItem.item_code,
             },
           });
 
@@ -1328,6 +1461,7 @@ export class GrnService {
             },
             {
               ...grnItem,
+              item_id: resolvedItem.itemId,
               accepted_qty: item.acceptedQty,
               accepted_quantity: item.acceptedQty,
               item_name: item.itemName || null,
@@ -1336,8 +1470,8 @@ export class GrnService {
 
           if (Array.isArray(generatedUids) && generatedUids.length > 0) {
             uidPrintItems.push({
-              itemId: String(grnItem.item_id || item.itemId || '').trim(),
-              itemCode: String(grnItem.item_code || item.itemCode || '').trim(),
+              itemId: String(resolvedItem.itemId || item.itemId || '').trim(),
+              itemCode: String(resolvedItem.itemCode || grnItem.item_code || item.itemCode || '').trim(),
               itemName: String(item.itemName || '').trim(),
               acceptedQty: Number(item.acceptedQty || 0),
               generatedUids: generatedUids.map((uid) => String(uid || '').trim()).filter(Boolean),
