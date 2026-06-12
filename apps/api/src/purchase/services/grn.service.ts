@@ -192,7 +192,6 @@ export class GrnService {
       const { error } = await this.supabase
         .from('grn_items')
         .update({ item_id: resolved.itemId })
-        .eq('tenant_id', tenantId)
         .eq('id', grnItemId);
 
       if (error) {
@@ -1406,7 +1405,6 @@ export class GrnService {
             .from('grn_items')
             .select('id, item_id, po_item_id, grn_id, rate, batch_number, item_code')
             .eq('id', item.itemId)
-            .eq('tenant_id', tenantId)
             .single();
 
           if (grnItemError || !grnItem) {
@@ -1785,8 +1783,29 @@ export class GrnService {
         return;
       }
 
+
       if (!stockData?.warehouse_id) {
-        console.error('❌ createStockEntry: missing warehouse_id; skipping');
+        const { data: fallbackWarehouse, error: fallbackWarehouseError } = await this.supabase
+          .from('warehouses')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('is_active', true)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (fallbackWarehouseError) {
+          console.error('createStockEntry: failed to resolve fallback warehouse:', fallbackWarehouseError);
+        }
+
+        if (fallbackWarehouse?.id) {
+          stockData.warehouse_id = fallbackWarehouse.id;
+          console.log('createStockEntry: using fallback warehouse:', fallbackWarehouse.id);
+        }
+      }
+
+      if (!stockData?.warehouse_id) {
+        console.error('createStockEntry: missing warehouse_id and no active fallback warehouse; skipping');
         return;
       }
 
@@ -1902,7 +1921,6 @@ export class GrnService {
               const { error: backfillError } = await this.supabase
                 .from('grn_items')
                 .update({ item_id: stockData.item_id })
-                .eq('tenant_id', tenantId)
                 .eq('id', grnItemIdForDedup)
                 .is('item_id', null);
 
@@ -1960,14 +1978,28 @@ export class GrnService {
         .single();
 
       // 2) Keep inventory_stock in sync (used by other modules)
-      const { error } = await this.supabase.rpc('adjust_inventory_stock', {
+      const inventoryCategory = normalizeInventoryCategory(resolvedItemCategory ?? item?.category, 'RAW_MATERIAL');
+      let { error } = await this.supabase.rpc('adjust_inventory_stock', {
         p_tenant_id: stockData.tenant_id,
         p_item_id: stockData.item_id,
         p_warehouse_id: stockData.warehouse_id,
         p_location_id: null, // Assuming null location for now
         p_quantity_change: quantityChange,
-        p_category: normalizeInventoryCategory(resolvedItemCategory ?? item?.category, 'RAW_MATERIAL'),
+        p_category: inventoryCategory,
       });
+
+      if (error && /inventory_category/i.test(error.message || '') && inventoryCategory !== 'RAW_MATERIAL') {
+        console.error('adjust_inventory_stock rejected category; retrying as RAW_MATERIAL:', inventoryCategory, error.message);
+        const retry = await this.supabase.rpc('adjust_inventory_stock', {
+          p_tenant_id: stockData.tenant_id,
+          p_item_id: stockData.item_id,
+          p_warehouse_id: stockData.warehouse_id,
+          p_location_id: null,
+          p_quantity_change: quantityChange,
+          p_category: 'RAW_MATERIAL',
+        });
+        error = retry.error;
+      }
 
       if (error) {
         console.error('❌ ERROR creating stock entry:', error);
