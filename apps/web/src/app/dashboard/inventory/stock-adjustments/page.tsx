@@ -5,7 +5,7 @@ import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { buildDocumentBranding, escapeHtml } from '@/lib/document-branding';
-import { ErpButton, ErpMetricStrip, ErpPageHeader } from '../../../../components/ui/ErpPrimitives';
+import { ErpButton, ErpPageHeader } from '../../../../components/ui/ErpPrimitives';
 import { ClipboardCheck, FileText, GitBranch, Printer, RefreshCw, ShieldCheck } from 'lucide-react';
 
 type InventoryItem = {
@@ -736,48 +736,41 @@ export default function StockAdjustmentsPage() {
           }
         />
 
-        <ErpMetricStrip
-          loading={loading}
-          metrics={[
-            { label: 'Adjustments', value: adjustments.length },
-            { label: 'Increases', value: increaseCount, tone: 'success' },
-            { label: 'Decreases', value: decreaseCount, tone: decreaseCount > 0 ? 'warning' : 'neutral' },
-            { label: 'Selected Stock', value: `${formatNumber(currentAvailable)} ${selectedItem?.uom || ''}`.trim() },
-            { label: 'UID Control', value: selectedItemIsUidTracked ? selectedItemUidStrategy : 'Not tracked', tone: selectedItemIsUidTracked ? 'warning' : 'neutral' },
-          ]}
-        />
-
-        <div className="grid gap-3 lg:grid-cols-4">
-          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
-            <div className="text-xs font-semibold uppercase text-[#7A6555]">Movement Type</div>
-            <div className="mt-1 text-lg font-bold text-[#4A3426]">{selectedMovementType}</div>
-            <div className="text-xs text-[#7A6555]">{selectedMovementLabel}</div>
-          </div>
-          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
-            <div className="text-xs font-semibold uppercase text-[#7A6555]">Document Flow</div>
-            <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#4A3426]">
-              <GitBranch className="h-4 w-4 text-[#8B6F47]" />
-              Count {'>'} Adjustment {'>'} Stock
+        <section className="overflow-hidden rounded-md border border-[#E8DCC4] bg-white">
+          <div className="grid divide-y divide-[#E8DCC4] lg:grid-cols-4 lg:divide-x lg:divide-y-0">
+            <div className="p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Movement Type</div>
+              <div className="mt-2 text-2xl font-bold text-[#4A3426]">{selectedMovementType}</div>
+              <div className="mt-1 text-sm text-[#7A6555]">{selectedMovementLabel}</div>
             </div>
-            <div className="text-xs text-[#7A6555]">Adjustment posts directly to warehouse stock</div>
-          </div>
-          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
-            <div className="text-xs font-semibold uppercase text-[#7A6555]">Posting Control</div>
-            <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#4A3426]">
-              <ShieldCheck className="h-4 w-4 text-emerald-700" />
-              Immediate stock posting
+            <div className="p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Selected Stock</div>
+              <div className="mt-2 text-2xl font-bold text-[#4A3426]">
+                {formatNumber(currentAvailable)} {selectedItem?.uom || ''}
+              </div>
+              <div className="mt-1 text-sm text-[#7A6555]">{selectedWarehouse ? 'Warehouse stock available now' : 'Select item and warehouse'}</div>
             </div>
-            <div className="text-xs text-[#7A6555]">Decrease blocks when quantity exceeds available stock</div>
-          </div>
-          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
-            <div className="text-xs font-semibold uppercase text-[#7A6555]">Audit Reason</div>
-            <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#4A3426]">
-              <ClipboardCheck className="h-4 w-4 text-[#8B6F47]" />
-              Notes required by process
+            <div className="p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Adjustment Register</div>
+              <div className="mt-2 flex items-baseline gap-4">
+                <span className="text-2xl font-bold text-[#4A3426]">{adjustments.length}</span>
+                <span className="text-sm font-semibold text-emerald-700">+{increaseCount}</span>
+                <span className="text-sm font-semibold text-red-700">-{decreaseCount}</span>
+              </div>
+              <div className="mt-1 text-sm text-[#7A6555]">{loading ? 'Refreshing movements...' : 'Total, increases, decreases'}</div>
             </div>
-            <div className="text-xs text-[#7A6555]">Use notes for physical count, write-off, or correction reason</div>
+            <div className="p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Posting Control</div>
+              <div className="mt-2 flex items-center gap-2 text-sm font-bold text-[#4A3426]">
+                <ShieldCheck className="h-4 w-4 text-emerald-700" />
+                Immediate stock posting
+              </div>
+              <div className="mt-1 text-sm text-[#7A6555]">
+                {selectedItemIsUidTracked ? `UID tracked: ${selectedItemUidStrategy}` : 'UID not tracked for selected item'}
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
 
         {statusMessage && (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
@@ -791,11 +784,25 @@ export default function StockAdjustmentsPage() {
           </div>
         )}
 
-        <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <div className="rounded-md border border-[#E8DCC4] bg-white p-4 space-y-4">
-            <div>
-              <h2 className="text-base font-bold text-[#4A3426]">New Adjustment</h2>
-              <p className="mt-0.5 text-xs text-[#7A6555]">Create an inventory movement with controlled stock posting.</p>
+        <div className="space-y-4">
+          <section className="grid gap-4 rounded-md border border-[#E8DCC4] bg-white p-5 lg:grid-cols-2 xl:grid-cols-3">
+            <div className="border-b border-[#E8DCC4] pb-4 lg:col-span-2 xl:col-span-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-[#4A3426]">Post Stock Adjustment</h2>
+                  <p className="mt-1 text-sm text-[#7A6555]">Create a controlled inventory movement after physical count, write-off, or found stock review.</p>
+                </div>
+                <div className="flex flex-wrap gap-3 text-sm text-[#5E4635]">
+                  <span className="inline-flex items-center gap-2 rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-2 font-semibold">
+                    <GitBranch className="h-4 w-4 text-[#8B6F47]" />
+                    Count &gt; Adjustment &gt; Stock
+                  </span>
+                  <span className="inline-flex items-center gap-2 rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-2 font-semibold">
+                    <ClipboardCheck className="h-4 w-4 text-[#8B6F47]" />
+                    Reason required
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div>
@@ -894,7 +901,7 @@ export default function StockAdjustmentsPage() {
               />
             </div>
 
-            <div>
+            <div className="lg:col-span-2 xl:col-span-3">
               <label className="mb-1 block text-xs font-semibold uppercase text-[#7A6555]">Adjustment Reason / Notes</label>
               <textarea
                 value={notes}
@@ -905,24 +912,25 @@ export default function StockAdjustmentsPage() {
               />
             </div>
 
-            <ErpButton
-              onClick={() => {
-                void requestSubmitAdjustment();
-              }}
-              disabled={saving || loading || !canCreate}
-              variant="primary"
-              className="w-full"
-            >
-              <FileText className="h-4 w-4" />
-              {saving ? 'Saving...' : 'Save Adjustment'}
-            </ErpButton>
-
-            {!canCreate && (
-              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                Your current role can view this screen but cannot create stock adjustments.
-              </p>
-            )}
-          </div>
+            <div className="flex flex-col gap-3 border-t border-[#E8DCC4] pt-4 lg:col-span-2 lg:flex-row lg:items-center lg:justify-end xl:col-span-3">
+              {!canCreate && (
+                <p className="mr-auto rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  Your current role can view this screen but cannot create stock adjustments.
+                </p>
+              )}
+              <ErpButton
+                onClick={() => {
+                  void requestSubmitAdjustment();
+                }}
+                disabled={saving || loading || !canCreate}
+                variant="primary"
+                className="min-w-[220px]"
+              >
+                <FileText className="h-4 w-4" />
+                {saving ? 'Saving...' : 'Save Adjustment'}
+              </ErpButton>
+            </div>
+          </section>
 
           <div className="space-y-4">
             <div className="rounded-md border border-[#E8DCC4] bg-white p-4">
