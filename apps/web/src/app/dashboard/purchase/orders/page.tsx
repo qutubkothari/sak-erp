@@ -100,6 +100,40 @@ function ObjectPageNav({ sections }: { sections: Array<{ id: string; label: stri
   );
 }
 
+function ObjectPageTabs({
+  sections,
+  activeId,
+  onChange,
+}: {
+  sections: Array<{ id: string; label: string }>;
+  activeId: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <nav className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[#E8DCC4] bg-white px-5" aria-label="Purchase order views">
+      {sections.map((section) => {
+        const active = activeId === section.id;
+        return (
+          <button
+            key={section.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(section.id)}
+            className={`min-h-11 shrink-0 border-b-2 px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47] ${
+              active
+                ? 'border-[#8B6F47] bg-[#FAF9F6] text-[#4A3426]'
+                : 'border-transparent text-[#7A6555] hover:border-[#C8AC7A] hover:bg-[#FAF9F6] hover:text-[#4A3426]'
+            }`}
+          >
+            {section.label}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 interface PurchaseOrder {
   id: string;
   po_number: string;
@@ -268,6 +302,7 @@ function PurchaseOrdersContent() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
+  const [poViewSection, setPoViewSection] = useState('overview');
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [showPOEmailPreview, setShowPOEmailPreview] = useState(false);
   const [poEmailPreviewLoading, setPoEmailPreviewLoading] = useState(false);
@@ -1697,6 +1732,7 @@ function PurchaseOrdersContent() {
 
   const handleViewDetails = async (poId: string) => {
     try {
+      setPoViewSection('overview');
       const token = localStorage.getItem('accessToken');
       const response = await fetch(`/api/v1/purchase/orders/${poId}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -3764,16 +3800,22 @@ function PurchaseOrdersContent() {
               </button>
             </div>
 
-            <ObjectPageNav sections={[
-              { id: 'po-view-overview', label: 'Overview' },
-              { id: 'po-view-items', label: `Items (${selectedPO.purchase_order_items?.length || 0})` },
-              { id: 'po-view-fulfilment', label: 'Fulfilment' },
-              { id: 'po-view-flow', label: 'Document Flow' },
-              { id: 'po-view-documents', label: 'Documents' },
-            ]} />
+            <ObjectPageTabs
+              activeId={poViewSection}
+              onChange={setPoViewSection}
+              sections={[
+                { id: 'overview', label: 'Overview' },
+                { id: 'items', label: `Items (${selectedPO.purchase_order_items?.length || 0})` },
+                { id: 'fulfilment', label: 'Fulfilment' },
+                { id: 'flow', label: 'Document Flow' },
+                { id: 'documents', label: `Documents (${Array.isArray((selectedPO as any).attachments) ? (selectedPO as any).attachments.length : 0})` },
+              ]}
+            />
 
             <div className="flex-1 space-y-5 overflow-y-auto scroll-smooth bg-[#FAF9F6] p-4 md:p-5">
               {/* Header Info */}
+              {poViewSection === 'overview' && (
+              <>
               <section id="po-view-overview" className="scroll-mt-4 grid grid-cols-1 gap-4 border-b border-[#E8DCC4] bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">PO Number</p>
@@ -3920,13 +3962,22 @@ function PurchaseOrdersContent() {
                 </section>
               )}
               {(selectedPO as any).delivery_address && (
-                <div>
+                <div className="border-b border-[#E8DCC4] bg-white p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Delivery Address</p>
                   <p className="font-semibold whitespace-pre-line">{(selectedPO as any).delivery_address}</p>
                 </div>
               )}
+              {selectedPO.remarks && (
+                <div className="border-b border-[#E8DCC4] bg-white p-4">
+                  <p className="mb-2 text-sm text-gray-600">Remarks</p>
+                  <p className="whitespace-pre-line text-gray-800">{selectedPO.remarks}</p>
+                </div>
+              )}
+              </>
+              )}
 
               {/* Items Table */}
+              {poViewSection === 'items' && (
               <section id="po-view-items" className="scroll-mt-4 border-b border-[#E8DCC4] bg-white p-4">
                 <h3 className="text-lg font-semibold mb-3">Items</h3>
                 <div className="border rounded-lg overflow-x-auto">
@@ -4034,9 +4085,10 @@ function PurchaseOrdersContent() {
                   </table>
                 </div>
               </section>
+              )}
 
               {/* Tracking Information */}
-              {(selectedPO as any).status && (selectedPO as any).status !== 'DRAFT' && (
+              {poViewSection === 'fulfilment' && (selectedPO as any).status && (selectedPO as any).status !== 'DRAFT' && (
                 <section id="po-view-fulfilment" className="scroll-mt-4 border-b border-[#E8DCC4] bg-white p-4">
                   <h3 className="text-lg font-semibold mb-3">Tracking Information</h3>
                   <div className="grid grid-cols-2 gap-3">
@@ -4092,17 +4144,14 @@ function PurchaseOrdersContent() {
                   </div>
                 </section>
               )}
-
-              {/* Notes */}
-              {selectedPO.remarks && (
-                <div>
-                  <p className="text-sm text-gray-600 mb-2">Remarks</p>
-                  <p className="text-gray-800">{selectedPO.remarks}</p>
+              {poViewSection === 'fulfilment' && (selectedPO as any).status === 'DRAFT' && (
+                <div className="border-b border-[#E8DCC4] bg-white p-8 text-center text-sm text-[#7A6555]">
+                  Fulfilment tracking becomes available after the purchase order is submitted.
                 </div>
               )}
 
               {/* Procurement Trail (PR-route POs) */}
-              {(selectedPO as any).pr && (
+              {poViewSection === 'flow' && (selectedPO as any).pr && (
                 <section id="po-view-flow" className="scroll-mt-4 border-b border-[#E8DCC4] bg-white p-4">
                   <h3 className="text-lg font-semibold mb-3">Procurement Trail</h3>
                   <div className="space-y-3 border-l-2 border-[#C8AC7A] pl-4">
@@ -4145,9 +4194,14 @@ function PurchaseOrdersContent() {
                   </div>
                 </section>
               )}
+              {poViewSection === 'flow' && !(selectedPO as any).pr && (
+                <div className="border-b border-[#E8DCC4] bg-white p-8 text-center text-sm text-[#7A6555]">
+                  No linked purchase requisition or RFQ was recorded for this purchase order.
+                </div>
+              )}
 
               {/* PO Documents / Attachments */}
-              {Array.isArray((selectedPO as any).attachments) && (selectedPO as any).attachments.length > 0 && (
+              {poViewSection === 'documents' && Array.isArray((selectedPO as any).attachments) && (selectedPO as any).attachments.length > 0 && (
                 <section id="po-view-documents" className="scroll-mt-4 border-b border-[#E8DCC4] bg-white p-4">
                   <h3 className="text-lg font-semibold mb-3">Documents / Attachments</h3>
                   <div className="flex flex-wrap gap-2">
@@ -4165,6 +4219,11 @@ function PurchaseOrdersContent() {
                     ))}
                   </div>
                 </section>
+              )}
+              {poViewSection === 'documents' && (!Array.isArray((selectedPO as any).attachments) || (selectedPO as any).attachments.length === 0) && (
+                <div className="border-b border-[#E8DCC4] bg-white p-8 text-center text-sm text-[#7A6555]">
+                  No quotations or supporting documents are attached to this purchase order.
+                </div>
               )}
             </div>
 
