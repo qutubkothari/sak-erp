@@ -15,6 +15,8 @@ import { useEscapeKey } from '../../../../hooks/useEscapeKey';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
+import { ErpButton, ErpMetricStrip, ErpPageHeader } from '../../../../components/ui/ErpPrimitives';
+import { Eye, GitBranch, Pencil, Plus, Trash2 } from 'lucide-react';
 
 const ITEM_CATEGORY_OPTIONS = [
   { value: 'RAW_MATERIAL', label: 'Raw Material' },
@@ -2175,7 +2177,7 @@ function PurchaseOrdersContent() {
       DRAFT: 'bg-gray-100 text-gray-800',
       PENDING: 'bg-orange-100 text-orange-800',
       SENT: 'bg-blue-100 text-blue-800',
-      ACKNOWLEDGED: 'bg-purple-100 text-purple-800',
+      ACKNOWLEDGED: 'bg-[#F5EFE3] text-[#5E4635]',
       APPROVED: 'bg-green-100 text-green-800',
       REJECTED: 'bg-red-100 text-red-800',
       PARTIAL: 'bg-yellow-100 text-yellow-800',
@@ -2202,7 +2204,7 @@ function PurchaseOrdersContent() {
 
     if (paymentStatus === 'PAID') return { label: 'Payment Done', className: 'bg-green-100 text-green-800' };
     if (paymentStatus === 'PARTIAL' || paymentStatus === 'PARTIALLY_PAID') return { label: 'Partial Payment', className: 'bg-yellow-100 text-yellow-800' };
-    if (receiptStatus === 'FULLY_RECEIVED' || receiptStatus === 'PARTIALLY_RECEIVED') return { label: 'GRN Done', className: 'bg-indigo-100 text-indigo-800' };
+    if (receiptStatus === 'FULLY_RECEIVED' || receiptStatus === 'PARTIALLY_RECEIVED') return { label: 'GRN Done', className: 'bg-[#F5EFE3] text-[#6F4E37]' };
     if (deliveryStatus === 'IN_TRANSIT' || deliveryStatus === 'SHIPPED') return { label: 'Under Transit', className: 'bg-blue-100 text-blue-800' };
     if (status === 'APPROVED') return { label: 'Approved', className: 'bg-green-100 text-green-800' };
     if (status === 'PENDING') return { label: 'Pending for Approval', className: 'bg-orange-100 text-orange-800' };
@@ -2411,7 +2413,7 @@ function PurchaseOrdersContent() {
               : o.payment_status === 'CHEQUE_ISSUED'
                 ? 'bg-blue-100 text-blue-700'
                 : o.payment_status === 'OTHER'
-                  ? 'bg-purple-100 text-purple-700'
+                  ? 'bg-[#F5EFE3] text-[#6F4E37]'
                   : 'bg-yellow-100 text-yellow-700'
           }`}
         >
@@ -2522,66 +2524,89 @@ function PurchaseOrdersContent() {
       headerClassName: 'w-[16%]',
       cellClassName: 'w-[16%]',
       cell: (o) => (
-        <div className="flex items-center justify-end gap-2 whitespace-nowrap text-xs">
-          <button
+        <div className="flex items-center justify-end gap-1 whitespace-nowrap">
+          <ErpButton
             type="button"
             onClick={() => handleViewDetails(o.id)}
-            className="font-medium text-amber-600 hover:text-amber-800"
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            title="View purchase order"
+            aria-label="View purchase order"
           >
-            View
-          </button>
-          <button
+            <Eye className="h-4 w-4" />
+          </ErpButton>
+          <ErpButton
             type="button"
             onClick={() => fetchTrailData(o)}
-            className="font-medium text-purple-600 hover:text-purple-800"
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
             title="View PO lifecycle trail"
+            aria-label="View PO lifecycle trail"
           >
-            Trail
-          </button>
+            <GitBranch className="h-4 w-4" />
+          </ErpButton>
           {canEditPO && (
-          <button
+          <ErpButton
             type="button"
             onClick={() => handleEditDetails(o.id, 'edit')}
-            className="font-medium text-blue-600 hover:text-blue-800"
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            title="Edit purchase order"
+            aria-label="Edit purchase order"
           >
-            Edit
-          </button>
+            <Pencil className="h-4 w-4" />
+          </ErpButton>
           )}
           {canDeletePO && (
-            <button
+            <ErpButton
               type="button"
               onClick={() => handleDeleteOne(o)}
-              className="font-medium text-red-600 hover:text-red-800"
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 text-red-700"
+              title="Delete purchase order"
+              aria-label="Delete purchase order"
             >
-              Delete
-            </button>
+              <Trash2 className="h-4 w-4" />
+            </ErpButton>
           )}
         </div>
       ),
     },
   ];
 
+  const poMetrics = [
+    { label: 'Total Orders', value: orders.length },
+    { label: 'Pending Approval', value: orders.filter((order) => order.status === 'PENDING').length, tone: 'warning' as const },
+    { label: 'Approved', value: orders.filter((order) => order.status === 'APPROVED').length, tone: 'success' as const },
+    { label: 'Open Receipt', value: orders.filter((order) => !order.receipt_status || order.receipt_status === 'OPEN').length },
+  ];
+
   return (
-    <div className={showModal ? 'min-h-screen bg-white' : 'min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 px-3 py-4 lg:px-4'}>
+    <div className="space-y-4">
       <div className="w-full max-w-none">
         {!showModal && (
           <>
-        {/* Header */}
-        <div className="mb-3 flex items-start justify-between gap-4">
-          <div className="pt-1">
-            <h1 className="text-xl font-bold text-amber-900">Purchase Orders</h1>
-          </div>
-          <div className="flex shrink-0 flex-wrap gap-2 justify-end">
+        <ErpPageHeader
+          eyebrow="PROCUREMENT"
+          title="Purchase Orders"
+          description="Create, approve, issue, receive, and track supplier commitments."
+          actions={
+            <>
             {orderSelection.hasSelections && canDeletePO && (
-              <button
+              <ErpButton
                 onClick={handleDeleteAll}
-                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+                variant="danger"
               >
+                <Trash2 className="h-4 w-4" />
                 Delete Selected ({orderSelection.selectedItems.length})
-              </button>
+              </ErpButton>
             )}
             {canCreatePO && (
-            <button
+            <ErpButton
               onClick={() => {
                 setShowModal(true);
                 setEditingMode('create');
@@ -2591,12 +2616,21 @@ function PurchaseOrdersContent() {
                   fetchItems();
                 }
               }}
-              className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+              variant="primary"
             >
-              + Create Purchase Order
-            </button>
+              <Plus className="h-4 w-4" />
+              New Purchase Order
+            </ErpButton>
             )}
-          </div>
+            </>
+          }
+        />
+
+        <ErpMetricStrip metrics={poMetrics} loading={loading} />
+
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-[#4A3426]">Purchase Order Register</h2>
+          <span className="text-xs text-[#7A6555]">{orders.length} records</span>
         </div>
 
         {/* Orders List */}
@@ -2606,7 +2640,7 @@ function PurchaseOrdersContent() {
           </div>
         ) : (
           <ListTable
-            storageKey="purchaseOrdersTable:compact:v3"
+            storageKey="purchaseOrdersTable:sap:v1"
             rows={orders}
             columns={ordersTableColumns}
             getRowId={(o) => o.id}
@@ -2614,9 +2648,9 @@ function PurchaseOrdersContent() {
             pageSizeOptions={[10, 25, 50, 100]}
             searchPlaceholder="Search by PO number, vendor, PR ref, status…"
             toolbarRight={
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex w-full flex-wrap items-center gap-2 2xl:w-auto 2xl:flex-nowrap">
                 {orders.length > 0 && (
-                  <div className="flex items-center gap-2 border-r border-gray-300 pr-3">
+                  <div className="flex min-h-9 items-center gap-2 border-r border-[#E8DCC4] pr-3">
                     <label className="flex items-center gap-1.5 cursor-pointer">
                       <input
                         type="checkbox"
@@ -2638,36 +2672,31 @@ function PurchaseOrdersContent() {
                     )}
                   </div>
                 )}
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700">Vendor:</span>
-                  <select
+                <div className="min-w-[15rem] flex-1 2xl:w-64 2xl:flex-none">
+                  <SearchableSelect
+                    options={[{ value: '', label: 'All suppliers' }, ...vendors.map((vendor) => ({ value: vendor.id, label: vendor.name }))]}
                     value={filterVendor}
-                    onChange={(e) => setFilterVendor(e.target.value)}
-                    className="w-32 lg:w-48 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-2 focus:ring-amber-500"
-                  >
-                    <option value="">All</option>
-                    {vendors.map((v) => (
-                      <option key={v.id} value={v.id}>{v.name}</option>
-                    ))}
-                  </select>
+                    onChange={setFilterVendor}
+                    placeholder="All suppliers"
+                  />
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700">Status:</span>
-                  <select
+                <div className="min-w-[13rem] flex-1 2xl:w-56 2xl:flex-none">
+                  <SearchableSelect
+                    options={[
+                      { value: 'ALL', label: 'All statuses' },
+                      { value: 'DRAFT', label: 'Draft' },
+                      { value: 'PENDING', label: 'Pending Approval' },
+                      { value: 'APPROVED', label: 'Approved' },
+                      { value: 'REJECTED', label: 'Rejected' },
+                      { value: 'SENT', label: 'Sent' },
+                      { value: 'ACKNOWLEDGED', label: 'Acknowledged' },
+                      { value: 'PARTIAL', label: 'Partial' },
+                      { value: 'COMPLETED', label: 'Completed' },
+                    ]}
                     value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    className="w-32 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-2 focus:ring-amber-500"
-                  >
-                    <option value="ALL">All</option>
-                    <option value="DRAFT">Draft</option>
-                    <option value="PENDING">Pending Approval</option>
-                    <option value="APPROVED">Approved</option>
-                    <option value="REJECTED">Rejected</option>
-                    <option value="SENT">Sent</option>
-                    <option value="ACKNOWLEDGED">Acknowledged</option>
-                    <option value="PARTIAL">Partial</option>
-                    <option value="COMPLETED">Completed</option>
-                  </select>
+                    onChange={setFilterStatus}
+                    placeholder="All statuses"
+                  />
                 </div>
               </div>
             }
@@ -2685,9 +2714,9 @@ function PurchaseOrdersContent() {
 
       {/* Create/Edit Form */}
       {showModal && (
-        <div className="bg-white min-h-screen w-full">
-            <div className="sticky top-0 z-10 bg-white p-6 border-b border-gray-200 flex items-center justify-between gap-4">
-              <h2 className="text-2xl font-bold text-gray-900">
+        <div className="fixed inset-0 z-[1000] flex h-[100dvh] w-screen flex-col overflow-hidden bg-white">
+            <div className="z-20 flex shrink-0 items-center justify-between gap-4 border-b border-[#E8DCC4] bg-white px-5 py-3">
+              <h2 className="text-xl font-bold text-[#4A3426]">
                 {editingMode === 'create'
                   ? `Create ${isServiceOrder ? 'Service' : 'Purchase'} Order`
                   : editingMode === 'tracking'
@@ -2740,7 +2769,7 @@ function PurchaseOrdersContent() {
                 )}
               </div>
             </div>
-            <div className="p-4 space-y-4">
+            <div className="flex-1 space-y-4 overflow-y-auto bg-[#FAF9F6] p-4">
               {/* Order Details */}
               <div className="grid grid-cols-2 gap-3">
                 {editingMode === 'create' && (
@@ -2772,7 +2801,7 @@ function PurchaseOrdersContent() {
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">
                     Vendor <span className="text-red-500">*</span>
-                    {currentPrId && <span className="ml-2 text-xs font-normal text-indigo-600">RFQ prices will auto-load</span>}
+                    {currentPrId && <span className="ml-2 text-xs font-normal text-[#8B6F47]">RFQ prices will auto-load</span>}
                   </label>
                   <SearchableSelect
                     value={formData.vendorId}
@@ -3640,10 +3669,13 @@ function PurchaseOrdersContent() {
 
       {/* View Details Modal */}
       {showViewModal && selectedPO && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[92vh] overflow-y-auto shadow-2xl">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-gray-900">Purchase Order Details</h2>
+        <div className="fixed inset-0 z-[1000] h-[100dvh] w-screen overflow-hidden bg-[#FAF9F6]">
+          <div className="flex h-full w-full flex-col bg-white">
+            <div className="flex shrink-0 items-center justify-between border-b border-[#E8DCC4] bg-white px-5 py-3">
+              <div>
+                <h2 className="text-xl font-bold text-[#4A3426]">Purchase Order</h2>
+                <p className="text-sm font-medium text-[#7A6555]">{selectedPO.po_number?.startsWith('DRAFT-') ? 'Draft purchase order' : selectedPO.po_number}</p>
+              </div>
               <button onClick={() => setShowViewModal(false)} className="text-gray-500 hover:text-gray-700">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -3651,7 +3683,7 @@ function PurchaseOrdersContent() {
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="flex-1 space-y-6 overflow-y-auto bg-[#FAF9F6] p-5">
               {/* Header Info */}
               <div className="grid grid-cols-2 gap-6">
                 <div>
@@ -4035,8 +4067,8 @@ function PurchaseOrdersContent() {
               )}
             </div>
 
-            <div className="p-6 border-t border-gray-200 flex justify-between">
-              <div className="flex gap-3">
+            <div className="flex shrink-0 flex-wrap justify-between gap-3 border-t border-[#E8DCC4] bg-white px-5 py-3">
+              <div className="flex flex-wrap gap-2">
                 {selectedPO.status === 'DRAFT' && (
                   <>
                     {canEditPO && (
@@ -4147,13 +4179,13 @@ function PurchaseOrdersContent() {
                     </button>
                     <button
                       onClick={() => handleViewPDF(selectedPO.id, selectedPO.po_number)}
-                      className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                      className="px-6 py-2 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37]"
                     >
                       View PDF
                     </button>
                     <button
                       onClick={() => handlePrintPDF(selectedPO.id, selectedPO.po_number)}
-                      className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                      className="px-6 py-2 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37]"
                     >
                       Print PDF
                     </button>
@@ -4189,7 +4221,7 @@ function PurchaseOrdersContent() {
 
       {/* PO Email Preview Modal */}
       {showPOEmailPreview && poEmailPreview && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+        <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
               <h2 className="text-2xl font-bold text-amber-900">PO Email Preview</h2>
@@ -4323,7 +4355,7 @@ function PurchaseOrdersContent() {
 
       {/* Alert Popup */}
       {alertMessage && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
             <div className="flex items-start">
               <div className={`flex-shrink-0 ${
@@ -4380,9 +4412,9 @@ function PurchaseOrdersContent() {
 
       {/* PO Trail Modal */}
       {showTrailModal && trailPO && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-0">
+        <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-[60] p-0">
           <div className="bg-white shadow-2xl w-screen h-screen max-w-none max-h-none flex flex-col">
-            <div className="p-5 border-b flex justify-between items-center bg-gradient-to-r from-purple-50 to-indigo-50">
+            <div className="p-5 border-b flex justify-between items-center bg-gradient-to-r from-[#FAF9F6] to-[#F5EFE3]">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                   <span className="text-2xl">📋</span> PO Trail: {trailPO.po_number}
@@ -4402,7 +4434,7 @@ function PurchaseOrdersContent() {
             <div className="overflow-auto flex-1 p-5">
               {trailLoading ? (
                 <div className="flex items-center justify-center h-64">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#8B6F47]"></div>
                   <span className="ml-3 text-gray-600">Loading trail data...</span>
                 </div>
               ) : trailData ? (
@@ -4441,11 +4473,11 @@ function PurchaseOrdersContent() {
                   </div>
 
                   {/* PO Details */}
-                  <div className="border-l-4 border-purple-500 pl-4">
-                    <h3 className="text-sm font-bold text-purple-700 uppercase tracking-wide mb-3 flex items-center gap-2">
+                  <div className="border-l-4 border-[#A78B62] pl-4">
+                    <h3 className="text-sm font-bold text-[#6F4E37] uppercase tracking-wide mb-3 flex items-center gap-2">
                       <span>📑</span> Purchase Order
                     </h3>
-                    <div className="bg-purple-50 rounded-lg p-4">
+                    <div className="bg-[#FAF9F6] rounded-lg p-4">
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
                           <span className="text-gray-500">PO Number:</span>
@@ -4454,7 +4486,7 @@ function PurchaseOrdersContent() {
                               setShowTrailModal(false);
                               handleViewDetails(trailPO.id);
                             }}
-                            className="font-semibold text-purple-900 hover:text-purple-600 hover:underline cursor-pointer bg-transparent border-0 p-0 text-left block"
+                            className="font-semibold text-[#4A3426] hover:text-[#8B6F47] hover:underline cursor-pointer bg-transparent border-0 p-0 text-left block"
                           >
                             {trailPO.po_number} ↗
                           </button>
@@ -4477,7 +4509,7 @@ function PurchaseOrdersContent() {
                         </div>
                         <div>
                           <span className="text-gray-500">Amount:</span>
-                          <p className="font-semibold text-purple-900">₹{fmtINR(trailPO.total_amount)}</p>
+                          <p className="font-semibold text-[#4A3426]">₹{fmtINR(trailPO.total_amount)}</p>
                         </div>
                         <div>
                           <span className="text-gray-500">Status:</span>
@@ -4594,12 +4626,12 @@ function PurchaseOrdersContent() {
                   </div>
 
                   {/* Advance Payments Section */}
-                  <div className="border-l-4 border-indigo-500 pl-4">
+                  <div className="border-l-4 border-[#A78B62] pl-4">
                     <div className="flex justify-between items-center mb-3">
-                      <h3 className="text-sm font-bold text-indigo-700 uppercase tracking-wide flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-[#6F4E37] uppercase tracking-wide flex items-center gap-2">
                         <span>💰</span> Advance Payments
                         {trailData.advances?.length > 0 && (
-                          <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full text-xs">
+                          <span className="bg-[#F5EFE3] text-[#5E4635] px-2 py-0.5 rounded-full text-xs">
                             {trailData.advances.length}
                           </span>
                         )}
@@ -4609,19 +4641,19 @@ function PurchaseOrdersContent() {
                           setShowTrailModal(false);
                           router.push(`/dashboard/accounts/payables`);
                         }}
-                        className="text-xs text-indigo-600 hover:text-indigo-800 underline cursor-pointer bg-transparent border-0"
+                        className="text-xs text-[#8B6F47] hover:text-[#5E4635] underline cursor-pointer bg-transparent border-0"
                       >
                         Manage Advances ↗
                       </button>
                     </div>
                     {trailData.advances?.length > 0 ? (
-                      <div className="bg-indigo-50 rounded-lg p-4">
+                      <div className="bg-[#FAF9F6] rounded-lg p-4">
                         <div className="space-y-2">
                           {trailData.advances.map((adv: any) => (
                             <div key={adv.id} className="flex justify-between items-center text-sm bg-white rounded px-3 py-2">
                               <div className="flex gap-3">
                                 <span className="text-gray-600">{new Date(adv.payment_date).toLocaleDateString()}</span>
-                                <span className="font-semibold text-indigo-900">₹{fmtINR(adv.amount)}</span>
+                                <span className="font-semibold text-[#4A3426]">₹{fmtINR(adv.amount)}</span>
                                 <span className="text-gray-500">{adv.payment_method}</span>
                                 {adv.payment_reference && (
                                   <span className="text-gray-400">Ref: {adv.payment_reference}</span>
@@ -4630,9 +4662,9 @@ function PurchaseOrdersContent() {
                             </div>
                           ))}
                         </div>
-                        <div className="mt-3 pt-2 border-t border-indigo-200 flex justify-between items-center">
+                        <div className="mt-3 pt-2 border-t border-[#E8DCC4] flex justify-between items-center">
                           <span className="text-sm text-gray-600">Total Advance for this PO:</span>
-                          <span className="font-bold text-indigo-900">
+                          <span className="font-bold text-[#4A3426]">
                             ₹{fmtINR(trailData.advances.reduce((s: number, a: any) => s + (a.amount || 0), 0))}
                           </span>
                         </div>
@@ -4689,7 +4721,7 @@ function PurchaseOrdersContent() {
                         <div className="text-gray-500">PRs</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-purple-600">1</div>
+                        <div className="text-2xl font-bold text-[#8B6F47]">1</div>
                         <div className="text-gray-500">POs</div>
                       </div>
                       <div className="text-center">
@@ -4697,7 +4729,7 @@ function PurchaseOrdersContent() {
                         <div className="text-gray-500">GRNs</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-indigo-600">
+                        <div className="text-2xl font-bold text-[#8B6F47]">
                           {trailData.advances?.length || 0}
                         </div>
                         <div className="text-gray-500">Advances</div>
