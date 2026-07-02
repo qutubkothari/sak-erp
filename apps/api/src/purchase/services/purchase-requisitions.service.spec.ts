@@ -56,10 +56,53 @@ describe('PurchaseRequisitionsService controls', () => {
     );
   });
 
+  it('requires a manager-level role when no approval matrix is configured', async () => {
+    const service = makeService();
+    jest.spyOn(service as any, 'getRequisitionForTransition').mockResolvedValue({
+      status: 'SUBMITTED',
+      requested_by: 'requester-1',
+      department: 'PRODUCTION',
+      current_approval_level: 0,
+      purchase_requisition_items: [],
+    });
+    jest.spyOn(service as any, 'getMatchingApprovalRules').mockResolvedValue([]);
+    jest.spyOn(service as any, 'assertDefaultApprover').mockRejectedValue(
+      new BadRequestException('A Manager or Administrator role is required to approve this requisition.'),
+    );
+
+    await expect(service.approve('tenant-1', 'pr-1', 'staff-1')).rejects.toThrow(
+      'A Manager or Administrator role is required',
+    );
+  });
+
   it('requires a rejection reason', async () => {
     const service = makeService();
     await expect(service.reject('tenant-1', 'pr-1', 'approver-1', '   ')).rejects.toThrow(
       'A rejection reason is required',
     );
+  });
+
+  it('submits a complete draft and records its history', async () => {
+    const service = makeService();
+    const updateQuery: any = {
+      update: jest.fn(() => updateQuery),
+      eq: jest.fn(() => updateQuery),
+    };
+    (service as any).supabase = {
+      from: jest.fn((table: string) => table === 'purchase_requisition_approval_history'
+        ? { insert: jest.fn().mockResolvedValue({ error: null }) }
+        : updateQuery),
+    };
+    jest.spyOn(service as any, 'getRequisitionForTransition').mockResolvedValue({
+      status: 'DRAFT',
+      department: 'PRODUCTION',
+      required_date: '2026-07-10',
+      purchase_requisition_items: [{ id: 'line-1' }],
+    });
+    jest.spyOn(service, 'findOne').mockResolvedValue({ id: 'pr-1', status: 'SUBMITTED' } as any);
+
+    await expect(service.submit('tenant-1', 'pr-1', 'requester-1')).resolves.toMatchObject({
+      status: 'SUBMITTED',
+    });
   });
 });

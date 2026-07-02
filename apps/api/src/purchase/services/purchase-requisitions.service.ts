@@ -653,6 +653,38 @@ export class PurchaseRequisitionsService {
     if (!membership && !legacyUser) throw new BadRequestException('Your role is not assigned to this approval step.');
   }
 
+  private async assertDefaultApprover(tenantId: string, userId: string) {
+    const [{ data: memberships, error: membershipError }, { data: legacyUser, error: userError }] = await Promise.all([
+      this.supabase.from('user_roles').select('role_id').eq('user_id', userId),
+      this.supabase.from('users').select('role_id').eq('tenant_id', tenantId).eq('id', userId).maybeSingle(),
+    ]);
+    if (membershipError || userError) {
+      throw new BadRequestException('Unable to verify the approver role.');
+    }
+
+    const roleIds = Array.from(new Set([
+      ...(memberships || []).map((membership: any) => membership.role_id),
+      legacyUser?.role_id,
+    ].filter(Boolean)));
+    if (roleIds.length === 0) {
+      throw new BadRequestException('A Manager or Administrator role is required to approve this requisition.');
+    }
+
+    const { data: roles, error: rolesError } = await this.supabase
+      .from('roles')
+      .select('code, name')
+      .in('id', roleIds);
+    if (rolesError) throw new BadRequestException('Unable to verify the approver role.');
+
+    const allowedRole = (roles || []).some((role: any) => {
+      const identity = `${normalizeStatus(role.code)} ${normalizeStatus(role.name)}`;
+      return ['MANAGER', 'ADMIN', 'DIRECTOR', 'OWNER'].some((keyword) => identity.includes(keyword));
+    });
+    if (!allowedRole) {
+      throw new BadRequestException('A Manager or Administrator role is required to approve this requisition.');
+    }
+  }
+
   async update(tenantId: string, id: string, data: any, userId: string) {
     const current = await this.getRequisitionForTransition(tenantId, id);
     const currentStatus = normalizeStatus(current.status);
@@ -784,6 +816,12 @@ export class PurchaseRequisitionsService {
       }
     }
 
+    if (requestedStatus === 'SUBMITTED' && currentStatus !== 'SUBMITTED') {
+      return this.submit(tenantId, id, userId);
+    }
+    if (currentStatus === 'SUBMITTED') {
+      await this.logApprovalAction({ tenantId, prId: id, actorId: userId, action: 'EDITED_AND_RESUBMITTED', fromStatus: currentStatus, toStatus: 'SUBMITTED' });
+    }
     return this.findOne(tenantId, id);
   }
 
@@ -812,12 +850,6 @@ export class PurchaseRequisitionsService {
 
     if (error) throw new BadRequestException(error.message);
     await this.logApprovalAction({ tenantId, prId: id, actorId: userId, action: 'SUBMITTED', fromStatus, toStatus: 'SUBMITTED' });
-    if (requestedStatus === 'SUBMITTED' && currentStatus !== 'SUBMITTED') {
-      return this.submit(tenantId, id, userId);
-    }
-    if (currentStatus === 'SUBMITTED') {
-      await this.logApprovalAction({ tenantId, prId: id, actorId: userId, action: 'EDITED_AND_RESUBMITTED', fromStatus: currentStatus, toStatus: 'SUBMITTED' });
-    }
     return this.findOne(tenantId, id);
   }
 
@@ -834,7 +866,11 @@ export class PurchaseRequisitionsService {
     const rules = await this.getMatchingApprovalRules(tenantId, pr.department, totalAmount);
     const currentLevel = Number(pr.current_approval_level || 0);
     const currentRule = rules[currentLevel];
-    if (currentRule) await this.assertRuleApprover(userId, currentRule);
+    if (currentRule) {
+      await this.assertRuleApprover(userId, currentRule);
+    } else if (rules.length === 0) {
+      await this.assertDefaultApprover(tenantId, userId);
+    }
     const finalApproval = rules.length === 0 || currentLevel + 1 >= rules.length;
     const nextStatus = finalApproval ? 'APPROVED' : 'SUBMITTED';
 
