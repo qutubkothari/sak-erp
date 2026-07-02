@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, Suspense, useRef } from 'react';
+import { useState, useEffect, Suspense, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { apiClient } from '../../../../../lib/api-client';
@@ -60,6 +61,11 @@ function calcPoLineTotal(quantity: number, unitPrice: number, discountPercent: n
   const discountAmount = grossAmount * (Math.max(0, Number(discountPercent || 0)) / 100);
   const taxableAmount = Math.max(0, grossAmount - discountAmount);
   return taxableAmount + (taxableAmount * Math.max(0, Number(taxRate || 0))) / 100;
+}
+
+function FullScreenPortal({ children }: { children: ReactNode }) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(children, document.body);
 }
 
 interface PurchaseOrder {
@@ -2718,6 +2724,7 @@ function PurchaseOrdersContent() {
 
       {/* Create/Edit Form */}
       {showModal && (
+        <FullScreenPortal>
         <div className="fixed inset-0 z-[1000] flex h-[100dvh] w-screen flex-col overflow-hidden bg-white">
             <div className="z-20 flex shrink-0 items-center justify-between gap-4 border-b border-[#E8DCC4] bg-white px-5 py-3">
               <h2 className="text-xl font-bold text-[#4A3426]">
@@ -3584,12 +3591,14 @@ function PurchaseOrdersContent() {
               </div>
             </div>
           </div>
+        </FullScreenPortal>
         )}
       </div>
 
       {/* Quick Create Item Modal */}
       {showQuickCreateItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4">
+        <FullScreenPortal>
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-[#4A3426]/45 p-4">
           <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl">
             <div className="p-5 border-b flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Create New Item</h3>
@@ -3647,6 +3656,7 @@ function PurchaseOrdersContent() {
             </div>
           </div>
         </div>
+        </FullScreenPortal>
       )}
 
       {/* Drawing Manager Modal - Mandatory for PO items */}
@@ -3673,6 +3683,7 @@ function PurchaseOrdersContent() {
 
       {/* View Details Modal */}
       {showViewModal && selectedPO && (
+        <FullScreenPortal>
         <div className="fixed inset-0 z-[1000] h-[100dvh] w-screen overflow-hidden bg-[#FAF9F6]">
           <div className="flex h-full w-full flex-col bg-white">
             <div className="flex shrink-0 items-center justify-between border-b border-[#E8DCC4] bg-white px-5 py-3">
@@ -4221,12 +4232,14 @@ function PurchaseOrdersContent() {
             </div>
           </div>
         </div>
+        </FullScreenPortal>
       )}
 
       {/* PO Email Preview Modal */}
       {showPOEmailPreview && poEmailPreview && (
-        <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+        <FullScreenPortal>
+        <div className="fixed inset-0 z-[1200] h-[100dvh] w-screen overflow-hidden bg-white">
+          <div className="flex h-full w-full flex-col overflow-y-auto bg-white">
             <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
               <h2 className="text-2xl font-bold text-amber-900">PO Email Preview</h2>
               <button
@@ -4355,11 +4368,13 @@ function PurchaseOrdersContent() {
             })()}
           </div>
         </div>
+        </FullScreenPortal>
       )}
 
       {/* Alert Popup */}
       {alertMessage && (
-        <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-50">
+        <FullScreenPortal>
+        <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-[#4A3426]/45">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
             <div className="flex items-start">
               <div className={`flex-shrink-0 ${
@@ -4412,11 +4427,13 @@ function PurchaseOrdersContent() {
             </div>
           </div>
         </div>
+        </FullScreenPortal>
       )}
 
       {/* PO Trail Modal */}
       {showTrailModal && trailPO && (
-        <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-[60] p-0">
+        <FullScreenPortal>
+        <div className="fixed inset-0 z-[1100] flex h-[100dvh] w-screen items-center justify-center bg-white p-0">
           <div className="bg-white shadow-2xl w-screen h-screen max-w-none max-h-none flex flex-col">
             <div className="p-5 border-b flex justify-between items-center bg-gradient-to-r from-[#FAF9F6] to-[#F5EFE3]">
               <div>
@@ -4764,6 +4781,7 @@ function PurchaseOrdersContent() {
             </div>
           </div>
         </div>
+        </FullScreenPortal>
       )}
 
       {/* Duplicate Warning Modal */}
