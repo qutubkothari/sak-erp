@@ -81,6 +81,9 @@ function Run($label, $scriptBlock) {
 
 function Invoke-Ssh($remoteCommand) {
   & ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -i $KEY_PATH "$HOSTINGER_USER@$HOSTINGER_IP" $remoteCommand
+  if ($LASTEXITCODE -ne 0) {
+    throw "Remote SSH command failed with exit code $LASTEXITCODE"
+  }
 }
 
 function ScpToHostinger($localPath, $remotePath) {
@@ -238,6 +241,9 @@ Run "Create artifact archive ($archive)" {
   $tarInputs = @($requiredInputs + $existingOptional)
 
   & tar -czf $archive @tarInputs
+  if ($LASTEXITCODE -ne 0) {
+    throw "Artifact creation failed with exit code $LASTEXITCODE"
+  }
 
   $size = [math]::Round((Get-Item $archive).Length / 1MB, 2)
   Write-Host "Archive size: $size MB" -ForegroundColor Gray
@@ -264,7 +270,10 @@ Run "Deploy on Hostinger (extract, install prod deps, restart PM2)" {
      'pm2 stop ' + $PM2_WEB_NAME + ' 2>/dev/null || true; ' +
      'if [ -d apps ]; then tar -czf backup-' + $stamp + '.tar.gz apps packages package.json pnpm-workspace.yaml pnpm-lock.yaml 2>/dev/null || true; fi; ' +
      'ls -1t backup-*.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm -f 2>/dev/null || true; ' +
-     'rm -rf apps/web/.next apps/api/dist packages/hr-module/dist 2>/dev/null || true; ' +
+     'for target in apps/web/.next apps/api/dist packages/hr-module/dist; do ' +
+     '  if [ -e "$target" ]; then chmod -R u+rwX "$target" 2>/dev/null || true; rm -rf -- "$target"; fi; ' +
+     '  if [ -e "$target" ]; then echo "Failed to remove $target" >&2; exit 1; fi; ' +
+     'done; ' +
      'tar -xzf "$ARCHIVE" -C "$DEPLOY_DIR"; ' +
      'rm -f "$ARCHIVE"; ' +
      $remoteEnvCopy +
@@ -281,7 +290,7 @@ Run "Deploy on Hostinger (extract, install prod deps, restart PM2)" {
     'fi; ' +
     'cd "$DEPLOY_DIR"; ' +
     'pm2 save; ' +
-    'WEB_OK=0; for i in 1 2 3 4 5 6 7 8 9 10; do if curl -fs http://127.0.0.1:' + $WEB_PORT + '/ >/dev/null 2>&1; then WEB_OK=1; break; fi; sleep 1; done; if [ "$WEB_OK" -eq 1 ]; then echo WEB_OK; else echo WEB_FAIL; fi; ' +
+    'WEB_OK=0; for i in 1 2 3 4 5 6 7 8 9 10; do if curl -fs http://127.0.0.1:' + $WEB_PORT + '/ >/dev/null 2>&1; then WEB_OK=1; break; fi; sleep 1; done; if [ "$WEB_OK" -eq 1 ]; then echo WEB_OK; else echo WEB_FAIL >&2; exit 1; fi; ' +
     'API_CODE=000; for i in 1 2 3 4 5 6 7 8 9 10; do API_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:' + $API_PORT + '/api/v1 2>/dev/null || true); if [ "$API_CODE" != "000" ]; then break; fi; sleep 1; done; if [ "$API_CODE" != "000" ]; then echo API_OK_$API_CODE; else echo API_FAIL; fi; ' +
      'pm2 list')
 
