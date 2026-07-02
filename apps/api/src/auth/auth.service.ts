@@ -21,7 +21,7 @@ interface LoginDto {
   username?: string;
   email?: string;
   password: string;
-  tenantId: string;
+  tenantId?: string;
 }
 
 @Injectable()
@@ -450,48 +450,14 @@ export class AuthService {
 
   async login(dto: LoginDto) {
     const rawLogin = String(dto?.username ?? dto?.email ?? '').trim();
-    const normalizedUsername = this.normalizeUsername(rawLogin);
+    const normalizedLogin = rawLogin.toLowerCase();
     const normalizedEmail = this.normalizeEmail(rawLogin);
 
-    if (!normalizedUsername && !normalizedEmail) {
+    if (!normalizedLogin) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Get or use default tenant if not provided
-    let tenantId = dto.tenantId;
-    
-    // PRIORITY 1: First, try to get tenant from user's record (most reliable)
-    if (!tenantId) {
-      const { data: userTenant } = await this.supabase
-        .from('users')
-        .select('tenant_id')
-        .or(`username.ilike.${normalizedUsername},email.ilike.${normalizedEmail}`)
-        .limit(1)
-        .maybeSingle();
-
-      tenantId = (userTenant as any)?.tenant_id;
-    }
-    
-    // PRIORITY 2: Fallback to default active tenant
-    if (!tenantId) {
-      const { data: defaultTenant } = await this.supabase
-        .from('tenants')
-        .select('id')
-        .eq('is_active', true)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      tenantId = defaultTenant?.id;
-    }
-
-    if (!tenantId) {
-      throw new UnauthorizedException('No active tenant found');
-    }
-
-    const resolvedTenantId = tenantId;
-
-    // Find user
-    const { data: user, error: userError } = await this.supabase
+    let userQuery = this.supabase
       .from('users')
       .select(`
         id,
@@ -507,24 +473,40 @@ export class AuthService {
           name,
           permissions
         )
-      `)
-      .or(`username.ilike.${normalizedUsername},email.ilike.${normalizedEmail}`)
-      .eq('tenant_id', resolvedTenantId)
-      .maybeSingle();
+      `);
+    userQuery = rawLogin.includes('@')
+      ? userQuery.ilike('email', normalizedEmail)
+      : userQuery.ilike('username', normalizedLogin);
+    if (dto.tenantId) userQuery = userQuery.eq('tenant_id', dto.tenantId);
 
-    if (userError || !user) {
+    const { data: candidates, error: userError } = await userQuery.limit(50);
+    if (userError || !candidates?.length) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Check if user is active
-    if (!user.is_active) {
+    const passwordMatches = (
+      await Promise.all(
+        candidates.map(async (candidate: any) => ({
+          candidate,
+          valid: await this.verifyPassword(dto.password, candidate.password),
+        })),
+      )
+    ).filter((result) => result.valid).map((result) => result.candidate);
+
+    if (passwordMatches.length === 0) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const activeMatches = passwordMatches.filter((candidate: any) => candidate.is_active);
+    if (activeMatches.length === 0) {
       throw new UnauthorizedException('Account is deactivated');
     }
-
-    const isPasswordValid = await this.verifyPassword(dto.password, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
+    if (activeMatches.length > 1) {
+      throw new UnauthorizedException('Multiple company accounts use these credentials. Contact your administrator to select the correct tenant.');
     }
+
+    const user = activeMatches[0];
+    const resolvedTenantId = user.tenant_id;
 
     // Update last login
     await this.supabase
