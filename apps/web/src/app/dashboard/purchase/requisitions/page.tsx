@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
@@ -211,6 +211,7 @@ function PRContent() {
   const canCreatePR = hasModulePermission(currentUser, 'Purchase Management', 'create');
   const canEditPR = hasModulePermission(currentUser, 'Purchase Management', 'edit');
   const canDeletePR = hasModulePermission(currentUser, 'Purchase Management', 'delete');
+  const itemEntryRef = useRef<HTMLDivElement>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [items, setItems] = useState<PRItem[]>([]);
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
@@ -720,6 +721,15 @@ function PRContent() {
     setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
     setDeliveryAddressName('');
     resetItemEntry();
+  };
+
+  const startNewLineItem = () => {
+    setEditingItemId(null);
+    resetItemEntry();
+    itemEntryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.setTimeout(() => {
+      itemEntryRef.current?.querySelector<HTMLInputElement>('input[role="combobox"]')?.focus({ preventScroll: true });
+    }, 350);
   };
 
   const removeItem = (id: string) => {
@@ -1566,7 +1576,7 @@ function PRContent() {
                   <h3 className="mb-2 text-base font-semibold text-slate-900">Items</h3>
 
                   {/* Add Item Form */}
-                  <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <div ref={itemEntryRef} className="scroll-mt-3 mb-3 rounded-md border border-slate-200 bg-slate-50 p-3">
                     <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
                       {/* Item Name/Search */}
                       <div className="xl:col-span-4">
@@ -1783,6 +1793,11 @@ function PRContent() {
                           ))}
                         </tbody>
                       </table>
+                      <div className="flex justify-center border-t border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <ErpButton type="button" onClick={startNewLineItem} variant="secondary">
+                          <Plus className="h-4 w-4" /> Add New Line Item
+                        </ErpButton>
+                      </div>
                     </div>
                   )}
                 </div>
