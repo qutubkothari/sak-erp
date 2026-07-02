@@ -196,11 +196,15 @@ function PurchaseOrdersContent() {
   const todayDate = getTodayDateInputValue();
   const prId = searchParams?.get('prId');
   const viewId = searchParams?.get('viewId');
-  const currentUser = readStoredUser();
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof readStoredUser>>(null);
   const canApprovePO = hasModulePermission(currentUser, 'Purchase Management', 'approve');
   const canCreatePO = hasModulePermission(currentUser, 'Purchase Management', 'create');
   const canEditPO = hasModulePermission(currentUser, 'Purchase Management', 'edit');
   const canDeletePO = hasModulePermission(currentUser, 'Purchase Management', 'delete');
+
+  useEffect(() => {
+    setCurrentUser(readStoredUser());
+  }, []);
 
   const [purchaseRequisitions, setPurchaseRequisitions] = useState<
     Array<{ id: string; pr_number: string; department?: string; status?: string }>
