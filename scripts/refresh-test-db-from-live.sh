@@ -117,6 +117,25 @@ run_test_restore \
   --no-privileges \
   "/work/$(basename "$LIVE_DUMP")"
 
+# pg_dump/pg_restore is intentionally run without privileges. Restore the
+# standard Supabase API grants so PostgREST can access the refreshed schema.
+echo "Restoring Supabase API role grants on test..."
+run_test_psql -v ON_ERROR_STOP=1 <<'SQL'
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL PRIVILEGES ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT ALL PRIVILEGES ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT ALL PRIVILEGES ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT ALL PRIVILEGES ON ROUTINES TO anon, authenticated, service_role;
+
+NOTIFY pgrst, 'reload schema';
+SQL
+
 echo "Verifying core table counts..."
 verify_counts() {
   local side="$1"
