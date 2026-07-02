@@ -177,6 +177,33 @@ interface GRN {
   freight_gst_amount?: number;
   debit_note_amount?: number;
   net_payable_amount?: number;
+  sap_controls?: {
+    material_document_number?: string;
+    fiscal_year?: number;
+    inspection_lot_number?: string;
+    movement_type?: string;
+    movement_text?: string;
+    gr_ir_status?: string;
+    qc_gate_status?: string;
+    three_way_match_status?: string;
+    tolerance_status?: string;
+    reversal_status?: string;
+    stock_posting_policy?: string;
+    metadata?: { messages?: string[] };
+    items?: Array<{
+      grn_item_id?: string;
+      item_code?: string;
+      movement_type?: string;
+      stock_type?: string;
+      received_qty?: number;
+      accepted_qty?: number;
+      rejected_qty?: number;
+      qty_variance?: number;
+      price_variance_percent?: number;
+      tolerance_status?: string;
+      metadata?: { messages?: string[] };
+    }>;
+  } | null;
   vendor: {
     name: string;
     code: string;
@@ -2962,6 +2989,95 @@ function GRNContent() {
                   )}
                 </div>
               </div>
+
+              {!editMode && selectedGRN.sap_controls && (
+                <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5]">
+                  <div className="border-b border-[#E8DCC4] px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-base font-bold text-[#4A3426]">SAP Receiving Controls</h3>
+                        <p className="text-xs text-[#7A6555]">Material document, inspection lot, tolerance, and GR/IR readiness.</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-full border border-[#D8C8AA] bg-white px-2.5 py-1 font-semibold text-[#5E4635]">
+                          Mvt {selectedGRN.sap_controls.movement_type || '101'}
+                        </span>
+                        <span className={`rounded-full px-2.5 py-1 font-semibold ${
+                          selectedGRN.sap_controls.tolerance_status === 'OK'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}>
+                          Tolerance {selectedGRN.sap_controls.tolerance_status || 'OK'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid gap-px bg-[#E8DCC4] md:grid-cols-4">
+                    {[
+                      ['Material Document', selectedGRN.sap_controls.material_document_number || '-'],
+                      ['Fiscal Year', selectedGRN.sap_controls.fiscal_year || '-'],
+                      ['Inspection Lot', selectedGRN.sap_controls.inspection_lot_number || '-'],
+                      ['QC Gate', String(selectedGRN.sap_controls.qc_gate_status || '-').replace(/_/g, ' ')],
+                      ['GR/IR Status', String(selectedGRN.sap_controls.gr_ir_status || '-').replace(/_/g, ' ')],
+                      ['3-Way Match', selectedGRN.sap_controls.three_way_match_status || '-'],
+                      ['Stock Posting', String(selectedGRN.sap_controls.stock_posting_policy || '-').replace(/_/g, ' ')],
+                      ['Reversal', String(selectedGRN.sap_controls.reversal_status || '-').replace(/_/g, ' ')],
+                    ].map(([label, value]) => (
+                      <div key={label} className="bg-white px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase text-[#8B6F47]">{label}</div>
+                        <div className="mt-1 text-sm font-semibold text-[#2F241D]">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {Array.isArray(selectedGRN.sap_controls.items) && selectedGRN.sap_controls.items.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-[#F5EFE3] text-xs uppercase text-[#5E4635]">
+                          <tr>
+                            <th className="px-4 py-2 text-left">Item</th>
+                            <th className="px-4 py-2 text-left">Stock Type</th>
+                            <th className="px-4 py-2 text-right">Received</th>
+                            <th className="px-4 py-2 text-right">Accepted</th>
+                            <th className="px-4 py-2 text-right">Rejected</th>
+                            <th className="px-4 py-2 text-right">Qty Variance</th>
+                            <th className="px-4 py-2 text-right">Rate Variance</th>
+                            <th className="px-4 py-2 text-left">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#E8DCC4] bg-white">
+                          {selectedGRN.sap_controls.items.map((item, index) => (
+                            <tr key={item.grn_item_id || index}>
+                              <td className="px-4 py-2 font-semibold text-[#2F241D]">{item.item_code || '-'}</td>
+                              <td className="px-4 py-2 text-[#5E4635]">{String(item.stock_type || '-').replace(/_/g, ' ')}</td>
+                              <td className="px-4 py-2 text-right">{Number(item.received_qty || 0).toLocaleString('en-IN')}</td>
+                              <td className="px-4 py-2 text-right">{Number(item.accepted_qty || 0).toLocaleString('en-IN')}</td>
+                              <td className="px-4 py-2 text-right">{Number(item.rejected_qty || 0).toLocaleString('en-IN')}</td>
+                              <td className="px-4 py-2 text-right">{Number(item.qty_variance || 0).toLocaleString('en-IN')}</td>
+                              <td className="px-4 py-2 text-right">{Number(item.price_variance_percent || 0).toFixed(2)}%</td>
+                              <td className="px-4 py-2">
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                  item.tolerance_status === 'OK'
+                                    ? 'bg-emerald-50 text-emerald-800'
+                                    : 'bg-amber-50 text-amber-800'
+                                }`}>
+                                  {item.tolerance_status || 'OK'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {Array.isArray(selectedGRN.sap_controls.metadata?.messages) && selectedGRN.sap_controls.metadata.messages.length > 0 && (
+                    <div className="border-t border-[#E8DCC4] bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      {selectedGRN.sap_controls.metadata.messages.map((message, index) => (
+                        <div key={index}>{message}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Financial Summary - Only show if financial data exists */}
               {(selectedGRN.gross_amount || selectedGRN.debit_note_amount || selectedGRN.net_payable_amount) && (() => {

@@ -6,6 +6,7 @@ import { mkdir, writeFile, unlink } from 'fs/promises';
 import { extname, join, resolve } from 'path';
 import { randomUUID } from 'crypto';
 import { allocatePoSettlement } from '../utils/po-settlement';
+import { buildSapGrnControls } from '../utils/grn-sap-controls';
 
 @Injectable()
 export class GrnService {
@@ -608,6 +609,7 @@ export class GrnService {
     // Calculate totals
     await this.updateGRNTotals(grn.id);
     await this.updateGRNFinancialAmounts(tenantId, grn.id);
+    await this.refreshSapControlsForGrn(tenantId, grn.id, userId);
 
     return this.findOne(tenantId, grn.id);
   }
@@ -674,6 +676,7 @@ export class GrnService {
       .single();
 
     if (error) throw new NotFoundException('GRN not found');
+    (data as any).sap_controls = await this.getSapControlsForGrn(tenantId, id);
     return data;
   }
 
@@ -850,6 +853,7 @@ export class GrnService {
 
     // Recalculate financial amounts after item update
     await this.updateGRNFinancialAmounts(tenantId, id);
+    await this.refreshSapControlsForGrn(tenantId, id);
 
     return this.findOne(tenantId, id);
   }
@@ -903,6 +907,7 @@ export class GrnService {
 
     // Ensure stock entries exist for accepted quantities.
     await this.ensureStockEntriesForGrnAccepted(tenantId, grn);
+    await this.refreshSapControlsForGrn(tenantId, id, userId);
 
     // Auto-generate UIDs for accepted items
     if (grn.grn_items && grn.grn_items.length > 0) {
@@ -1119,6 +1124,7 @@ export class GrnService {
     // If status is COMPLETED, calculate financial amounts with GST
     if (dbStatus === 'COMPLETED') {
       await this.updateGRNFinancialAmounts(tenantId, id);
+      await this.refreshSapControlsForGrn(tenantId, id, userId);
     }
 
     return this.findOne(tenantId, id);
@@ -1623,6 +1629,7 @@ export class GrnService {
 
         // Calculate and update financial amounts with GST
         await this.updateGRNFinancialAmounts(tenantId, grnId);
+        await this.refreshSapControlsForGrn(tenantId, grnId, userId);
       }
 
       console.log('=== QC ACCEPT COMPLETE ===');
@@ -2292,6 +2299,197 @@ export class GrnService {
       debit_note_amount: debitNoteAmount,
       net_payable_amount: netPayableAmount,
     });
+  }
+
+  private async buildSapControlsInput(tenantId: string, grnId: string) {
+    const { data: grn, error } = await this.supabase
+      .from('grns')
+      .select(`
+        id,
+        grn_number,
+        receipt_date,
+        status,
+        qc_completed,
+        purchase_order:purchase_orders(id, po_number),
+        grn_items(
+          id,
+          po_item_id,
+          item_id,
+          item_code,
+          ordered_qty,
+          received_qty,
+          accepted_qty,
+          rejected_qty,
+          rate
+        )
+      `)
+      .eq('tenant_id', tenantId)
+      .eq('id', grnId)
+      .maybeSingle();
+
+    if (error || !grn) return null;
+
+    const grnItems = Array.isArray((grn as any).grn_items) ? (grn as any).grn_items : [];
+    const poItemIds = Array.from(
+      new Set(
+        grnItems
+          .map((item: any) => String(item?.po_item_id || '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    const poQtyMap = await this.getPoItemQtyMap(poItemIds);
+    const poPricingMap = await this.getPoItemPricingMap(poItemIds);
+    const currentReceivedByPoItemId = new Map<string, number>();
+
+    for (const item of grnItems) {
+      const poItemId = String(item?.po_item_id || '').trim();
+      if (!poItemId) continue;
+      currentReceivedByPoItemId.set(
+        poItemId,
+        (currentReceivedByPoItemId.get(poItemId) ?? 0) + this.toNumber(item?.received_qty),
+      );
+    }
+
+    return {
+      grnId: (grn as any).id,
+      grnNumber: (grn as any).grn_number,
+      poNumber: (grn as any).purchase_order?.po_number || null,
+      receiptDate: (grn as any).receipt_date || null,
+      status: (grn as any).status || null,
+      qcCompleted: Boolean((grn as any).qc_completed),
+      items: grnItems.map((item: any) => {
+        const poItemId = String(item?.po_item_id || '').trim();
+        const poQty = poItemId ? poQtyMap.get(poItemId) : undefined;
+        const currentReceivedForLine = poItemId ? (currentReceivedByPoItemId.get(poItemId) ?? 0) : 0;
+        const currentPoReceived = poQty ? this.toNumber(poQty.receivedQty) : 0;
+        return {
+          id: item?.id,
+          poItemId,
+          itemId: item?.item_id,
+          itemCode: item?.item_code,
+          orderedQty: this.toNumber(item?.ordered_qty ?? poQty?.orderedQty),
+          previousReceivedQty: Math.max(0, currentPoReceived - currentReceivedForLine),
+          receivedQty: this.toNumber(item?.received_qty),
+          acceptedQty: this.toNumber(item?.accepted_qty),
+          rejectedQty: this.toNumber(item?.rejected_qty),
+          poRate: poItemId ? this.toNumber(poPricingMap.get(poItemId)?.rate) : 0,
+          grnRate: this.toNumber(item?.rate),
+        };
+      }),
+    };
+  }
+
+  private async refreshSapControlsForGrn(tenantId: string, grnId: string, userId?: string) {
+    try {
+      const input = await this.buildSapControlsInput(tenantId, grnId);
+      if (!input) return;
+
+      const controls = buildSapGrnControls(input);
+      const now = new Date().toISOString();
+      const controlPayload = {
+        tenant_id: tenantId,
+        grn_id: grnId,
+        movement_type: controls.movementType,
+        movement_text: controls.movementText,
+        material_document_number: controls.materialDocumentNumber,
+        fiscal_year: controls.fiscalYear,
+        inspection_lot_number: controls.inspectionLotNumber,
+        gr_ir_status: controls.grIrStatus,
+        qc_gate_status: controls.qcGateStatus,
+        three_way_match_status: controls.threeWayMatchStatus,
+        tolerance_status: controls.toleranceStatus,
+        reversal_status: controls.reversalStatus,
+        stock_posting_policy: controls.stockPostingPolicy,
+        created_by: userId || null,
+        updated_at: now,
+        metadata: {
+          po_number: input.poNumber,
+          messages: controls.messages,
+        },
+      };
+
+      const { data: control, error: controlError } = await this.supabase
+        .from('grn_sap_controls')
+        .upsert(controlPayload, { onConflict: 'tenant_id,grn_id' })
+        .select('id')
+        .single();
+
+      if (controlError || !control?.id) {
+        console.error('refreshSapControlsForGrn: unable to save GRN SAP controls', controlError);
+        return;
+      }
+
+      await this.supabase
+        .from('grn_sap_control_items')
+        .delete()
+        .eq('tenant_id', tenantId)
+        .eq('grn_sap_control_id', control.id);
+
+      if (controls.items.length > 0) {
+        const itemPayload = controls.items.map((item) => ({
+          tenant_id: tenantId,
+          grn_sap_control_id: control.id,
+          grn_id: grnId,
+          grn_item_id: item.id || null,
+          po_item_id: item.poItemId || null,
+          item_id: item.itemId || null,
+          item_code: item.itemCode || null,
+          movement_type: item.movementType,
+          stock_type: item.stockType,
+          ordered_qty: item.orderedQty,
+          previous_received_qty: item.previousReceivedQty,
+          received_qty: item.receivedQty,
+          accepted_qty: item.acceptedQty,
+          rejected_qty: item.rejectedQty,
+          po_rate: item.poRate,
+          grn_rate: item.grnRate,
+          qty_variance: item.qtyVariance,
+          price_variance_percent: item.priceVariancePercent,
+          tolerance_status: item.toleranceStatus,
+          metadata: {
+            messages: item.toleranceMessages,
+          },
+        }));
+
+        const { error: itemsError } = await this.supabase
+          .from('grn_sap_control_items')
+          .insert(itemPayload);
+
+        if (itemsError) {
+          console.error('refreshSapControlsForGrn: unable to save GRN SAP control items', itemsError);
+        }
+      }
+    } catch (error) {
+      console.error('refreshSapControlsForGrn failed; GRN transaction left untouched', error);
+    }
+  }
+
+  private async getSapControlsForGrn(tenantId: string, grnId: string) {
+    try {
+      const { data: control, error } = await this.supabase
+        .from('grn_sap_controls')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('grn_id', grnId)
+        .maybeSingle();
+
+      if (error || !control) return null;
+
+      const { data: items } = await this.supabase
+        .from('grn_sap_control_items')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('grn_sap_control_id', control.id)
+        .order('created_at', { ascending: true });
+
+      return {
+        ...control,
+        items: items || [],
+      };
+    } catch {
+      return null;
+    }
   }
 
   private async generateGRNNumber(tenantId: string): Promise<string> {
