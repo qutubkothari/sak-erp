@@ -7,13 +7,12 @@ import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import { getTodayDateInputValue } from '@/lib/date';
 import { loadDeliveryAddresses, saveDeliveryAddress, type DeliveryAddressOption } from '@/lib/delivery-addresses';
 import { toast } from 'sonner';
-import { Plus, Trash2, Eye, FileText, CheckCircle, Search, Edit, X, RefreshCw, Send, History, Check, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Eye, FileText, CheckCircle, Search, Edit, X, RefreshCw, Send, History, Check } from 'lucide-react';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { SlidePanel } from '../../../../components/ui/SlidePanel';
-import { StatCard } from '../../../../components/ui/StatCard';
-import { ErpButton, ErpPageHeader, ErpStatusBadge } from '../../../../components/ui/ErpPrimitives';
+import { ErpButton, ErpMetricStrip, ErpPageHeader, ErpStatusBadge } from '../../../../components/ui/ErpPrimitives';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import DateInput from '../../../../components/ui/DateInput';
 import { useEscapeKey } from '../../../../hooks/useEscapeKey';
@@ -365,21 +364,27 @@ function PRContent() {
       sortable: false,
       hideable: false,
       cell: (req) => (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex min-w-[9.5rem] items-center justify-end gap-1">
           <ErpButton
             onClick={() => handleViewDetails(req.id)}
-            variant="secondary"
+            variant="ghost"
             size="sm"
+            className="h-8 w-8 p-0"
+            title="View requisition"
+            aria-label="View requisition"
           >
-            View
+            <Eye className="h-4 w-4" />
           </ErpButton>
           {(req.status === 'DRAFT' || req.status === 'SUBMITTED' || req.status === 'REJECTED') && canEditPR && (
             <ErpButton
               onClick={() => handleEditPR(req.id)}
               variant="ghost"
               size="sm"
+              className="h-8 w-8 p-0"
+              title="Edit requisition"
+              aria-label="Edit requisition"
             >
-              Edit
+              <Edit className="h-4 w-4" />
             </ErpButton>
           )}
           {(req.status === 'DRAFT' || req.status === 'SUBMITTED') && canApprovePR && (
@@ -388,21 +393,34 @@ function PRContent() {
                 onClick={() => handleApprove(req.id)}
                 variant="approve"
                 size="sm"
+                className="h-8 w-8 p-0"
+                title="Approve requisition"
+                aria-label="Approve requisition"
               >
-                Approve
+                <Check className="h-4 w-4" />
               </ErpButton>
               <ErpButton
                 onClick={() => handleReject(req.id)}
                 variant="danger"
                 size="sm"
+                className="h-8 w-8 p-0"
+                title="Reject requisition"
+                aria-label="Reject requisition"
               >
-                Reject
+                <X className="h-4 w-4" />
               </ErpButton>
             </>
           )}
           {canDeletePR && (
-            <ErpButton onClick={() => handleDelete(req.id)} variant="ghost" size="sm">
-              Delete
+            <ErpButton
+              onClick={() => handleDelete(req.id)}
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 text-red-700 hover:bg-red-50 hover:text-red-800"
+              title="Delete requisition"
+              aria-label="Delete requisition"
+            >
+              <Trash2 className="h-4 w-4" />
             </ErpButton>
           )}
         </div>
@@ -1492,8 +1510,8 @@ function PRContent() {
   const draftPRs = requisitions.filter(pr => pr.status === 'DRAFT').length;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-6">
-      <div className="mx-auto w-full space-y-5">
+    <div className="w-full">
+      <div className="w-full space-y-3">
         {/* Header */}
         <ErpPageHeader
           eyebrow="Procurement"
@@ -1510,31 +1528,14 @@ function PRContent() {
           ) : null}
         />
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <StatCard
-            title="Total Requisitions"
-            value={totalPRs}
-            icon={<FileText className="w-5 h-5 text-indigo-700" />}
-            iconBg="bg-indigo-100"
-            loading={loadingRequisitions}
-          />
-          <StatCard
-            title="Pending Approval"
-            value={pendingApprovals}
-            icon={<AlertCircle className="w-5 h-5 text-orange-700" />}
-            iconBg="bg-orange-100"
-            alert={pendingApprovals > 0}
-            loading={loadingRequisitions}
-          />
-          <StatCard
-            title="Drafts"
-            value={draftPRs}
-            icon={<Edit className="w-5 h-5 text-gray-700" />}
-            iconBg="bg-gray-100"
-            loading={loadingRequisitions}
-          />
-        </div>
+        <ErpMetricStrip
+          loading={loadingRequisitions}
+          metrics={[
+            { label: 'Total requisitions', value: totalPRs },
+            { label: 'Pending approval', value: pendingApprovals, tone: pendingApprovals > 0 ? 'warning' : 'neutral' },
+            { label: 'Drafts', value: draftPRs },
+          ]}
+        />
 
         {/* Create Form Slide Panel */}
         <SlidePanel
@@ -2002,10 +2003,10 @@ function PRContent() {
         </SlidePanel>
 
         {/* List View */}
-        <div className="mb-4">
-          <h3 className="text-lg font-bold text-gray-900">
+        <div className="flex items-center justify-between pt-1">
+          <h2 className="text-sm font-semibold text-slate-900">
             {canApprovePR ? 'All Requisitions' : 'My Requisitions'}
-          </h3>
+          </h2>
         </div>
 
         {loadingRequisitions ? (

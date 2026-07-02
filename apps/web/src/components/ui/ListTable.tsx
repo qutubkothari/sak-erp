@@ -402,10 +402,10 @@ export function ListTable<T>(props: ListTableProps<T>) {
   };
 
   return (
-    <div className={`bg-white/80 backdrop-blur-xl rounded-2xl shadow-md border border-slate-200 overflow-hidden ${className}`}>
+    <div className={`overflow-hidden rounded-md border border-slate-200 bg-white ${className}`}>
       {/* Toolbar */}
-      <div className="p-4 border-b border-slate-200 bg-white/50 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 items-center gap-3">
+      <div className="flex flex-col gap-2 border-b border-slate-200 bg-white p-2.5 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           {!hideSearch && (
             <input
               type="text"
@@ -415,14 +415,14 @@ export function ListTable<T>(props: ListTableProps<T>) {
                 setPageIndex(0);
               }}
               placeholder={searchPlaceholder}
-              className="w-full sm:max-w-md px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500"
+              className="min-h-9 w-full min-w-0 border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 sm:max-w-lg"
             />
           )}
           <div className="relative" ref={columnsMenuRef}>
             <button
               type="button"
               onClick={() => setShowColumnsMenu((s) => !s)}
-              className="px-3 py-2 border border-gray-300 rounded-md bg-white hover:bg-indigo-50/50 transition-colors text-sm"
+              className="min-h-9 shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
             >
               Columns
             </button>
@@ -508,7 +508,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 justify-end">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
           {toolbarRight}
           {exportFilename && (
             <button
@@ -529,7 +529,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
               localStorage.setItem(pageSizeStorageKey, JSON.stringify(next));
               setPageIndex(0);
             }}
-            className="px-3 py-2 border border-gray-300 rounded-md bg-white text-sm"
+            className="min-h-9 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm"
           >
             {pageSizeOptions.map((n) => (
               <option key={n} value={n}>
@@ -549,7 +549,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
           className="table-fixed"
           style={fitToContainer ? { width: '100%' } : { width: `${scrollTableWidth}px`, minWidth: '100%' }}
         >
-          <thead className="bg-slate-50/80 border-b border-slate-200 backdrop-blur-sm">
+          <thead className="border-b border-slate-200 bg-slate-50">
             <tr>
               {selectable && (
                 <th
@@ -580,7 +580,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
                     key={col.id}
                     style={{ width: `${width}px`, minWidth: `${width}px` }}
                     className={
-                      `relative sticky top-0 z-10 bg-transparent px-4 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider ` +
+                      `relative sticky top-0 z-10 bg-transparent px-3 py-2 text-[11px] font-semibold uppercase text-slate-600 ` +
                       headerAlignClass +
                       ` ${sortable ? 'cursor-pointer hover:bg-slate-200/50 transition-colors' : ''} ` +
                       (col.headerClassName || '')
@@ -643,7 +643,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
                       <td
                         key={col.id}
                         style={fitToContainer ? undefined : { width: `${getColumnWidth(col)}px`, minWidth: `${getColumnWidth(col)}px` }}
-                        className={`min-w-0 px-3 py-2.5 text-[13px] leading-5 text-gray-700 align-middle ${cellAlignClass} ${col.cellClassName || ''}`}
+                        className={`min-w-0 px-3 py-2 text-[13px] leading-5 text-gray-700 align-middle ${cellAlignClass} ${col.cellClassName || ''}`}
                       >
                         {col.cell ? col.cell(row) : normalizeForSearch(col.accessor ? col.accessor(row) : '')}
                       </td>
@@ -657,8 +657,8 @@ export function ListTable<T>(props: ListTableProps<T>) {
       </div>
 
       {/* Pagination */}
-      <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-sm text-gray-700">
+      <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-xs text-slate-600">
           Showing {showingFrom} to {showingTo} of {totalRows} rows
         </div>
 

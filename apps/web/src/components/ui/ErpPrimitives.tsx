@@ -58,16 +58,47 @@ interface ErpPageHeaderProps {
 
 export function ErpPageHeader({ title, description, eyebrow, actions }: ErpPageHeaderProps) {
   return (
-    <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
+    <header className="flex flex-col gap-3 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         {eyebrow ? (
-          <p className="mb-1 text-xs font-semibold uppercase text-indigo-700">{eyebrow}</p>
+          <p className="mb-0.5 text-[11px] font-semibold uppercase text-indigo-700">{eyebrow}</p>
         ) : null}
-        <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">{title}</h1>
-        {description ? <p className="mt-1 max-w-3xl text-sm text-slate-600">{description}</p> : null}
+        <h1 className="text-xl font-bold text-slate-950 sm:text-2xl">{title}</h1>
+        {description ? <p className="mt-0.5 max-w-3xl text-xs text-slate-600 sm:text-sm">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </header>
+  );
+}
+
+interface ErpMetricStripProps {
+  metrics: Array<{
+    label: string;
+    value: string | number;
+    tone?: 'neutral' | 'warning' | 'success' | 'danger';
+  }>;
+  loading?: boolean;
+}
+
+const metricToneClasses = {
+  neutral: 'text-slate-950',
+  warning: 'text-amber-700',
+  success: 'text-emerald-700',
+  danger: 'text-red-700',
+};
+
+export function ErpMetricStrip({ metrics, loading = false }: ErpMetricStripProps) {
+  return (
+    <dl className="flex min-h-11 flex-wrap items-stretch divide-x divide-slate-200 rounded-md border border-slate-200 bg-white">
+      {metrics.map((metric) => (
+        <div key={metric.label} className="flex min-w-[10rem] flex-1 items-center gap-3 px-3 py-2">
+          <dt className="text-xs font-medium text-slate-500">{metric.label}</dt>
+          <dd className={`ml-auto text-lg font-bold tabular-nums ${metricToneClasses[metric.tone ?? 'neutral']}`}>
+            {loading ? <span className="block h-5 w-8 animate-pulse rounded bg-slate-200" /> : metric.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

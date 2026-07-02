@@ -178,7 +178,7 @@ export default function DashboardLayout({
               <Breadcrumbs />
             </div>
           )}
-          <div className="p-4 lg:p-6">
+          <div className="p-3 lg:p-4">
             {children}
           </div>
         </main>
