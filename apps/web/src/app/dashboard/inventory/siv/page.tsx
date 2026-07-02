@@ -1,12 +1,13 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import { buildDocumentBranding, escapeHtml, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { ErpButton, ErpMetricStrip, ErpPageHeader, ErpStatusBadge } from '../../../../components/ui/ErpPrimitives';
+import { Check, History, PackageCheck, Plus, Printer, RefreshCw, Trash2 } from 'lucide-react';
 
 const AUTO_REFRESH_MS = 30000;
 
@@ -83,7 +84,6 @@ type SivHistoryRow = {
 };
 
 export default function SivPage() {
-  const router = useRouter();
   const currentUser = readStoredUser();
   const currentUserDisplayName = String(
     (currentUser as any)?.employee_name ||
@@ -1113,59 +1113,86 @@ export default function SivPage() {
     if (filterAssignedTo === 'unassigned') return !r.assigned_to;
     return r.assigned_to === filterAssignedTo;
   });
+  const pendingLineCount = openMaterialReqs.reduce((sum, req) => sum + Number(req.pendingLines || 0), 0);
+  const readyLineCount = openMaterialReqs.reduce(
+    (sum, req) =>
+      sum +
+      (req.materialLines || []).filter(
+        (line) =>
+          Number(line.pending_quantity || 0) > 0 &&
+          Number(line.available_quantity || 0) + 1e-9 >= Number(line.pending_quantity || 0),
+      ).length,
+    0,
+  );
+  const approvedHistoryCount = sivHistory.filter((row) => row.approved_by).length;
 
   return (
-    <div className="min-h-screen bg-[#E8DCC4] p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex justify-between items-center">
-          <div>
-            <h1 className="text-4xl font-bold text-[#36454F] mb-2">Store Issue Voucher (SIV)</h1>
-            <p className="text-[#6F4E37]">Issue materials to production job orders</p>
-          </div>
-          <button
-            onClick={() => {
-              void loadAll();
-            }}
-            disabled={loading}
-            className="bg-[#8B6F47] text-white px-6 py-3 rounded-lg hover:bg-[#6F4E37] transition-colors font-semibold disabled:opacity-50 shadow-md"
-          >
-            {loading ? 'Loading...' : 'Refresh'}
-          </button>
-        </div>
+    <div className="min-h-screen bg-[#FAF9F6] px-4 py-4 text-[#2F241D] lg:px-6">
+      <div className="flex min-h-[calc(100vh-2rem)] flex-col gap-4">
+        <ErpPageHeader
+          eyebrow="Inventory"
+          title="Store Issue Voucher"
+          description="Issue materials to production, scan UID-controlled stock, approve issue rows, and print SIV documents."
+          actions={
+            <ErpButton
+              variant="secondary"
+              onClick={() => {
+                void loadAll();
+              }}
+              disabled={loading}
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </ErpButton>
+          }
+        />
 
-        {/* Sub-tabs: Open / History */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6 border-2 border-[#8B6F47]/20">
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-            <div className="flex gap-4">
+        <ErpMetricStrip
+          loading={loading}
+          metrics={[
+            { label: 'Open Jobs', value: openMaterialReqs.length, tone: 'warning' },
+            { label: 'Pending Lines', value: pendingLineCount, tone: 'warning' },
+            { label: 'Ready Lines', value: readyLineCount, tone: 'success' },
+            { label: 'SIV History', value: sivHistory.length },
+            { label: 'Approved Rows', value: approvedHistoryCount, tone: 'success' },
+          ]}
+        />
+
+        <div className="rounded-md border border-[#E8DCC4] bg-white">
+          <div className="flex flex-col gap-3 border-b border-[#E8DCC4] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap gap-2">
               <button
+                type="button"
                 onClick={() => setActiveSivView('open')}
-                className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                className={`inline-flex min-h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors ${
                   activeSivView === 'open'
-                    ? 'bg-[#8B6F47] text-white shadow-sm'
-                    : 'bg-[#E8DCC4] text-[#6F4E37] hover:bg-[#D4C4A8]'
+                    ? 'border-[#8B6F47] bg-[#8B6F47] text-white'
+                    : 'border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]'
                 }`}
               >
-                Open ({openMaterialReqs.length})
+                <PackageCheck className="h-4 w-4" />
+                Open Requests ({openMaterialReqs.length})
               </button>
               <button
+                type="button"
                 onClick={() => setActiveSivView('history')}
-                className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                className={`inline-flex min-h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors ${
                   activeSivView === 'history'
-                    ? 'bg-[#8B6F47] text-white shadow-sm'
-                    : 'bg-[#E8DCC4] text-[#6F4E37] hover:bg-[#D4C4A8]'
+                    ? 'border-[#8B6F47] bg-[#8B6F47] text-white'
+                    : 'border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]'
                 }`}
               >
+                <History className="h-4 w-4" />
                 History ({sivHistory.length})
               </button>
             </div>
             {activeSivView === 'open' && (
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-[#6F4E37]">Filter by User:</label>
+              <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center">
+                <label className="text-xs font-semibold uppercase text-[#7A6555]">Assigned</label>
                 <select
                   value={filterAssignedTo}
                   onChange={(e) => setFilterAssignedTo(e.target.value)}
-                  className="border border-[#8B6F47]/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#8B6F47]"
+                  className="min-h-9 w-full rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm text-[#2F241D] focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30 sm:w-56"
                 >
                   <option value="">All Users</option>
                   <option value={(currentUser as any)?.id}>Assigned to Me</option>
@@ -1180,17 +1207,17 @@ export default function SivPage() {
         </div>
 
         {activeSivView === 'open' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-md p-6 border-2 border-[#8B6F47]/20">
+          <div className="min-h-0 flex-1 space-y-4">
+            <div className="rounded-md border border-[#E8DCC4] bg-white p-4">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <h2 className="text-xl font-bold text-[#36454F]">Create SIV Without Job Order</h2>
-                  <p className="text-sm text-[#6F4E37] mt-1">Use this when stores need to issue material directly without a production job order.</p>
+                  <h2 className="text-base font-bold text-[#4A3426]">Manual Issue</h2>
+                  <p className="mt-0.5 text-xs text-[#7A6555]">Issue material directly when no production job order is available.</p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-5">
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <div className="xl:col-span-2">
-                  <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Item</label>
+                  <label className="mb-1 block text-xs font-semibold uppercase text-[#7A6555]">Item</label>
                   <SearchableSelect
                     options={inventoryItems.map((item) => ({
                       value: item.id,
@@ -1203,22 +1230,22 @@ export default function SivPage() {
                     truncateInput={false}
                     disabled={inventoryItems.length === 0}
                   />
-                  <p className="mt-2 text-xs text-gray-500">Type multiple letters from the item code or name to find the right item quickly.</p>
+                  <p className="mt-1 text-xs text-[#7A6555]">Search by item code or item name.</p>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Issue Quantity</label>
+                  <label className="mb-1 block text-xs font-semibold uppercase text-[#7A6555]">Issue Quantity</label>
                   <input
                     type="number"
                     min="0"
                     step="any"
                     value={manualIssueQty}
                     onChange={(e) => setManualIssueQty(e.target.value)}
-                    className="w-full border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
+                    className="min-h-10 w-full rounded-md border border-[#D8C8AA] px-3 py-2 focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
                   />
                 </div>
                 {itemRequiresUid(manualIssueItemId) && (
                   <div>
-                    <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Manual UID Scan</label>
+                    <label className="mb-1 block text-xs font-semibold uppercase text-[#7A6555]">Manual UID Scan</label>
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -1230,13 +1257,13 @@ export default function SivPage() {
                             addManualIssueUid();
                           }
                         }}
-                        className="flex-1 border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
+                        className="min-h-10 flex-1 rounded-md border border-[#D8C8AA] px-3 py-2 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
                         placeholder="Scan UID and press Enter"
                       />
                       <button
                         type="button"
                         onClick={addManualIssueUid}
-                        className="px-3 py-2 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37] text-sm font-medium shadow-sm"
+                        className="inline-flex min-h-10 items-center rounded-md border border-[#8B6F47] bg-[#8B6F47] px-3 text-sm font-semibold text-white hover:bg-[#6F4E37]"
                         title="Add scanned UID"
                       >
                         +
@@ -1249,7 +1276,7 @@ export default function SivPage() {
                             openUidPicker('manual-draft', item.id, item.code || '', Number(manualIssueQty || 0));
                           }
                         }}
-                        className="px-3 py-2 bg-[#5A6B7A] text-white rounded-lg hover:bg-[#4A5B6A] text-sm font-medium shadow-sm"
+                        className="inline-flex min-h-10 items-center rounded-md border border-[#D8C8AA] bg-white px-3 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
                         title="Pick UIDs from Inventory"
                       >
                         Pick UID
@@ -1275,34 +1302,30 @@ export default function SivPage() {
                 )}
               </div>
               <div className="mt-4">
-                <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Notes</label>
+                <label className="mb-1 block text-xs font-semibold uppercase text-[#7A6555]">Notes</label>
                 <textarea
                   value={manualIssueNotes}
                   onChange={(e) => setManualIssueNotes(e.target.value)}
                   rows={2}
-                  className="w-full border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
+                  className="w-full rounded-md border border-[#D8C8AA] px-3 py-2 focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
                   placeholder="Reason / receiver / remarks"
                 />
               </div>
               {(manualIssueLines.length > 0 || manualIssueItemId) && (
-                <div className="mt-4 rounded-lg border border-[#8B6F47]/20 bg-[#F8F3E8] p-4">
+                <div className="mt-4 rounded-md border border-[#E8DCC4] bg-[#FFFCF5] p-3">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <h3 className="text-sm font-semibold text-[#36454F]">Manual SIV Items</h3>
-                      <p className="text-xs text-[#6F4E37] mt-1">Add multiple items here before creating the manual SIV entries.</p>
+                      <h3 className="text-sm font-semibold text-[#4A3426]">Manual SIV Items</h3>
+                      <p className="mt-0.5 text-xs text-[#7A6555]">Add multiple items before creating the issue entries.</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={addManualIssueLine}
-                      disabled={!canCreate || manualIssueBusy}
-                      className="px-4 py-2 bg-[#E8DCC4] text-[#6F4E37] rounded-lg hover:bg-[#D4C4A8] font-medium text-sm disabled:opacity-50"
-                    >
+                    <ErpButton type="button" variant="secondary" size="sm" onClick={addManualIssueLine} disabled={!canCreate || manualIssueBusy}>
+                      <Plus className="h-4 w-4" />
                       Add Item
-                    </button>
+                    </ErpButton>
                   </div>
                   <div className="mt-3 space-y-2">
                     {manualIssueLines.map((line, index) => (
-                      <div key={line.id} className="flex flex-col gap-2 rounded-lg border border-[#8B6F47]/15 bg-white p-3 md:flex-row md:items-start md:justify-between">
+                      <div key={line.id} className="flex flex-col gap-2 rounded-md border border-[#E8DCC4] bg-white p-3 md:flex-row md:items-start md:justify-between">
                         <div>
                           <div className="font-medium text-[#36454F]">{index + 1}. {[line.itemCode, line.itemName].filter(Boolean).join(' - ') || line.itemId}</div>
                           <div className="text-sm text-gray-700 mt-1">Qty: {line.issueQuantity}</div>
@@ -1319,38 +1342,37 @@ export default function SivPage() {
                       </div>
                     ))}
                     {manualIssueItemId && (
-                      <div className="rounded-lg border border-dashed border-[#8B6F47]/25 p-3 text-sm text-[#6F4E37]">
+                      <div className="rounded-md border border-dashed border-[#D8C8AA] p-3 text-sm text-[#7A6555]">
                         Current draft item is ready to add.
                       </div>
                     )}
                   </div>
                 </div>
               )}
-              <div className="mt-4 flex justify-end gap-3">
+              <div className="mt-4 flex justify-end gap-2">
                 {manualIssueLines.length > 0 && (
-                  <button
+                  <ErpButton
                     type="button"
                     onClick={() => setManualIssueLines([])}
                     disabled={manualIssueBusy}
-                    className="px-5 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium disabled:opacity-50"
                   >
                     Clear Items
-                  </button>
+                  </ErpButton>
                 )}
-                <button
+                <ErpButton
                   type="button"
+                  variant="primary"
                   onClick={() => void handleManualIssue()}
                   disabled={!canCreate || manualIssueBusy}
-                  className="px-5 py-3 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37] font-medium shadow-sm disabled:opacity-50"
                 >
                   {manualIssueBusy ? 'Creating...' : 'Create Manual SIV'}
-                </button>
+                </ErpButton>
               </div>
             </div>
 
             {openMaterialReqs.length === 0 && (
-              <div className="bg-white rounded-lg shadow-md p-8 text-center">
-                <p className="text-gray-600">No pending material requests.</p>
+              <div className="rounded-md border border-[#E8DCC4] bg-white p-8 text-center">
+                <p className="text-[#7A6555]">No pending material requests.</p>
               </div>
             )}
             {openMaterialReqs.map((req) => {
@@ -1363,24 +1385,25 @@ export default function SivPage() {
                 <div
                   key={req.id}
                   id={`siv-job-${req.id}`}
-                  className="bg-white rounded-lg shadow-md p-6 border-2 border-[#8B6F47]/20"
+                  className="rounded-md border border-[#E8DCC4] bg-white p-4"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-xl font-bold text-[#36454F]">
+                  <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="truncate text-lg font-bold text-[#4A3426]">
                         {req.job_order_number || req.id}
                       </h3>
-                      <p className="text-[#6F4E37] mt-1">
+                        <ErpStatusBadge status={req.status || 'OPEN'} label={req.status || 'OPEN'} />
+                      </div>
+                      <p className="mt-0.5 truncate text-sm text-[#5E4635]">
                         {req.item_code} - {req.item_name}
                       </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-sm text-[#8B6F47] font-medium">
-                          Assigned To:
-                        </span>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold uppercase text-[#7A6555]">Assigned</span>
                         <select
                           value={req.assigned_to || ''}
                           onChange={(e) => assignMaterialRequest(req.id, e.target.value)}
-                          className="text-sm border border-[#8B6F47]/30 rounded px-2 py-1 bg-white focus:ring-2 focus:ring-[#8B6F47]"
+                          className="min-h-8 rounded-md border border-[#D8C8AA] bg-white px-2 py-1 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
                         >
                           <option value="">-- Unassigned --</option>
                           {users.map((u) => (
@@ -1388,51 +1411,55 @@ export default function SivPage() {
                           ))}
                         </select>
                       </div>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Pending: {req.pendingQuantity || 0} | Issued: {req.issuedQuantity || 0} | Required:{' '}
-                        {req.requiredQuantity || 0}
-                      </p>
-                      {(() => {
-                        const readyCount = (req.materialLines || []).filter((line) => Number(line.pending_quantity || 0) > 0 && Number(line.available_quantity || 0) + 1e-9 >= Number(line.pending_quantity || 0)).length;
-                        return readyCount > 0 ? (
-                          <p className="text-xs text-emerald-700 mt-1">Print-ready lines: {readyCount}</p>
-                        ) : null;
-                      })()}
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-full border border-[#E8DCC4] bg-[#FAF9F6] px-2 py-1 text-[#5E4635]">Required {req.requiredQuantity || 0}</span>
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-800">Issued {req.issuedQuantity || 0}</span>
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800">Pending {req.pendingQuantity || 0}</span>
+                        {(() => {
+                          const readyCount = (req.materialLines || []).filter((line) => Number(line.pending_quantity || 0) > 0 && Number(line.available_quantity || 0) + 1e-9 >= Number(line.pending_quantity || 0)).length;
+                          return readyCount > 0 ? (
+                            <span className="rounded-full border border-emerald-200 bg-white px-2 py-1 text-emerald-700">Ready {readyCount}</span>
+                          ) : null;
+                        })()}
+                      </div>
                     </div>
-                    <div className="flex gap-3">
-                      <button
+                    <div className="flex flex-wrap gap-2">
+                      <ErpButton
                         onClick={() => setSelectedMaterialJobId(expanded ? null : req.id)}
-                        className="px-4 py-2 bg-[#E8DCC4] text-[#6F4E37] rounded-lg hover:bg-[#D4C4A8] font-medium"
+                        size="sm"
                       >
                         {expanded ? 'Collapse' : 'Expand'}
-                      </button>
+                      </ErpButton>
                       {selectedLineIds.length > 0 && (
                         <>
-                          <button
+                          <ErpButton
                             onClick={() => printSiv(req.id)}
-                            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-medium shadow-sm"
+                            variant="secondary"
+                            size="sm"
                           >
+                            <Printer className="h-4 w-4" />
                             Print
-                          </button>
+                          </ErpButton>
                           {canCreate && (
-                          <button
+                          <ErpButton
                             onClick={() => issueSelectedLines(req.id)}
                             disabled={busyJobId === req.id}
-                            className="px-4 py-2 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37] font-medium disabled:opacity-50 shadow-sm"
+                            variant="primary"
+                            size="sm"
                           >
                             {busyJobId === req.id ? 'Issuing...' : 'Issue Selected'}
-                          </button>
+                          </ErpButton>
                           )}
                         </>
                       )}
                     </div>
                   </div>
                   {expanded && req.materialLines && req.materialLines.length > 0 && (
-                    <div className="mt-4 overflow-x-auto">
+                    <div className="mt-3 overflow-x-auto rounded-md border border-[#E8DCC4]">
                       {hasUidLines && (
                       <div className="mb-3 flex flex-col gap-2">
                         <div className="flex items-center gap-3">
-                          <div className="text-sm font-medium text-[#36454F]">Scan UIDs (cart)</div>
+                          <div className="text-sm font-semibold text-[#4A3426]">Scan UIDs</div>
                           <input
                             type="text"
                             value={scanInputByJob[req.id] || ''}
@@ -1444,14 +1471,14 @@ export default function SivPage() {
                               }
                             }}
                             disabled={scanBusyJobId === req.id}
-                            className="w-72 border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent disabled:opacity-50"
+                            className="min-h-9 w-72 rounded-md border border-[#D8C8AA] px-3 py-2 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30 disabled:opacity-50"
                             placeholder="Scan UID and press Enter"
                           />
                           <button
                             type="button"
                             onClick={() => void scanUidForJob(req.id)}
                             disabled={scanBusyJobId === req.id}
-                            className="px-4 py-2 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37] text-sm font-medium shadow-sm disabled:opacity-50"
+                            className="inline-flex min-h-9 items-center rounded-md border border-[#8B6F47] bg-[#8B6F47] px-3 text-sm font-semibold text-white hover:bg-[#6F4E37] disabled:opacity-50"
                           >
                             {scanBusyJobId === req.id ? 'Scanning...' : 'Add'}
                           </button>
@@ -1469,10 +1496,10 @@ export default function SivPage() {
                         )}
                       </div>
                       )}
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
+                      <table className="min-w-full divide-y divide-[#E8DCC4]">
+                        <thead className="bg-[#F5EFE3]">
                           <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                               <div className="flex items-center gap-2">
                                 {(() => {
                                   const selectable = (req.materialLines || [])
@@ -1493,23 +1520,23 @@ export default function SivPage() {
                                 <span>Select</span>
                               </div>
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                               Item
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                               Required
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                               Issued
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                               Pending
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                               Issue Qty
                             </th>
                             {hasUidLines && (
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                              <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                                 Scan UID
                               </th>
                             )}
@@ -1741,10 +1768,10 @@ export default function SivPage() {
         )}
 
         {activeSivView === 'history' && (
-          <div className="space-y-6">
+          <div className="min-h-0 flex-1 space-y-4">
             {sivHistory.length === 0 && (
-              <div className="bg-white rounded-lg shadow-md p-8 text-center">
-                <p className="text-gray-600">No SIV history.</p>
+              <div className="rounded-md border border-[#E8DCC4] bg-white p-8 text-center">
+                <p className="text-[#7A6555]">No SIV history.</p>
               </div>
             )}
             {(() => {
@@ -1770,11 +1797,11 @@ export default function SivPage() {
                 return (
                   <div
                     key={joId}
-                    className="bg-white rounded-lg shadow-md p-6 border-2 border-[#8B6F47]/20"
+                    className="rounded-md border border-[#E8DCC4] bg-white p-4"
                   >
                     {/* JO header */}
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
+                    <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex min-w-0 items-center gap-3">
                         <input
                           type="checkbox"
                           checked={allSelected}
@@ -1787,18 +1814,18 @@ export default function SivPage() {
                           }}
                           className="w-4 h-4 rounded border-gray-300 text-[#8B6F47] focus:ring-[#8B6F47]"
                         />
-                        <div>
-                          <h3 className="text-xl font-bold text-[#36454F]">{joNumber}</h3>
-                          <p className="text-sm text-gray-600 mt-0.5">
+                        <div className="min-w-0">
+                          <h3 className="truncate text-lg font-bold text-[#4A3426]">{joNumber}</h3>
+                          <p className="mt-0.5 text-sm text-[#7A6555]">
                             {rows.length} line{rows.length !== 1 ? 's' : ''} &middot; Approved {approvedCount}/{rows.length}
                             {latestDate ? ` · Last issued ${new Date(latestDate).toLocaleDateString()}` : ''}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           onClick={() => printSivHistory(joId, rows)}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
+                          className="inline-flex min-h-8 items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 text-xs font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
                         >
                           🖨 Print
                         </button>
@@ -1806,7 +1833,7 @@ export default function SivPage() {
                           onClick={() =>
                             setExpandedHistoryJoIds((prev) => ({ ...prev, [joId]: !expanded }))
                           }
-                          className="px-4 py-2 bg-[#E8DCC4] text-[#6F4E37] rounded-lg hover:bg-[#D4C4A8] font-medium"
+                          className="inline-flex min-h-8 items-center rounded-md border border-[#D8C8AA] bg-white px-3 text-xs font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
                         >
                           {expanded ? 'Collapse' : 'Expand'}
                         </button>
@@ -1815,24 +1842,25 @@ export default function SivPage() {
 
                     {/* Material lines */}
                     {expanded && (
-                      <div className="mt-2 overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
+                      <div className="mt-2 overflow-x-auto rounded-md border border-[#E8DCC4]">
+                        <table className="min-w-full divide-y divide-[#E8DCC4]">
+                          <thead className="bg-[#F5EFE3]">
                             <tr>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase w-8"></th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Item</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">UID</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Qty</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Issued At</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Status</th>
+                              <th className="w-8 px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]"></th>
+                              <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Item</th>
+                              <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">UID</th>
+                              <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Qty</th>
+                              <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Issued At</th>
+                              <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Status</th>
+                              <th className="px-3 py-2 text-right text-xs font-semibold uppercase text-[#5E4635]">Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
+                          <tbody className="divide-y divide-[#E8DCC4] bg-white">
                             {rows.map((row) => {
                               const isChecked = selectedHistoryRowIds.includes(row.id);
                               return (
-                                <tr key={row.id} className="hover:bg-[#E8DCC4]/30">
-                                  <td className="px-4 py-3">
+                                <tr key={row.id} className="hover:bg-[#FFFCF5]">
+                                  <td className="px-3 py-2">
                                     <input
                                       type="checkbox"
                                       checked={isChecked}
@@ -1844,24 +1872,46 @@ export default function SivPage() {
                                       className="w-4 h-4 rounded border-gray-300 text-[#8B6F47] focus:ring-[#8B6F47]"
                                     />
                                   </td>
-                                  <td className="px-4 py-3 text-sm text-[#6F4E37]">
+                                  <td className="px-3 py-2 text-sm text-[#5E4635]">
                                     <div className="font-medium text-gray-900">{row.item_code}</div>
                                     <div className="text-xs text-gray-500">{row.item_name}</div>
                                   </td>
-                                  <td className="px-4 py-3 text-sm text-gray-700">{row.uid || '-'}</td>
-                                  <td className="px-4 py-3 text-sm text-gray-700">{row.quantity ?? 0}</td>
-                                  <td className="px-4 py-3 text-sm text-gray-700">
+                                  <td className="px-3 py-2 text-sm text-gray-700">{row.uid || '-'}</td>
+                                  <td className="px-3 py-2 text-sm text-gray-700">{row.quantity ?? 0}</td>
+                                  <td className="px-3 py-2 text-sm text-gray-700">
                                     {row.movement_date ? new Date(row.movement_date).toLocaleString() : '-'}
                                   </td>
-                                  <td className="px-4 py-3 text-sm">
-                                    <span
-                                      className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                                        row.approved_by ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
-                                      }`}
+                                  <td className="px-3 py-2 text-sm">
+                                    <ErpStatusBadge
+                                      status={row.approved_by ? 'APPROVED' : 'GOODS_ISSUED'}
+                                      label={row.approved_by ? 'Approved' : 'Goods Issued'}
+                                      tone={row.approved_by ? 'success' : 'info'}
                                       title={row.approved_by ? `Approved by ${row.approved_by}` : 'Issued and awaiting approval'}
-                                    >
-                                      Goods Issued
-                                    </span>
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <div className="flex justify-end gap-2">
+                                      {canApprove && !row.approved_by && (
+                                        <button
+                                          type="button"
+                                          onClick={() => void approveSivHistoryRow(row.id)}
+                                          className="inline-flex min-h-8 items-center gap-1 rounded-md border border-emerald-700 bg-emerald-700 px-2.5 text-xs font-semibold text-white hover:bg-emerald-800"
+                                        >
+                                          <Check className="h-3.5 w-3.5" />
+                                          Approve
+                                        </button>
+                                      )}
+                                      {canDelete && !row.approved_by && (
+                                        <button
+                                          type="button"
+                                          onClick={() => void deleteSivHistoryRow(row.id)}
+                                          className="inline-flex min-h-8 items-center gap-1 rounded-md border border-red-300 bg-white px-2.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                          Delete
+                                        </button>
+                                      )}
+                                    </div>
                                   </td>
                                 </tr>
                               );
