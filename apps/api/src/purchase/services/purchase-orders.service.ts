@@ -1201,10 +1201,30 @@ export class PurchaseOrdersService {
 
     const { data: existingPO } = await this.supabase
       .from('purchase_orders')
-      .select('status')
+      .select('status, po_number')
       .eq('id', id)
       .eq('tenant_id', tenantId)
       .single();
+
+    if (!existingPO) {
+      throw new NotFoundException('Purchase Order not found');
+    }
+
+    const existingStatus = String(existingPO.status || '').toUpperCase();
+    if (!['DRAFT', 'REJECTED', 'APPROVED'].includes(existingStatus)) {
+      throw new BadRequestException(
+        `Purchase Order ${existingPO.po_number || id} cannot be changed while its status is ${existingStatus}.`,
+      );
+    }
+
+    if (existingStatus === 'APPROVED') {
+      const grnBlock = await this.findBlockingGrnForPo(tenantId, id);
+      if (grnBlock) {
+        throw new BadRequestException(
+          `Purchase Order ${existingPO.po_number || id} cannot be changed because GRN ${grnBlock.grnNumber} already exists.`,
+        );
+      }
+    }
 
     this.assertNoDuplicatePoItems(data.items);
 
@@ -1260,7 +1280,9 @@ export class PurchaseOrdersService {
         customs_duty: data.customsDuty !== undefined ? this.safeNumber(data.customsDuty) : undefined,
         other_charges: data.otherCharges !== undefined ? this.safeNumber(data.otherCharges) : undefined,
         updated_at: new Date().toISOString(),
-        ...(existingPO?.status === 'REJECTED' ? { status: 'PENDING' } : {}),
+        ...(['REJECTED', 'APPROVED'].includes(existingStatus)
+          ? { status: 'PENDING', approved_by: null, approved_at: null }
+          : {}),
       })
       .eq('tenant_id', tenantId)
       .eq('id', id);
@@ -1326,7 +1348,13 @@ export class PurchaseOrdersService {
       .eq('id', id)
       .single();
 
-    // When approving a DRAFT PO, assign the real sequential PO number
+    if (['APPROVED', 'REJECTED'].includes(normalizedStatus) && String(currentPo?.status || '').toUpperCase() !== 'PENDING') {
+      throw new BadRequestException(
+        `Purchase Order must be Pending Approval before it can be ${normalizedStatus === 'APPROVED' ? 'approved' : 'rejected'}.`,
+      );
+    }
+
+    // Assign the real sequential number when a pending draft is approved.
     if (normalizedStatus === 'APPROVED') {
       if (currentPo?.po_number?.startsWith('DRAFT-')) {
         updateData.po_number = await this.generatePONumber(tenantId);
@@ -1427,7 +1455,7 @@ export class PurchaseOrdersService {
   async delete(tenantId: string, id: string) {
     const { data: po, error: poError } = await this.supabase
       .from('purchase_orders')
-      .select('id, po_number')
+      .select('id, po_number, status')
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .maybeSingle();
@@ -1438,6 +1466,12 @@ export class PurchaseOrdersService {
 
     if (!po) {
       throw new NotFoundException('Purchase Order not found');
+    }
+
+    if (!['DRAFT', 'REJECTED'].includes(String(po.status || '').toUpperCase())) {
+      throw new BadRequestException(
+        `Only Draft or Rejected purchase orders can be deleted. ${po.po_number} is ${po.status}.`,
+      );
     }
 
     const grnBlock = await this.findBlockingGrnForPo(tenantId, id);

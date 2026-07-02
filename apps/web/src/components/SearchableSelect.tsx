@@ -182,7 +182,7 @@ export default function SearchableSelect({
         role="combobox"
         aria-expanded={isOpen}
         aria-autocomplete="list"
-        className={`w-full min-h-10 px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-sm text-slate-900 placeholder:text-slate-400 disabled:bg-slate-50 disabled:text-slate-500 disabled:opacity-60 ${
+        className={`w-full min-h-10 px-3 py-2 border border-[#D8C8AA] rounded-md focus:outline-none focus:ring-2 focus:ring-[#8B6F47]/25 focus:border-[#8B6F47] bg-white text-sm text-[#4A3426] placeholder:text-[#9B8A7A] disabled:bg-[#FAF9F6] disabled:text-[#7A6555] disabled:opacity-60 ${
           truncateInput ? 'truncate' : ''
         }`}
         autoComplete="off"
@@ -192,7 +192,7 @@ export default function SearchableSelect({
         <div
           ref={dropdownRef}
           role="listbox"
-          className={`fixed z-[99999] bg-white border border-slate-200 rounded-md shadow-lg max-h-60 overflow-y-auto ${dropdownClassName}`}
+          className={`fixed z-[99999] bg-white border border-[#D8C8AA] rounded-md shadow-lg max-h-60 overflow-y-auto ${dropdownClassName}`}
           style={{ top: dropdownPos.top + 2, left: dropdownPos.left, width: dropdownPos.width }}
           onMouseDown={(e) => e.preventDefault()}
         >
@@ -211,8 +211,8 @@ export default function SearchableSelect({
                 onMouseEnter={() => setHighlightedIndex(index)}
                 className={`px-3 py-2 cursor-pointer text-sm ${
                   index === highlightedIndex
-                    ? 'bg-indigo-50 text-indigo-900'
-                    : 'text-slate-700 hover:bg-slate-50'
+                    ? 'bg-[#F5EFE3] text-[#4A3426]'
+                    : 'text-[#5E4635] hover:bg-[#FAF9F6]'
                 }`}
               >
                 <div className="font-medium whitespace-normal break-words">{option.label}</div>

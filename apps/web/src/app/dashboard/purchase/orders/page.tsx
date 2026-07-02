@@ -17,7 +17,22 @@ import DuplicateWarning, { useDuplicateDetection } from '../../../../components/
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import { ErpButton, ErpMetricStrip, ErpPageHeader } from '../../../../components/ui/ErpPrimitives';
-import { Eye, GitBranch, Pencil, Plus, Trash2 } from 'lucide-react';
+import {
+  Check,
+  Download,
+  Eye,
+  FileText,
+  GitBranch,
+  Mail,
+  Pencil,
+  Plus,
+  Printer,
+  Save,
+  Send,
+  Trash2,
+  Truck,
+  X,
+} from 'lucide-react';
 
 const ITEM_CATEGORY_OPTIONS = [
   { value: 'RAW_MATERIAL', label: 'Raw Material' },
@@ -66,6 +81,23 @@ function calcPoLineTotal(quantity: number, unitPrice: number, discountPercent: n
 function FullScreenPortal({ children }: { children: ReactNode }) {
   if (typeof document === 'undefined') return null;
   return createPortal(children, document.body);
+}
+
+function ObjectPageNav({ sections }: { sections: Array<{ id: string; label: string }> }) {
+  return (
+    <nav className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[#E8DCC4] bg-white px-5" aria-label="Purchase order sections">
+      {sections.map((section) => (
+        <button
+          key={section.id}
+          type="button"
+          onClick={() => document.getElementById(section.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className="min-h-11 shrink-0 border-b-2 border-transparent px-3 text-sm font-semibold text-[#7A6555] transition-colors hover:border-[#C8AC7A] hover:bg-[#FAF9F6] hover:text-[#4A3426] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47]"
+        >
+          {section.label}
+        </button>
+      ))}
+    </nav>
+  );
 }
 
 interface PurchaseOrder {
@@ -1895,6 +1927,19 @@ function PurchaseOrdersContent() {
     }
   };
 
+  const handleControlledEdit = async (order: PurchaseOrder) => {
+    if (order.status === 'APPROVED') {
+      const confirmed = await confirmDialog({
+        title: 'Create PO Change',
+        message: `${order.po_number} is approved. Saving a commercial change will return it to Pending Approval before it can be issued again.`,
+        confirmLabel: 'Continue',
+      });
+      if (!confirmed) return;
+    }
+    setShowViewModal(false);
+    await handleEditDetails(order.id, 'edit');
+  };
+
   const fetchPOEmailPreview = async (poId: string, payload: any, seedEditableFields: boolean) => {
     try {
       setPoEmailPreviewLoading(true);
@@ -2557,20 +2602,20 @@ function PurchaseOrdersContent() {
           >
             <GitBranch className="h-4 w-4" />
           </ErpButton>
-          {canEditPO && (
+          {canEditPO && ['DRAFT', 'REJECTED', 'APPROVED'].includes(o.status) && (
           <ErpButton
             type="button"
-            onClick={() => handleEditDetails(o.id, 'edit')}
+            onClick={() => handleControlledEdit(o)}
             variant="ghost"
             size="sm"
             className="h-8 w-8 p-0"
-            title="Edit purchase order"
-            aria-label="Edit purchase order"
+            title={o.status === 'APPROVED' ? 'Create controlled PO change' : 'Edit purchase order'}
+            aria-label={o.status === 'APPROVED' ? 'Create controlled PO change' : 'Edit purchase order'}
           >
             <Pencil className="h-4 w-4" />
           </ErpButton>
           )}
-          {canDeletePO && (
+          {canDeletePO && ['DRAFT', 'REJECTED'].includes(o.status) && (
             <ErpButton
               type="button"
               onClick={() => handleDeleteOne(o)}
@@ -2735,54 +2780,73 @@ function PurchaseOrdersContent() {
                     : `Edit ${isServiceOrder ? 'Service' : 'Purchase'} Order`}
               </h2>
               <div className="flex items-center gap-3">
-                <button
+                <ErpButton
                   onClick={() => {
                     setShowModal(false);
                     resetForm();
                   }}
-                  className="px-5 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  variant="secondary"
                 >
                   Cancel
-                </button>
+                </ErpButton>
                 {editingMode === 'tracking' && editingPOId ? (
-                  <button
-                    onClick={() => handleSaveTracking(editingPOId)}
-                    disabled={submitting}
-                    className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  <ErpButton
+                  onClick={() => handleSaveTracking(editingPOId)}
+                  disabled={submitting}
+                    variant="primary"
                   >
+                    <Save className="h-4 w-4" />
                     {submitting ? 'Saving...' : 'Save Tracking Info'}
-                  </button>
+                  </ErpButton>
                 ) : editingMode === 'edit' && editingPOId ? (
-                  <button
+                  <ErpButton
                     onClick={() => handleUpdateOrder(editingPOId)}
                     disabled={submitting}
-                    className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    variant="primary"
                   >
+                    <Save className="h-4 w-4" />
                     {submitting ? 'Saving...' : 'Save Changes'}
-                  </button>
+                  </ErpButton>
                 ) : (
                   <>
-                    <button
+                    <ErpButton
                       onClick={() => handleCreateOrder('DRAFT')}
                       disabled={submitting}
-                      className="px-5 py-2 border border-gray-400 text-gray-700 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      variant="secondary"
                     >
+                      <Save className="h-4 w-4" />
                       {submitting ? 'Saving...' : 'Save as Draft'}
-                    </button>
-                    <button
+                    </ErpButton>
+                    <ErpButton
                       onClick={() => handleCreateOrder('PENDING')}
                       disabled={submitting}
-                      className="px-5 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      variant="primary"
                     >
-                      {submitting ? 'Submitting...' : 'Submit'}
-                    </button>
+                      <Send className="h-4 w-4" />
+                      {submitting ? 'Submitting...' : 'Submit for Approval'}
+                    </ErpButton>
                   </>
                 )}
               </div>
             </div>
-            <div className="flex-1 space-y-4 overflow-y-auto bg-[#FAF9F6] p-4">
+            <ObjectPageNav sections={editingMode === 'tracking'
+              ? [{ id: 'po-form-tracking', label: 'Tracking' }]
+              : [
+                  { id: 'po-form-header', label: 'Header' },
+                  ...(editingMode === 'edit' ? [{ id: 'po-form-tracking', label: 'Fulfilment' }] : []),
+                  { id: 'po-form-items', label: `Items (${formData.items.length})` },
+                  { id: 'po-form-documents', label: `Documents (${formData.attachments.length})` },
+                  { id: 'po-form-commercial', label: 'Commercial' },
+                ]}
+            />
+            <div className="flex-1 space-y-5 overflow-y-auto scroll-smooth bg-[#FAF9F6] p-4 md:p-5">
               {/* Order Details */}
-              <div className="grid grid-cols-2 gap-3">
+              <section id="po-form-header" className="scroll-mt-4 space-y-4 border-b border-[#E8DCC4] bg-white p-4">
+                <div>
+                  <h3 className="text-base font-semibold text-[#4A3426]">Header Data</h3>
+                  <p className="text-xs text-[#7A6555]">Supplier, reference, dates, delivery location, and commercial context.</p>
+                </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 {editingMode === 'create' && (
                   <div className="col-span-2">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">
@@ -2914,10 +2978,9 @@ function PurchaseOrdersContent() {
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Consignee POC Name</label>
                   {users.length > 0 ? (
-                    <select
+                    <SearchableSelect
                       value={formData.deliveryContactPerson}
-                      onChange={(e) => {
-                        const selectedName = e.target.value;
+                      onChange={(selectedName) => {
                         const selectedUser = users.find(u => u.employee_name === selectedName);
                         // Try multiple possible phone field names
                         const phone = selectedUser?.phone || selectedUser?.mobile || selectedUser?.phone_number || selectedUser?.contact_number || selectedUser?.mobile_number || '';
@@ -2927,15 +2990,9 @@ function PurchaseOrdersContent() {
                           deliveryContactPhone: phone
                         });
                       }}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    >
-                      <option value="">Select or type below...</option>
-                      {users.map(u => (
-                        <option key={u.id} value={u.employee_name}>
-                          {u.employee_name}{u.employee_code ? ` (${u.employee_code})` : ''}
-                        </option>
-                      ))}
-                    </select>
+                      options={users.map((u) => ({ value: u.employee_name, label: u.employee_name, subtitle: u.employee_code }))}
+                      placeholder="Search employee..."
+                    />
                   ) : null}
                   <input
                     type="text"
@@ -2957,7 +3014,7 @@ function PurchaseOrdersContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Quotation Ref No.</label>
                   <input
@@ -2989,10 +3046,11 @@ function PurchaseOrdersContent() {
                   />
                 </div>
               </div>
+              </section>
 
               {/* Tracking Information */}
               {editingMode !== 'create' && (
-                <div className="border-t pt-4">
+                <section id="po-form-tracking" className="scroll-mt-4 border-b border-[#E8DCC4] bg-white p-4">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Tracking Information</h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -3007,17 +3065,18 @@ function PurchaseOrdersContent() {
                     </div>
                     <div>
                       <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Delivery Status</label>
-                      <select
+                      <SearchableSelect
                         value={formData.deliveryStatus}
-                        onChange={(e) => setFormData({ ...formData, deliveryStatus: e.target.value })}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                      >
-                        <option value="PENDING">Pending</option>
-                        <option value="SHIPPED">Shipped</option>
-                        <option value="IN_TRANSIT">In Transit</option>
-                        <option value="DELIVERED">Delivered</option>
-                        <option value="DELAYED">Delayed</option>
-                      </select>
+                        onChange={(value) => setFormData({ ...formData, deliveryStatus: value })}
+                        options={[
+                          { value: 'PENDING', label: 'Pending' },
+                          { value: 'SHIPPED', label: 'Shipped' },
+                          { value: 'IN_TRANSIT', label: 'In Transit' },
+                          { value: 'DELIVERED', label: 'Delivered' },
+                          { value: 'DELAYED', label: 'Delayed' },
+                        ]}
+                        placeholder="Search delivery status..."
+                      />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Carrier Name</label>
@@ -3058,23 +3117,23 @@ function PurchaseOrdersContent() {
                       />
                     </div>
                   </div>
-                </div>
+                </section>
               )}
 
               {/* Payment status removed - managed through Accounts module */}
 
               {/* Items */}
               {editingMode !== 'tracking' && (
-                <div>
+                <section id="po-form-items" className="scroll-mt-4 border-b border-[#E8DCC4] bg-white p-4">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-gray-900">Items</h3>
                     {(editingMode === 'create' || editingMode === 'edit') && (
-                      <button
+                      <ErpButton
                         onClick={handleAddItem}
-                        className="px-4 py-2 text-amber-600 hover:text-amber-800 font-medium border border-amber-300 hover:border-amber-500 rounded-lg transition-colors"
+                        variant="secondary"
                       >
-                        + Add Item
-                      </button>
+                        <Plus className="h-4 w-4" /> Add Item
+                      </ErpButton>
                     )}
                   </div>
 
@@ -3152,19 +3211,19 @@ function PurchaseOrdersContent() {
                                                 <span>{drawingRequired === 'COMPULSORY' ? 'Drawing will be attached' : 'Attach drawing to PO/PDF'}</span>
                                               </label>
                                               {includeDrawing && (
-                                                <select
+                                                <SearchableSelect
                                                   value={selectedDrawingId}
-                                                  onFocus={() => fetchDrawingOptionsForItem(resolvedItemId)}
-                                                  onChange={(event) => handleUpdateItem(index, 'selectedDrawingId', event.target.value)}
-                                                  className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
-                                                >
-                                                  <option value="">{drawingOptionsLoading[resolvedItemId] ? 'Loading drawings...' : 'Latest active drawing'}</option>
-                                                  {drawingOptions.map((drawing) => (
-                                                    <option key={drawing.id} value={drawing.id}>
-                                                      v{drawing.version || '-'} {drawing.is_active ? '(Active)' : '(Old)'} - {drawing.file_name || 'Drawing'}
-                                                    </option>
-                                                  ))}
-                                                </select>
+                                                  onChange={(value) => handleUpdateItem(index, 'selectedDrawingId', value)}
+                                                  options={[
+                                                    { value: '', label: drawingOptionsLoading[resolvedItemId] ? 'Loading drawings...' : 'Latest active drawing' },
+                                                    ...drawingOptions.map((drawing) => ({
+                                                      value: drawing.id,
+                                                      label: `v${drawing.version || '-'} ${drawing.is_active ? '(Active)' : '(Old)'}`,
+                                                      subtitle: drawing.file_name || 'Drawing',
+                                                    })),
+                                                  ]}
+                                                  placeholder="Search drawing version..."
+                                                />
                                               )}
                                             </div>
                                           ) : null}
@@ -3416,18 +3475,18 @@ function PurchaseOrdersContent() {
                   )}
                   {(editingMode === 'create' || editingMode === 'edit') && formData.items.length > 0 && (
                     <div className="mt-4 flex justify-center">
-                      <button
+                      <ErpButton
                         onClick={handleAddItem}
-                        className="px-6 py-2 text-amber-600 hover:text-amber-800 font-medium border-2 border-dashed border-amber-300 hover:border-amber-500 rounded-lg transition-colors"
+                        variant="secondary"
                       >
-                        + Add Another Item
-                      </button>
+                        <Plus className="h-4 w-4" /> Add Another Item
+                      </ErpButton>
                     </div>
                   )}
-                </div>
+                </section>
               )}
 
-              <div>
+              <div className="border-b border-[#E8DCC4] bg-white p-4">
                 <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Notes</label>
                 <textarea
                   value={formData.notes}
@@ -3440,7 +3499,7 @@ function PurchaseOrdersContent() {
 
               {/* Documents / Quotation Attachments */}
               {(editingMode === 'create' || editingMode === 'edit') && (
-                <div>
+                <section id="po-form-documents" className="scroll-mt-4 border-b border-[#E8DCC4] bg-white p-4">
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Documents / Quotation</label>
                   <p className="text-xs text-gray-500 mb-2">Attach vendor quotations, drawings, or any supporting documents for this PO.</p>
                   <div className="flex items-center gap-3 flex-wrap">
@@ -3467,12 +3526,17 @@ function PurchaseOrdersContent() {
                       </div>
                     ))}
                   </div>
-                </div>
+                </section>
               )}
 
               {/* Additional Charges */}
               {editingMode !== 'tracking' && (
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <section id="po-form-commercial" className="scroll-mt-4 border-b border-[#E8DCC4] bg-white p-4">
+                <div className="mb-4">
+                  <h3 className="text-base font-semibold text-[#4A3426]">Commercial Summary</h3>
+                  <p className="text-xs text-[#7A6555]">Freight, tax on freight, duties, and additional expenses.</p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Freight Value (₹)</label>
                   <input
@@ -3539,11 +3603,12 @@ function PurchaseOrdersContent() {
                     placeholder="0.00"
                   />
                 </div>
-              </div>
+                </div>
+                </section>
               )}
 
               {/* Total */}
-              <div className="border-t pt-4">
+              <div className="ml-auto w-full max-w-xl bg-white p-4">
                 <div className="space-y-2 text-right">
                   <div className="flex justify-between text-sm text-gray-600">
                     <span>Items Subtotal:</span>
@@ -3618,12 +3683,12 @@ function PurchaseOrdersContent() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Category *</label>
-                  <select className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.category}
-                    onChange={e => setQuickCreateItemForm(f => ({ ...f, category: e.target.value }))}>
-                    {ITEM_CATEGORY_OPTIONS.map((category) => (
-                      <option key={category.value} value={category.value}>{category.label}</option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+                    value={quickCreateItemForm.category}
+                    onChange={(value) => setQuickCreateItemForm((form) => ({ ...form, category: value }))}
+                    options={ITEM_CATEGORY_OPTIONS}
+                    placeholder="Search category..."
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">UOM *</label>
@@ -3698,9 +3763,17 @@ function PurchaseOrdersContent() {
               </button>
             </div>
 
-            <div className="flex-1 space-y-6 overflow-y-auto bg-[#FAF9F6] p-5">
+            <ObjectPageNav sections={[
+              { id: 'po-view-overview', label: 'Overview' },
+              { id: 'po-view-items', label: `Items (${selectedPO.purchase_order_items?.length || 0})` },
+              { id: 'po-view-fulfilment', label: 'Fulfilment' },
+              { id: 'po-view-flow', label: 'Document Flow' },
+              { id: 'po-view-documents', label: 'Documents' },
+            ]} />
+
+            <div className="flex-1 space-y-5 overflow-y-auto scroll-smooth bg-[#FAF9F6] p-4 md:p-5">
               {/* Header Info */}
-              <div className="grid grid-cols-2 gap-6">
+              <section id="po-view-overview" className="scroll-mt-4 grid grid-cols-1 gap-4 border-b border-[#E8DCC4] bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">PO Number</p>
                   <p className="font-semibold text-lg">
@@ -3736,8 +3809,20 @@ function PurchaseOrdersContent() {
                     <p className="font-semibold">{new Date(selectedPO.last_edited_at).toLocaleDateString()} {new Date(selectedPO.last_edited_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                   </div>
                 )}
-              </div>
-              <div className="grid grid-cols-2 gap-6">
+                {(selectedPO as any).created_by_name && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Created By</p>
+                    <p className="font-semibold">{(selectedPO as any).created_by_name}</p>
+                  </div>
+                )}
+                {(selectedPO as any).approved_by_name && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Approved By</p>
+                    <p className="font-semibold">{(selectedPO as any).approved_by_name}</p>
+                  </div>
+                )}
+              </section>
+              <section className="grid grid-cols-1 gap-4 border-b border-[#E8DCC4] bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Vendor</p>
                   <p className="font-semibold">{(selectedPO as any)?.vendor?.name || (selectedPO as any)?.vendor_name || '-'}</p>
@@ -3769,12 +3854,12 @@ function PurchaseOrdersContent() {
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Total Amount</p>
                   <p className="font-semibold text-lg">₹{fmtINR(selectedPO.total_amount)}</p>
                 </div>
-              </div>
+              </section>
 
               {/* Cost Breakdown */}
               {(selectedPO as any).purchase_order_items?.length > 0 && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h4 className="text-sm font-semibold text-blue-900 mb-3">💰 Cost Breakdown</h4>
+                <section className="border-b border-[#E8DCC4] bg-white p-4">
+                  <h4 className="mb-3 text-sm font-semibold text-[#4A3426]">Cost Breakdown</h4>
                   {(() => {
                     const items = (selectedPO as any).purchase_order_items || [];
                     const itemsSubtotal = items.reduce((sum: number, item: any) => sum + (item.total_amount || item.amount || 0), 0);
@@ -3831,7 +3916,7 @@ function PurchaseOrdersContent() {
                       </div>
                     );
                   })()}
-                </div>
+                </section>
               )}
               {(selectedPO as any).delivery_address && (
                 <div>
@@ -3841,7 +3926,7 @@ function PurchaseOrdersContent() {
               )}
 
               {/* Items Table */}
-              <div>
+              <section id="po-view-items" className="scroll-mt-4 border-b border-[#E8DCC4] bg-white p-4">
                 <h3 className="text-lg font-semibold mb-3">Items</h3>
                 <div className="border rounded-lg overflow-x-auto">
                   <table className="w-full">
@@ -3947,11 +4032,11 @@ function PurchaseOrdersContent() {
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </section>
 
               {/* Tracking Information */}
               {(selectedPO as any).status && (selectedPO as any).status !== 'DRAFT' && (
-                <div className="border-t pt-4">
+                <section id="po-view-fulfilment" className="scroll-mt-4 border-b border-[#E8DCC4] bg-white p-4">
                   <h3 className="text-lg font-semibold mb-3">Tracking Information</h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -4004,7 +4089,7 @@ function PurchaseOrdersContent() {
                       </div>
                     )}
                   </div>
-                </div>
+                </section>
               )}
 
               {/* Notes */}
@@ -4017,9 +4102,9 @@ function PurchaseOrdersContent() {
 
               {/* Procurement Trail (PR-route POs) */}
               {(selectedPO as any).pr && (
-                <div className="border-t pt-4">
+                <section id="po-view-flow" className="scroll-mt-4 border-b border-[#E8DCC4] bg-white p-4">
                   <h3 className="text-lg font-semibold mb-3">Procurement Trail</h3>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                  <div className="space-y-3 border-l-2 border-[#C8AC7A] pl-4">
                     <div className="flex items-center gap-3">
                       <span className="text-xs font-semibold uppercase tracking-wide text-blue-700">Purchase Requisition</span>
                       <span className="font-semibold text-blue-900">{(selectedPO as any).pr.pr_number}</span>
@@ -4057,12 +4142,12 @@ function PurchaseOrdersContent() {
                       </div>
                     )}
                   </div>
-                </div>
+                </section>
               )}
 
               {/* PO Documents / Attachments */}
               {Array.isArray((selectedPO as any).attachments) && (selectedPO as any).attachments.length > 0 && (
-                <div className="border-t pt-4">
+                <section id="po-view-documents" className="scroll-mt-4 border-b border-[#E8DCC4] bg-white p-4">
                   <h3 className="text-lg font-semibold mb-3">Documents / Attachments</h3>
                   <div className="flex flex-wrap gap-2">
                     {(selectedPO as any).attachments.map((att: any, i: number) => (
@@ -4078,7 +4163,7 @@ function PurchaseOrdersContent() {
                       </a>
                     ))}
                   </div>
-                </div>
+                </section>
               )}
             </div>
 
@@ -4087,17 +4172,17 @@ function PurchaseOrdersContent() {
                 {selectedPO.status === 'DRAFT' && (
                   <>
                     {canEditPO && (
-                    <button
+                    <ErpButton
                       onClick={() => {
                         setShowViewModal(false);
                         handleEditDetails(selectedPO.id, 'edit');
                       }}
-                      className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      variant="secondary"
                     >
-                      Edit
-                    </button>
+                      <Pencil className="h-4 w-4" /> Edit
+                    </ErpButton>
                     )}
-                    <button
+                    <ErpButton
                       onClick={async () => {
                         try {
                           const token = localStorage.getItem('accessToken');
@@ -4118,16 +4203,16 @@ function PurchaseOrdersContent() {
                           setAlertMessage({ type: 'error', message: 'Error sending for approval' });
                         }
                       }}
-                      className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+                      variant="primary"
                     >
-                      Send for Approval
-                    </button>
+                      <Send className="h-4 w-4" /> Send for Approval
+                    </ErpButton>
                   </>
                 )}
 
                 {selectedPO.status === 'PENDING' && canApprovePO && (
                   <>
-                    <button
+                    <ErpButton
                       onClick={async () => {
                         try {
                           const token = localStorage.getItem('accessToken');
@@ -4150,11 +4235,11 @@ function PurchaseOrdersContent() {
                           setAlertMessage({ type: 'error', message: 'Error approving PO' });
                         }
                       }}
-                      className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                      variant="approve"
                     >
-                      Approve
-                    </button>
-                    <button
+                      <Check className="h-4 w-4" /> Approve
+                    </ErpButton>
+                    <ErpButton
                       onClick={async () => {
                         try {
                           const token = localStorage.getItem('accessToken');
@@ -4177,58 +4262,67 @@ function PurchaseOrdersContent() {
                           setAlertMessage({ type: 'error', message: 'Error rejecting PO' });
                         }
                       }}
-                      className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                      variant="danger"
                     >
-                      Reject
-                    </button>
+                      <X className="h-4 w-4" /> Reject
+                    </ErpButton>
                   </>
                 )}
 
                 {(selectedPO.status === 'APPROVED' || selectedPO.status === 'SENT' || selectedPO.status === 'ACKNOWLEDGED' || selectedPO.status === 'PARTIAL' || selectedPO.status === 'COMPLETED') && (
                   <>
-                    <button
+                    {selectedPO.status === 'APPROVED' && canEditPO && (
+                      <ErpButton
+                        onClick={() => handleControlledEdit(selectedPO)}
+                        variant="secondary"
+                      >
+                        <Pencil className="h-4 w-4" /> Change PO
+                      </ErpButton>
+                    )}
+                    <ErpButton
                       onClick={() => handleDownloadPDF(selectedPO.id, selectedPO.po_number)}
-                      className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                      variant="secondary"
                     >
-                      Download PDF
-                    </button>
-                    <button
+                      <Download className="h-4 w-4" /> Download PDF
+                    </ErpButton>
+                    <ErpButton
                       onClick={() => handleViewPDF(selectedPO.id, selectedPO.po_number)}
-                      className="px-6 py-2 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37]"
+                      variant="secondary"
                     >
-                      View PDF
-                    </button>
-                    <button
+                      <FileText className="h-4 w-4" /> View PDF
+                    </ErpButton>
+                    <ErpButton
                       onClick={() => handlePrintPDF(selectedPO.id, selectedPO.po_number)}
-                      className="px-6 py-2 bg-[#8B6F47] text-white rounded-lg hover:bg-[#6F4E37]"
+                      variant="secondary"
                     >
-                      Print PDF
-                    </button>
-                    <button
+                      <Printer className="h-4 w-4" /> Print PDF
+                    </ErpButton>
+                    <ErpButton
                       onClick={() => handlePreviewPOEmail(selectedPO.id)}
                       disabled={poEmailPreviewLoading}
-                      className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      variant="primary"
                     >
+                      <Mail className="h-4 w-4" />
                       {poEmailPreviewLoading ? 'Generating...' : 'Preview Email'}
-                    </button>
-                    <button
+                    </ErpButton>
+                    <ErpButton
                       onClick={() => {
                         setShowViewModal(false);
                         handleEditDetails(selectedPO.id, 'tracking');
                       }}
-                      className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                      variant="secondary"
                     >
-                      Update Tracking
-                    </button>
+                      <Truck className="h-4 w-4" /> Update Tracking
+                    </ErpButton>
                   </>
                 )}
               </div>
-              <button
+              <ErpButton
                 onClick={() => setShowViewModal(false)}
-                className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+                variant="ghost"
               >
-                Close
-              </button>
+                <X className="h-4 w-4" /> Close
+              </ErpButton>
             </div>
           </div>
         </div>
