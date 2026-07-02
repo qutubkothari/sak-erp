@@ -3,61 +3,17 @@
 @tailwind utilities;
 
 @layer utilities {
-  .overflow-x-auto,
-  .overflow-x-scroll,
-  .erp-data-table {
-    overflow-x: hidden !important;
-    scrollbar-width: none;
-  }
-
-  .overflow-x-auto::-webkit-scrollbar,
-  .overflow-x-scroll::-webkit-scrollbar,
-  .erp-data-table::-webkit-scrollbar {
-    display: none;
-    height: 0;
-  }
-
-  .overflow-x-auto > table,
-  .overflow-x-scroll > table,
+  /* Smart Data Tables overrides - letting content breathe */
   .erp-data-table table {
     width: 100% !important;
     min-width: 0 !important;
-    table-layout: fixed;
   }
-
-  .overflow-x-auto > table th,
-  .overflow-x-auto > table td,
-  .overflow-x-scroll > table th,
-  .overflow-x-scroll > table td,
+  
   .erp-data-table table th,
   .erp-data-table table td {
-    min-width: 0;
-    max-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    vertical-align: middle;
-  }
-
-  .overflow-x-auto > table th,
-  .overflow-x-auto > table td,
-  .overflow-x-scroll > table th,
-  .overflow-x-scroll > table td,
-  .erp-data-table table th,
-  .erp-data-table table td {
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
-    padding-top: 0.625rem;
-    padding-bottom: 0.625rem;
-    font-size: 0.8125rem;
+    padding: 0.875rem 1rem;
+    font-size: 0.875rem;
     line-height: 1.25rem;
-  }
-
-  .overflow-x-auto > table th,
-  .overflow-x-scroll > table th,
-  .erp-data-table table th {
-    font-size: 0.6875rem;
-    line-height: 1rem;
-    letter-spacing: 0.025em;
   }
 
   .erp-list-table-scroll {
@@ -91,79 +47,79 @@
 
 @layer base {
   :root {
-    /* Manufacturing Theme - Warm Industrial Colors */
-    --background: 41 33% 98%;           /* Off-White */
-    --foreground: 210 11% 26%;          /* Dark Charcoal */
+    /* Enterprise Theme - Slate & Indigo */
+    --background: 210 40% 98%;
+    --foreground: 222.2 84% 4.9%;
     
-    --card: 0 0% 100%;                  /* Pure White */
-    --card-foreground: 210 11% 26%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
     
     --popover: 0 0% 100%;
-    --popover-foreground: 210 11% 26%;
+    --popover-foreground: 222.2 84% 4.9%;
     
-    --primary: 27 33% 42%;              /* Warm Brown */
-    --primary-foreground: 41 33% 98%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
     
-    --secondary: 36 39% 82%;            /* Beige */
-    --secondary-foreground: 210 11% 26%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
     
-    --muted: 36 39% 92%;                /* Light Beige */
-    --muted-foreground: 27 20% 40%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
     
-    --accent: 25 47% 32%;               /* Coffee Brown */
-    --accent-foreground: 41 33% 98%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
     
-    --destructive: 9 66% 61%;           /* Terracotta */
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
     
-    --success: 75 47% 35%;              /* Olive Green */
-    --success-foreground: 0 0% 100%;
+    --success: 142.1 76.2% 36.3%;
+    --success-foreground: 355.7 100% 97.3%;
     
-    --warning: 22 100% 40%;             /* Burnt Orange */
-    --warning-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 48 96% 89%;
     
-    --border: 36 39% 88%;               /* Light Border */
-    --input: 36 39% 88%;
-    --ring: 27 33% 42%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
     
     --radius: 0.5rem;
   }
 
   .dark {
-    /* Dark theme with warm tones */
-    --background: 210 11% 15%;
-    --foreground: 41 33% 98%;
+    /* Dark theme - Slate & Indigo */
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
     
-    --card: 210 11% 18%;
-    --card-foreground: 41 33% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
     
-    --popover: 210 11% 18%;
-    --popover-foreground: 41 33% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
     
-    --primary: 27 33% 52%;
-    --primary-foreground: 210 11% 15%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
     
-    --secondary: 36 39% 25%;
-    --secondary-foreground: 41 33% 98%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
     
-    --muted: 210 11% 25%;
-    --muted-foreground: 36 39% 70%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
     
-    --accent: 25 47% 42%;
-    --accent-foreground: 41 33% 98%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
     
-    --destructive: 9 66% 51%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
     
-    --success: 75 47% 45%;
-    --success-foreground: 0 0% 100%;
+    --success: 142.1 76.2% 26.3%;
+    --success-foreground: 355.7 100% 97.3%;
     
-    --warning: 22 100% 50%;
-    --warning-foreground: 0 0% 100%;
+    --warning: 38 92% 40%;
+    --warning-foreground: 48 96% 89%;
     
-    --border: 210 11% 25%;
-    --input: 210 11% 25%;
-    --ring: 27 33% 52%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
   }
 }
 
@@ -225,19 +181,19 @@
     width: 2rem;
     height: 2rem;
     border-radius: 9999px;
-    border: 1px solid #E8DCC4;
-    background: #ffffff;
-    color: #6F4E37;
+    border: 1px solid theme('colors.border');
+    background: theme('colors.card');
+    color: theme('colors.foreground');
     font-size: 0.9rem;
     line-height: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   }
 
   .modal-toggle-btn:hover {
-    background: #F7F1E8;
+    background: theme('colors.muted.DEFAULT');
   }
 
   .modal-overlay.modal-maximized {
@@ -294,7 +250,7 @@
 
   /* Enterprise focus ring — used for keyboard nav accessibility */
   .focus-ring {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2;
   }
 
   /* Badge variants */

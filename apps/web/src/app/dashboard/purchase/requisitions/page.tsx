@@ -187,7 +187,7 @@ function getPrWorkflowBadgeClass(status: string): string {
     case 'RFQ_RCVD':
       return 'bg-blue-50 text-blue-700 border border-blue-200 shadow-sm';
     case 'RFQ_ISSUED':
-      return 'bg-amber-50 text-amber-700 border border-amber-200 shadow-sm';
+      return 'bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm';
     case 'DRAFT':
       return 'bg-slate-50 text-slate-700 border border-slate-200 shadow-sm';
     case 'REJECTED':
@@ -393,7 +393,7 @@ function PRContent() {
           <button
             type="button"
             onClick={() => handleViewDetails(req.id)}
-            className="text-amber-600 hover:text-amber-900 font-medium"
+            className="text-indigo-600 hover:text-indigo-900 font-medium"
           >
             View Details
           </button>
@@ -1517,7 +1517,7 @@ function PRContent() {
 
   return (
     <div className="min-h-screen bg-gray-50/50 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="w-full mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
@@ -1528,7 +1528,7 @@ function PRContent() {
             <button
               type="button"
               onClick={() => setShowCreateForm(true)}
-              className="inline-flex items-center gap-2 bg-amber-600 text-white px-5 py-2.5 rounded-lg hover:bg-amber-700 transition-all font-medium shadow-sm hover:shadow"
+              className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition-all font-medium shadow-sm hover:shadow"
             >
               <Plus className="w-5 h-5" />
               New Requisition
@@ -1541,8 +1541,8 @@ function PRContent() {
           <StatCard
             title="Total Requisitions"
             value={totalPRs}
-            icon={<FileText className="w-5 h-5 text-amber-700" />}
-            iconBg="bg-amber-100"
+            icon={<FileText className="w-5 h-5 text-indigo-700" />}
+            iconBg="bg-indigo-100"
             loading={loadingRequisitions}
           />
           <StatCard
@@ -1599,7 +1599,7 @@ function PRContent() {
                 type="button"
                 onClick={() => handleSubmit('SUBMITTED')}
                 disabled={items.length === 0 || !formData.requiredDate}
-                className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 font-medium flex items-center gap-2 shadow-sm"
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 font-medium flex items-center gap-2 shadow-sm"
               >
                 <Send className="w-4 h-4" /> {editingPRId ? 'Update Requisition' : 'Submit for Approval'}
               </button>
@@ -1618,7 +1618,7 @@ function PRContent() {
                       min={todayDate}
                       value={formData.requiredDate}
                       onChange={(e) => setFormData({ ...formData, requiredDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1627,7 +1627,7 @@ function PRContent() {
                     </label>
                     <div className="space-y-2">
                       <select
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                         value=""
                         onChange={(e) => {
                           if (e.target.value) {
@@ -1645,21 +1645,21 @@ function PRContent() {
                         value={formData.deliveryAddress}
                         onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
                         rows={2}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                         placeholder="Enter delivery address..."
                       />
                       <div className="flex gap-2">
                         <input
                           value={deliveryAddressName}
                           onChange={(e) => setDeliveryAddressName(e.target.value)}
-                          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                           placeholder="Address name for saving, e.g. Factory"
                         />
                         <button
                           type="button"
                           onClick={handleSaveDeliveryAddress}
                           disabled={deliveryAddressSaving || !formData.deliveryAddress.trim()}
-                          className="px-4 py-2 rounded-lg bg-amber-700 text-white text-sm font-semibold hover:bg-amber-800 disabled:opacity-50"
+                          className="px-4 py-2 rounded-lg bg-indigo-700 text-white text-sm font-semibold hover:bg-indigo-800 disabled:opacity-50"
                         >
                           {deliveryAddressSaving ? 'Saving...' : 'Save Address'}
                         </button>
@@ -1679,7 +1679,7 @@ function PRContent() {
                       onClick={() => setUseManualEntry(false)}
                       className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                         !useManualEntry
-                          ? 'bg-amber-800 text-white'
+                          ? 'bg-indigo-800 text-white'
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                       }`}
                     >
@@ -1709,7 +1709,7 @@ function PRContent() {
                                 onFocus={() => setShowDropdown(true)}
                                 onKeyDown={handleItemSearchKeyDown}
                                 placeholder="Search items by name, code, UOM..."
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                 autoComplete="off"
                               />
                               {searchTerm && (
@@ -1741,7 +1741,7 @@ function PRContent() {
                                     <button
                                       type="button"
                                       onClick={() => window.location.href = '/login'}
-                                      className="mt-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm"
+                                      className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm"
                                     >
                                       Go to Login
                                     </button>
@@ -1759,11 +1759,11 @@ function PRContent() {
                                   </div>
                                 ) : filteredItems.length > 0 ? (
                                   <>
-                                    <div className="sticky top-0 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900 border-b flex items-center justify-between gap-3">
+                                    <div className="sticky top-0 bg-indigo-50 px-4 py-3 text-xs font-semibold text-indigo-900 border-b flex items-center justify-between gap-3">
                                       <span>
                                         Showing {filteredItems.length} result{filteredItems.length !== 1 ? 's' : ''}
                                       </span>
-                                      <span className="text-[11px] font-medium text-amber-800/80">
+                                      <span className="text-[11px] font-medium text-indigo-800/80">
                                         Search: {searchTerm.trim()}
                                       </span>
                                     </div>
@@ -1776,8 +1776,8 @@ function PRContent() {
                                         }}
                                         onClick={() => selectItem(item)}
                                         onMouseEnter={() => setHighlightedItemIndex(index)}
-                                        className={`w-full text-left px-4 py-3 hover:bg-amber-50 border-b last:border-b-0 transition-colors ${
-                                          selectedItemId === item.id || highlightedItemIndex === index ? 'bg-amber-100' : ''
+                                        className={`w-full text-left px-4 py-3 hover:bg-indigo-50 border-b last:border-b-0 transition-colors ${
+                                          selectedItemId === item.id || highlightedItemIndex === index ? 'bg-indigo-100' : ''
                                         }`}
                                       >
                                         <div className="grid grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)_auto] gap-4 items-start">
@@ -1824,7 +1824,7 @@ function PRContent() {
                             value={itemForm.itemName}
                             onChange={(e) => setItemForm({ ...itemForm, itemName: e.target.value })}
                             placeholder="Item Name *"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                           />
                         )}
                       </div>
@@ -1833,7 +1833,7 @@ function PRContent() {
                         value={itemForm.quantity}
                         onChange={(e) => setItemForm({ ...itemForm, quantity: e.target.value })}
                         placeholder="Quantity *"
-                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                       />
                       <input
                         type="text"
@@ -1841,7 +1841,7 @@ function PRContent() {
                         onChange={(e) => setItemForm({ ...itemForm, uom: e.target.value })}
                         placeholder="UOM"
                         readOnly={!useManualEntry}
-                        className={`px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 ${!useManualEntry ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                        className={`px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 ${!useManualEntry ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                         title={!useManualEntry ? 'UOM is auto-filled from master item' : 'Enter unit of measurement (e.g., PCS, KG, MTR)'}
                       />
                       <div>
@@ -1851,7 +1851,7 @@ function PRContent() {
                           onChange={(e) => setItemForm({ ...itemForm, estimatedPrice: e.target.value })}
                           placeholder="Est. Unit Price"
                           title="Estimated unit price. Extended price = Qty × unit price."
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                         />
                         {lastPurchasePrice && (
                           <div className="mt-1 text-[11px] text-gray-600">
@@ -1880,7 +1880,7 @@ function PRContent() {
                         <button
                           type="button"
                           onClick={addItem}
-                          className="bg-amber-800 text-white px-4 py-2 rounded-lg hover:bg-amber-900 transition-colors"
+                          className="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-900 transition-colors"
                         >
                           + Add
                         </button>
@@ -1891,7 +1891,7 @@ function PRContent() {
                       value={itemForm.specifications}
                       onChange={(e) => setItemForm({ ...itemForm, specifications: e.target.value })}
                       placeholder="Specifications / Notes"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                     />
 
                     <div className="grid grid-cols-2 gap-3 mt-3">
@@ -1902,7 +1902,7 @@ function PRContent() {
                           value={itemForm.deliveryTerms}
                           onChange={(e) => setItemForm({ ...itemForm, deliveryTerms: e.target.value })}
                           placeholder="e.g. FOB, CIF, Ex-Works"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-sm"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
                         />
                       </div>
                     </div>
@@ -2003,7 +2003,7 @@ function PRContent() {
                           <button
                             type="button"
                             onClick={resetItemEntry}
-                            className="px-6 py-2 text-amber-600 hover:text-amber-800 font-medium border-2 border-dashed border-amber-300 hover:border-amber-500 rounded-lg transition-colors"
+                            className="px-6 py-2 text-indigo-600 hover:text-indigo-800 font-medium border-2 border-dashed border-indigo-300 hover:border-indigo-500 rounded-lg transition-colors"
                           >
                             + Add Another Item
                           </button>
@@ -2022,7 +2022,7 @@ function PRContent() {
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     rows={3}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     placeholder="Any additional information..."
                   />
                 </div>
@@ -2068,7 +2068,7 @@ function PRContent() {
                 <select
                   value={filterVendor}
                   onChange={(e) => setFilterVendor(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-amber-500"
+                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">All Vendors</option>
                   {rfqVendors.map((v) => (
@@ -2078,7 +2078,7 @@ function PRContent() {
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-amber-500"
+                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">All Status</option>
                   <option value="DRAFT">Draft</option>
@@ -2096,7 +2096,7 @@ function PRContent() {
         {/* PR Detail Modal */}
         {showDetailModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg max-w-7xl w-full max-h-[90vh] flex flex-col">
+            <div className="bg-white rounded-lg w-full w-full max-h-[90vh] flex flex-col">
               {loadingDetail ? (
                 <div className="p-8 text-center">
                   <div className="animate-pulse">
@@ -2159,7 +2159,7 @@ function PRContent() {
                                 await fetchPreferredVendorsForPR(selectedPR);
                               }
                             }}
-                            className="px-4 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors text-sm"
+                            className="px-4 py-2 bg-indigo-800 text-white rounded-lg hover:bg-indigo-900 transition-colors text-sm"
                           >
                             Send RFQ
                           </button>
@@ -2180,7 +2180,7 @@ function PRContent() {
                               setShowDetailModal(false);
                               router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
                             }}
-                            className="px-4 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors text-sm"
+                            className="px-4 py-2 bg-indigo-800 text-white rounded-lg hover:bg-indigo-900 transition-colors text-sm"
                           >
                             Create PO from this PR
                           </button>
@@ -2327,7 +2327,7 @@ function PRContent() {
                                             return (
                                               <span
                                                 key={vendor.id}
-                                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium ${isPreferred ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-gray-200 bg-gray-50 text-gray-700'}`}
+                                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium ${isPreferred ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-gray-200 bg-gray-50 text-gray-700'}`}
                                               >
                                                 <span>{vendor.name}</span>
                                                 {isPreferred && <span>(Preferred)</span>}
@@ -2472,7 +2472,7 @@ function PRContent() {
 
         {showRfqResponses && selectedPR && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[55] p-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-white rounded-lg shadow-xl w-full w-full max-w-none max-h-[90vh] overflow-hidden flex flex-col">
               <div className="border-b px-6 py-4 flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900">RFQ Responses</h2>
@@ -2522,7 +2522,7 @@ function PRContent() {
                               <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
                                 String(rfq.status).toUpperCase() === 'RECEIVED'
                                   ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-amber-100 text-amber-800'
+                                  : 'bg-indigo-100 text-indigo-800'
                               }`}>
                                 {String(rfq.status || '').toUpperCase()}
                               </span>
@@ -2562,7 +2562,7 @@ function PRContent() {
 
         {editingRfqResponse && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[92vh] overflow-hidden flex flex-col">
+            <div className="bg-white rounded-lg shadow-xl w-full w-full max-w-none max-h-[92vh] overflow-hidden flex flex-col">
               <div className="border-b px-6 py-4 flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900">RFQ Response</h2>
@@ -2759,9 +2759,9 @@ function PRContent() {
         {/* RFQ Email Preview Modal */}
         {showRfqPreview && rfqPreviewData && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-[95vw] max-h-[95vh] overflow-auto">
+            <div className="bg-white rounded-lg shadow-xl w-full w-full max-w-none max-h-[95vh] overflow-auto">
               <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-amber-900">RFQ Email Preview</h2>
+                <h2 className="text-2xl font-bold text-indigo-900">RFQ Email Preview</h2>
                 <button
                   type="button"
                   onClick={() => {
@@ -2810,7 +2810,7 @@ function PRContent() {
                                       type="button"
                                       onClick={() => setRfqPreviewIndex(idx)}
                                       className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
-                                        active ? 'bg-amber-50' : ''
+                                        active ? 'bg-indigo-50' : ''
                                       }`}
                                     >
                                       <div className="text-sm font-semibold text-gray-900">

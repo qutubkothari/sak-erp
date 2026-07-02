@@ -96,7 +96,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
     emptyState,
     className = '',
     exportFilename,
-    fitToContainer = false,
+    fitToContainer = true,
     selectable = false,
     selectedRowIds,
     onSelectionChange,
@@ -415,7 +415,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
                 setPageIndex(0);
               }}
               placeholder={searchPlaceholder}
-              className="w-full sm:max-w-md px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500"
+              className="w-full sm:max-w-md px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500"
             />
           )}
           <div className="relative" ref={columnsMenuRef}>
@@ -476,7 +476,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
                             type="checkbox"
                             checked={visibleById[col.id] !== false}
                             onChange={(e) => toggleColumn(col.id, e.target.checked)}
-                            className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                           />
                           <span className="truncate">{col.label}</span>
                         </label>
@@ -561,7 +561,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
                     ref={pageCheckboxRef}
                     checked={allPageSelected}
                     onChange={(e) => togglePageSelection(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                     aria-label="Select all visible rows"
                   />
                 </th>
@@ -603,9 +603,9 @@ export function ListTable<T>(props: ListTableProps<T>) {
                           e.stopPropagation();
                           startColumnResize(col.id, e.clientX);
                         }}
-                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize group/resize hover:bg-amber-400/40 active:bg-amber-500/60 transition-colors"
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize group/resize hover:bg-indigo-400/20 active:bg-indigo-500/40 transition-colors"
                       >
-                        <div className="absolute right-0.5 top-1/4 h-1/2 w-px bg-gray-300 group-hover/resize:bg-amber-500 transition-colors" />
+                        <div className="absolute right-0.5 top-1/4 h-1/2 w-px bg-gray-300 group-hover/resize:bg-indigo-500 transition-colors" />
                       </div>
                     )}
                   </th>
@@ -629,7 +629,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
                         type="checkbox"
                         checked={selectedRowIdsSet.has(getRowId(row))}
                         onChange={(e) => toggleRowSelection(getRowId(row), e.target.checked)}
-                        className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                         aria-label={`Select row ${getRowId(row)}`}
                       />
                     </td>
