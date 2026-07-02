@@ -512,7 +512,70 @@ export class PurchaseOrdersService {
     );
   }
 
-  private async computeReceiptSummary(tenantId: string, po: any) {
+  private async fetchReceiptLedgerForPurchaseOrders(tenantId: string, poIds: string[]) {
+    const normalizedPoIds = Array.from(
+      new Set(poIds.map((poId) => String(poId || '').trim()).filter(Boolean)),
+    );
+    const receivedByPoItem = new Map<string, number>();
+    const receivedByPoId = new Map<string, number>();
+    if (normalizedPoIds.length === 0) return { receivedByPoItem, receivedByPoId };
+
+    const { data: grns, error: grnError } = await this.supabase
+      .from('grns')
+      .select('id, po_id')
+      .eq('tenant_id', tenantId)
+      .in('po_id', normalizedPoIds)
+      .not('status', 'in', '("REJECTED","CANCELLED")');
+
+    if (grnError) {
+      console.error('[PO] Failed to batch-fetch GRNs for receipt summaries:', grnError);
+      return { receivedByPoItem, receivedByPoId };
+    }
+
+    const poIdByGrnId = new Map<string, string>();
+    for (const grn of grns || []) {
+      const grnId = String(grn.id || '').trim();
+      const poId = String(grn.po_id || '').trim();
+      if (grnId && poId) poIdByGrnId.set(grnId, poId);
+    }
+    const grnIds = Array.from(poIdByGrnId.keys());
+    if (grnIds.length === 0) return { receivedByPoItem, receivedByPoId };
+
+    const { data: grnItems, error: grnItemsError } = await this.supabase
+      .from('grn_items')
+      .select('grn_id, po_item_id, received_qty, accepted_qty')
+      .eq('tenant_id', tenantId)
+      .in('grn_id', grnIds);
+
+    if (grnItemsError) {
+      console.error('[PO] Failed to batch-fetch GRN items for receipt summaries:', grnItemsError);
+      return { receivedByPoItem, receivedByPoId };
+    }
+
+    for (const item of grnItems || []) {
+      const grnId = String(item.grn_id || '').trim();
+      const poId = poIdByGrnId.get(grnId);
+      if (!poId) continue;
+      const quantity = this.toNumber(item.received_qty ?? item.accepted_qty ?? 0);
+      receivedByPoId.set(poId, (receivedByPoId.get(poId) || 0) + quantity);
+
+      const poItemId = String(item.po_item_id || '').trim();
+      if (poItemId) {
+        receivedByPoItem.set(poItemId, (receivedByPoItem.get(poItemId) || 0) + quantity);
+      }
+    }
+
+    return { receivedByPoItem, receivedByPoId };
+  }
+
+  private async computeReceiptSummary(
+    tenantId: string,
+    po: any,
+    receiptLedger?: {
+      receivedByPoItem: Map<string, number>;
+      receivedByPoId: Map<string, number>;
+    },
+  ) {
     const items: any[] = Array.isArray(po?.purchase_order_items) ? po.purchase_order_items : [];
     const poNumber = po?.po_number;
     
@@ -527,7 +590,8 @@ export class PurchaseOrdersService {
 
     // Fetch actual received quantities from GRN ledger
     const poItemIds = items.map((it: any) => String(it?.id || '').trim()).filter(Boolean);
-    const grnReceivedByPoItem = await this.fetchGrnReceivedByPoItem(tenantId, poItemIds);
+    const grnReceivedByPoItem = receiptLedger?.receivedByPoItem
+      ?? await this.fetchGrnReceivedByPoItem(tenantId, poItemIds);
 
     let orderedTotal = 0;
     let receivedTotal = 0;
@@ -548,7 +612,9 @@ export class PurchaseOrdersService {
       };
     });
 
-    const poLevelReceivedTotal = await this.fetchGrnReceivedTotalByPoId(tenantId, po?.id);
+    const poLevelReceivedTotal = receiptLedger
+      ? receiptLedger.receivedByPoId.get(String(po?.id || '').trim()) || 0
+      : await this.fetchGrnReceivedTotalByPoId(tenantId, po?.id);
     const effectiveReceivedTotal = Math.max(receivedTotal, Math.min(poLevelReceivedTotal, orderedTotal));
     if (poLevelReceivedTotal > receivedTotal && orderedTotal > 0) {
       let remainingPoLevelReceived = poLevelReceivedTotal;
@@ -1018,10 +1084,15 @@ export class PurchaseOrdersService {
       rows.map((po: any) => po?.vendor_id),
     );
 
+    const receiptLedger = await this.fetchReceiptLedgerForPurchaseOrders(
+      tenantId,
+      rows.map((po: any) => po?.id),
+    );
+
     const result = [];
     for (const po of rows) {
       const hydratedPo = this.hydratePODrawingSelections(po);
-      const receipt = await this.computeReceiptSummary(tenantId, hydratedPo);
+      const receipt = await this.computeReceiptSummary(tenantId, hydratedPo, receiptLedger);
       
       // Filter out fully received POs if pendingOnly is requested (for GRN creation)
       if (filters?.pendingOnly && receipt.receipt_status === 'FULLY_RECEIVED') {
