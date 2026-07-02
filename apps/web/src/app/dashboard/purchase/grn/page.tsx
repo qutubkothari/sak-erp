@@ -10,7 +10,8 @@ import { getTodayDateInputValue } from '@/lib/date';
 import DateInput from '../../../../components/ui/DateInput';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { useEscapeKey } from '../../../../hooks/useEscapeKey';
-import { Search, X, ChevronDown } from 'lucide-react';
+import { ErpButton, ErpMetricStrip, ErpPageHeader, ErpStatusBadge } from '../../../../components/ui/ErpPrimitives';
+import { FileText, Plus, Search, X, ChevronDown } from 'lucide-react';
 
 interface SearchableSelectOption {
   value: string;
@@ -2241,11 +2242,7 @@ function GRNContent() {
       id: 'status',
       label: 'Status',
       accessor: (g) => g.status,
-      cell: (g) => (
-        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(g.status)}`}>
-          {g.status}
-        </span>
-      ),
+      cell: (g) => <ErpStatusBadge status={g.status} />,
       align: 'center',
     },
     {
@@ -2399,45 +2396,61 @@ function GRNContent() {
     },
   ];
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-amber-900">Goods Receipt Note (GRN)</h1>
-            <p className="text-amber-700">Record and manage goods received from vendors</p>
-          </div>
-          {canCreateGRN && (
-          <button
-            onClick={() => setShowModal(true)}
-            className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold"
-          >
-            + Create GRN
-          </button>
-          )}
-        </div>
+  const visibleGrns = grns.filter((g) => (filterStatus === 'ALL' ? true : g.status === filterStatus));
 
+  return (
+    <div className="min-h-screen bg-[#FAF9F6] px-4 py-4 text-[#2F241D] lg:px-6">
+      <div className="flex min-h-[calc(100vh-2rem)] flex-col gap-4">
+        <ErpPageHeader
+          eyebrow="Inventory"
+          title="Goods Receipt Notes"
+          description="Record supplier invoices, receive PO quantities, complete QC, and generate UID traceability."
+          actions={
+            canCreateGRN ? (
+              <ErpButton variant="primary" onClick={() => setShowModal(true)}>
+                <Plus className="h-4 w-4" />
+                Create GRN
+              </ErpButton>
+            ) : null
+          }
+        />
+
+        <ErpMetricStrip
+          loading={loading}
+          metrics={[
+            { label: 'Total GRNs', value: grns.length },
+            { label: 'Draft', value: grns.filter((g) => g.status === 'DRAFT').length, tone: 'warning' },
+            { label: 'Completed', value: grns.filter((g) => g.status === 'COMPLETED').length, tone: 'success' },
+            { label: 'Cancelled', value: grns.filter((g) => g.status === 'CANCELLED').length, tone: 'danger' },
+          ]}
+        />
+
+        <section className="min-h-0 flex-1">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="text-base font-bold text-[#4A3426]">GRN Register</h2>
+            <span className="text-sm text-[#7A6555]">{visibleGrns.length} records</span>
+          </div>
         {/* GRN List */}
         {loading ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="p-8 text-center text-gray-500">Loading GRNs...</div>
+          <div className="rounded-md border border-[#E8DCC4] bg-white">
+            <div className="p-8 text-center text-[#7A6555]">Loading GRNs...</div>
           </div>
         ) : (
           <ListTable
             storageKey="grnTable"
-            rows={grns.filter((g) => (filterStatus === 'ALL' ? true : g.status === filterStatus))}
+            rows={visibleGrns}
             columns={grnTableColumns}
             getRowId={(g) => g.id}
             defaultPageSize={10}
             pageSizeOptions={[10, 25, 50, 100]}
             initialSearch={initialGrnSearch}
             searchPlaceholder="Search by GRN number, PO number, vendor, invoice…"
+            fitToContainer={false}
             toolbarRight={
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-amber-500"
+                className="min-h-9 w-full rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm text-[#2F241D] focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30 sm:w-48"
               >
                 <option value="ALL">All Status</option>
                 <option value="DRAFT">Draft</option>
@@ -2454,17 +2467,35 @@ function GRNContent() {
             }
           />
         )}
+        </section>
       </div>
 
       {/* Create Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-[95vw] max-w-7xl max-h-[92vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-2xl font-bold text-gray-900">Create Goods Receipt Note</h2>
+        <div className="fixed inset-0 z-50 bg-[#FAF9F6]">
+          <div className="flex h-dvh w-screen flex-col overflow-hidden bg-white">
+            <div className="shrink-0 border-b border-[#E8DCC4] bg-white px-5 py-3">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-[#8B6F47]">Goods Receipt</p>
+                  <h2 className="text-xl font-bold text-[#4A3426]">Create GRN</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModal(false);
+                    resetForm();
+                  }}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-md text-[#7A6555] hover:bg-[#F5EFE3] hover:text-[#4A3426]"
+                  aria-label="Close create GRN"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              <div className="space-y-6">
               {/* GRN Header */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -2765,25 +2796,28 @@ function GRNContent() {
                   placeholder="Additional notes..."
                 />
               </div>
+              </div>
             </div>
 
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-4">
-              <button
+            <div className="shrink-0 border-t border-[#E8DCC4] bg-white px-5 py-3">
+              <div className="flex justify-end gap-3">
+              <ErpButton
+                variant="secondary"
                 onClick={() => {
                   setShowModal(false);
                   resetForm();
                 }}
-                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 Cancel
-              </button>
-              <button
+              </ErpButton>
+              <ErpButton
+                variant="primary"
                 onClick={handleCreateGRN}
                 disabled={submitting}
-                className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submitting ? 'Creating...' : 'Create GRN'}
-              </button>
+              </ErpButton>
+              </div>
             </div>
           </div>
         </div>
@@ -2791,12 +2825,14 @@ function GRNContent() {
 
       {/* View/Edit Modal */}
       {showViewModal && selectedGRN && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-[95vw] max-w-7xl max-h-[92vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-gray-900">
-                {editMode ? 'Edit GRN' : 'View GRN Details'}
-              </h2>
+        <div className="fixed inset-0 z-50 bg-[#FAF9F6]">
+          <div className="flex h-dvh w-screen flex-col overflow-hidden bg-white">
+            <div className="shrink-0 border-b border-[#E8DCC4] bg-white px-5 py-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase text-[#8B6F47]">{editMode ? 'Edit Goods Receipt' : 'Goods Receipt'}</p>
+                  <h2 className="truncate text-xl font-bold text-[#4A3426]">{selectedGRN.grn_number}</h2>
+                </div>
               <button
                 onClick={() => {
                   setShowViewModal(false);
@@ -2810,13 +2846,16 @@ function GRNContent() {
                     window.history.replaceState({}, '', newUrl);
                   }
                 }}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md text-[#7A6555] hover:bg-[#F5EFE3] hover:text-[#4A3426]"
+                aria-label="Close GRN"
               >
                 ×
               </button>
             </div>
+            </div>
 
-            <div className="p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              <div className="space-y-6">
               {/* GRN Header Information */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -3221,10 +3260,11 @@ function GRNContent() {
                   </div>
                 </div>
               )}
+              </div>
             </div>
 
             {/* Footer with Action Buttons */}
-            <div className="p-6 border-t border-gray-200 flex justify-between items-center">
+            <div className="shrink-0 border-t border-[#E8DCC4] bg-white px-5 py-3 flex justify-between items-center">
               <div className="flex gap-3">
                 {editMode ? (
                   <button
@@ -3325,18 +3365,19 @@ function GRNContent() {
 
       {/* UIDs Modal */}
       {showUIDsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-gray-900">Generated UIDs</h2>
+        <div className="fixed inset-0 z-50 bg-[#FAF9F6]">
+          <div className="flex h-dvh w-screen flex-col overflow-hidden bg-white">
+            <div className="shrink-0 border-b border-[#E8DCC4] bg-white px-5 py-3 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-[#4A3426]">Generated UIDs</h2>
               <button
                 onClick={() => setShowUIDsModal(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md text-[#7A6555] hover:bg-[#F5EFE3] hover:text-[#4A3426]"
+                aria-label="Close UIDs"
               >
                 ×
               </button>
             </div>
-            <div className="p-6">
+            <div className="flex-1 overflow-y-auto px-5 py-4">
               {selectedGRNUIDs.length === 0 ? (
                 <p className="text-center text-gray-500 py-8">No UIDs found</p>
               ) : (
@@ -3387,18 +3428,18 @@ function GRNContent() {
 
       {/* Purchase Trail Modal - Same as BOM page */}
       {showTrailModal && purchaseTrail && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
+        <div className="fixed inset-0 z-50 bg-[#FAF9F6]">
+          <div className="flex h-dvh w-screen flex-col overflow-hidden bg-white">
+            <div className="shrink-0 border-b border-[#E8DCC4] bg-white px-5 py-3">
               <div className="flex justify-between items-start">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Purchase Trail</h2>
-                  <p className="text-gray-600 mt-1">UID: {purchaseTrail.uid}</p>
+                  <h2 className="text-xl font-bold text-[#4A3426]">Purchase Trail</h2>
+                  <p className="text-sm text-[#7A6555] mt-1">UID: {purchaseTrail.uid}</p>
                 </div>
                 <button onClick={() => setShowTrailModal(false)} className="text-2xl text-gray-500">×</button>
               </div>
             </div>
-            <div className="p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h3 className="font-semibold text-blue-900 mb-2">📦 Item</h3>
                 <div className="text-sm"><span className="text-gray-600">Code:</span> {purchaseTrail.item.code} | <span className="text-gray-600">Name:</span> {purchaseTrail.item.name}</div>
@@ -3539,13 +3580,13 @@ function GRNContent() {
 
       {/* QC Accept Modal */}
       {showQCModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-blue-50">
+        <div className="fixed inset-0 z-50 bg-[#FAF9F6]">
+          <div className="flex h-dvh w-screen flex-col overflow-hidden bg-white">
+            <div className="shrink-0 border-b border-[#E8DCC4] bg-white px-5 py-3 flex justify-between items-center">
               <h2 className="text-2xl font-bold text-gray-900">🔍 QC Inspection</h2>
               <button
                 onClick={() => setShowQCModal(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md text-[#7A6555] hover:bg-[#F5EFE3] hover:text-[#4A3426]"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -3553,7 +3594,7 @@ function GRNContent() {
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+            <div className="flex-1 overflow-y-auto px-5 py-4">
               {/* QC Metadata Section */}
               <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">QC Information</h3>
@@ -3752,7 +3793,7 @@ function GRNContent() {
               </div>
             </div>
 
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+            <div className="shrink-0 border-t border-[#E8DCC4] bg-white px-5 py-3 flex justify-end gap-3">
               <button
                 onClick={() => setShowQCModal(false)}
                 className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
