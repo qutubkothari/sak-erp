@@ -1,19 +1,73 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import { toast } from 'sonner';
-import { CheckCircle, Eye, Plus, Trash2, XCircle } from 'lucide-react';
-import { apiClient } from '../../../../../lib/api-client';
-import { useSelection } from '../../../../hooks/useSelection';
-import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
-import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
-import { PageHeader, PrimaryButton, DangerButton, SecondaryButton } from '../../../../components/ui/PageHeader';
-import { TableSkeleton } from '../../../../components/ui/Skeleton';
-import { EmptyState } from '../../../../components/ui/EmptyState';
-import { hasModulePermission, isAdminLike, readStoredUser } from '@/lib/rbac';
-import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
-import { useEscapeKey } from '../../../../hooks/useEscapeKey';
-import { exportToExcel } from '../../../../lib/export-excel';
+import { useEffect, useMemo, useState } from "react";
+import {
+  Building2,
+  CheckCircle2,
+  Download,
+  Edit,
+  Eye,
+  Plus,
+  Save,
+  ShieldCheck,
+  ShieldOff,
+  Trash2,
+  UserPlus,
+} from "lucide-react";
+import { toast } from "sonner";
+import { apiClient } from "../../../../../lib/api-client";
+import DuplicateWarning, {
+  useDuplicateDetection,
+} from "../../../../components/DuplicateWarning";
+import SearchableSelect from "../../../../components/SearchableSelect";
+import { confirmDialog } from "../../../../components/ui/ConfirmDialog";
+import {
+  ErpButton,
+  ErpMetricStrip,
+  ErpPageHeader,
+  ErpStatusBadge,
+} from "../../../../components/ui/ErpPrimitives";
+import {
+  ListTable,
+  type ListTableColumn,
+} from "../../../../components/ui/ListTable";
+import { SlidePanel } from "../../../../components/ui/SlidePanel";
+import { exportToExcel } from "../../../../lib/export-excel";
+import { hasModulePermission, isAdminLike } from "@/lib/rbac";
+import { useAuthStore } from "@/stores/auth.store";
+
+interface VendorContact {
+  salutation?: string;
+  name: string;
+  phone: string;
+  email: string;
+  isDefault?: boolean;
+}
+
+interface GstVerificationResult {
+  gstin?: string;
+  valid?: boolean;
+  portalVerified?: boolean;
+  legalNameMatch?: boolean | null;
+  verificationMode?: string;
+  message?: string;
+  details?: {
+    stateName?: string | null;
+    pan?: string | null;
+    portalLegalName?: string | null;
+    portalTradeName?: string | null;
+    portalStatus?: string | null;
+    portalAddress?: {
+      addressLine?: string;
+      street?: string;
+      city?: string;
+      state?: string;
+      pincode?: string;
+      country?: string;
+      fullAddress?: string;
+    } | null;
+  };
+}
 
 interface Vendor {
   id: string;
@@ -22,10 +76,11 @@ interface Vendor {
   legal_name: string;
   tax_id?: string;
   category: string;
-  contact_person: string;
-  email: string;
-  phone: string;
-  address: string;
+  contact_person?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  billing_line2?: string;
   street?: string;
   city?: string;
   state?: string;
@@ -38,64 +93,22 @@ interface Vendor {
   is_verified?: boolean;
   verified_at?: string | null;
   verified_by?: string | null;
-  billing_line2?: string;
-  gst_verification?: {
-    valid?: boolean;
-    verificationMode?: string;
-    message?: string;
-    details?: {
-      stateName?: string | null;
-      pan?: string | null;
-    };
-  } | null;
-  contacts?: Array<{
-    name: string;
-    phone: string;
-    email: string;
-    isDefault?: boolean;
-  }>;
+  contacts?: VendorContact[];
+  gst_verification?: GstVerificationResult | null;
+  salutation?: string;
+  country_code?: string;
+  bank_name?: string;
+  bank_account_number?: string;
+  bank_ifsc_code?: string;
+  bank_branch?: string;
+  bank_account_type?: string;
+  metadata?: Record<string, any>;
 }
 
-type VendorContactForm = {
+type VendorContactForm = Required<
+  Pick<VendorContact, "name" | "phone" | "email" | "isDefault">
+> & {
   salutation: string;
-  name: string;
-  phone: string;
-  email: string;
-  isDefault: boolean;
-};
-
-type GstVerificationResult = {
-  gstin?: string;
-  valid?: boolean;
-  portalVerified?: boolean;
-  legalNameChecked?: boolean;
-  legalNameMatch?: boolean | null;
-  verificationMode?: string;
-  message?: string;
-  details?: {
-    formatValid?: boolean;
-    checksumValid?: boolean;
-    stateCode?: string | null;
-    stateName?: string | null;
-    pan?: string | null;
-    entityCode?: string | null;
-    enteredLegalName?: string | null;
-    portalLegalName?: string | null;
-    portalTradeName?: string | null;
-    portalAddress?: {
-      addressLine?: string;
-      street?: string;
-      city?: string;
-      district?: string;
-      state?: string;
-      pincode?: string;
-      country?: string;
-      fullAddress?: string;
-    } | null;
-    portalStatus?: string | null;
-    portalRegistrationDate?: string | null;
-    portalTaxpayerType?: string | null;
-  };
 };
 
 type VendorFormState = {
@@ -125,107 +138,176 @@ type VendorFormState = {
   bankAccountType: string;
 };
 
+type FormSection =
+  | "business"
+  | "tax-address"
+  | "contacts"
+  | "commercial"
+  | "bank"
+  | "review";
+
+const FORM_SECTIONS: Array<{ id: FormSection; label: string }> = [
+  { id: "business", label: "Business" },
+  { id: "tax-address", label: "Tax & Address" },
+  { id: "contacts", label: "Contacts" },
+  { id: "commercial", label: "Commercial" },
+  { id: "bank", label: "Bank" },
+  { id: "review", label: "Review" },
+];
+
+const CATEGORY_OPTIONS = [
+  { value: "RAW_MATERIAL", label: "Raw Material" },
+  { value: "COMPONENTS", label: "Components" },
+  { value: "COMPONENT", label: "Component" },
+  { value: "SERVICE", label: "Service" },
+  { value: "CONSUMABLE", label: "Consumable" },
+  { value: "SUBCONTRACTOR", label: "Subcontractor" },
+  { value: "OTHER", label: "Other" },
+];
+
+const PAYMENT_TERM_OPTIONS = [
+  { value: "NET_30", label: "Net 30" },
+  { value: "NET_60", label: "Net 60" },
+  { value: "NET_90", label: "Net 90" },
+  { value: "ADVANCE", label: "Advance" },
+  { value: "COD", label: "Cash on Delivery" },
+];
+
+const ACCOUNT_TYPE_OPTIONS = [
+  { value: "CURRENT", label: "Current" },
+  { value: "SAVINGS", label: "Savings" },
+  { value: "CC", label: "Cash Credit" },
+  { value: "OD", label: "Overdraft" },
+];
+
+const SALUTATION_OPTIONS = ["", "Mr.", "Mrs.", "Ms.", "Dr."].map((value) => ({
+  value,
+  label: value || "No title",
+}));
+
+const COUNTRY_CODE_OPTIONS = [
+  "+91",
+  "+1",
+  "+44",
+  "+971",
+  "+65",
+  "+60",
+  "+61",
+  "+49",
+  "+81",
+  "+86",
+].map((value) => ({
+  value,
+  label: value,
+}));
+
+const FILTER_CATEGORY_OPTIONS = [
+  { value: "ALL", label: "All categories" },
+  ...CATEGORY_OPTIONS,
+];
+const FILTER_STATUS_OPTIONS = [
+  { value: "ALL", label: "All statuses" },
+  { value: "ACTIVE", label: "Active" },
+  { value: "INACTIVE", label: "Inactive" },
+];
+const FILTER_VERIFICATION_OPTIONS = [
+  { value: "ALL", label: "All verification" },
+  { value: "VERIFIED", label: "Verified" },
+  { value: "PENDING", label: "Pending verification" },
+];
+
+const inputClass =
+  "min-h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-100";
+const labelClass = "mb-1.5 block text-sm font-medium text-slate-700";
+
 function createEmptyContact(isDefault = false): VendorContactForm {
-  return {
-    salutation: '',
-    name: '',
-    phone: '',
-    email: '',
-    isDefault,
-  };
+  return { salutation: "", name: "", phone: "", email: "", isDefault };
 }
 
 function createInitialFormState(): VendorFormState {
   return {
-    salutation: '',
-    name: '',
-    legalName: '',
-    taxId: '',
-    category: 'RAW_MATERIAL',
-    address: '',
-    billingLine2: '',
-    street: '',
-    city: '',
-    state: '',
-    country: 'India',
-    countryCode: '+91',
-    pincode: '',
-    paymentTerms: 'NET_30',
+    salutation: "",
+    name: "",
+    legalName: "",
+    taxId: "",
+    category: "RAW_MATERIAL",
+    address: "",
+    billingLine2: "",
+    street: "",
+    city: "",
+    state: "",
+    country: "India",
+    countryCode: "+91",
+    pincode: "",
+    paymentTerms: "NET_30",
     creditLimit: 0,
     rating: 0,
     isActive: true,
     contacts: [createEmptyContact(true)],
     gstVerification: null,
-    bankName: '',
-    bankAccountNumber: '',
-    bankIfscCode: '',
-    bankBranch: '',
-    bankAccountType: 'CURRENT',
+    bankName: "",
+    bankAccountNumber: "",
+    bankIfscCode: "",
+    bankBranch: "",
+    bankAccountType: "CURRENT",
   };
 }
 
-function buildVendorPayload(formData: VendorFormState): VendorFormState {
-  const name = String(formData.name || '').trim();
-  const legalName = String(formData.legalName || '').trim() || name;
-  const taxId = String(formData.taxId || '').trim().toUpperCase();
-  const contacts = formData.contacts
+function normalizeContacts(contacts?: VendorContact[]): VendorContactForm[] {
+  const normalized = (contacts || [])
     .map((contact) => ({
-      salutation: String(contact.salutation || '').trim(),
-      name: String(contact.name || '').trim(),
-      phone: String(contact.phone || '').trim(),
-      email: String(contact.email || '').trim(),
+      salutation: String(contact.salutation || ""),
+      name: String(contact.name || ""),
+      phone: String(contact.phone || ""),
+      email: String(contact.email || ""),
       isDefault: Boolean(contact.isDefault),
     }))
     .filter((contact) => contact.name || contact.phone || contact.email);
-
-  return {
-    ...formData,
-    salutation: String(formData.salutation || '').trim(),
-    name,
-    legalName,
-    taxId,
-    address: String(formData.address || '').trim(),
-    billingLine2: String(formData.billingLine2 || '').trim(),
-    street: String(formData.street || '').trim(),
-    city: String(formData.city || '').trim(),
-    state: String(formData.state || '').trim(),
-    country: String(formData.country || '').trim() || 'India',
-    countryCode: String(formData.countryCode || '+91').trim(),
-    pincode: String(formData.pincode || '').trim(),
-    contacts,
-    bankName: String(formData.bankName || '').trim(),
-    bankAccountNumber: String(formData.bankAccountNumber || '').trim(),
-    bankIfscCode: String(formData.bankIfscCode || '').trim().toUpperCase(),
-    bankBranch: String(formData.bankBranch || '').trim(),
-    bankAccountType: String(formData.bankAccountType || 'CURRENT').trim(),
-  };
-}
-
-function normalizeVendorContacts(contacts?: Vendor['contacts']): VendorContactForm[] {
-  const list = Array.isArray(contacts)
-    ? contacts
-        .map((contact) => ({
-          salutation: String((contact as any)?.salutation || '').trim(),
-          name: String(contact?.name || '').trim(),
-          phone: String(contact?.phone || '').trim(),
-          email: String(contact?.email || '').trim(),
-          isDefault: Boolean(contact?.isDefault),
-        }))
-        .filter((contact) => contact.name || contact.phone || contact.email)
-    : [];
-
-  if (list.length === 0) {
-    return [createEmptyContact(true)];
-  }
-
-  const defaultIndex = list.findIndex((contact) => contact.isDefault);
-  return list.map((contact, index) => ({
+  if (!normalized.length) return [createEmptyContact(true)];
+  const defaultIndex = normalized.findIndex((contact) => contact.isDefault);
+  return normalized.map((contact, index) => ({
     ...contact,
-    isDefault: index === (defaultIndex >= 0 ? defaultIndex : 0),
+    isDefault: index === (defaultIndex < 0 ? 0 : defaultIndex),
   }));
 }
 
-function formatVendorAddress(vendor: Vendor): string {
+function buildPayload(form: VendorFormState) {
+  const name = form.name.trim();
+  return {
+    ...form,
+    name,
+    legalName: form.legalName.trim() || name,
+    taxId: form.taxId.trim().toUpperCase(),
+    address: form.address.trim(),
+    billingLine2: form.billingLine2.trim(),
+    street: form.street.trim(),
+    city: form.city.trim(),
+    state: form.state.trim(),
+    country: form.country.trim() || "India",
+    pincode: form.pincode.trim(),
+    bankName: form.bankName.trim(),
+    bankAccountNumber: form.bankAccountNumber.trim(),
+    bankIfscCode: form.bankIfscCode.trim().toUpperCase(),
+    bankBranch: form.bankBranch.trim(),
+    contacts: form.contacts
+      .map((contact) => {
+        const phone = contact.phone.trim();
+        return {
+          ...contact,
+          salutation: contact.salutation.trim(),
+          name: contact.name.trim(),
+          phone:
+            phone && !phone.startsWith("+")
+              ? `${form.countryCode}${phone.replace(/\D/g, "")}`
+              : phone,
+          email: contact.email.trim(),
+        };
+      })
+      .filter((contact) => contact.name || contact.phone || contact.email),
+  };
+}
+
+function formatAddress(vendor: Vendor): string {
   return [
     vendor.billing_line2,
     vendor.street || vendor.address,
@@ -234,1426 +316,1489 @@ function formatVendorAddress(vendor: Vendor): string {
     vendor.pincode,
     vendor.country,
   ]
-    .map((value) => String(value || '').trim())
+    .map((value) => String(value || "").trim())
     .filter(Boolean)
-    .join(', ');
+    .join(", ");
 }
 
-function VendorDetailRow({ label, value }: { label: string; value?: string | number | null }) {
-  const displayValue = value === undefined || value === null || value === '' ? '-' : value;
+function formatCategory(value: string): string {
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="mt-1 text-sm font-medium text-gray-900 break-words">{displayValue}</div>
+    CATEGORY_OPTIONS.find((option) => option.value === value)?.label ||
+    value?.replace(/_/g, " ") ||
+    "-"
+  );
+}
+
+function DetailField({
+  label,
+  value,
+}: {
+  label: string;
+  value?: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0 border-b border-slate-100 py-2.5 last:border-b-0">
+      <div className="text-xs font-medium text-slate-500">{label}</div>
+      <div className="mt-0.5 break-words text-sm font-medium text-slate-900">
+        {value || "-"}
+      </div>
     </div>
   );
 }
 
-function applyGstinPortalDataToVendorForm(prev: VendorFormState, result: GstVerificationResult): VendorFormState {
-  const portalLegalName = String(result.details?.portalLegalName || '').trim();
-  const portalTradeName = String(result.details?.portalTradeName || '').trim();
-  const portalAddress = result.details?.portalAddress || null;
-  const existingName = String(prev.name || '').trim();
-  const nextName = existingName || portalTradeName || portalLegalName;
-  const nextLegalName = portalLegalName || prev.legalName || prev.name;
-
-  return {
-    ...prev,
-    name: nextName,
-    legalName: nextLegalName,
-    taxId: result.gstin || prev.taxId,
-    address: portalAddress?.fullAddress || prev.address,
-    billingLine2: portalAddress?.addressLine || prev.billingLine2,
-    street: portalAddress?.street || prev.street,
-    city: portalAddress?.city || prev.city,
-    state: portalAddress?.state || prev.state || result.details?.stateName || '',
-    country: portalAddress?.country || prev.country || 'India',
-    pincode: portalAddress?.pincode || prev.pincode,
-    gstVerification: result,
-  };
+function SectionTitle({
+  title,
+  description,
+}: {
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="mb-4 border-b border-slate-200 pb-2">
+      <h3 className="text-base font-semibold text-slate-950">{title}</h3>
+      {description ? (
+        <p className="mt-0.5 text-xs text-slate-500">{description}</p>
+      ) : null}
+    </div>
+  );
 }
 
 export default function VendorsPage() {
-  const currentUser = readStoredUser();
-  const canCreate = hasModulePermission(currentUser, 'Purchase Management', 'create');
-  const canEdit = hasModulePermission(currentUser, 'Purchase Management', 'edit');
-  const canDelete = hasModulePermission(currentUser, 'Purchase Management', 'delete');
-  const canVerify = isAdminLike(currentUser) && hasModulePermission(currentUser, 'Purchase Management', 'approve');
-  const canExport = isAdminLike(currentUser); // Only admins can export data
+  const { user, hydrate } = useAuthStore();
+  const canCreate = hasModulePermission(user, "Purchase Management", "create");
+  const canEdit = hasModulePermission(user, "Purchase Management", "edit");
+  const canDelete = hasModulePermission(user, "Purchase Management", "delete");
+  const canVerify =
+    isAdminLike(user) &&
+    hasModulePermission(user, "Purchase Management", "approve");
+  const canExport = isAdminLike(user);
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [verificationFilter, setVerificationFilter] = useState("ALL");
   const [viewingVendor, setViewingVendor] = useState<Vendor | null>(null);
-  const [filterCategory, setFilterCategory] = useState('ALL');
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
-  const [sortColumn, setSortColumn] = useState<string>('name');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [formData, setFormData] = useState<VendorFormState>(createInitialFormState());
-
-  const selection = useSelection(vendors);
-  const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
-
-  // Close modals on Escape key
-  useEscapeKey(showModal, () => setShowModal(false));
-  useEscapeKey(!!viewingVendor, () => setViewingVendor(null));
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [verifyingGstin, setVerifyingGstin] = useState(false);
+  const [formSection, setFormSection] = useState<FormSection>("business");
+  const [form, setForm] = useState<VendorFormState>(createInitialFormState());
+  const { duplicateState, checkDuplicates, handleProceed, handleCancel } =
+    useDuplicateDetection();
 
   useEffect(() => {
-    fetchVendors();
-  }, [filterCategory]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filterCategory]);
+    hydrate();
+  }, [hydrate]);
 
   const fetchVendors = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (filterCategory !== 'ALL') params.append('category', filterCategory);
-      const queryString = params.toString();
-      const data = await apiClient.get<Vendor[]>(`/purchase/vendors${queryString ? `?${queryString}` : ''}`);
+      const data = await apiClient.get<Vendor[]>("/purchase/vendors");
       setVendors(Array.isArray(data) ? data : []);
-    } catch {
-      toast.error('Failed to load vendors');
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to load vendors");
       setVendors([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const resetForm = () => {
+  useEffect(() => {
+    fetchVendors();
+  }, []);
+
+  const filteredVendors = useMemo(
+    () =>
+      vendors.filter((vendor) => {
+        if (categoryFilter !== "ALL" && vendor.category !== categoryFilter)
+          return false;
+        if (statusFilter === "ACTIVE" && !vendor.is_active) return false;
+        if (statusFilter === "INACTIVE" && vendor.is_active) return false;
+        if (verificationFilter === "VERIFIED" && !vendor.is_verified)
+          return false;
+        if (verificationFilter === "PENDING" && vendor.is_verified)
+          return false;
+        return true;
+      }),
+    [categoryFilter, statusFilter, verificationFilter, vendors],
+  );
+
+  const metrics = useMemo(
+    () => [
+      { label: "Total Vendors", value: vendors.length },
+      {
+        label: "Active",
+        value: vendors.filter((vendor) => vendor.is_active).length,
+        tone: "success" as const,
+      },
+      {
+        label: "Verified",
+        value: vendors.filter((vendor) => vendor.is_verified).length,
+        tone: "success" as const,
+      },
+      {
+        label: "Pending Verification",
+        value: vendors.filter((vendor) => !vendor.is_verified).length,
+        tone: "warning" as const,
+      },
+    ],
+    [vendors],
+  );
+
+  const openCreate = () => {
     setEditingVendor(null);
-    setFormData(createInitialFormState());
+    setForm(createInitialFormState());
+    setFormSection("business");
+    setEditorOpen(true);
   };
 
-  const actuallySaveVendor = async (payload = buildVendorPayload(formData)) => {
+  const openEdit = (vendor: Vendor) => {
+    const metadata = vendor.metadata || {};
+    setEditingVendor(vendor);
+    setForm({
+      salutation: vendor.salutation || metadata.salutation || "",
+      name: vendor.name || "",
+      legalName: vendor.legal_name || "",
+      taxId: vendor.tax_id || "",
+      category: vendor.category || "RAW_MATERIAL",
+      address: vendor.address || "",
+      billingLine2: vendor.billing_line2 || metadata.billingLine2 || "",
+      street: vendor.street || "",
+      city: vendor.city || "",
+      state: vendor.state || "",
+      country: vendor.country || "India",
+      countryCode: vendor.country_code || metadata.countryCode || "+91",
+      pincode: vendor.pincode || "",
+      paymentTerms: vendor.payment_terms || "NET_30",
+      creditLimit: Number(vendor.credit_limit || 0),
+      rating: Number(vendor.rating || 0),
+      isActive: vendor.is_active !== false,
+      contacts: normalizeContacts(vendor.contacts),
+      gstVerification: vendor.gst_verification || null,
+      bankName: vendor.bank_name || metadata.bankName || "",
+      bankAccountNumber:
+        vendor.bank_account_number || metadata.bankAccountNumber || "",
+      bankIfscCode: vendor.bank_ifsc_code || metadata.bankIfscCode || "",
+      bankBranch: vendor.bank_branch || metadata.bankBranch || "",
+      bankAccountType:
+        vendor.bank_account_type || metadata.bankAccountType || "CURRENT",
+    });
+    setFormSection("business");
+    setEditorOpen(true);
+  };
 
+  const persistVendor = async (payload: ReturnType<typeof buildPayload>) => {
+    setSaving(true);
     try {
       if (editingVendor) {
-        const updatedVendor = await apiClient.put<Vendor>(`/purchase/vendors/${editingVendor.id}`, payload);
-        if (updatedVendor?.id) {
-          setVendors((prev) => prev.map((vendor) => (vendor.id === updatedVendor.id ? updatedVendor : vendor)));
-        }
-        toast.success('Vendor updated successfully');
+        await apiClient.put(`/purchase/vendors/${editingVendor.id}`, payload);
+        toast.success("Vendor updated successfully");
       } else {
-        await apiClient.post('/purchase/vendors', payload);
-        toast.success('Vendor created successfully');
+        await apiClient.post("/purchase/vendors", payload);
+        toast.success("Vendor created successfully");
       }
-
-      setShowModal(false);
-      resetForm();
-      fetchVendors();
+      setEditorOpen(false);
+      setEditingVendor(null);
+      await fetchVendors();
     } catch (error: any) {
-      toast.error(error?.message || 'Failed to save vendor. Please try again.');
+      toast.error(error?.message || "Failed to save vendor");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSave = async () => {
     if (editingVendor ? !canEdit : !canCreate) {
-      toast.error(`You do not have permission to ${editingVendor ? 'edit' : 'create'} vendors`);
+      toast.error("You do not have permission to save this vendor");
       return;
     }
-
-    const payload = buildVendorPayload(formData);
-
+    const payload = buildPayload(form);
     if (!payload.name) {
-      toast.error('Vendor name is required');
+      setFormSection("business");
+      toast.error("Vendor name is required");
       return;
     }
-
-    setFormData(payload);
-
+    setForm(payload);
     if (editingVendor) {
-      await actuallySaveVendor(payload);
+      await persistVendor(payload);
       return;
     }
+    await checkDuplicates(
+      () => apiClient.post("/purchase/vendors/check-duplicates", payload),
+      () => persistVendor(payload),
+    );
+  };
 
+  const handleDelete = async (ids: string[]) => {
+    if (!canDelete || !ids.length) return;
+    const confirmed = await confirmDialog({
+      title:
+        ids.length === 1 ? "Delete Vendor" : `Delete ${ids.length} Vendors`,
+      message:
+        "This permanently removes the selected vendor master records. Continue?",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     try {
-      await checkDuplicates(
-        () => apiClient.post('/purchase/vendors/check-duplicates', payload),
-        () => actuallySaveVendor(payload),
+      await Promise.all(
+        ids.map((id) => apiClient.delete(`/purchase/vendors/${id}`)),
       );
+      setSelectedIds([]);
+      if (viewingVendor && ids.includes(viewingVendor.id))
+        setViewingVendor(null);
+      toast.success(
+        ids.length === 1 ? "Vendor deleted" : `${ids.length} vendors deleted`,
+      );
+      await fetchVendors();
     } catch (error: any) {
-      toast.error(error?.message || 'Failed to check for duplicate vendors. Please try again.');
+      toast.error(error?.message || "Failed to delete vendor");
     }
   };
 
-  const handleEdit = (vendor: Vendor) => {
-    if (!canEdit) {
-      toast.error('You do not have permission to edit vendors');
-      return;
-    }
-
-    setEditingVendor(vendor);
-    const meta = (vendor as any).metadata || {};
-    setFormData({
-      salutation: (vendor as any).salutation || meta.salutation || '',
-      name: vendor.name,
-      legalName: vendor.legal_name,
-      taxId: vendor.tax_id || '',
-      category: vendor.category,
-      address: vendor.address || '',
-      billingLine2: vendor.billing_line2 || '',
-      street: vendor.street || '',
-      city: vendor.city || '',
-      state: vendor.state || '',
-      country: vendor.country || 'India',
-      countryCode: (vendor as any).country_code || meta.countryCode || '+91',
-      pincode: vendor.pincode || '',
-      paymentTerms: vendor.payment_terms,
-      creditLimit: vendor.credit_limit || 0,
-      rating: vendor.rating || 0,
-      isActive: vendor.is_active,
-      contacts: normalizeVendorContacts(vendor.contacts),
-      gstVerification: vendor.gst_verification || null,
-      bankName: (vendor as any).bank_name || meta.bankName || '',
-      bankAccountNumber: (vendor as any).bank_account_number || meta.bankAccountNumber || '',
-      bankIfscCode: (vendor as any).bank_ifsc_code || meta.bankIfscCode || '',
-      bankBranch: (vendor as any).bank_branch || meta.bankBranch || '',
-      bankAccountType: (vendor as any).bank_account_type || meta.bankAccountType || 'CURRENT',
-    });
-    setShowModal(true);
-  };
-
-  const handleView = (vendor: Vendor) => {
-    setViewingVendor(vendor);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!canDelete) {
-      toast.error('You do not have permission to delete vendors');
-      return;
-    }
-
+  const handleVerification = async (vendor: Vendor, verify: boolean) => {
     const confirmed = await confirmDialog({
-      title: 'Delete Vendor',
-      message: 'Are you sure you want to delete this vendor? This action cannot be undone.',
-      confirmLabel: 'Delete',
-      variant: 'danger',
+      title: verify ? "Verify Vendor" : "Remove Verification",
+      message: verify
+        ? `Allow ${vendor.name} for new purchasing transactions?`
+        : `Block ${vendor.name} from new purchasing transactions until verified again?`,
+      confirmLabel: verify ? "Verify" : "Unverify",
+      variant: verify ? "info" : "warning",
     });
     if (!confirmed) return;
-
     try {
-      await apiClient.delete(`/purchase/vendors/${id}`);
-      toast.success('Vendor deleted');
-      fetchVendors();
+      const updated = await apiClient.put<Vendor>(
+        `/purchase/vendors/${vendor.id}/${verify ? "verify" : "unverify"}`,
+        {},
+      );
+      toast.success(verify ? "Vendor verified" : "Vendor verification removed");
+      if (viewingVendor?.id === vendor.id) setViewingVendor(updated);
+      await fetchVendors();
     } catch (error: any) {
-      toast.error(error?.message || 'Failed to delete vendor');
-    }
-  };
-
-  const handleDeleteAll = async () => {
-    if (!canDelete) {
-      toast.error('You do not have permission to delete vendors');
-      return;
-    }
-
-    const confirmed = await confirmDialog({
-      title: `Delete ${selection.selectedItems.length} Vendors`,
-      message: `This will permanently delete ${selection.selectedItems.length} vendor${selection.selectedItems.length > 1 ? 's' : ''}. This action cannot be undone.`,
-      confirmLabel: 'Delete All',
-      variant: 'danger',
-    });
-    if (!confirmed) return;
-
-    try {
-      await Promise.all(selection.selectedItems.map((vendor) => apiClient.delete(`/purchase/vendors/${vendor.id}`)));
-      toast.success(`Deleted ${selection.selectedItems.length} vendor${selection.selectedItems.length > 1 ? 's' : ''}`);
-      selection.deselectAll();
-      fetchVendors();
-    } catch (error: any) {
-      toast.error(error?.message || 'Failed to delete some vendors');
-    }
-  };
-
-  const handleVerification = async (vendor: Vendor, shouldVerify: boolean) => {
-    if (!canVerify) {
-      toast.error('Only admin users with approval permission can verify vendors');
-      return;
-    }
-
-    const confirmed = await confirmDialog({
-      title: shouldVerify ? 'Verify Vendor' : 'Remove Vendor Verification',
-      message: shouldVerify
-        ? `Allow ${vendor.name} to be used in purchases and item-vendor mappings?`
-        : `Block ${vendor.name} from new purchase usage until verified again?`,
-      confirmLabel: shouldVerify ? 'Verify' : 'Unverify',
-      variant: shouldVerify ? 'info' : 'warning',
-    });
-    if (!confirmed) return;
-
-    try {
-      await apiClient.put(`/purchase/vendors/${vendor.id}/${shouldVerify ? 'verify' : 'unverify'}`, {});
-      toast.success(shouldVerify ? 'Vendor verified' : 'Vendor verification removed');
-      fetchVendors();
-    } catch (error: any) {
-      toast.error(error?.message || 'Failed to update vendor verification');
+      toast.error(error?.message || "Failed to update verification");
     }
   };
 
   const verifyGstin = async () => {
-    const gstin = String(formData.taxId || '').trim().toUpperCase();
-    const legalName = String(formData.legalName || formData.name || '').trim();
-    if (!gstin) {
-      toast.error('Enter GSTIN first');
+    if (!form.taxId.trim()) {
+      toast.error("Enter GSTIN first");
       return;
     }
-
     try {
-      const result = await apiClient.post<GstVerificationResult>('/purchase/vendors/verify-gstin', { gstin, legalName });
-      setFormData((prev) => applyGstinPortalDataToVendorForm(prev, result));
-
-      if (result.portalVerified && result.details?.portalAddress) {
-        toast.success('GSTIN verified. Legal and address details filled; vendor name preserved.');
-      } else if (result.portalVerified) {
-        toast.success('GSTIN verified. Registered legal name filled from portal.');
-      } else if (result.valid) {
-        toast.success(result.message || 'GSTIN basic validation passed');
-      } else {
-        toast.error(result.message || 'GSTIN verification failed');
-      }
-    } catch {
-      toast.error('Failed to verify GSTIN');
+      setVerifyingGstin(true);
+      const result = await apiClient.post<GstVerificationResult>(
+        "/purchase/vendors/verify-gstin",
+        {
+          gstin: form.taxId.trim().toUpperCase(),
+          legalName: (form.legalName || form.name).trim(),
+        },
+      );
+      const address = result.details?.portalAddress;
+      setForm((current) => ({
+        ...current,
+        legalName: result.details?.portalLegalName || current.legalName,
+        taxId: result.gstin || current.taxId,
+        billingLine2: address?.addressLine || current.billingLine2,
+        street: address?.street || current.street,
+        city: address?.city || current.city,
+        state: address?.state || result.details?.stateName || current.state,
+        country: address?.country || current.country,
+        pincode: address?.pincode || current.pincode,
+        address: address?.fullAddress || current.address,
+        gstVerification: result,
+      }));
+      toast[result.valid ? "success" : "error"](
+        result.message ||
+          (result.valid ? "GSTIN verified" : "GSTIN verification failed"),
+      );
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to verify GSTIN");
+    } finally {
+      setVerifyingGstin(false);
     }
   };
 
-  const updateContact = (index: number, field: keyof VendorContactForm, value: string | boolean) => {
-    setFormData((prev) => {
-      const nextContacts = prev.contacts.map((contact, contactIndex) => {
-        if (contactIndex !== index) {
-          return field === 'isDefault' && value === true ? { ...contact, isDefault: false } : contact;
-        }
-
-        return {
-          ...contact,
-          [field]: value,
-        };
-      });
-
-      if (!nextContacts.some((contact) => contact.isDefault) && nextContacts[0]) {
-        nextContacts[0] = { ...nextContacts[0], isDefault: true };
-      }
-
-      return {
-        ...prev,
-        contacts: nextContacts,
-      };
-    });
-  };
-
-  const addContact = () => {
-    setFormData((prev) => ({
-      ...prev,
-      contacts: [...prev.contacts, createEmptyContact(false)],
+  const updateContact = (
+    index: number,
+    key: keyof VendorContactForm,
+    value: string | boolean,
+  ) => {
+    setForm((current) => ({
+      ...current,
+      contacts: current.contacts.map((contact, contactIndex) => ({
+        ...contact,
+        ...(key === "isDefault" && value === true
+          ? { isDefault: contactIndex === index }
+          : {}),
+        ...(contactIndex === index ? { [key]: value } : {}),
+      })),
     }));
   };
 
   const removeContact = (index: number) => {
-    setFormData((prev) => {
-      const nextContacts = prev.contacts.filter((_, contactIndex) => contactIndex !== index);
-      if (nextContacts.length === 0) {
-        return {
-          ...prev,
-          contacts: [createEmptyContact(true)],
-        };
-      }
-
-      if (!nextContacts.some((contact) => contact.isDefault)) {
-        nextContacts[0] = { ...nextContacts[0], isDefault: true };
-      }
-
-      return {
-        ...prev,
-        contacts: nextContacts,
-      };
+    setForm((current) => {
+      const contacts = current.contacts.filter(
+        (_, contactIndex) => contactIndex !== index,
+      );
+      if (!contacts.length)
+        return { ...current, contacts: [createEmptyContact(true)] };
+      if (!contacts.some((contact) => contact.isDefault))
+        contacts[0] = { ...contacts[0], isDefault: true };
+      return { ...current, contacts };
     });
   };
 
-  const sortedVendors = [...vendors].sort((left, right) => {
-    let leftValue: string | number = '';
-    let rightValue: string | number = '';
+  const exportVendors = () =>
+    exportToExcel(
+      vendors,
+      [
+        { header: "Code", key: "code" },
+        { header: "Name", key: "name" },
+        { header: "Legal Name", key: "legal_name" },
+        { header: "Category", key: "category" },
+        { header: "GST / Tax ID", key: "tax_id" },
+        { header: "Contact Person", key: "contact_person" },
+        { header: "Email", key: "email" },
+        { header: "Phone", key: "phone" },
+        { header: "City", key: "city" },
+        { header: "State", key: "state" },
+        { header: "Country", key: "country" },
+        { header: "Payment Terms", key: "payment_terms" },
+        { header: "Credit Limit", key: "credit_limit" },
+        { header: "Rating", key: "rating" },
+        { header: "Active", key: "is_active" },
+        { header: "Verified", key: "is_verified" },
+      ],
+      `Vendors_${new Date().toISOString().slice(0, 10)}.csv`,
+    );
 
-    switch (sortColumn) {
-      case 'code':
-        leftValue = left.code || '';
-        rightValue = right.code || '';
-        break;
-      case 'category':
-        leftValue = left.category || '';
-        rightValue = right.category || '';
-        break;
-      case 'rating':
-        leftValue = left.rating || 0;
-        rightValue = right.rating || 0;
-        break;
-      case 'is_active':
-        leftValue = left.is_active ? 1 : 0;
-        rightValue = right.is_active ? 1 : 0;
-        break;
-      default:
-        leftValue = left.name || '';
-        rightValue = right.name || '';
-        break;
-    }
-
-    if (typeof leftValue === 'string') leftValue = leftValue.toLowerCase();
-    if (typeof rightValue === 'string') rightValue = rightValue.toLowerCase();
-
-    if (leftValue < rightValue) return sortDirection === 'asc' ? -1 : 1;
-    if (leftValue > rightValue) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  const totalItems = sortedVendors.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedVendors = sortedVendors.slice(startIndex, endIndex);
-
-  const goToPage = (page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
-  };
-
-  const vendorTableColumns = useMemo<Array<ListTableColumn<Vendor>>>(() => [
-    {
-      id: 'select',
-      label: '',
-      hideable: false,
-      sortable: false,
-      minWidth: 44,
-      align: 'center',
-      cell: (vendor) => (
-        <input
-          type="checkbox"
-          checked={selection.isSelected(vendor.id)}
-          onChange={() => selection.toggleSelection(vendor.id)}
-          className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-        />
-      ),
-    },
-    {
-      id: 'code',
-      label: 'Code',
-      accessor: (vendor) => vendor.code || '',
-      sortable: true,
-      minWidth: 100,
-      cell: (vendor) => <span className="font-medium text-gray-900 break-words">{vendor.code || '-'}</span>,
-    },
-    {
-      id: 'name',
-      label: 'Name',
-      accessor: (vendor) => vendor.name || '',
-      sortable: true,
-      minWidth: 220,
-      searchAccessor: (vendor) => `${vendor.name || ''} ${vendor.legal_name || ''} ${vendor.tax_id || ''}`,
-      cell: (vendor) => (
-        <div className="min-w-0">
-          <div className="font-medium text-gray-900 break-words">{vendor.name || '-'}</div>
-          {vendor.legal_name && vendor.legal_name !== vendor.name && (
-            <div className="text-xs text-gray-500 break-words">{vendor.legal_name}</div>
-          )}
-          {vendor.tax_id && <div className="text-[11px] text-gray-500 break-words">GSTIN: {vendor.tax_id}</div>}
-        </div>
-      ),
-    },
-    {
-      id: 'category',
-      label: 'Category',
-      accessor: (vendor) => vendor.category || '',
-      sortable: true,
-      minWidth: 130,
-      cell: (vendor) => <span className="break-words">{vendor.category || '-'}</span>,
-    },
-    {
-      id: 'contact',
-      label: 'Contact',
-      accessor: (vendor) => vendor.contact_person || '',
-      sortable: true,
-      minWidth: 160,
-      searchAccessor: (vendor) => `${vendor.contact_person || ''} ${(vendor.contacts || []).map((contact) => `${contact.name} ${contact.phone} ${contact.email}`).join(' ')}`,
-      cell: (vendor) => (
-        <div className="break-words">
-          <div>{vendor.contact_person || '-'}</div>
-          {Array.isArray(vendor.contacts) && vendor.contacts.length > 1 && (
-            <div className="text-xs text-gray-500">+{vendor.contacts.length - 1} more</div>
-          )}
-        </div>
-      ),
-    },
-    {
-      id: 'email',
-      label: 'Email',
-      accessor: (vendor) => vendor.email || '',
-      sortable: true,
-      minWidth: 190,
-      cell: (vendor) => <span className="break-all">{vendor.email || '-'}</span>,
-    },
-    {
-      id: 'phone',
-      label: 'Phone',
-      accessor: (vendor) => vendor.phone || '',
-      sortable: true,
-      minWidth: 120,
-      cell: (vendor) => <span className="break-words">{vendor.phone || '-'}</span>,
-    },
-    {
-      id: 'location',
-      label: 'Location',
-      accessor: (vendor) => [vendor.city, vendor.state, vendor.pincode].filter(Boolean).join(', '),
-      sortable: true,
-      minWidth: 170,
-      searchAccessor: (vendor) => formatVendorAddress(vendor),
-      cell: (vendor) => <span className="break-words">{[vendor.city, vendor.state].filter(Boolean).join(', ') || '-'}</span>,
-    },
-    {
-      id: 'payment_terms',
-      label: 'Terms',
-      accessor: (vendor) => vendor.payment_terms || '',
-      sortable: true,
-      defaultVisible: false,
-      minWidth: 120,
-      cell: (vendor) => <span className="break-words">{vendor.payment_terms || '-'}</span>,
-    },
-    {
-      id: 'credit_limit',
-      label: 'Credit',
-      accessor: (vendor) => vendor.credit_limit || 0,
-      sortable: true,
-      defaultVisible: false,
-      align: 'right',
-      minWidth: 110,
-      cell: (vendor) => (vendor.credit_limit ? `₹${vendor.credit_limit.toLocaleString()}` : '-'),
-    },
-    {
-      id: 'rating',
-      label: 'Rating',
-      accessor: (vendor) => vendor.rating || 0,
-      sortable: true,
-      align: 'center',
-      minWidth: 90,
-      cell: (vendor) => (vendor.rating > 0 ? <span className="text-yellow-600">★ {vendor.rating.toFixed(1)}</span> : '-'),
-    },
-    {
-      id: 'status',
-      label: 'Status',
-      accessor: (vendor) => (vendor.is_active ? 'Active' : 'Inactive'),
-      sortable: true,
-      align: 'center',
-      minWidth: 100,
-      cell: (vendor) => (
-        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${vendor.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-          {vendor.is_active ? 'Active' : 'Inactive'}
-        </span>
-      ),
-    },
-    {
-      id: 'verification',
-      label: 'Verification',
-      accessor: (vendor) => (vendor.is_verified ? 'Verified' : 'Pending'),
-      sortable: true,
-      align: 'center',
-      minWidth: 130,
-      cell: (vendor) => (
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${vendor.is_verified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-          {vendor.is_verified ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-          {vendor.is_verified ? 'Verified' : 'Pending'}
-        </span>
-      ),
-    },
-    {
-      id: 'gst_status',
-      label: 'GST Check',
-      accessor: (vendor) => vendor.gst_verification?.valid ? 'Verified' : 'Not verified',
-      sortable: true,
-      defaultVisible: false,
-      minWidth: 130,
-      cell: (vendor) => vendor.gst_verification?.valid ? (
-        <span className="text-emerald-700">Verified{vendor.gst_verification.details?.stateName ? ` · ${vendor.gst_verification.details.stateName}` : ''}</span>
-      ) : '-',
-    },
-    {
-      id: 'actions',
-      label: 'Actions',
-      hideable: false,
-      sortable: false,
-      align: 'center',
-      minWidth: 150,
-      cell: (vendor) => (
-        <div className="flex flex-wrap justify-center gap-2">
-          <button onClick={() => handleView(vendor)} className="text-blue-600 hover:text-blue-800 font-medium">
-            View
+  const columns = useMemo<Array<ListTableColumn<Vendor>>>(
+    () => [
+      {
+        id: "code",
+        label: "Code",
+        accessor: (vendor) => vendor.code,
+        sortable: true,
+        minWidth: 110,
+        cell: (vendor) => (
+          <button
+            className="font-semibold text-indigo-700 hover:underline"
+            onClick={() => setViewingVendor(vendor)}
+          >
+            {vendor.code || "-"}
           </button>
-          {canEdit && (
-            <button onClick={() => handleEdit(vendor)} className="text-amber-600 hover:text-amber-800 font-medium">
-              Edit
-            </button>
-          )}
-          {canVerify && (
-            <button
-              onClick={() => handleVerification(vendor, !vendor.is_verified)}
-              className={vendor.is_verified ? 'text-gray-600 hover:text-gray-800 font-medium' : 'text-emerald-700 hover:text-emerald-900 font-medium'}
-            >
-              {vendor.is_verified ? 'Unverify' : 'Verify'}
-            </button>
-          )}
-          {canDelete && (
-            <button onClick={() => handleDelete(vendor.id)} className="text-red-600 hover:text-red-800 font-medium">
-              Delete
-            </button>
-          )}
-        </div>
-      ),
-    },
-  ], [canDelete, canEdit, canVerify, selection]);
-
-  return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Vendor Management"
-        subtitle="Manage supplier and vendor information"
-        badge={vendors.length > 0 ? `${vendors.length}` : undefined}
-        action={canCreate ? (
-          <PrimaryButton onClick={() => { resetForm(); setShowModal(true); }}>
-            <Plus className="h-4 w-4" />
-            Add Vendor
-          </PrimaryButton>
-        ) : undefined}
-        secondaryAction={
-          <div className="flex items-center gap-2">
-            {canExport && (
-              <button
-                onClick={() => {
-                  exportToExcel(
-                    vendors,
-                    [
-                      { header: 'Vendor Code', key: 'code' },
-                      { header: 'Name', key: 'name' },
-                      { header: 'Legal Name', key: 'legal_name' },
-                      { header: 'Category', key: 'category' },
-                      { header: 'GST / Tax ID', key: 'tax_id' },
-                      { header: 'Contact Person', key: 'contact_person' },
-                      { header: 'Email', key: 'email' },
-                      { header: 'Phone', key: 'phone' },
-                      { header: 'Address', key: 'address' },
-                      { header: 'Street', key: 'street' },
-                      { header: 'City', key: 'city' },
-                      { header: 'State', key: 'state' },
-                      { header: 'Country', key: 'country' },
-                      { header: 'Pincode', key: 'pincode' },
-                      { header: 'Payment Terms', key: 'payment_terms' },
-                      { header: 'Credit Limit', key: 'credit_limit' },
-                      { header: 'Rating', key: 'rating' },
-                      { header: 'Active', key: 'is_active' },
-                      { header: 'Verified', key: 'is_verified' },
-                    ],
-                    `Vendors_${new Date().toISOString().slice(0, 10)}.csv`
-                  );
-                }}
-                className="rounded-md bg-green-700 px-3 py-2 text-xs font-semibold text-white hover:bg-green-800"
-              >
-                ⬇ Download Excel
-              </button>
-            )}
-            {selection.hasSelections && canDelete && (
-              <DangerButton onClick={handleDeleteAll}>
-                <Trash2 className="h-4 w-4" />
-                Delete ({selection.selectedItems.length})
-              </DangerButton>
-            )}
-            <div className="flex rounded-lg overflow-hidden border border-gray-300 bg-white">
-              <button
-                onClick={() => setViewMode('table')}
-                className={`px-3 py-2 text-xs font-medium transition-colors ${
-                  viewMode === 'table' ? 'bg-amber-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                Table
-              </button>
-              <button
-                onClick={() => setViewMode('cards')}
-                className={`px-3 py-2 text-xs font-medium transition-colors ${
-                  viewMode === 'cards' ? 'bg-amber-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                Cards
-              </button>
+        ),
+      },
+      {
+        id: "name",
+        label: "Vendor",
+        accessor: (vendor) => vendor.name,
+        sortable: true,
+        minWidth: 250,
+        searchAccessor: (vendor) =>
+          `${vendor.name} ${vendor.legal_name} ${vendor.tax_id || ""}`,
+        cell: (vendor) => (
+          <div>
+            <div className="font-semibold text-slate-950">{vendor.name}</div>
+            <div className="text-xs text-slate-500">
+              {vendor.legal_name || vendor.tax_id || "-"}
             </div>
           </div>
+        ),
+      },
+      {
+        id: "category",
+        label: "Category",
+        accessor: (vendor) => vendor.category,
+        sortable: true,
+        minWidth: 140,
+        cell: (vendor) => formatCategory(vendor.category),
+      },
+      {
+        id: "contact",
+        label: "Primary Contact",
+        accessor: (vendor) => vendor.contact_person || "",
+        sortable: true,
+        minWidth: 190,
+        searchAccessor: (vendor) =>
+          `${vendor.contact_person || ""} ${vendor.email || ""} ${vendor.phone || ""}`,
+        cell: (vendor) => (
+          <div>
+            <div>{vendor.contact_person || "-"}</div>
+            <div className="text-xs text-slate-500">
+              {vendor.email || vendor.phone || ""}
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: "location",
+        label: "Location",
+        accessor: (vendor) => `${vendor.city || ""} ${vendor.state || ""}`,
+        sortable: true,
+        minWidth: 170,
+        searchAccessor: formatAddress,
+        cell: (vendor) =>
+          [vendor.city, vendor.state].filter(Boolean).join(", ") || "-",
+      },
+      {
+        id: "payment_terms",
+        label: "Payment Terms",
+        accessor: (vendor) => vendor.payment_terms,
+        sortable: true,
+        minWidth: 130,
+        defaultVisible: false,
+      },
+      {
+        id: "credit_limit",
+        label: "Credit Limit",
+        accessor: (vendor) => vendor.credit_limit,
+        sortable: true,
+        minWidth: 130,
+        defaultVisible: false,
+        align: "right",
+        cell: (vendor) =>
+          vendor.credit_limit
+            ? `INR ${Number(vendor.credit_limit).toLocaleString("en-IN")}`
+            : "-",
+      },
+      {
+        id: "rating",
+        label: "Rating",
+        accessor: (vendor) => vendor.rating,
+        sortable: true,
+        minWidth: 90,
+        align: "center",
+        cell: (vendor) =>
+          vendor.rating ? Number(vendor.rating).toFixed(1) : "-",
+      },
+      {
+        id: "status",
+        label: "Status",
+        accessor: (vendor) => (vendor.is_active ? "Active" : "Inactive"),
+        sortable: true,
+        minWidth: 105,
+        align: "center",
+        cell: (vendor) => (
+          <ErpStatusBadge
+            status={vendor.is_active ? "ACTIVE" : "INACTIVE"}
+            label={vendor.is_active ? "Active" : "Inactive"}
+            tone={vendor.is_active ? "success" : "danger"}
+          />
+        ),
+      },
+      {
+        id: "verification",
+        label: "Verification",
+        accessor: (vendor) => (vendor.is_verified ? "Verified" : "Pending"),
+        sortable: true,
+        minWidth: 125,
+        align: "center",
+        cell: (vendor) => (
+          <ErpStatusBadge
+            status={vendor.is_verified ? "APPROVED" : "AWAITING_APPROVAL"}
+            label={vendor.is_verified ? "Verified" : "Pending"}
+          />
+        ),
+      },
+      {
+        id: "gst",
+        label: "GST Status",
+        accessor: (vendor) =>
+          vendor.gst_verification?.valid ? "Verified" : "Not verified",
+        sortable: true,
+        minWidth: 120,
+        defaultVisible: false,
+        cell: (vendor) => (vendor.gst_verification?.valid ? "Verified" : "-"),
+      },
+      {
+        id: "actions",
+        label: "Actions",
+        hideable: false,
+        sortable: false,
+        minWidth: 176,
+        align: "right",
+        cell: (vendor) => (
+          <div className="flex items-center justify-end gap-1">
+            <ErpButton
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              title="View vendor"
+              aria-label="View vendor"
+              onClick={() => setViewingVendor(vendor)}
+            >
+              <Eye className="h-4 w-4" />
+            </ErpButton>
+            {canEdit ? (
+              <ErpButton
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                title="Edit vendor"
+                aria-label="Edit vendor"
+                onClick={() => openEdit(vendor)}
+              >
+                <Edit className="h-4 w-4" />
+              </ErpButton>
+            ) : null}
+            {canVerify ? (
+              <ErpButton
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                title={
+                  vendor.is_verified ? "Remove verification" : "Verify vendor"
+                }
+                aria-label={
+                  vendor.is_verified ? "Remove verification" : "Verify vendor"
+                }
+                onClick={() => handleVerification(vendor, !vendor.is_verified)}
+              >
+                {vendor.is_verified ? (
+                  <ShieldOff className="h-4 w-4" />
+                ) : (
+                  <ShieldCheck className="h-4 w-4 text-emerald-700" />
+                )}
+              </ErpButton>
+            ) : null}
+            {canDelete ? (
+              <ErpButton
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-red-700"
+                title="Delete vendor"
+                aria-label="Delete vendor"
+                onClick={() => handleDelete([vendor.id])}
+              >
+                <Trash2 className="h-4 w-4" />
+              </ErpButton>
+            ) : null}
+          </div>
+        ),
+      },
+    ],
+    [canDelete, canEdit, canVerify],
+  );
+
+  const sectionIndex = FORM_SECTIONS.findIndex(
+    (section) => section.id === formSection,
+  );
+  const defaultContact =
+    form.contacts.find((contact) => contact.isDefault) || form.contacts[0];
+
+  return (
+    <div className="space-y-4">
+      <ErpPageHeader
+        eyebrow="PROCUREMENT MASTER DATA"
+        title="Vendors"
+        description="Maintain supplier identity, tax, contact, commercial, banking, and verification data."
+        actions={
+          <>
+            {canExport && vendors.length ? (
+              <ErpButton variant="secondary" onClick={exportVendors}>
+                <Download className="h-4 w-4" />
+                Export
+              </ErpButton>
+            ) : null}
+            {selectedIds.length && canDelete ? (
+              <ErpButton
+                variant="danger"
+                onClick={() => handleDelete(selectedIds)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete ({selectedIds.length})
+              </ErpButton>
+            ) : null}
+            {canCreate ? (
+              <ErpButton variant="primary" onClick={openCreate}>
+                <Plus className="h-4 w-4" />
+                New Vendor
+              </ErpButton>
+            ) : null}
+          </>
         }
       />
 
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-            <select
-              value={filterCategory}
-              onChange={(event) => setFilterCategory(event.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2"
-            >
-              <option value="ALL">All Categories</option>
-              <option value="RAW_MATERIAL">Raw Material</option>
-              <option value="COMPONENT">Component</option>
-              <option value="SERVICE">Service</option>
-              <option value="CONSUMABLE">Consumable</option>
-            </select>
-          </div>
+      <ErpMetricStrip metrics={metrics} loading={loading} />
+
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-950">
+            Vendor Master
+          </h2>
+          <span className="text-xs text-slate-500">
+            {filteredVendors.length} records
+          </span>
         </div>
-        {vendors.length > 0 && (
-          <div className="mt-4 flex items-center gap-4">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={selection.isAllSelected}
-                onChange={selection.toggleSelectAll}
-                className="w-4 h-4"
+        <ListTable
+          storageKey="vendorsTable:sap:v1"
+          rows={filteredVendors}
+          columns={columns}
+          getRowId={(vendor) => vendor.id}
+          selectable
+          selectedRowIds={selectedIds}
+          onSelectionChange={setSelectedIds}
+          defaultPageSize={25}
+          pageSizeOptions={[10, 25, 50, 100]}
+          searchPlaceholder="Search vendor, code, GSTIN, contact, email, or location..."
+          emptyState="No vendors match the current filters"
+          variantContext={{
+            category: categoryFilter,
+            status: statusFilter,
+            verification: verificationFilter,
+          }}
+          onApplyVariantContext={(context) => {
+            setCategoryFilter(context.category || "ALL");
+            setStatusFilter(context.status || "ALL");
+            setVerificationFilter(context.verification || "ALL");
+          }}
+          toolbarRight={
+            <div className="grid w-full gap-2 sm:grid-cols-3 lg:w-[42rem]">
+              <SearchableSelect
+                options={FILTER_CATEGORY_OPTIONS}
+                value={categoryFilter}
+                onChange={setCategoryFilter}
+                placeholder="Category"
               />
-              <span className="text-sm font-medium text-gray-700">Select All ({vendors.length} vendors)</span>
-            </label>
-            {selection.hasSelections && (
-              <button onClick={selection.deselectAll} className="text-sm text-amber-600 hover:text-amber-800">
-                Deselect All
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {loading ? (
-        <TableSkeleton rows={6} cols={6} />
-      ) : vendors.length === 0 ? (
-        <EmptyState
-          variant="empty"
-          title="No Vendors Found"
-          description="Add your first vendor to get started."
-          action={canCreate ? (
-            <PrimaryButton onClick={() => { resetForm(); setShowModal(true); }}>
-              <Plus className="h-4 w-4" />
-              Add First Vendor
-            </PrimaryButton>
-          ) : undefined}
+              <SearchableSelect
+                options={FILTER_STATUS_OPTIONS}
+                value={statusFilter}
+                onChange={setStatusFilter}
+                placeholder="Status"
+              />
+              <SearchableSelect
+                options={FILTER_VERIFICATION_OPTIONS}
+                value={verificationFilter}
+                onChange={setVerificationFilter}
+                placeholder="Verification"
+              />
+            </div>
+          }
         />
-      ) : (
-        <>
-          {viewMode === 'cards' && <div className="mb-4 flex gap-2 items-center justify-between bg-white p-4 rounded-lg shadow">
-            <div className="flex gap-2 items-center">
-              <label className="text-sm font-medium text-gray-700">Sort by:</label>
-              <select
-                value={sortColumn}
-                onChange={(event) => setSortColumn(event.target.value)}
-                className="border border-gray-300 rounded px-3 py-1 text-sm"
-              >
-                <option value="name">Name</option>
-                <option value="code">Code</option>
-                <option value="category">Category</option>
-                <option value="rating">Rating</option>
-                <option value="is_active">Status</option>
-              </select>
-              <button
-                onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
-                className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100"
-              >
-                {sortDirection === 'asc' ? '↑ Ascending' : '↓ Descending'}
-              </button>
+      </section>
+
+      <SlidePanel
+        open={Boolean(viewingVendor)}
+        onClose={() => setViewingVendor(null)}
+        title={viewingVendor?.name || "Vendor"}
+        subtitle={viewingVendor?.code || ""}
+        width="full"
+      >
+        {viewingVendor ? (
+          <div className="mx-auto w-full max-w-[1600px] space-y-6">
+            <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-3 border-b border-slate-200 bg-white px-4 pb-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <ErpStatusBadge
+                  status={viewingVendor.is_active ? "ACTIVE" : "INACTIVE"}
+                  label={viewingVendor.is_active ? "Active" : "Inactive"}
+                  tone={viewingVendor.is_active ? "success" : "danger"}
+                />
+                <ErpStatusBadge
+                  status={
+                    viewingVendor.is_verified ? "APPROVED" : "AWAITING_APPROVAL"
+                  }
+                  label={
+                    viewingVendor.is_verified
+                      ? "Verified for Purchasing"
+                      : "Verification Pending"
+                  }
+                />
+                {viewingVendor.gst_verification?.valid ? (
+                  <ErpStatusBadge status="APPROVED" label="GST Verified" />
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {canEdit ? (
+                  <ErpButton
+                    variant="secondary"
+                    onClick={() => {
+                      const vendor = viewingVendor;
+                      setViewingVendor(null);
+                      openEdit(vendor);
+                    }}
+                  >
+                    <Edit className="h-4 w-4" />
+                    Edit
+                  </ErpButton>
+                ) : null}
+                {canVerify ? (
+                  <ErpButton
+                    variant={
+                      viewingVendor.is_verified ? "secondary" : "approve"
+                    }
+                    onClick={() =>
+                      handleVerification(
+                        viewingVendor,
+                        !viewingVendor.is_verified,
+                      )
+                    }
+                  >
+                    {viewingVendor.is_verified ? (
+                      <ShieldOff className="h-4 w-4" />
+                    ) : (
+                      <ShieldCheck className="h-4 w-4" />
+                    )}
+                    {viewingVendor.is_verified ? "Unverify" : "Verify"}
+                  </ErpButton>
+                ) : null}
+              </div>
             </div>
-            <div className="text-sm text-gray-700">
-              Showing {startIndex + 1} to {Math.min(endIndex, totalItems)} of {totalItems} vendors
-            </div>
-          </div>}
 
-          {viewMode === 'table' ? (
-            <ListTable
-              storageKey="vendorsTable:compact:v1"
-              rows={vendors}
-              columns={vendorTableColumns}
-              getRowId={(vendor) => vendor.id}
-              defaultPageSize={25}
-              pageSizeOptions={[10, 25, 50, 100]}
-              searchPlaceholder="Search by vendor, code, GSTIN, contact, email, location..."
-              exportFilename={`vendors-${new Date().toISOString().slice(0, 10)}`}
-              emptyState="No vendors found"
-            />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {paginatedVendors.map((vendor) => (
-                <div key={vendor.id} className={`bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow ${selection.isSelected(vendor.id) ? 'ring-2 ring-amber-500' : ''}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={selection.isSelected(vendor.id)}
-                        onChange={() => selection.toggleSelection(vendor.id)}
-                        className="w-4 h-4"
-                      />
-                      <div>
-                        <h3 className="text-lg font-bold text-gray-900">{vendor.name}</h3>
-                        <p className="text-sm text-gray-500">{vendor.code}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {vendor.rating > 0 && <span className="text-yellow-500">★ {vendor.rating.toFixed(1)}</span>}
-                      <span className={`px-2 py-1 text-xs rounded-full ${vendor.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                        {vendor.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                      <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${vendor.is_verified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                        {vendor.is_verified ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                        {vendor.is_verified ? 'Verified' : 'Pending'}
-                      </span>
-                    </div>
-                  </div>
+            <section>
+              <SectionTitle title="Business Identity" />
+              <div className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-4">
+                <DetailField label="Vendor Code" value={viewingVendor.code} />
+                <DetailField label="Trade Name" value={viewingVendor.name} />
+                <DetailField
+                  label="Legal Name"
+                  value={viewingVendor.legal_name}
+                />
+                <DetailField
+                  label="Category"
+                  value={formatCategory(viewingVendor.category)}
+                />
+                <DetailField
+                  label="Rating"
+                  value={
+                    viewingVendor.rating
+                      ? `${Number(viewingVendor.rating).toFixed(1)} / 5`
+                      : "-"
+                  }
+                />
+                <DetailField
+                  label="Account Status"
+                  value={viewingVendor.is_active ? "Active" : "Inactive"}
+                />
+              </div>
+            </section>
 
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center text-sm text-gray-600">
-                      <span className="font-medium w-24">Category:</span>
-                      <span>{vendor.category}</span>
-                    </div>
-                    {vendor.contact_person && (
-                      <div className="flex items-center text-sm text-gray-600">
-                        <span className="font-medium w-24">Contact:</span>
-                        <span>{vendor.contact_person}{Array.isArray(vendor.contacts) && vendor.contacts.length > 1 ? ` (+${vendor.contacts.length - 1})` : ''}</span>
-                      </div>
-                    )}
-                    {vendor.email && (
-                      <div className="flex items-center text-sm text-gray-600">
-                        <span className="font-medium w-24">Email:</span>
-                        <span className="truncate">{vendor.email}</span>
-                      </div>
-                    )}
-                    {vendor.phone && (
-                      <div className="flex items-center text-sm text-gray-600">
-                        <span className="font-medium w-24">Phone:</span>
-                        <span>{vendor.phone}</span>
-                      </div>
-                    )}
-                    {(vendor.city || vendor.state) && (
-                      <div className="flex items-start text-sm text-gray-600">
-                        <span className="font-medium w-24">Location:</span>
-                        <span>{[vendor.city, vendor.state, vendor.pincode].filter(Boolean).join(', ')}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center text-sm text-gray-600">
-                      <span className="font-medium w-24">Terms:</span>
-                      <span>{vendor.payment_terms}</span>
-                    </div>
-                    {vendor.tax_id && (
-                      <div className="flex items-center text-sm text-gray-600">
-                        <span className="font-medium w-24">GSTIN:</span>
-                        <span>{vendor.tax_id}</span>
-                      </div>
-                    )}
-                    {vendor.gst_verification?.valid && (
-                      <div className="flex items-center text-sm text-emerald-700">
-                        <span className="font-medium w-24">GST Check:</span>
-                        <span>Verified{vendor.gst_verification.details?.stateName ? ` · ${vendor.gst_verification.details.stateName}` : ''}</span>
-                      </div>
-                    )}
-                    {vendor.credit_limit > 0 && (
-                      <div className="flex items-center text-sm text-gray-600">
-                        <span className="font-medium w-24">Credit:</span>
-                        <span>₹{vendor.credit_limit.toLocaleString()}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 pt-4 border-t">
-                    <button onClick={() => handleView(vendor)} className="flex-1 bg-blue-100 text-blue-700 px-4 py-2 rounded hover:bg-blue-200">
-                      View
-                    </button>
-                    {canEdit && (
-                      <button onClick={() => handleEdit(vendor)} className="flex-1 bg-amber-100 text-amber-700 px-4 py-2 rounded hover:bg-amber-200">
-                        Edit
-                      </button>
-                    )}
-                    {canVerify && (
-                      <button
-                        onClick={() => handleVerification(vendor, !vendor.is_verified)}
-                        className="flex-1 bg-emerald-100 text-emerald-700 px-4 py-2 rounded hover:bg-emerald-200"
-                      >
-                        {vendor.is_verified ? 'Unverify' : 'Verify'}
-                      </button>
-                    )}
-                    {canDelete && (
-                      <button onClick={() => handleDelete(vendor.id)} className="flex-1 bg-red-100 text-red-700 px-4 py-2 rounded hover:bg-red-200">
-                        Delete
-                      </button>
-                    )}
-                  </div>
+            <section>
+              <SectionTitle title="Tax & Address" />
+              <div className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-4">
+                <DetailField
+                  label="GSTIN / Tax ID"
+                  value={viewingVendor.tax_id}
+                />
+                <DetailField
+                  label="GST State"
+                  value={
+                    viewingVendor.gst_verification?.details?.stateName ||
+                    viewingVendor.state
+                  }
+                />
+                <DetailField
+                  label="PAN"
+                  value={viewingVendor.gst_verification?.details?.pan}
+                />
+                <DetailField
+                  label="Verification Mode"
+                  value={viewingVendor.gst_verification?.verificationMode}
+                />
+                <div className="sm:col-span-2 lg:col-span-4">
+                  <DetailField
+                    label="Registered Address"
+                    value={formatAddress(viewingVendor)}
+                  />
                 </div>
+              </div>
+            </section>
+
+            <section>
+              <SectionTitle title="Contacts" />
+              <div className="overflow-x-auto rounded-md border border-slate-200">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Name</th>
+                      <th className="px-3 py-2">Phone</th>
+                      <th className="px-3 py-2">Email</th>
+                      <th className="px-3 py-2">Default</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(viewingVendor.contacts?.length
+                      ? viewingVendor.contacts
+                      : [
+                          {
+                            name: viewingVendor.contact_person || "",
+                            phone: viewingVendor.phone || "",
+                            email: viewingVendor.email || "",
+                            isDefault: true,
+                          },
+                        ]
+                    ).map((contact, index) => (
+                      <tr key={`${contact.email}-${index}`}>
+                        <td className="px-3 py-2 font-medium">
+                          {[contact.salutation, contact.name]
+                            .filter(Boolean)
+                            .join(" ") || "-"}
+                        </td>
+                        <td className="px-3 py-2">{contact.phone || "-"}</td>
+                        <td className="px-3 py-2 break-all">
+                          {contact.email || "-"}
+                        </td>
+                        <td className="px-3 py-2">
+                          {contact.isDefault ? "Yes" : "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <div className="grid gap-8 lg:grid-cols-2">
+              <section>
+                <SectionTitle title="Commercial" />
+                <div className="grid gap-x-8 sm:grid-cols-2">
+                  <DetailField
+                    label="Payment Terms"
+                    value={viewingVendor.payment_terms}
+                  />
+                  <DetailField
+                    label="Credit Limit"
+                    value={
+                      viewingVendor.credit_limit
+                        ? `INR ${Number(viewingVendor.credit_limit).toLocaleString("en-IN")}`
+                        : "-"
+                    }
+                  />
+                </div>
+              </section>
+              <section>
+                <SectionTitle title="Bank Details" />
+                <div className="grid gap-x-8 sm:grid-cols-2">
+                  <DetailField
+                    label="Bank"
+                    value={
+                      viewingVendor.bank_name ||
+                      viewingVendor.metadata?.bankName
+                    }
+                  />
+                  <DetailField
+                    label="Account Type"
+                    value={
+                      viewingVendor.bank_account_type ||
+                      viewingVendor.metadata?.bankAccountType
+                    }
+                  />
+                  <DetailField
+                    label="Account Number"
+                    value={
+                      viewingVendor.bank_account_number ||
+                      viewingVendor.metadata?.bankAccountNumber
+                    }
+                  />
+                  <DetailField
+                    label="IFSC"
+                    value={
+                      viewingVendor.bank_ifsc_code ||
+                      viewingVendor.metadata?.bankIfscCode
+                    }
+                  />
+                  <DetailField
+                    label="Branch"
+                    value={
+                      viewingVendor.bank_branch ||
+                      viewingVendor.metadata?.bankBranch
+                    }
+                  />
+                </div>
+              </section>
+            </div>
+          </div>
+        ) : null}
+      </SlidePanel>
+
+      <SlidePanel
+        open={editorOpen}
+        onClose={() => {
+          if (!saving) setEditorOpen(false);
+        }}
+        title={editingVendor ? "Edit Vendor" : "Create Vendor"}
+        subtitle={editingVendor?.code || "New supplier master record"}
+        width="full"
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap gap-2">
+              <ErpButton
+                variant="secondary"
+                disabled={sectionIndex === 0}
+                onClick={() =>
+                  setFormSection(
+                    FORM_SECTIONS[Math.max(0, sectionIndex - 1)].id,
+                  )
+                }
+              >
+                Previous
+              </ErpButton>
+              <ErpButton
+                variant="secondary"
+                disabled={sectionIndex === FORM_SECTIONS.length - 1}
+                onClick={() =>
+                  setFormSection(
+                    FORM_SECTIONS[
+                      Math.min(FORM_SECTIONS.length - 1, sectionIndex + 1)
+                    ].id,
+                  )
+                }
+              >
+                Next
+              </ErpButton>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <ErpButton
+                variant="secondary"
+                onClick={() => setEditorOpen(false)}
+              >
+                Cancel
+              </ErpButton>
+              <ErpButton
+                variant="primary"
+                disabled={saving || !form.name.trim()}
+                onClick={handleSave}
+              >
+                <Save className="h-4 w-4" />
+                {saving
+                  ? "Saving..."
+                  : editingVendor
+                    ? "Update Vendor"
+                    : "Create Vendor"}
+              </ErpButton>
+            </div>
+          </div>
+        }
+      >
+        <div className="mx-auto w-full max-w-[1600px]">
+          <nav
+            className="sticky -top-3 z-20 -mx-4 -mt-3 mb-5 overflow-x-auto border-b border-slate-200 bg-white px-4"
+            aria-label="Vendor form sections"
+          >
+            <div className="flex min-w-max gap-6">
+              {FORM_SECTIONS.map((section) => (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => setFormSection(section.id)}
+                  className={`border-b-2 px-1 py-3 text-sm font-semibold ${formSection === section.id ? "border-indigo-700 text-indigo-800" : "border-transparent text-slate-500 hover:text-slate-900"}`}
+                >
+                  {section.label}
+                </button>
               ))}
             </div>
-          )}
+          </nav>
 
-          {viewMode === 'cards' && totalPages > 1 && (
-            <div className="mt-6 bg-white px-4 py-3 rounded-lg shadow flex items-center justify-between border-t border-gray-200 sm:px-6">
-              <div className="flex-1 flex justify-between sm:hidden">
-                <button
-                  onClick={() => goToPage(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={() => goToPage(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
-              <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                <div className="flex gap-4 items-center">
-                  <div className="text-sm text-gray-700">
-                    Showing <span className="font-medium">{startIndex + 1}</span> to <span className="font-medium">{Math.min(endIndex, totalItems)}</span> of <span className="font-medium">{totalItems}</span> results
-                  </div>
-                  <select
-                    value={itemsPerPage}
-                    onChange={(event) => {
-                      setItemsPerPage(Number(event.target.value));
-                      setCurrentPage(1);
-                    }}
-                    className="px-3 py-1 border border-gray-300 rounded text-sm"
-                  >
-                    <option value={10}>10 per page</option>
-                    <option value={25}>25 per page</option>
-                    <option value={50}>50 per page</option>
-                    <option value={100}>100 per page</option>
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => goToPage(1)} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">First</button>
-                  <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
-                  <div className="flex gap-1">
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, index) => {
-                      let pageNumber;
-                      if (totalPages <= 5) {
-                        pageNumber = index + 1;
-                      } else if (currentPage <= 3) {
-                        pageNumber = index + 1;
-                      } else if (currentPage >= totalPages - 2) {
-                        pageNumber = totalPages - 4 + index;
-                      } else {
-                        pageNumber = currentPage - 2 + index;
-                      }
-
-                      return (
-                        <button
-                          key={pageNumber}
-                          onClick={() => goToPage(pageNumber)}
-                          className={`px-3 py-1 border rounded text-sm ${currentPage === pageNumber ? 'bg-amber-600 text-white border-amber-600' : 'border-gray-300 hover:bg-gray-100'}`}
-                        >
-                          {pageNumber}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
-                  <button onClick={() => goToPage(totalPages)} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">Last</button>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {viewingVendor && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-3">
-                  <h2 className="text-2xl font-bold text-gray-900">{viewingVendor.name}</h2>
-                  <span className={`px-2 py-1 text-xs rounded-full ${viewingVendor.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {viewingVendor.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
-                <p className="mt-1 text-sm text-gray-500">{viewingVendor.code}</p>
-              </div>
-              <button
-                onClick={() => setViewingVendor(null)}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="p-6 space-y-6">
-              <section>
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-700 mb-3">Vendor Information</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <VendorDetailRow label="Vendor Name" value={viewingVendor.name} />
-                  <VendorDetailRow label="Legal Name" value={viewingVendor.legal_name} />
-                  <VendorDetailRow label="Category" value={viewingVendor.category} />
-                  <VendorDetailRow label="Payment Terms" value={viewingVendor.payment_terms} />
-                  <VendorDetailRow label="Credit Limit" value={viewingVendor.credit_limit > 0 ? `Rs. ${viewingVendor.credit_limit.toLocaleString()}` : '-'} />
-                  <VendorDetailRow label="Rating" value={viewingVendor.rating > 0 ? viewingVendor.rating.toFixed(1) : '-'} />
-                </div>
-              </section>
-
-              <section>
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-700 mb-3">Tax And GST</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <VendorDetailRow label="GSTIN / Tax ID" value={viewingVendor.tax_id} />
-                  <VendorDetailRow
-                    label="GST Status"
-                    value={viewingVendor.gst_verification?.valid ? 'Verified' : viewingVendor.tax_id ? 'Not verified' : '-'}
-                  />
-                  <VendorDetailRow label="GST State" value={viewingVendor.gst_verification?.details?.stateName || viewingVendor.state} />
-                  <VendorDetailRow label="PAN" value={viewingVendor.gst_verification?.details?.pan} />
-                  <VendorDetailRow label="Verification Mode" value={viewingVendor.gst_verification?.verificationMode} />
-                  <VendorDetailRow label="GST Message" value={viewingVendor.gst_verification?.message} />
-                </div>
-              </section>
-
-              <section>
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-700 mb-3">Contact Details</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <VendorDetailRow label="Primary Contact" value={viewingVendor.contact_person} />
-                  <VendorDetailRow label="Email" value={viewingVendor.email} />
-                  <VendorDetailRow label="Phone" value={viewingVendor.phone} />
-                </div>
-                {Array.isArray(viewingVendor.contacts) && viewingVendor.contacts.length > 0 && (
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {viewingVendor.contacts.map((contact, index) => (
-                      <div key={`${contact.name}-${index}`} className="rounded-lg border border-gray-200 p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="font-semibold text-gray-900">{contact.name || `Contact ${index + 1}`}</div>
-                          {contact.isDefault && <span className="rounded-full bg-amber-100 px-2 py-1 text-xs text-amber-800">Default</span>}
-                        </div>
-                        <div className="mt-2 text-sm text-gray-600">Phone: {contact.phone || '-'}</div>
-                        <div className="text-sm text-gray-600">Email: {contact.email || '-'}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              <section>
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-700 mb-3">Address</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <VendorDetailRow label="Full Address" value={formatVendorAddress(viewingVendor)} />
-                  <VendorDetailRow label="Address Line" value={viewingVendor.billing_line2} />
-                  <VendorDetailRow label="Street" value={viewingVendor.street || viewingVendor.address} />
-                  <VendorDetailRow label="City" value={viewingVendor.city} />
-                  <VendorDetailRow label="State" value={viewingVendor.state} />
-                  <VendorDetailRow label="PIN Code" value={viewingVendor.pincode} />
-                  <VendorDetailRow label="Country" value={viewingVendor.country} />
-                </div>
-              </section>
-
-              {((viewingVendor as any).bank_name || (viewingVendor as any).metadata?.bankName) && (
-                <section>
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-700 mb-3">Bank Details</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <VendorDetailRow label="Bank Name" value={(viewingVendor as any).bank_name || (viewingVendor as any).metadata?.bankName} />
-                    <VendorDetailRow label="Account Number" value={(viewingVendor as any).bank_account_number || (viewingVendor as any).metadata?.bankAccountNumber} />
-                    <VendorDetailRow label="IFSC Code" value={(viewingVendor as any).bank_ifsc_code || (viewingVendor as any).metadata?.bankIfscCode} />
-                    <VendorDetailRow label="Branch" value={(viewingVendor as any).bank_branch || (viewingVendor as any).metadata?.bankBranch} />
-                    <VendorDetailRow label="Account Type" value={(viewingVendor as any).bank_account_type || (viewingVendor as any).metadata?.bankAccountType} />
-                  </div>
-                </section>
-              )}
-            </div>
-
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
-              {canEdit && (
-                <button
-                  onClick={() => {
-                    const vendor = viewingVendor;
-                    setViewingVendor(null);
-                    handleEdit(vendor);
-                  }}
-                  className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
-                >
-                  <Eye className="h-4 w-4" />
-                  Edit Vendor
-                </button>
-              )}
-              <button
-                onClick={() => setViewingVendor(null)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-2xl font-bold text-gray-900">{editingVendor ? 'Edit Vendor' : 'Add New Vendor'}</h2>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {formSection === "business" ? (
+            <section>
+              <SectionTitle
+                title="Business Identity"
+                description="Core supplier identity and classification."
+              />
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Vendor Name *</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(event) => setFormData({ ...formData, name: event.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Legal Name</label>
-                  <input
-                    type="text"
-                    value={formData.legalName}
-                    onChange={(event) => setFormData({ ...formData, legalName: event.target.value, gstVerification: null })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Tax ID / GSTIN</label>
+                  <label className={labelClass}>Trade Name *</label>
                   <div className="flex gap-2">
+                    <div className="w-32">
+                      <SearchableSelect
+                        options={SALUTATION_OPTIONS}
+                        value={form.salutation}
+                        onChange={(value) =>
+                          setForm({ ...form, salutation: value })
+                        }
+                        placeholder="Title"
+                      />
+                    </div>
                     <input
-                      type="text"
-                      value={formData.taxId}
-                      onChange={(event) => setFormData({ ...formData, taxId: event.target.value.toUpperCase(), gstVerification: null })}
-                      className="flex-1 border border-gray-300 rounded-lg px-4 py-2"
+                      className={inputClass}
+                      value={form.name}
+                      onChange={(event) =>
+                        setForm({ ...form, name: event.target.value })
+                      }
                     />
-                    <button type="button" onClick={verifyGstin} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                      Verify
-                    </button>
                   </div>
-                  {formData.gstVerification && (() => {
-                    const gv = formData.gstVerification;
-                    const nameMatch = gv.legalNameMatch;
-                    const portalVerified = gv.portalVerified;
-                    const bgClass = !gv.valid
-                      ? 'bg-red-50 text-red-800 border border-red-200'
-                      : portalVerified && nameMatch === true
-                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                      : portalVerified && nameMatch === false
-                      ? 'bg-orange-50 text-orange-800 border border-orange-200'
-                      : 'bg-amber-50 text-amber-900 border border-amber-200';
-                    return (
-                      <div className={`mt-2 rounded-lg px-3 py-2 text-sm ${bgClass}`}>
-                        <div className="font-medium">{gv.message || (gv.valid ? 'GSTIN basic validation passed' : 'GSTIN invalid')}</div>
-                        {gv.details?.stateName && <div className="text-xs mt-1">State: {gv.details.stateName}</div>}
-                        {gv.details?.pan && <div className="text-xs">PAN: {gv.details.pan}</div>}
-                        {portalVerified && gv.details?.portalLegalName && (
-                          <div className="text-xs mt-1">
-                            <span className="font-semibold">Portal name:</span> {gv.details.portalLegalName}
-                            {gv.details.portalTradeName && gv.details.portalTradeName !== gv.details.portalLegalName && (
-                              <span className="ml-1">(Trade: {gv.details.portalTradeName})</span>
-                            )}
-                          </div>
-                        )}
-                        {portalVerified && gv.details?.portalAddress?.fullAddress && (
-                          <div className="text-xs mt-1">
-                            <span className="font-semibold">Portal address:</span> {gv.details.portalAddress.fullAddress}
-                          </div>
-                        )}
-                        {portalVerified && gv.details?.portalStatus && (
-                          <div className="text-xs mt-1">GST status: {gv.details.portalStatus}</div>
-                        )}
-                        {portalVerified && nameMatch === true && (
-                          <div className="text-xs mt-1 font-semibold">✓ Name verified</div>
-                        )}
-                        {portalVerified && nameMatch === false && gv.details?.enteredLegalName && (
-                          <div className="text-xs mt-1">Entered: {gv.details.enteredLegalName}</div>
-                        )}
-                        {!portalVerified && gv.valid && (
-                          <div className="mt-1 text-xs">Only GSTIN format and checksum were validated.</div>
-                        )}
-                      </div>
-                    );
-                  })()}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                  <select
-                    value={formData.category}
-                    onChange={(event) => setFormData({ ...formData, category: event.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                  >
-                    <option value="RAW_MATERIAL">Raw Material</option>
-                    <option value="COMPONENT">Component</option>
-                    <option value="SERVICE">Service</option>
-                    <option value="CONSUMABLE">Consumable</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
-                  <select
-                    value={formData.paymentTerms}
-                    onChange={(event) => setFormData({ ...formData, paymentTerms: event.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                  >
-                    <option value="NET_30">Net 30</option>
-                    <option value="NET_60">Net 60</option>
-                    <option value="NET_90">Net 90</option>
-                    <option value="ADVANCE">Advance</option>
-                    <option value="COD">Cash on Delivery</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Credit Limit</label>
+                  <label className={labelClass}>Legal Name</label>
                   <input
-                    type="number"
-                    value={formData.creditLimit}
-                    onChange={(event) => setFormData({ ...formData, creditLimit: Number(event.target.value) || 0 })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    className={inputClass}
+                    value={form.legalName}
+                    onChange={(event) =>
+                      setForm({ ...form, legalName: event.target.value })
+                    }
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Rating (0-5)</label>
+                  <label className={labelClass}>Category *</label>
+                  <SearchableSelect
+                    options={CATEGORY_OPTIONS}
+                    value={form.category}
+                    onChange={(value) => setForm({ ...form, category: value })}
+                    placeholder="Select category"
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Quality Rating</label>
                   <input
                     type="number"
                     min="0"
                     max="5"
                     step="0.1"
-                    value={formData.rating}
-                    onChange={(event) => setFormData({ ...formData, rating: Number(event.target.value) || 0 })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    className={inputClass}
+                    value={form.rating}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        rating: Number(event.target.value) || 0,
+                      })
+                    }
+                  />
+                </div>
+                <label className="flex min-h-10 items-center gap-3 rounded-md border border-slate-200 px-3">
+                  <input
+                    type="checkbox"
+                    checked={form.isActive}
+                    onChange={(event) =>
+                      setForm({ ...form, isActive: event.target.checked })
+                    }
+                  />
+                  <span className="text-sm font-medium text-slate-700">
+                    Active vendor
+                  </span>
+                </label>
+              </div>
+            </section>
+          ) : null}
+
+          {formSection === "tax-address" ? (
+            <section>
+              <SectionTitle
+                title="Tax & Registered Address"
+                description="Verify GSTIN to populate registered legal and address information."
+              />
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="md:col-span-2">
+                  <label className={labelClass}>GSTIN / Tax ID</label>
+                  <div className="flex gap-2">
+                    <input
+                      className={inputClass}
+                      value={form.taxId}
+                      onChange={(event) =>
+                        setForm({
+                          ...form,
+                          taxId: event.target.value.toUpperCase(),
+                          gstVerification: null,
+                        })
+                      }
+                    />
+                    <ErpButton
+                      variant="secondary"
+                      disabled={verifyingGstin || !form.taxId.trim()}
+                      onClick={verifyGstin}
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                      {verifyingGstin ? "Checking..." : "Verify GSTIN"}
+                    </ErpButton>
+                  </div>
+                  {form.gstVerification ? (
+                    <p
+                      className={`mt-2 text-xs font-medium ${form.gstVerification.valid ? "text-emerald-700" : "text-red-700"}`}
+                    >
+                      {form.gstVerification.message ||
+                        (form.gstVerification.valid
+                          ? "GSTIN verified"
+                          : "GSTIN invalid")}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="md:col-span-2">
+                  <label className={labelClass}>Address Line</label>
+                  <input
+                    className={inputClass}
+                    value={form.billingLine2}
+                    onChange={(event) =>
+                      setForm({ ...form, billingLine2: event.target.value })
+                    }
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className={labelClass}>Street / Building</label>
+                  <input
+                    className={inputClass}
+                    value={form.street}
+                    onChange={(event) =>
+                      setForm({ ...form, street: event.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>City</label>
+                  <input
+                    className={inputClass}
+                    value={form.city}
+                    onChange={(event) =>
+                      setForm({ ...form, city: event.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>State</label>
+                  <input
+                    className={inputClass}
+                    value={form.state}
+                    onChange={(event) =>
+                      setForm({ ...form, state: event.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>PIN Code</label>
+                  <input
+                    className={inputClass}
+                    value={form.pincode}
+                    onChange={(event) =>
+                      setForm({ ...form, pincode: event.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Country</label>
+                  <input
+                    className={inputClass}
+                    value={form.country}
+                    onChange={(event) =>
+                      setForm({ ...form, country: event.target.value })
+                    }
+                  />
+                </div>
+                <div className="md:col-span-2 xl:col-span-4">
+                  <label className={labelClass}>
+                    Additional Address Details
+                  </label>
+                  <textarea
+                    rows={3}
+                    className={inputClass}
+                    value={form.address}
+                    onChange={(event) =>
+                      setForm({ ...form, address: event.target.value })
+                    }
                   />
                 </div>
               </div>
+            </section>
+          ) : null}
 
-              <div className="border-t pt-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Contact Persons</h3>
-                  <button type="button" onClick={addContact} className="px-3 py-2 text-sm bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200">
-                    + Add Contact
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {formData.contacts.map((contact, index) => (
-                    <div key={`contact-${index}`} className="rounded-lg border border-gray-200 p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
-                          <div className="flex gap-2">
-                            <select
+          {formSection === "contacts" ? (
+            <section>
+              <div className="flex items-start justify-between gap-3">
+                <SectionTitle
+                  title="Contact Persons"
+                  description="Maintain one default contact for purchasing communication."
+                />
+                <ErpButton
+                  variant="secondary"
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      contacts: [
+                        ...current.contacts,
+                        createEmptyContact(false),
+                      ],
+                    }))
+                  }
+                >
+                  <UserPlus className="h-4 w-4" />
+                  Add Contact
+                </ErpButton>
+              </div>
+              <div className="space-y-3">
+                {form.contacts.map((contact, index) => (
+                  <div
+                    key={`contact-${index}`}
+                    className="rounded-md border border-slate-200 p-4"
+                  >
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <div>
+                        <label className={labelClass}>Name</label>
+                        <div className="flex gap-2">
+                          <div className="w-32">
+                            <SearchableSelect
+                              options={SALUTATION_OPTIONS}
                               value={contact.salutation}
-                              onChange={(e) => updateContact(index, 'salutation', e.target.value)}
-                              className="border border-gray-300 rounded-lg px-2 py-2 w-24 flex-shrink-0 text-sm"
-                            >
-                              <option value="">Title</option>
-                              <option value="Mr.">Mr.</option>
-                              <option value="Mrs.">Mrs.</option>
-                              <option value="Ms.">Ms.</option>
-                              <option value="Dr.">Dr.</option>
-                            </select>
-                            <input
-                              type="text"
-                              value={contact.name}
-                              onChange={(event) => updateContact(index, 'name', event.target.value)}
-                              className="flex-1 border border-gray-300 rounded-lg px-4 py-2"
+                              onChange={(value) =>
+                                updateContact(index, "salutation", value)
+                              }
+                              placeholder="Title"
                             />
                           </div>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
-                          <div className="flex gap-1">
-                            <select
-                              value={formData.countryCode}
-                              onChange={(e) => setFormData({ ...formData, countryCode: e.target.value })}
-                              className="border border-gray-300 rounded-lg px-2 py-2 w-20 flex-shrink-0 text-sm"
-                            >
-                              <option value="+91">🇮🇳 +91</option>
-                              <option value="+1">🇺🇸 +1</option>
-                              <option value="+44">🇬🇧 +44</option>
-                              <option value="+971">🇦🇪 +971</option>
-                              <option value="+65">🇸🇬 +65</option>
-                              <option value="+60">🇲🇾 +60</option>
-                              <option value="+61">🇦🇺 +61</option>
-                              <option value="+49">🇩🇪 +49</option>
-                              <option value="+81">🇯🇵 +81</option>
-                              <option value="+86">🇨🇳 +86</option>
-                            </select>
-                            <input
-                              type="tel"
-                              value={contact.phone}
-                              onChange={(event) => updateContact(index, 'phone', event.target.value)}
-                              className="flex-1 border border-gray-300 rounded-lg px-4 py-2"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
                           <input
-                            type="email"
-                            value={contact.email}
-                            onChange={(event) => updateContact(index, 'email', event.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                            className={inputClass}
+                            value={contact.name}
+                            onChange={(event) =>
+                              updateContact(index, "name", event.target.value)
+                            }
                           />
                         </div>
                       </div>
-                      <div className="mt-3 flex items-center justify-between">
-                        <label className="flex items-center gap-2 text-sm text-gray-700">
-                          <input type="radio" checked={contact.isDefault} onChange={() => updateContact(index, 'isDefault', true)} />
+                      <div>
+                        <label className={labelClass}>Phone</label>
+                        <div className="flex gap-2">
+                          <div className="w-28">
+                            <SearchableSelect
+                              options={COUNTRY_CODE_OPTIONS}
+                              value={form.countryCode}
+                              onChange={(value) =>
+                                setForm({ ...form, countryCode: value })
+                              }
+                            />
+                          </div>
+                          <input
+                            type="tel"
+                            className={inputClass}
+                            value={contact.phone}
+                            onChange={(event) =>
+                              updateContact(index, "phone", event.target.value)
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className={labelClass}>Email</label>
+                        <input
+                          type="email"
+                          className={inputClass}
+                          value={contact.email}
+                          onChange={(event) =>
+                            updateContact(index, "email", event.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="flex items-end justify-between gap-3">
+                        <label className="flex min-h-10 items-center gap-2 text-sm">
+                          <input
+                            type="radio"
+                            checked={contact.isDefault}
+                            onChange={() =>
+                              updateContact(index, "isDefault", true)
+                            }
+                          />
                           Default contact
                         </label>
-                        {formData.contacts.length > 1 && (
-                          <button type="button" onClick={() => removeContact(index)} className="text-sm text-red-600 hover:text-red-800">
+                        {form.contacts.length > 1 ? (
+                          <ErpButton
+                            variant="danger"
+                            size="sm"
+                            onClick={() => removeContact(index)}
+                          >
+                            <Trash2 className="h-4 w-4" />
                             Remove
-                          </button>
-                        )}
+                          </ErpButton>
+                        ) : null}
                       </div>
                     </div>
-                  ))}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {formSection === "commercial" ? (
+            <section>
+              <SectionTitle
+                title="Commercial Terms"
+                description="Default terms used when creating purchasing documents."
+              />
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <label className={labelClass}>Payment Terms</label>
+                  <SearchableSelect
+                    options={PAYMENT_TERM_OPTIONS}
+                    value={form.paymentTerms}
+                    onChange={(value) =>
+                      setForm({ ...form, paymentTerms: value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Credit Limit (INR)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    className={inputClass}
+                    value={form.creditLimit}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        creditLimit: Number(event.target.value) || 0,
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Quality Rating</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    className={inputClass}
+                    value={form.rating}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        rating: Number(event.target.value) || 0,
+                      })
+                    }
+                  />
                 </div>
               </div>
+            </section>
+          ) : null}
 
-              <div className="border-t pt-4">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Vendor Address</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Address Line</label>
-                    <input
-                      type="text"
-                      value={formData.billingLine2}
-                      onChange={(event) => setFormData({ ...formData, billingLine2: event.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                      placeholder="Building, landmark, area, etc."
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Street</label>
-                    <input
-                      type="text"
-                      value={formData.street}
-                      onChange={(event) => setFormData({ ...formData, street: event.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                      placeholder="Street address, building name, floor, etc."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
-                    <input
-                      type="text"
-                      value={formData.city}
-                      onChange={(event) => setFormData({ ...formData, city: event.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
-                    <input
-                      type="text"
-                      value={formData.state}
-                      onChange={(event) => setFormData({ ...formData, state: event.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">PIN Code</label>
-                    <input
-                      type="text"
-                      value={formData.pincode}
-                      onChange={(event) => setFormData({ ...formData, pincode: event.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
-                    <input
-                      type="text"
-                      value={formData.country}
-                      onChange={(event) => setFormData({ ...formData, country: event.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    />
-                  </div>
+          {formSection === "bank" ? (
+            <section>
+              <SectionTitle
+                title="Bank Details"
+                description="Payment destination maintained for accounts payable."
+              />
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <label className={labelClass}>Bank Name</label>
+                  <input
+                    className={inputClass}
+                    value={form.bankName}
+                    onChange={(event) =>
+                      setForm({ ...form, bankName: event.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Account Type</label>
+                  <SearchableSelect
+                    options={ACCOUNT_TYPE_OPTIONS}
+                    value={form.bankAccountType}
+                    onChange={(value) =>
+                      setForm({ ...form, bankAccountType: value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Account Number</label>
+                  <input
+                    className={inputClass}
+                    value={form.bankAccountNumber}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        bankAccountNumber: event.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>IFSC Code</label>
+                  <input
+                    className={inputClass}
+                    value={form.bankIfscCode}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        bankIfscCode: event.target.value.toUpperCase(),
+                      })
+                    }
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className={labelClass}>Branch</label>
+                  <input
+                    className={inputClass}
+                    value={form.bankBranch}
+                    onChange={(event) =>
+                      setForm({ ...form, bankBranch: event.target.value })
+                    }
+                  />
                 </div>
               </div>
+            </section>
+          ) : null}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Address (Legacy - will be migrated)</label>
-                <textarea
-                  value={formData.address}
-                  onChange={(event) => setFormData({ ...formData, address: event.target.value })}
-                  rows={2}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-gray-50"
-                />
-              </div>
-
-              <div className="border-t pt-4">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Bank Details</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Bank Name</label>
-                    <input type="text" value={formData.bankName}
-                      onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2" placeholder="e.g. HDFC Bank" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Account Type</label>
-                    <select value={formData.bankAccountType}
-                      onChange={(e) => setFormData({ ...formData, bankAccountType: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2">
-                      <option value="CURRENT">Current</option>
-                      <option value="SAVINGS">Savings</option>
-                      <option value="CC">Cash Credit</option>
-                      <option value="OD">Overdraft</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Account Number</label>
-                    <input type="text" value={formData.bankAccountNumber}
-                      onChange={(e) => setFormData({ ...formData, bankAccountNumber: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2" placeholder="Bank account number" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">IFSC Code</label>
-                    <input type="text" value={formData.bankIfscCode}
-                      onChange={(e) => setFormData({ ...formData, bankIfscCode: e.target.value.toUpperCase() })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2" placeholder="e.g. HDFC0001234" />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Branch</label>
-                    <input type="text" value={formData.bankBranch}
-                      onChange={(e) => setFormData({ ...formData, bankBranch: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2" placeholder="Branch name and city" />
-                  </div>
+          {formSection === "review" ? (
+            <section>
+              <SectionTitle
+                title="Review Vendor"
+                description="Confirm master data before saving."
+              />
+              <div className="grid gap-8 lg:grid-cols-2">
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold text-slate-950">
+                    Business & Tax
+                  </h4>
+                  <DetailField
+                    label="Trade Name"
+                    value={form.name || "Required"}
+                  />
+                  <DetailField
+                    label="Legal Name"
+                    value={form.legalName || form.name}
+                  />
+                  <DetailField
+                    label="Category"
+                    value={formatCategory(form.category)}
+                  />
+                  <DetailField label="GSTIN" value={form.taxId} />
+                  <DetailField
+                    label="Address"
+                    value={[
+                      form.billingLine2,
+                      form.street,
+                      form.city,
+                      form.state,
+                      form.pincode,
+                      form.country,
+                    ]
+                      .filter(Boolean)
+                      .join(", ")}
+                  />
+                </div>
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold text-slate-950">
+                    Commercial & Contact
+                  </h4>
+                  <DetailField
+                    label="Default Contact"
+                    value={
+                      defaultContact
+                        ? `${defaultContact.name || "-"}${defaultContact.email ? ` | ${defaultContact.email}` : ""}`
+                        : "-"
+                    }
+                  />
+                  <DetailField
+                    label="Payment Terms"
+                    value={form.paymentTerms}
+                  />
+                  <DetailField
+                    label="Credit Limit"
+                    value={`INR ${form.creditLimit.toLocaleString("en-IN")}`}
+                  />
+                  <DetailField
+                    label="Bank"
+                    value={[form.bankName, form.bankIfscCode]
+                      .filter(Boolean)
+                      .join(" | ")}
+                  />
+                  <DetailField
+                    label="Status"
+                    value={form.isActive ? "Active" : "Inactive"}
+                  />
                 </div>
               </div>
-
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="isActive"
-                  checked={formData.isActive}
-                  onChange={(event) => setFormData({ ...formData, isActive: event.target.checked })}
-                  className="mr-2"
-                />
-                <label htmlFor="isActive" className="text-sm font-medium text-gray-700">
-                  Active Vendor
-                </label>
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-4">
-              <button
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
-                }}
-                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={editingVendor ? !canEdit : !canCreate}
-                className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
-              >
-                {editingVendor ? 'Update Vendor' : 'Create Vendor'}
-              </button>
-            </div>
-          </div>
+            </section>
+          ) : null}
         </div>
-      )}
+      </SlidePanel>
 
       <DuplicateWarning
         isOpen={duplicateState.isOpen}
@@ -1665,9 +1810,9 @@ export default function VendorsPage() {
         formatRecord={(data) => (
           <div className="text-sm">
             <p className="font-semibold">{data.name || data.legal_name}</p>
-            <p className="text-xs text-gray-600">GST: {data.tax_id || data.gst_number || 'N/A'}</p>
-            <p className="text-xs text-gray-600">Email: {data.email || 'N/A'}</p>
-            <p className="text-xs text-gray-600">Phone: {data.phone || 'N/A'}</p>
+            <p className="text-xs text-slate-600">
+              GST: {data.tax_id || "N/A"}
+            </p>
           </div>
         )}
       />
