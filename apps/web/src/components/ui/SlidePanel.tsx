@@ -68,7 +68,7 @@ export function SlidePanel({
       {/* Backdrop */}
       <div
         className={cn(
-          'fixed inset-0 z-[1000] bg-black/40 backdrop-blur-sm transition-opacity duration-300',
+          'fixed inset-0 z-[1000] bg-[#4A3426]/35 backdrop-blur-sm transition-opacity duration-300',
           open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
         )}
         onClick={onClose}
@@ -87,14 +87,14 @@ export function SlidePanel({
         )}
       >
         {/* Header */}
-        <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-4 py-3">
+        <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-[#E8DCC4] px-4 py-3">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 leading-tight">{title}</h2>
-            {subtitle && <p className="mt-0.5 text-sm text-gray-500">{subtitle}</p>}
+            <h2 className="text-lg font-semibold text-[#4A3426] leading-tight">{title}</h2>
+            {subtitle && <p className="mt-0.5 text-sm text-[#7A6555]">{subtitle}</p>}
           </div>
           <button
             onClick={onClose}
-            className="flex-shrink-0 rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            className="flex-shrink-0 rounded-md p-1.5 text-[#9A8878] transition-colors hover:bg-[#F5EFE3] hover:text-[#6F4E37]"
             aria-label="Close panel"
           >
             <X className="h-5 w-5" />
@@ -106,7 +106,7 @@ export function SlidePanel({
 
         {/* Footer — optional sticky action bar */}
         {footer && (
-          <div className="flex-shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-2.5">
+          <div className="flex-shrink-0 border-t border-[#E8DCC4] bg-[#FAF9F6] px-4 py-2.5">
             {footer}
           </div>
         )}

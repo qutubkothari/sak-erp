@@ -479,9 +479,9 @@ export function ListTable<T>(props: ListTableProps<T>) {
   };
 
   return (
-    <div className={`overflow-hidden rounded-md border border-slate-200 bg-white ${className}`}>
+    <div className={`overflow-hidden rounded-md border border-[#E8DCC4] bg-white ${className}`}>
       {/* Toolbar */}
-      <div className="flex flex-col gap-2 border-b border-slate-200 bg-white p-2.5 xl:flex-row xl:items-center xl:justify-between">
+      <div className="flex flex-col gap-2 border-b border-[#E8DCC4] bg-white p-2.5 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {!hideSearch && (
             <input
@@ -492,14 +492,14 @@ export function ListTable<T>(props: ListTableProps<T>) {
                 setPageIndex(0);
               }}
               placeholder={searchPlaceholder}
-              className="min-h-9 w-full min-w-0 border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 sm:max-w-lg"
+              className="min-h-9 w-full min-w-0 border border-[#D8C8AA] px-3 py-1.5 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30 sm:max-w-lg"
             />
           )}
           <div className="relative" ref={columnsMenuRef}>
             <button
               type="button"
               onClick={() => setShowColumnsMenu((s) => !s)}
-              className="min-h-9 shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
+              className="min-h-9 shrink-0 rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm text-[#5E4635] hover:bg-[#F5EFE3]"
             >
               Columns
             </button>
@@ -522,21 +522,21 @@ export function ListTable<T>(props: ListTableProps<T>) {
                   <button
                     type="button"
                     onClick={() => setAllColumns(true)}
-                    className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-indigo-50/50 transition-colors"
+                    className="text-xs px-2 py-1 rounded border border-[#D8C8AA] hover:bg-[#F5EFE3] transition-colors"
                   >
                     All
                   </button>
                   <button
                     type="button"
                     onClick={() => setAllColumns(false)}
-                    className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-indigo-50/50 transition-colors"
+                    className="text-xs px-2 py-1 rounded border border-[#D8C8AA] hover:bg-[#F5EFE3] transition-colors"
                   >
                     None
                   </button>
                   <button
                     type="button"
                     onClick={resetColumns}
-                    className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-indigo-50/50 transition-colors"
+                    className="text-xs px-2 py-1 rounded border border-[#D8C8AA] hover:bg-[#F5EFE3] transition-colors"
                   >
                     Reset
                   </button>
@@ -546,14 +546,14 @@ export function ListTable<T>(props: ListTableProps<T>) {
                   {orderedColumns
                     .filter((c) => c.hideable !== false)
                     .map((col, index, list) => (
-                      <div key={col.id} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm text-gray-700 hover:bg-indigo-50/50 transition-colors">
+                      <div key={col.id} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm text-[#5E4635] hover:bg-[#F5EFE3] transition-colors">
                         <GripVertical className="h-4 w-4 shrink-0 text-gray-300" />
                         <label className="flex min-w-0 flex-1 items-center gap-2">
                           <input
                             type="checkbox"
                             checked={visibleById[col.id] !== false}
                             onChange={(e) => toggleColumn(col.id, e.target.checked)}
-                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            className="rounded border-[#D8C8AA] text-[#8B6F47] focus:ring-[#8B6F47]"
                           />
                           <span className="truncate">{col.label}</span>
                         </label>
@@ -587,12 +587,12 @@ export function ListTable<T>(props: ListTableProps<T>) {
             <button
               type="button"
               onClick={() => setShowVariantsMenu((current) => !current)}
-              className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
+              className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm text-[#5E4635] hover:bg-[#F5EFE3]"
             >
               <Bookmark className="h-4 w-4" /> Views
             </button>
             {showVariantsMenu && (
-              <div className="absolute left-0 z-50 mt-2 w-80 rounded-md border border-slate-200 bg-white p-3 shadow-lg">
+              <div className="absolute left-0 z-50 mt-2 w-80 rounded-md border border-[#E8DCC4] bg-white p-3 shadow-lg">
                 <div className="mb-3 flex items-center gap-2">
                   <input
                     value={variantName}
@@ -604,13 +604,13 @@ export function ListTable<T>(props: ListTableProps<T>) {
                       }
                     }}
                     placeholder="Name this view"
-                    className="min-h-9 min-w-0 flex-1 rounded-md border border-slate-300 px-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
+                    className="min-h-9 min-w-0 flex-1 rounded-md border border-[#D8C8AA] px-2.5 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
                   />
                   <button
                     type="button"
                     onClick={saveVariant}
                     disabled={!variantName.trim()}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-40"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[#8B6F47] text-white hover:bg-[#6F4E37] disabled:opacity-40"
                     title="Save current view"
                     aria-label="Save current view"
                   >
@@ -618,18 +618,18 @@ export function ListTable<T>(props: ListTableProps<T>) {
                   </button>
                 </div>
                 {savedVariants.length === 0 ? (
-                  <p className="py-2 text-sm text-slate-500">No saved views yet.</p>
+                  <p className="py-2 text-sm text-[#7A6555]">No saved views yet.</p>
                 ) : (
                   <div className="max-h-64 space-y-1 overflow-auto">
                     {savedVariants.map((variant) => (
-                      <div key={variant.name} className="flex items-center gap-2 rounded-md hover:bg-slate-50">
-                        <button type="button" onClick={() => applyVariant(variant)} className="min-w-0 flex-1 truncate px-2 py-2 text-left text-sm font-medium text-slate-700">
+                      <div key={variant.name} className="flex items-center gap-2 rounded-md hover:bg-[#F5EFE3]">
+                        <button type="button" onClick={() => applyVariant(variant)} className="min-w-0 flex-1 truncate px-2 py-2 text-left text-sm font-medium text-[#5E4635]">
                           {variant.name}
                         </button>
                         <button
                           type="button"
                           onClick={() => deleteVariant(variant.name)}
-                          className="mr-1 rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-700"
+                          className="mr-1 rounded p-1.5 text-[#9A8878] hover:bg-red-50 hover:text-red-700"
                           title={`Delete ${variant.name}`}
                           aria-label={`Delete ${variant.name}`}
                         >
@@ -651,7 +651,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
               type="button"
               onClick={handleExportCSV}
               title="Export to CSV"
-              className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-indigo-50/50 transition-colors text-sm text-gray-700 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-2 border border-[#D8C8AA] rounded-lg bg-white hover:bg-[#F5EFE3] transition-colors text-sm text-[#5E4635]"
             >
               <Download className="h-4 w-4" />
               <span className="hidden sm:inline">Export CSV</span>
@@ -665,7 +665,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
               localStorage.setItem(pageSizeStorageKey, JSON.stringify(next));
               setPageIndex(0);
             }}
-            className="min-h-9 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm"
+            className="min-h-9 rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm"
           >
             {pageSizeOptions.map((n) => (
               <option key={n} value={n}>
@@ -685,19 +685,19 @@ export function ListTable<T>(props: ListTableProps<T>) {
           className="table-fixed"
           style={fitToContainer ? { width: '100%' } : { width: `${scrollTableWidth}px`, minWidth: '100%' }}
         >
-          <thead className="border-b border-slate-200 bg-slate-50">
+          <thead className="border-b border-[#E8DCC4] bg-[#FAF9F6]">
             <tr>
               {selectable && (
                 <th
                   style={fitToContainer ? undefined : { width: '44px', minWidth: '44px' }}
-                  className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm px-4 py-3 text-left"
+                  className="sticky top-0 z-10 bg-[#FAF9F6]/90 backdrop-blur-sm px-4 py-3 text-left"
                 >
                   <input
                     type="checkbox"
                     ref={pageCheckboxRef}
                     checked={allPageSelected}
                     onChange={(e) => togglePageSelection(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    className="h-4 w-4 rounded border-[#D8C8AA] text-[#8B6F47] focus:ring-[#8B6F47]"
                     aria-label="Select all visible rows"
                   />
                 </th>
@@ -716,9 +716,9 @@ export function ListTable<T>(props: ListTableProps<T>) {
                     key={col.id}
                     style={{ width: `${width}px`, minWidth: `${width}px` }}
                     className={
-                      `relative sticky top-0 z-10 bg-transparent px-3 py-2 text-[11px] font-semibold uppercase text-slate-600 ` +
+                      `relative sticky top-0 z-10 bg-transparent px-3 py-2 text-[11px] font-semibold uppercase text-[#6F4E37] ` +
                       headerAlignClass +
-                      ` ${sortable ? 'cursor-pointer hover:bg-slate-200/50 transition-colors' : ''} ` +
+                      ` ${sortable ? 'cursor-pointer hover:bg-[#F5EFE3] transition-colors' : ''} ` +
                       (col.headerClassName || '')
                     }
                     onClick={() => {
@@ -739,9 +739,9 @@ export function ListTable<T>(props: ListTableProps<T>) {
                           e.stopPropagation();
                           startColumnResize(col.id, e.clientX);
                         }}
-                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize group/resize hover:bg-indigo-400/20 active:bg-indigo-500/40 transition-colors"
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize group/resize hover:bg-[#8B6F47]/20 active:bg-[#8B6F47]/40 transition-colors"
                       >
-                        <div className="absolute right-0.5 top-1/4 h-1/2 w-px bg-gray-300 group-hover/resize:bg-indigo-500 transition-colors" />
+                        <div className="absolute right-0.5 top-1/4 h-1/2 w-px bg-[#D8C8AA] group-hover/resize:bg-[#8B6F47] transition-colors" />
                       </div>
                     )}
                   </th>
@@ -758,14 +758,14 @@ export function ListTable<T>(props: ListTableProps<T>) {
               </tr>
             ) : (
               pagedRows.map((row) => (
-                <tr key={getRowId(row)} className="group hover:bg-indigo-50/50 transition-colors">
+                <tr key={getRowId(row)} className="group hover:bg-[#F5EFE3]/60 transition-colors">
                   {selectable && (
                     <td className="px-3 py-2.5 text-left">
                       <input
                         type="checkbox"
                         checked={selectedRowIdsSet.has(getRowId(row))}
                         onChange={(e) => toggleRowSelection(getRowId(row), e.target.checked)}
-                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        className="h-4 w-4 rounded border-[#D8C8AA] text-[#8B6F47] focus:ring-[#8B6F47]"
                         aria-label={`Select row ${getRowId(row)}`}
                       />
                     </td>
@@ -793,8 +793,8 @@ export function ListTable<T>(props: ListTableProps<T>) {
       </div>
 
       {/* Pagination */}
-      <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-xs text-slate-600">
+      <div className="flex flex-col gap-2 border-t border-[#E8DCC4] bg-[#FAF9F6] px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-xs text-[#7A6555]">
           Showing {showingFrom} to {showingTo} of {totalRows} rows
         </div>
 
@@ -803,7 +803,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
             type="button"
             onClick={() => setPageIndex(0)}
             disabled={clampedPageIndex === 0}
-            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-slate-200/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1 border border-[#D8C8AA] rounded text-sm hover:bg-[#F5EFE3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             First
           </button>
@@ -811,7 +811,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
             type="button"
             onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
             disabled={clampedPageIndex === 0}
-            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-slate-200/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1 border border-[#D8C8AA] rounded text-sm hover:bg-[#F5EFE3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Prev
           </button>
@@ -822,7 +822,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
             type="button"
             onClick={() => setPageIndex((p) => Math.min(totalPages - 1, p + 1))}
             disabled={clampedPageIndex >= totalPages - 1}
-            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-slate-200/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1 border border-[#D8C8AA] rounded text-sm hover:bg-[#F5EFE3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Next
           </button>
@@ -830,7 +830,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
             type="button"
             onClick={() => setPageIndex(totalPages - 1)}
             disabled={clampedPageIndex >= totalPages - 1}
-            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-slate-200/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1 border border-[#D8C8AA] rounded text-sm hover:bg-[#F5EFE3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Last
           </button>

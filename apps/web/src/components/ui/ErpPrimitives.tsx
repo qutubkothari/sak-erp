@@ -17,11 +17,11 @@ interface ErpButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const buttonVariants: Record<ButtonVariant, string> = {
-  primary: 'border-indigo-700 bg-indigo-700 text-white hover:border-indigo-800 hover:bg-indigo-800',
-  secondary: 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-950',
+  primary: 'border-[#8B6F47] bg-[#8B6F47] text-white hover:border-[#6F4E37] hover:bg-[#6F4E37]',
+  secondary: 'border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3] hover:text-[#4A3426]',
   approve: 'border-emerald-700 bg-emerald-700 text-white hover:border-emerald-800 hover:bg-emerald-800',
   danger: 'border-red-300 bg-white text-red-700 hover:border-red-400 hover:bg-red-50',
-  ghost: 'border-transparent bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950',
+  ghost: 'border-transparent bg-transparent text-[#7A6555] hover:bg-[#F5EFE3] hover:text-[#4A3426]',
 };
 
 const buttonSizes: Record<ButtonSize, string> = {
@@ -36,7 +36,7 @@ export const ErpButton = forwardRef<HTMLButtonElement, ErpButtonProps>(
       type={type}
       className={cn(
         'inline-flex items-center justify-center gap-2 rounded-md border font-semibold transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47] focus-visible:ring-offset-2',
         'disabled:pointer-events-none disabled:opacity-50',
         buttonVariants[variant],
         buttonSizes[size],
@@ -58,13 +58,13 @@ interface ErpPageHeaderProps {
 
 export function ErpPageHeader({ title, description, eyebrow, actions }: ErpPageHeaderProps) {
   return (
-    <header className="flex flex-col gap-3 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
+    <header className="flex flex-col gap-3 border-b border-[#E8DCC4] pb-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         {eyebrow ? (
-          <p className="mb-0.5 text-[11px] font-semibold uppercase text-indigo-700">{eyebrow}</p>
+          <p className="mb-0.5 text-[11px] font-semibold uppercase text-[#8B6F47]">{eyebrow}</p>
         ) : null}
-        <h1 className="text-xl font-bold text-slate-950 sm:text-2xl">{title}</h1>
-        {description ? <p className="mt-0.5 max-w-3xl text-xs text-slate-600 sm:text-sm">{description}</p> : null}
+        <h1 className="text-xl font-bold text-[#4A3426] sm:text-2xl">{title}</h1>
+        {description ? <p className="mt-0.5 max-w-3xl text-xs text-[#7A6555] sm:text-sm">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </header>
@@ -81,7 +81,7 @@ interface ErpMetricStripProps {
 }
 
 const metricToneClasses = {
-  neutral: 'text-slate-950',
+  neutral: 'text-[#4A3426]',
   warning: 'text-amber-700',
   success: 'text-emerald-700',
   danger: 'text-red-700',
@@ -89,12 +89,12 @@ const metricToneClasses = {
 
 export function ErpMetricStrip({ metrics, loading = false }: ErpMetricStripProps) {
   return (
-    <dl className="flex min-h-11 flex-wrap items-stretch divide-x divide-slate-200 rounded-md border border-slate-200 bg-white">
+    <dl className="flex min-h-11 flex-wrap items-stretch divide-x divide-[#E8DCC4] rounded-md border border-[#E8DCC4] bg-white">
       {metrics.map((metric) => (
         <div key={metric.label} className="flex min-w-[10rem] flex-1 items-center gap-3 px-3 py-2">
-          <dt className="text-xs font-medium text-slate-500">{metric.label}</dt>
+          <dt className="text-xs font-medium text-[#7A6555]">{metric.label}</dt>
           <dd className={`ml-auto text-lg font-bold tabular-nums ${metricToneClasses[metric.tone ?? 'neutral']}`}>
-            {loading ? <span className="block h-5 w-8 animate-pulse rounded bg-slate-200" /> : metric.value}
+            {loading ? <span className="block h-5 w-8 animate-pulse rounded bg-[#E8DCC4]" /> : metric.value}
           </dd>
         </div>
       ))}
@@ -105,7 +105,7 @@ export function ErpMetricStrip({ metrics, loading = false }: ErpMetricStripProps
 type StatusTone = 'neutral' | 'info' | 'warning' | 'success' | 'danger';
 
 const statusToneClasses: Record<StatusTone, string> = {
-  neutral: 'border-slate-200 bg-slate-50 text-slate-700',
+  neutral: 'border-[#E8DCC4] bg-[#FAF9F6] text-[#6F4E37]',
   info: 'border-blue-200 bg-blue-50 text-blue-700',
   warning: 'border-amber-200 bg-amber-50 text-amber-800',
   success: 'border-emerald-200 bg-emerald-50 text-emerald-700',

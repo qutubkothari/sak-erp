@@ -359,7 +359,7 @@ function PRContent() {
       id: 'pr_number',
       label: 'PR Number',
       accessor: (r) => r.pr_number,
-      cell: (r) => <span className="font-medium text-gray-900">{r.pr_number}</span>,
+      cell: (r) => <span className="font-medium text-[#4A3426]">{r.pr_number}</span>,
     },
     {
       id: 'department',
@@ -393,7 +393,7 @@ function PRContent() {
       label: 'Notes',
       accessor: (r) => r.purpose || '',
       cell: (r) => (
-        <span className="text-gray-600 text-sm truncate max-w-[150px] block" title={r.purpose || ''}>
+        <span className="text-[#7A6555] text-sm truncate max-w-[150px] block" title={r.purpose || ''}>
           {r.purpose || '-'}
         </span>
       ),
@@ -1630,7 +1630,7 @@ function PRContent() {
           }
         >
           <div className="space-y-4 pb-2">
-            <nav className="sticky -top-3 z-20 -mx-4 -mt-3 border-b border-slate-200 bg-white px-4" aria-label="Requisition sections">
+            <nav className="sticky -top-3 z-20 -mx-4 -mt-3 border-b border-[#E8DCC4] bg-white px-4" aria-label="Requisition sections">
               <div className="flex min-w-max items-center gap-6 overflow-x-auto">
                 {REQUISITION_FORM_SECTIONS.map((section, index) => {
                   const isActive = section.id === formSection;
@@ -1639,10 +1639,10 @@ function PRContent() {
                       key={section.id}
                       type="button"
                       onClick={() => setFormSection(section.id)}
-                      className={`border-b-2 px-1 py-3 text-sm font-semibold transition-colors ${isActive ? 'border-indigo-700 text-indigo-800' : 'border-transparent text-slate-500 hover:text-slate-900'}`}
+                      className={`border-b-2 px-1 py-3 text-sm font-semibold transition-colors ${isActive ? 'border-[#8B6F47] text-[#5E4635]' : 'border-transparent text-[#7A6555] hover:text-[#4A3426]'}`}
                       aria-current={isActive ? 'step' : undefined}
                     >
-                      <span className="mr-2 text-xs text-slate-400">{index + 1}</span>
+                      <span className="mr-2 text-xs text-[#9A8878]">{index + 1}</span>
                       {section.label}{section.id === 'items' ? ` (${items.length})` : ''}
                     </button>
                   );
@@ -1652,12 +1652,12 @@ function PRContent() {
             {formSection === 'general' && (
               <section aria-labelledby="pr-general-heading" className="space-y-4">
                 <div>
-                  <h3 id="pr-general-heading" className="text-lg font-semibold text-slate-950">General Information</h3>
-                  <p className="text-sm text-slate-500">Request ownership, priority, required date, and delivery location.</p>
+                  <h3 id="pr-general-heading" className="text-lg font-semibold text-[#4A3426]">General Information</h3>
+                  <p className="text-sm text-[#7A6555]">Request ownership, priority, required date, and delivery location.</p>
                 </div>
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700">Department *</label>
+                    <label className="mb-2 block text-sm font-medium text-[#5E4635]">Department *</label>
                     <SearchableSelect
                       value={formData.department}
                       onChange={(department) => setFormData((prev) => ({ ...prev, department }))}
@@ -1667,7 +1667,7 @@ function PRContent() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[#5E4635] mb-2">
                       Required Date *
                     </label>
                     <input
@@ -1675,11 +1675,11 @@ function PRContent() {
                       min={todayDate}
                       value={formData.requiredDate}
                       onChange={(e) => setFormData({ ...formData, requiredDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      className="w-full px-4 py-2 border border-[#D8C8AA] rounded-lg focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700">Priority *</label>
+                    <label className="mb-2 block text-sm font-medium text-[#5E4635]">Priority *</label>
                     <SearchableSelect
                       value={formData.priority}
                       onChange={(priority) => setFormData((prev) => ({ ...prev, priority }))}
@@ -1689,7 +1689,7 @@ function PRContent() {
                     />
                   </div>
                   <div className="lg:col-span-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[#5E4635] mb-2">
                       Delivery Address
                     </label>
                     <div className="space-y-2">
@@ -1709,21 +1709,21 @@ function PRContent() {
                         value={formData.deliveryAddress}
                         onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
                         rows={2}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        className="w-full px-4 py-2 border border-[#D8C8AA] rounded-lg focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
                         placeholder="Enter delivery address..."
                       />
                       <div className="flex gap-2">
                         <input
                           value={deliveryAddressName}
                           onChange={(e) => setDeliveryAddressName(e.target.value)}
-                          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          className="flex-1 px-4 py-2 border border-[#D8C8AA] rounded-lg focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
                           placeholder="Address name for saving, e.g. Factory"
                         />
                         <button
                           type="button"
                           onClick={handleSaveDeliveryAddress}
                           disabled={deliveryAddressSaving || !formData.deliveryAddress.trim()}
-                          className="px-4 py-2 rounded-lg bg-indigo-700 text-white text-sm font-semibold hover:bg-indigo-800 disabled:opacity-50"
+                          className="px-4 py-2 rounded-lg bg-[#8B6F47] text-white text-sm font-semibold hover:bg-[#5E4635] disabled:opacity-50"
                         >
                           {deliveryAddressSaving ? 'Saving...' : 'Save Address'}
                         </button>
@@ -1737,10 +1737,10 @@ function PRContent() {
                 {/* Items Section */}
             {formSection === 'items' && (
                 <section aria-labelledby="pr-items-heading">
-                  <h3 id="pr-items-heading" className="mb-2 text-lg font-semibold text-slate-950">Line Items</h3>
+                  <h3 id="pr-items-heading" className="mb-2 text-lg font-semibold text-[#4A3426]">Line Items</h3>
 
                   {/* Add Item Form */}
-                  <div ref={itemEntryRef} className="scroll-mt-3 mb-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <div ref={itemEntryRef} className="scroll-mt-3 mb-3 rounded-md border border-[#E8DCC4] bg-[#FAF9F6] p-3">
                     <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
                       {/* Item Name/Search */}
                       <div className="xl:col-span-4">
@@ -1765,8 +1765,8 @@ function PRContent() {
                           dropdownClassName="max-h-80"
                         />
                         {itemForm.vendorName ? (
-                          <p className="mt-1 text-xs text-slate-600">
-                            Preferred vendor: <span className="font-medium text-slate-800">{itemForm.vendorName}</span>
+                          <p className="mt-1 text-xs text-[#7A6555]">
+                            Preferred vendor: <span className="font-medium text-[#5E4635]">{itemForm.vendorName}</span>
                           </p>
                         ) : null}
                       </div>
@@ -1780,7 +1780,7 @@ function PRContent() {
                           setItemForm({ ...itemForm, quantity: e.target.value });
                         }}
                         placeholder="Quantity *"
-                        className="border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-indigo-500 xl:col-span-2"
+                        className="border border-[#D8C8AA] px-3 py-2 focus:ring-2 focus:ring-[#8B6F47] xl:col-span-2"
                       />
                       <input
                         type="text"
@@ -1788,7 +1788,7 @@ function PRContent() {
                         onChange={(e) => setItemForm({ ...itemForm, uom: e.target.value })}
                         placeholder="UOM"
                         readOnly
-                        className="cursor-not-allowed border border-gray-300 bg-gray-100 px-3 py-2 focus:ring-2 focus:ring-indigo-500 xl:col-span-2"
+                        className="cursor-not-allowed border border-[#D8C8AA] bg-[#F5EFE3] px-3 py-2 focus:ring-2 focus:ring-[#8B6F47] xl:col-span-2"
                         title="UOM is filled from the selected master item"
                       />
                       <div className="xl:col-span-2">
@@ -1800,11 +1800,11 @@ function PRContent() {
                           onChange={(e) => setItemForm({ ...itemForm, estimatedPrice: e.target.value })}
                           placeholder="Est. Unit Price"
                           title="Estimated unit price. Extended price = Qty × unit price."
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                          className="w-full px-3 py-2 border border-[#D8C8AA] rounded-lg focus:ring-2 focus:ring-[#8B6F47]"
                         />
                         {lastPurchasePrice && (
-                          <div className="mt-1 text-[11px] text-gray-600">
-                            Last: <span className="font-medium text-gray-800">₹{Number(lastPurchasePrice.unit_price || 0).toFixed(2)}</span>
+                          <div className="mt-1 text-[11px] text-[#7A6555]">
+                            Last: <span className="font-medium text-[#5E4635]">₹{Number(lastPurchasePrice.unit_price || 0).toFixed(2)}</span>
                           </div>
                         )}
                       </div>
@@ -1845,18 +1845,18 @@ function PRContent() {
                       onChange={(e) => setItemForm({ ...itemForm, specifications: e.target.value })}
                       placeholder="Specifications / Notes"
                       rows={2}
-                      className="w-full resize-y rounded-md border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-indigo-500"
+                      className="w-full resize-y rounded-md border border-[#D8C8AA] px-3 py-2 focus:ring-2 focus:ring-[#8B6F47]"
                     />
 
                     <div className="grid grid-cols-2 gap-3 mt-3">
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Delivery Terms (line)</label>
+                        <label className="block text-xs font-medium text-[#7A6555] mb-1">Delivery Terms (line)</label>
                         <input
                           type="text"
                           value={itemForm.deliveryTerms}
                           onChange={(e) => setItemForm({ ...itemForm, deliveryTerms: e.target.value })}
                           placeholder="e.g. FOB, CIF, Ex-Works"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
+                          className="w-full px-3 py-2 border border-[#D8C8AA] rounded-lg focus:ring-2 focus:ring-[#8B6F47] text-sm"
                         />
                       </div>
                     </div>
@@ -1866,7 +1866,7 @@ function PRContent() {
                   {items.length > 0 && (
                     <div className="border rounded-lg overflow-hidden">
                       <table className="w-full">
-                        <thead className="bg-gray-100">
+                        <thead className="bg-[#F5EFE3]">
                           <tr>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Item</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Vendor</th>
@@ -1886,7 +1886,7 @@ function PRContent() {
                           {items.map((item) => (
                             <tr key={item.id} className="border-t">
                               <td className="px-4 py-2">
-                                <div className="font-medium text-gray-900">{item.itemName}</div>
+                                <div className="font-medium text-[#4A3426]">{item.itemName}</div>
                               </td>
                               <td className="px-4 py-2">
                                 <SearchableSelect
@@ -1923,16 +1923,16 @@ function PRContent() {
                                 {(() => {
                                   const matchedItem = masterItems.find(mi => mi.code === item.itemCode);
                                   const uom = matchedItem ? resolveUomFromItem(matchedItem) : item.uom;
-                                  return uom ? <span className="ml-1 text-xs text-gray-600">{uom}</span> : null;
+                                  return uom ? <span className="ml-1 text-xs text-[#7A6555]">{uom}</span> : null;
                                 })()}
                               </td>
                               <td className="px-4 py-2">
                                 {item.estimatedPrice ? `₹${item.estimatedPrice.toFixed(2)}` : '-'}
                               </td>
-                              <td className="px-4 py-2 text-sm text-gray-600">
+                              <td className="px-4 py-2 text-sm text-[#7A6555]">
                                 {item.deliveryTerms || '-'}
                               </td>
-                              <td className="whitespace-pre-wrap px-4 py-2 text-sm text-gray-600">
+                              <td className="whitespace-pre-wrap px-4 py-2 text-sm text-[#7A6555]">
                                 {item.specifications || '-'}
                               </td>
                               <td className="px-4 py-2">
@@ -1957,7 +1957,7 @@ function PRContent() {
                           ))}
                         </tbody>
                       </table>
-                      <div className="flex justify-center border-t border-slate-200 bg-slate-50 px-3 py-2.5">
+                      <div className="flex justify-center border-t border-[#E8DCC4] bg-[#FAF9F6] px-3 py-2.5">
                         <ErpButton type="button" onClick={startNewLineItem} variant="secondary">
                           <Plus className="h-4 w-4" /> Add New Line Item
                         </ErpButton>
@@ -1971,17 +1971,17 @@ function PRContent() {
             {formSection === 'notes' && (
                 <section aria-labelledby="pr-notes-heading" className="space-y-3">
                   <div>
-                    <h3 id="pr-notes-heading" className="text-lg font-semibold text-slate-950">Notes and Instructions</h3>
-                    <p className="text-sm text-slate-500">Information that applies to the complete requisition.</p>
+                    <h3 id="pr-notes-heading" className="text-lg font-semibold text-[#4A3426]">Notes and Instructions</h3>
+                    <p className="text-sm text-[#7A6555]">Information that applies to the complete requisition.</p>
                   </div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-[#5E4635] mb-2">
                     Additional Notes
                   </label>
                   <textarea
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     rows={3}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-[#D8C8AA] rounded-lg focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
                     placeholder="Any additional information..."
                   />
                 </section>
@@ -1990,27 +1990,27 @@ function PRContent() {
             {formSection === 'review' && (
               <section aria-labelledby="pr-review-heading" className="space-y-5">
                 <div>
-                  <h3 id="pr-review-heading" className="text-lg font-semibold text-slate-950">Review Requisition</h3>
-                  <p className="text-sm text-slate-500">Confirm the request details before saving or submitting.</p>
+                  <h3 id="pr-review-heading" className="text-lg font-semibold text-[#4A3426]">Review Requisition</h3>
+                  <p className="text-sm text-[#7A6555]">Confirm the request details before saving or submitting.</p>
                 </div>
-                <dl className="grid grid-cols-2 gap-x-6 gap-y-4 border-y border-slate-200 py-4 lg:grid-cols-5">
-                  <div><dt className="text-xs font-medium text-slate-500">Department</dt><dd className="mt-1 font-semibold text-slate-900">{formData.department || 'Required'}</dd></div>
-                  <div><dt className="text-xs font-medium text-slate-500">Priority</dt><dd className="mt-1 font-semibold text-slate-900">{formData.priority}</dd></div>
-                  <div><dt className="text-xs font-medium text-slate-500">Required date</dt><dd className="mt-1 font-semibold text-slate-900">{formData.requiredDate || 'Required'}</dd></div>
-                  <div><dt className="text-xs font-medium text-slate-500">Line items</dt><dd className="mt-1 font-semibold text-slate-900">{items.length}</dd></div>
-                  <div><dt className="text-xs font-medium text-slate-500">Estimated value</dt><dd className="mt-1 font-semibold text-slate-900">{estimatedTotal.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</dd></div>
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-4 border-y border-[#E8DCC4] py-4 lg:grid-cols-5">
+                  <div><dt className="text-xs font-medium text-[#7A6555]">Department</dt><dd className="mt-1 font-semibold text-[#4A3426]">{formData.department || 'Required'}</dd></div>
+                  <div><dt className="text-xs font-medium text-[#7A6555]">Priority</dt><dd className="mt-1 font-semibold text-[#4A3426]">{formData.priority}</dd></div>
+                  <div><dt className="text-xs font-medium text-[#7A6555]">Required date</dt><dd className="mt-1 font-semibold text-[#4A3426]">{formData.requiredDate || 'Required'}</dd></div>
+                  <div><dt className="text-xs font-medium text-[#7A6555]">Line items</dt><dd className="mt-1 font-semibold text-[#4A3426]">{items.length}</dd></div>
+                  <div><dt className="text-xs font-medium text-[#7A6555]">Estimated value</dt><dd className="mt-1 font-semibold text-[#4A3426]">{estimatedTotal.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</dd></div>
                 </dl>
                 <div>
-                  <h4 className="mb-2 text-sm font-semibold text-slate-900">Items</h4>
+                  <h4 className="mb-2 text-sm font-semibold text-[#4A3426]">Items</h4>
                   {items.length === 0 ? (
-                    <button type="button" onClick={() => setFormSection('items')} className="text-sm font-semibold text-indigo-700 hover:text-indigo-900">Add at least one line item</button>
+                    <button type="button" onClick={() => setFormSection('items')} className="text-sm font-semibold text-[#8B6F47] hover:text-[#4A3426]">Add at least one line item</button>
                   ) : (
-                    <div className="overflow-hidden rounded-md border border-slate-200">
+                    <div className="overflow-hidden rounded-md border border-[#E8DCC4]">
                       <table className="w-full table-fixed">
-                        <thead className="bg-slate-50 text-left text-xs uppercase text-slate-600"><tr><th className="px-3 py-2">Item</th><th className="w-32 px-3 py-2 text-right">Quantity</th><th className="w-40 px-3 py-2 text-right">Amount</th></tr></thead>
-                        <tbody className="divide-y divide-slate-200">
+                        <thead className="bg-[#FAF9F6] text-left text-xs uppercase text-[#7A6555]"><tr><th className="px-3 py-2">Item</th><th className="w-32 px-3 py-2 text-right">Quantity</th><th className="w-40 px-3 py-2 text-right">Amount</th></tr></thead>
+                        <tbody className="divide-y divide-[#E8DCC4]">
                           {items.map((item) => (
-                            <tr key={item.id}><td className="px-3 py-2 text-sm font-medium text-slate-900">{item.itemName}</td><td className="px-3 py-2 text-right text-sm">{item.quantity} {item.uom}</td><td className="px-3 py-2 text-right text-sm font-semibold">{((item.quantity || 0) * (item.estimatedPrice || 0)).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</td></tr>
+                            <tr key={item.id}><td className="px-3 py-2 text-sm font-medium text-[#4A3426]">{item.itemName}</td><td className="px-3 py-2 text-right text-sm">{item.quantity} {item.uom}</td><td className="px-3 py-2 text-right text-sm font-semibold">{((item.quantity || 0) * (item.estimatedPrice || 0)).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</td></tr>
                           ))}
                         </tbody>
                       </table>
@@ -2018,8 +2018,8 @@ function PRContent() {
                   )}
                 </div>
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                  <div><p className="text-xs font-medium text-slate-500">Delivery address</p><p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{formData.deliveryAddress || 'Not specified'}</p></div>
-                  <div><p className="text-xs font-medium text-slate-500">Notes</p><p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{formData.notes || 'No additional notes'}</p></div>
+                  <div><p className="text-xs font-medium text-[#7A6555]">Delivery address</p><p className="mt-1 whitespace-pre-wrap text-sm text-[#5E4635]">{formData.deliveryAddress || 'Not specified'}</p></div>
+                  <div><p className="text-xs font-medium text-[#7A6555]">Notes</p><p className="mt-1 whitespace-pre-wrap text-sm text-[#5E4635]">{formData.notes || 'No additional notes'}</p></div>
                 </div>
               </section>
             )}
@@ -2029,20 +2029,20 @@ function PRContent() {
 
         {/* List View */}
         <div className="flex items-center justify-between pt-1">
-          <h2 className="text-sm font-semibold text-slate-900">
+          <h2 className="text-sm font-semibold text-[#4A3426]">
             {canApprovePR ? 'All Requisitions' : 'My Requisitions'}
           </h2>
         </div>
 
         {loadingRequisitions ? (
           <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-            <div className="p-6 text-center text-gray-500">
+            <div className="p-6 text-center text-[#7A6555]">
               <p>Loading requisitions...</p>
             </div>
           </div>
         ) : requisitions.length === 0 ? (
           <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-            <div className="p-6 text-center text-gray-500">
+            <div className="p-6 text-center text-[#7A6555]">
               <p className="text-lg mb-2">No purchase requisitions yet</p>
               <p className="text-sm">Click &ldquo;New Requisition&rdquo; to create your first purchase request</p>
             </div>
@@ -2104,30 +2104,30 @@ function PRContent() {
 
         {/* Full-screen PR workspace */}
         {showDetailModal && typeof document !== 'undefined' && createPortal(
-          <div className="fixed inset-0 z-[1000] h-[100dvh] w-screen overflow-hidden bg-slate-50">
+          <div className="fixed inset-0 z-[1000] h-[100dvh] w-screen overflow-hidden bg-[#FAF9F6]">
             <div className="flex h-full w-full flex-col bg-white">
               {loadingDetail ? (
                 <div className="flex flex-1 items-center justify-center p-8 text-center">
                   <div className="animate-pulse">
-                    <div className="h-4 bg-gray-200 rounded w-3/4 mx-auto mb-4"></div>
-                    <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto"></div>
-                    <p className="text-gray-600 mt-4">Loading PR details...</p>
+                    <div className="h-4 bg-[#E8DCC4] rounded w-3/4 mx-auto mb-4"></div>
+                    <div className="h-4 bg-[#E8DCC4] rounded w-1/2 mx-auto"></div>
+                    <p className="text-[#7A6555] mt-4">Loading PR details...</p>
                   </div>
                 </div>
               ) : selectedPR ? (
                 <>
                   {/* Sticky Header */}
-                  <div className="z-10 border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
+                  <div className="z-10 border-b border-[#E8DCC4] bg-white px-4 py-4 sm:px-6">
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-3">
-                          <h2 className="text-xl font-bold text-slate-950 sm:text-2xl">Purchase Requisition</h2>
+                          <h2 className="text-xl font-bold text-[#4A3426] sm:text-2xl">Purchase Requisition</h2>
                           <ErpStatusBadge
                             status={getPrWorkflowStatus(selectedPR)}
                             label={getPrWorkflowLabel(selectedPR)}
                           />
                         </div>
-                        <p className="mt-1 text-sm font-medium text-slate-600">{selectedPR.pr_number}</p>
+                        <p className="mt-1 text-sm font-medium text-[#7A6555]">{selectedPR.pr_number}</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         {(selectedPR.status === 'DRAFT' || selectedPR.status === 'SUBMITTED' || selectedPR.status === 'REJECTED') && canEditPR && (
@@ -2167,7 +2167,7 @@ function PRContent() {
                           </span>
                         )}
                         {selectedPR.status === 'SUBMITTED' && !canApprovePR && String(selectedPR.requested_by) !== currentUserId && (
-                          <span className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
+                          <span className="rounded border border-[#E8DCC4] bg-[#FAF9F6] px-3 py-2 text-sm font-medium text-[#7A6555]">
                             Approval access required
                           </span>
                         )}
@@ -2230,16 +2230,16 @@ function PRContent() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex-1 overflow-auto bg-slate-50 p-4 sm:p-6">
+                  <div className="flex-1 overflow-auto bg-[#FAF9F6] p-4 sm:p-6">
 
                   {/* PR Info */}
-                  <div className="mb-6 grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="mb-6 grid grid-cols-1 gap-4 rounded-lg border border-[#E8DCC4] bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
                     <div>
-                      <p className="text-sm text-gray-600">Department</p>
+                      <p className="text-sm text-[#7A6555]">Department</p>
                       <p className="font-semibold">{selectedPR.department}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Status</p>
+                      <p className="text-sm text-[#7A6555]">Status</p>
                       <ErpStatusBadge
                         status={getPrWorkflowStatus(selectedPR)}
                         label={getPrWorkflowLabel(selectedPR)}
@@ -2247,77 +2247,77 @@ function PRContent() {
                       />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Required Date</p>
+                      <p className="text-sm text-[#7A6555]">Required Date</p>
                       <p className="font-semibold">{new Date(selectedPR.required_date).toLocaleDateString()}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Priority</p>
+                      <p className="text-sm text-[#7A6555]">Priority</p>
                       <p className="font-semibold">{selectedPR.priority || 'MEDIUM'}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Purpose</p>
+                      <p className="text-sm text-[#7A6555]">Purpose</p>
                       <p className="font-semibold">{selectedPR.purpose || 'N/A'}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Request Date</p>
+                      <p className="text-sm text-[#7A6555]">Request Date</p>
                       <p className="font-semibold">{new Date(selectedPR.request_date).toLocaleDateString()}</p>
                     </div>
                     <div className="sm:col-span-2 lg:col-span-4">
-                      <p className="text-sm text-gray-600">Delivery Address</p>
+                      <p className="text-sm text-[#7A6555]">Delivery Address</p>
                       <p className="font-semibold whitespace-pre-line">{selectedPR.delivery_address || 'N/A'}</p>
                     </div>
                     {/* Hide UUID for requested_by until we implement user lookup */}
                     {selectedPR.approved_by && (
                       <div>
-                        <p className="text-sm text-gray-600">Approved By</p>
+                        <p className="text-sm text-[#7A6555]">Approved By</p>
                         <p className="font-semibold text-xs">{selectedPR.approved_by_name || 'Unknown User'}</p>
                       </div>
                     )}
                     {selectedPR.approved_at && (
                       <div>
-                        <p className="text-sm text-gray-600">Approved At</p>
+                        <p className="text-sm text-[#7A6555]">Approved At</p>
                         <p className="font-semibold">{new Date(selectedPR.approved_at).toLocaleDateString()}</p>
                       </div>
                     )}
                     <div>
-                      <p className="text-sm text-gray-600">RFQ Sent</p>
+                      <p className="text-sm text-[#7A6555]">RFQ Sent</p>
                       <p className="font-semibold">{Number(selectedPR.rfq_summary?.sentCount || 0)}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">RFQ Received</p>
+                      <p className="text-sm text-[#7A6555]">RFQ Received</p>
                       <p className="font-semibold">{Number(selectedPR.rfq_summary?.receivedCount || 0)}</p>
                     </div>
                     {selectedPR.rfq_summary?.nextFollowUpDate && (
                       <div>
-                        <p className="text-sm text-gray-600">Next Follow-up</p>
+                        <p className="text-sm text-[#7A6555]">Next Follow-up</p>
                         <p className="font-semibold">{new Date(selectedPR.rfq_summary.nextFollowUpDate).toLocaleDateString()}</p>
                       </div>
                     )}
                     {selectedPR.edit_count && selectedPR.edit_count > 0 && (
                       <div>
-                        <p className="text-sm text-gray-600">Edits</p>
+                        <p className="text-sm text-[#7A6555]">Edits</p>
                         <p className="font-semibold">{selectedPR.edit_count} time{selectedPR.edit_count !== 1 ? 's' : ''}</p>
                       </div>
                     )}
                     {selectedPR.last_edited_at && (
                       <div>
-                        <p className="text-sm text-gray-600">Last Edited</p>
+                        <p className="text-sm text-[#7A6555]">Last Edited</p>
                         <p className="font-semibold">{new Date(selectedPR.last_edited_at).toLocaleDateString()} {new Date(selectedPR.last_edited_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                       </div>
                     )}
                   </div>
 
                   {(approvalHistory.length > 0 || selectedPR.rejection_reason) && (
-                    <section className="mb-6 border-y border-slate-200 bg-white py-4" aria-labelledby="approval-history-heading">
+                    <section className="mb-6 border-y border-[#E8DCC4] bg-white py-4" aria-labelledby="approval-history-heading">
                       <div className="mb-3 flex items-center justify-between gap-3">
-                        <h3 id="approval-history-heading" className="text-sm font-semibold text-slate-950">Approval History</h3>
-                        <span className="text-xs text-slate-500">Current level {Number(selectedPR.current_approval_level || 0) + (selectedPR.status === 'SUBMITTED' ? 1 : 0)}</span>
+                        <h3 id="approval-history-heading" className="text-sm font-semibold text-[#4A3426]">Approval History</h3>
+                        <span className="text-xs text-[#7A6555]">Current level {Number(selectedPR.current_approval_level || 0) + (selectedPR.status === 'SUBMITTED' ? 1 : 0)}</span>
                       </div>
                       <ol className="grid grid-cols-1 gap-3 lg:grid-cols-3">
                         {approvalHistory.map((entry) => (
-                          <li key={entry.id} className="border-l-2 border-slate-300 pl-3">
-                            <p className="text-sm font-semibold text-slate-900">{entry.action.replaceAll('_', ' ')}</p>
-                            <p className="text-xs text-slate-500">{entry.actor_name} · {new Date(entry.created_at).toLocaleString()}</p>
+                          <li key={entry.id} className="border-l-2 border-[#D8C8AA] pl-3">
+                            <p className="text-sm font-semibold text-[#4A3426]">{entry.action.replaceAll('_', ' ')}</p>
+                            <p className="text-xs text-[#7A6555]">{entry.actor_name} · {new Date(entry.created_at).toLocaleString()}</p>
                             {entry.reason ? <p className="mt-1 whitespace-pre-wrap text-sm text-red-700">{entry.reason}</p> : null}
                           </li>
                         ))}
@@ -2330,7 +2330,7 @@ function PRContent() {
                     <h3 className="text-lg font-bold mb-3">Items</h3>
                     <div className="border rounded-lg overflow-x-auto">
                       <table className="w-full">
-                        <thead className="bg-gray-100">
+                        <thead className="bg-[#F5EFE3]">
                           <tr>
                             <th className="px-4 py-2 text-center text-sm font-semibold">S.No</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">SAS Part Number</th>
@@ -2381,14 +2381,14 @@ function PRContent() {
                                             return (
                                               <span
                                                 key={vendor.id}
-                                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium ${isPreferred ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-gray-200 bg-gray-50 text-gray-700'}`}
+                                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium ${isPreferred ? 'border-[#CDBB9D] bg-[#FAF6EE] text-[#5E4635]' : 'border-[#E8DCC4] bg-[#FAF9F6] text-[#5E4635]'}`}
                                               >
                                                 <span>{vendor.name}</span>
                                                 {isPreferred && <span>(Preferred)</span>}
                                                 <button
                                                   type="button"
                                                   onClick={() => removeItemVendor(item.id, vendor.id)}
-                                                  className="text-gray-500 hover:text-gray-900"
+                                                  className="text-[#7A6555] hover:text-[#4A3426]"
                                                   aria-label={`Remove ${vendor.name}`}
                                                 >
                                                   x
@@ -2398,7 +2398,7 @@ function PRContent() {
                                           })}
                                         </div>
                                       ) : (
-                                        <p className="text-xs text-gray-500">No vendors selected yet.</p>
+                                        <p className="text-xs text-[#7A6555]">No vendors selected yet.</p>
                                       )}
                                     </div>
                                   </td>
@@ -2415,25 +2415,25 @@ function PRContent() {
                                     <span className="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">PARTIAL</span>
                                   )}
                                   {(!item.po_conversion_status || item.po_conversion_status === 'PENDING') && (
-                                    <span className="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-600">PENDING</span>
+                                    <span className="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-[#F5EFE3] text-[#7A6555]">PENDING</span>
                                   )}
                                 </td>
                                 <td className="px-4 py-2 text-sm text-right">₹{(item.estimated_rate || 0).toFixed(2)}</td>
                                 <td className="px-4 py-2 text-sm text-right font-semibold">₹{((item.requested_qty || 0) * (item.estimated_rate || 0)).toFixed(2)}</td>
-                                <td className="px-4 py-2 text-sm text-gray-700">{item.delivery_terms || '-'}</td>
-                                <td className="px-4 py-2 text-sm text-gray-600">{item.remarks || '-'}</td>
+                                <td className="px-4 py-2 text-sm text-[#5E4635]">{item.delivery_terms || '-'}</td>
+                                <td className="px-4 py-2 text-sm text-[#7A6555]">{item.remarks || '-'}</td>
                               </tr>
                             ))
                           ) : (
                             <tr>
-                              <td colSpan={rfqPanelOpen ? 14 : 13} className="px-4 py-8 text-center text-gray-500">
+                              <td colSpan={rfqPanelOpen ? 14 : 13} className="px-4 py-8 text-center text-[#7A6555]">
                                 No items found in this requisition
                               </td>
                             </tr>
                           )}
                         </tbody>
                         {selectedPR.purchase_requisition_items && selectedPR.purchase_requisition_items.length > 0 && (
-                          <tfoot className="bg-gray-50 border-t-2">
+                          <tfoot className="bg-[#FAF9F6] border-t-2">
                             <tr>
                               <td colSpan={rfqPanelOpen ? 12 : 11} className="px-4 py-3 text-right font-bold">Total Amount:</td>
                               <td className="px-4 py-3 text-right font-bold text-lg">
@@ -2450,28 +2450,28 @@ function PRContent() {
 
 
                   {selectedPR.status !== 'DRAFT' && selectedPR.status !== 'REJECTED' && rfqPanelOpen && (
-                    <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
+                    <div className="mt-4 p-4 bg-[#FAF9F6] rounded-lg border">
                       <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-bold text-gray-900">Send RFQ to Vendors</h3>
+                        <h3 className="text-sm font-bold text-[#4A3426]">Send RFQ to Vendors</h3>
                         <button
                           onClick={() => setRfqPanelOpen(false)}
-                          className="text-gray-600 hover:text-gray-900 font-medium"
+                          className="text-[#7A6555] hover:text-[#4A3426] font-medium"
                         >
                           Hide
                         </button>
                       </div>
 
-                      <div className="mb-3 text-sm text-gray-600">
+                      <div className="mb-3 text-sm text-[#7A6555]">
                         Select vendors by typing part of the vendor name, similar to PO creation. Preferred vendors stay highlighted.
                       </div>
 
                       {rfqLoadingVendors && (
-                        <p className="text-sm text-gray-600">Loading vendors...</p>
+                        <p className="text-sm text-[#7A6555]">Loading vendors...</p>
                       )}
 
                       <div className="grid grid-cols-2 gap-3 mt-3">
                         <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1">Expected Response Date (optional)</label>
+                          <label className="block text-xs font-semibold text-[#5E4635] mb-1">Expected Response Date (optional)</label>
                           <DateInput
                             min={todayDate}
                             value={rfqResponseDate}
@@ -2480,7 +2480,7 @@ function PRContent() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1">Remarks (optional)</label>
+                          <label className="block text-xs font-semibold text-[#5E4635] mb-1">Remarks (optional)</label>
                           <input
                             type="text"
                             value={rfqRemarks}
@@ -2497,7 +2497,7 @@ function PRContent() {
                           disabled={rfqLoadingVendors || rfqPreviewLoading}
                           className={`px-6 py-2 rounded-lg transition-colors ${
                             rfqLoadingVendors || rfqPreviewLoading
-                              ? 'bg-gray-300 text-gray-600'
+                              ? 'bg-[#D8C8AA] text-[#7A6555]'
                               : 'bg-blue-600 text-white hover:bg-blue-700'
                           }`}
                         >
@@ -2511,10 +2511,10 @@ function PRContent() {
                 </>
               ) : (
                 <div className="p-8 text-center">
-                  <p className="text-gray-600">No data available</p>
+                  <p className="text-[#7A6555]">No data available</p>
                   <button
                     onClick={() => setShowDetailModal(false)}
-                    className="mt-4 px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                    className="mt-4 px-6 py-2 bg-[#D8C8AA] text-[#5E4635] rounded-lg hover:bg-[#9A8878] transition-colors"
                   >
                     Close
                   </button>
@@ -2526,31 +2526,31 @@ function PRContent() {
         )}
 
         {showRfqResponses && selectedPR && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[55] p-4">
+          <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-[55] p-4">
             <div className="bg-white rounded-lg shadow-xl w-full w-full max-w-none max-h-[90vh] overflow-hidden flex flex-col">
               <div className="border-b px-6 py-4 flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-900">RFQ Responses</h2>
-                  <p className="text-sm text-slate-600 mt-1">PR Number: {selectedPR.pr_number}</p>
+                  <h2 className="text-2xl font-bold text-[#4A3426]">RFQ Responses</h2>
+                  <p className="text-sm text-[#7A6555] mt-1">PR Number: {selectedPR.pr_number}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowRfqResponses(false)}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                  className="text-[#7A6555] hover:text-[#5E4635] text-2xl"
                 >
                   ×
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-6">
-                <div className="mb-4 rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm text-slate-700">
+                <div className="mb-4 rounded-lg bg-[#FAF9F6] border border-[#E8DCC4] px-4 py-3 text-sm text-[#5E4635]">
                   Use <span className="font-semibold">Record Response</span> to enter the vendor quote, lead time, remarks, follow-up date, and attachments for each RFQ.
                 </div>
 
                 {loadingRfqHistory ? (
-                  <p className="text-sm text-slate-600">Loading RFQ responses...</p>
+                  <p className="text-sm text-[#7A6555]">Loading RFQ responses...</p>
                 ) : rfqHistory.length === 0 ? (
-                  <p className="text-sm text-slate-600">No RFQ responses recorded yet.</p>
+                  <p className="text-sm text-[#7A6555]">No RFQ responses recorded yet.</p>
                 ) : (
                   <div className="overflow-x-auto border rounded-lg">
                     <table className="w-full text-sm">
@@ -2568,16 +2568,16 @@ function PRContent() {
                       <tbody>
                         {rfqHistory.map((rfq) => (
                           <tr key={rfq.id} className="border-b last:border-b-0">
-                            <td className="px-3 py-2 font-medium text-slate-900">{rfq.rfq_number}</td>
+                            <td className="px-3 py-2 font-medium text-[#4A3426]">{rfq.rfq_number}</td>
                             <td className="px-3 py-2">
                               <div>{rfq.vendor?.name || 'Vendor'}</div>
-                              <div className="text-xs text-slate-500">{rfq.vendor?.email || '-'}</div>
+                              <div className="text-xs text-[#7A6555]">{rfq.vendor?.email || '-'}</div>
                             </td>
                             <td className="px-3 py-2">
                               <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
                                 String(rfq.status).toUpperCase() === 'RECEIVED'
                                   ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-indigo-100 text-indigo-800'
+                                  : 'bg-[#F5EFE3] text-[#5E4635]'
                               }`}>
                                 {String(rfq.status || '').toUpperCase()}
                               </span>
@@ -2606,7 +2606,7 @@ function PRContent() {
                 <button
                   type="button"
                   onClick={() => setShowRfqResponses(false)}
-                  className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                  className="px-6 py-2 bg-[#D8C8AA] text-[#5E4635] rounded-lg hover:bg-[#9A8878] transition-colors"
                 >
                   Close
                 </button>
@@ -2616,19 +2616,19 @@ function PRContent() {
         )}
 
         {editingRfqResponse && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-[60] p-4">
             <div className="bg-white rounded-lg shadow-xl w-full w-full max-w-none max-h-[92vh] overflow-hidden flex flex-col">
               <div className="border-b px-6 py-4 flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-900">RFQ Response</h2>
-                  <p className="text-sm text-slate-600 mt-1">
+                  <h2 className="text-2xl font-bold text-[#4A3426]">RFQ Response</h2>
+                  <p className="text-sm text-[#7A6555] mt-1">
                     {editingRfqResponse.vendor?.name || 'Vendor'} · {editingRfqResponse.rfq_number}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setEditingRfqResponse(null)}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                  className="text-[#7A6555] hover:text-[#5E4635] text-2xl"
                 >
                   ×
                 </button>
@@ -2637,7 +2637,7 @@ function PRContent() {
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">Response Remarks</label>
+                    <label className="block text-sm font-semibold text-[#5E4635] mb-1">Response Remarks</label>
                     <textarea
                       rows={3}
                       value={rfqResponseForm.remarks}
@@ -2647,7 +2647,7 @@ function PRContent() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">Follow-up Date</label>
+                    <label className="block text-sm font-semibold text-[#5E4635] mb-1">Follow-up Date</label>
                     <DateInput
                       min={todayDate}
                       value={rfqResponseForm.followUpDate}
@@ -2656,7 +2656,7 @@ function PRContent() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">Follow-up Notes</label>
+                    <label className="block text-sm font-semibold text-[#5E4635] mb-1">Follow-up Notes</label>
                     <textarea
                       rows={3}
                       value={rfqResponseForm.followUpNotes}
@@ -2669,8 +2669,8 @@ function PRContent() {
 
                 <div>
                   <div className="flex items-center justify-between gap-4 mb-2">
-                    <label className="block text-sm font-semibold text-gray-700">Response Attachments</label>
-                    <label className="inline-flex items-center px-4 py-2 rounded-lg bg-slate-700 text-white hover:bg-slate-800 cursor-pointer text-sm">
+                    <label className="block text-sm font-semibold text-[#5E4635]">Response Attachments</label>
+                    <label className="inline-flex items-center px-4 py-2 rounded-lg bg-[#5E4635] text-white hover:bg-[#5E4635] cursor-pointer text-sm">
                       {uploadingRfqAttachments ? 'Uploading...' : 'Upload Attachments'}
                       <input
                         type="file"
@@ -2682,11 +2682,11 @@ function PRContent() {
                     </label>
                   </div>
                   {rfqResponseForm.attachments.length === 0 ? (
-                    <p className="text-sm text-gray-500">No attachments uploaded yet.</p>
+                    <p className="text-sm text-[#7A6555]">No attachments uploaded yet.</p>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       {rfqResponseForm.attachments.map((attachment, index) => (
-                        <div key={`${attachment.url}-${index}`} className="flex items-center justify-between border rounded-lg px-3 py-2 text-sm bg-gray-50">
+                        <div key={`${attachment.url}-${index}`} className="flex items-center justify-between border rounded-lg px-3 py-2 text-sm bg-[#FAF9F6]">
                           <a href={attachment.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-900 truncate pr-3">
                             {attachment.name}
                           </a>
@@ -2710,7 +2710,7 @@ function PRContent() {
 
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[900px] text-sm border rounded-lg overflow-hidden">
-                    <thead className="bg-gray-100">
+                    <thead className="bg-[#F5EFE3]">
                       <tr>
                         <th className="px-3 py-2 text-left">Item</th>
                         <th className="px-3 py-2 text-right">Requested</th>
@@ -2724,8 +2724,8 @@ function PRContent() {
                       {rfqResponseForm.items.map((item, index) => (
                         <tr key={`${item.prItemId}-${index}`} className="border-t">
                           <td className="px-3 py-2">
-                            <div className="font-medium text-gray-900">{item.itemCode || '-'}</div>
-                            <div className="text-xs text-gray-500">{item.itemName}</div>
+                            <div className="font-medium text-[#4A3426]">{item.itemCode || '-'}</div>
+                            <div className="text-xs text-[#7A6555]">{item.itemName}</div>
                           </td>
                           <td className="px-3 py-2 text-right">{item.requestedQty}</td>
                           <td className="px-3 py-2 text-center">{item.uom}</td>
@@ -2792,7 +2792,7 @@ function PRContent() {
                 <button
                   type="button"
                   onClick={() => setEditingRfqResponse(null)}
-                  className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                  className="px-6 py-2 bg-[#D8C8AA] text-[#5E4635] rounded-lg hover:bg-[#9A8878] transition-colors"
                 >
                   Cancel
                 </button>
@@ -2801,7 +2801,7 @@ function PRContent() {
                   onClick={saveRfqResponse}
                   disabled={savingRfqResponse}
                   className={`px-6 py-2 rounded-lg transition-colors ${
-                    savingRfqResponse ? 'bg-gray-300 text-gray-600' : 'bg-green-600 text-white hover:bg-green-700'
+                    savingRfqResponse ? 'bg-[#D8C8AA] text-[#7A6555]' : 'bg-green-600 text-white hover:bg-green-700'
                   }`}
                 >
                   {savingRfqResponse ? 'Saving...' : 'Save RFQ Response'}
@@ -2813,17 +2813,17 @@ function PRContent() {
 
         {/* RFQ Email Preview Modal */}
         {showRfqPreview && rfqPreviewData && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl w-full w-full max-w-none max-h-[95vh] overflow-auto">
               <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-indigo-900">RFQ Email Preview</h2>
+                <h2 className="text-2xl font-bold text-[#4A3426]">RFQ Email Preview</h2>
                 <button
                   type="button"
                   onClick={() => {
                     setShowRfqPreview(false);
                     setRfqPreviewIndex(0);
                   }}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                  className="text-[#7A6555] hover:text-[#5E4635] text-2xl"
                 >
                   ×
                 </button>
@@ -2850,12 +2850,12 @@ function PRContent() {
                         <div className="md:col-span-1">
                           <h3 className="text-lg font-bold mb-2">Recipients</h3>
                           <div className="border rounded-lg overflow-hidden">
-                            <div className="bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700">
+                            <div className="bg-[#FAF9F6] px-3 py-2 text-xs font-semibold text-[#5E4635]">
                               Select vendor
                             </div>
                             <div className="max-h-72 overflow-y-auto divide-y">
                               {previews.length === 0 ? (
-                                <div className="p-3 text-sm text-gray-600">No preview data available.</div>
+                                <div className="p-3 text-sm text-[#7A6555]">No preview data available.</div>
                               ) : (
                                 previews.map((p: any, idx: number) => {
                                   const active = idx === rfqPreviewIndex;
@@ -2864,14 +2864,14 @@ function PRContent() {
                                       key={`${String(p?.to || '')}-${idx}`}
                                       type="button"
                                       onClick={() => setRfqPreviewIndex(idx)}
-                                      className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
-                                        active ? 'bg-indigo-50' : ''
+                                      className={`w-full text-left px-3 py-2 hover:bg-[#FAF9F6] ${
+                                        active ? 'bg-[#FAF6EE]' : ''
                                       }`}
                                     >
-                                      <div className="text-sm font-semibold text-gray-900">
+                                      <div className="text-sm font-semibold text-[#4A3426]">
                                         {p?.vendor_name || 'Vendor'}
                                       </div>
-                                      <div className="text-xs text-gray-600">{String(p?.to || '')}</div>
+                                      <div className="text-xs text-[#7A6555]">{String(p?.to || '')}</div>
                                     </button>
                                   );
                                 })
@@ -2884,12 +2884,12 @@ function PRContent() {
                         <div className="md:col-span-2 space-y-3">
                           <h3 className="text-lg font-bold">Email</h3>
                           {!current ? (
-                            <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-700">
+                            <div className="bg-[#FAF9F6] p-4 rounded-lg text-sm text-[#5E4635]">
                               Select a recipient to preview the email.
                             </div>
                           ) : (
                             <>
-                              <div className="bg-gray-50 p-4 rounded-lg text-sm space-y-3">
+                              <div className="bg-[#FAF9F6] p-4 rounded-lg text-sm space-y-3">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                   <label className="block">
                                     <span className="font-semibold">To</span>
@@ -2942,7 +2942,7 @@ function PRContent() {
                                     disabled={rfqPreviewLoading}
                                     className={`px-4 py-2 rounded-lg transition-colors text-sm ${
                                       rfqPreviewLoading
-                                        ? 'bg-gray-300 text-gray-600'
+                                        ? 'bg-[#D8C8AA] text-[#7A6555]'
                                         : 'bg-blue-600 text-white hover:bg-blue-700'
                                     }`}
                                   >
@@ -2990,7 +2990,7 @@ function PRContent() {
                             return (
                               <div key={vendor.id} className="mb-3 last:mb-0">
                                 <p className="font-semibold text-sm">{vendor.name}:</p>
-                                <ul className="ml-4 text-sm text-gray-700">
+                                <ul className="ml-4 text-sm text-[#5E4635]">
                                   {vendorItems.map((iv: any) => (
                                     <li key={iv.item.id}>
                                       • {iv.item.item_name} (Qty: {iv.item.requested_qty})
@@ -3013,7 +3013,7 @@ function PRContent() {
                     setShowRfqPreview(false);
                     setRfqPreviewIndex(0);
                   }}
-                  className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                  className="px-6 py-2 bg-[#D8C8AA] text-[#5E4635] rounded-lg hover:bg-[#9A8878] transition-colors"
                 >
                   Cancel
                 </button>
@@ -3022,7 +3022,7 @@ function PRContent() {
                   disabled={rfqSending}
                   className={`px-6 py-2 rounded-lg transition-colors ${
                     rfqSending
-                      ? 'bg-gray-300 text-gray-600'
+                      ? 'bg-[#D8C8AA] text-[#7A6555]'
                       : 'bg-green-600 text-white hover:bg-green-700'
                   }`}
                 >
@@ -3045,9 +3045,9 @@ function PRContent() {
         formatRecord={(data) => (
           <div className="text-sm">
             <p className="font-semibold">PR #{data.pr_number}</p>
-            <p className="text-xs text-gray-600">Department: {data.department}</p>
-            <p className="text-xs text-gray-600">Items: {data.purchase_requisition_items?.length || 0}</p>
-            <p className="text-xs text-gray-600">Status: {data.status}</p>
+            <p className="text-xs text-[#7A6555]">Department: {data.department}</p>
+            <p className="text-xs text-[#7A6555]">Items: {data.purchase_requisition_items?.length || 0}</p>
+            <p className="text-xs text-[#7A6555]">Status: {data.status}</p>
           </div>
         )}
       />

@@ -217,8 +217,8 @@ const FILTER_VERIFICATION_OPTIONS = [
 ];
 
 const inputClass =
-  "min-h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-100";
-const labelClass = "mb-1.5 block text-sm font-medium text-slate-700";
+  "min-h-10 w-full rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm text-[#4A3426] outline-none transition focus:border-[#8B6F47] focus:ring-2 focus:ring-[#F5EFE3] disabled:bg-[#F5EFE3]";
+const labelClass = "mb-1.5 block text-sm font-medium text-[#5E4635]";
 
 function createEmptyContact(isDefault = false): VendorContactForm {
   return { salutation: "", name: "", phone: "", email: "", isDefault };
@@ -337,9 +337,9 @@ function DetailField({
   value?: React.ReactNode;
 }) {
   return (
-    <div className="min-w-0 border-b border-slate-100 py-2.5 last:border-b-0">
-      <div className="text-xs font-medium text-slate-500">{label}</div>
-      <div className="mt-0.5 break-words text-sm font-medium text-slate-900">
+    <div className="min-w-0 border-b border-[#F5EFE3] py-2.5 last:border-b-0">
+      <div className="text-xs font-medium text-[#7A6555]">{label}</div>
+      <div className="mt-0.5 break-words text-sm font-medium text-[#4A3426]">
         {value || "-"}
       </div>
     </div>
@@ -354,10 +354,10 @@ function SectionTitle({
   description?: string;
 }) {
   return (
-    <div className="mb-4 border-b border-slate-200 pb-2">
-      <h3 className="text-base font-semibold text-slate-950">{title}</h3>
+    <div className="mb-4 border-b border-[#E8DCC4] pb-2">
+      <h3 className="text-base font-semibold text-[#4A3426]">{title}</h3>
       {description ? (
-        <p className="mt-0.5 text-xs text-slate-500">{description}</p>
+        <p className="mt-0.5 text-xs text-[#7A6555]">{description}</p>
       ) : null}
     </div>
   );
@@ -685,7 +685,7 @@ export default function VendorsPage() {
         minWidth: 110,
         cell: (vendor) => (
           <button
-            className="font-semibold text-indigo-700 hover:underline"
+            className="font-semibold text-[#8B6F47] hover:underline"
             onClick={() => setViewingVendor(vendor)}
           >
             {vendor.code || "-"}
@@ -702,8 +702,8 @@ export default function VendorsPage() {
           `${vendor.name} ${vendor.legal_name} ${vendor.tax_id || ""}`,
         cell: (vendor) => (
           <div>
-            <div className="font-semibold text-slate-950">{vendor.name}</div>
-            <div className="text-xs text-slate-500">
+            <div className="font-semibold text-[#4A3426]">{vendor.name}</div>
+            <div className="text-xs text-[#7A6555]">
               {vendor.legal_name || vendor.tax_id || "-"}
             </div>
           </div>
@@ -728,7 +728,7 @@ export default function VendorsPage() {
         cell: (vendor) => (
           <div>
             <div>{vendor.contact_person || "-"}</div>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-[#7A6555]">
               {vendor.email || vendor.phone || ""}
             </div>
           </div>
@@ -927,10 +927,10 @@ export default function VendorsPage() {
 
       <section>
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-950">
+          <h2 className="text-base font-semibold text-[#4A3426]">
             Vendor Master
           </h2>
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-[#7A6555]">
             {filteredVendors.length} records
           </span>
         </div>
@@ -990,7 +990,7 @@ export default function VendorsPage() {
       >
         {viewingVendor ? (
           <div className="mx-auto w-full max-w-[1600px] space-y-6">
-            <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-3 border-b border-slate-200 bg-white px-4 pb-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-3 border-b border-[#E8DCC4] bg-white px-4 pb-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">
                 <ErpStatusBadge
                   status={viewingVendor.is_active ? "ACTIVE" : "INACTIVE"}
@@ -1109,9 +1109,9 @@ export default function VendorsPage() {
 
             <section>
               <SectionTitle title="Contacts" />
-              <div className="overflow-x-auto rounded-md border border-slate-200">
+              <div className="overflow-x-auto rounded-md border border-[#E8DCC4]">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                  <thead className="bg-[#FAF9F6] text-left text-xs uppercase text-[#7A6555]">
                     <tr>
                       <th className="px-3 py-2">Name</th>
                       <th className="px-3 py-2">Phone</th>
@@ -1119,7 +1119,7 @@ export default function VendorsPage() {
                       <th className="px-3 py-2">Default</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-[#F5EFE3]">
                     {(viewingVendor.contacts?.length
                       ? viewingVendor.contacts
                       : [
@@ -1275,7 +1275,7 @@ export default function VendorsPage() {
       >
         <div className="mx-auto w-full max-w-[1600px]">
           <nav
-            className="sticky -top-3 z-20 -mx-4 -mt-3 mb-5 overflow-x-auto border-b border-slate-200 bg-white px-4"
+            className="sticky -top-3 z-20 -mx-4 -mt-3 mb-5 overflow-x-auto border-b border-[#E8DCC4] bg-white px-4"
             aria-label="Vendor form sections"
           >
             <div className="flex min-w-max gap-6">
@@ -1284,7 +1284,7 @@ export default function VendorsPage() {
                   key={section.id}
                   type="button"
                   onClick={() => setFormSection(section.id)}
-                  className={`border-b-2 px-1 py-3 text-sm font-semibold ${formSection === section.id ? "border-indigo-700 text-indigo-800" : "border-transparent text-slate-500 hover:text-slate-900"}`}
+                  className={`border-b-2 px-1 py-3 text-sm font-semibold ${formSection === section.id ? "border-[#8B6F47] text-[#5E4635]" : "border-transparent text-[#7A6555] hover:text-[#4A3426]"}`}
                 >
                   {section.label}
                 </button>
@@ -1357,7 +1357,7 @@ export default function VendorsPage() {
                     }
                   />
                 </div>
-                <label className="flex min-h-10 items-center gap-3 rounded-md border border-slate-200 px-3">
+                <label className="flex min-h-10 items-center gap-3 rounded-md border border-[#E8DCC4] px-3">
                   <input
                     type="checkbox"
                     checked={form.isActive}
@@ -1365,7 +1365,7 @@ export default function VendorsPage() {
                       setForm({ ...form, isActive: event.target.checked })
                     }
                   />
-                  <span className="text-sm font-medium text-slate-700">
+                  <span className="text-sm font-medium text-[#5E4635]">
                     Active vendor
                   </span>
                 </label>
@@ -1518,7 +1518,7 @@ export default function VendorsPage() {
                 {form.contacts.map((contact, index) => (
                   <div
                     key={`contact-${index}`}
-                    className="rounded-md border border-slate-200 p-4"
+                    className="rounded-md border border-[#E8DCC4] p-4"
                   >
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <div>
@@ -1733,7 +1733,7 @@ export default function VendorsPage() {
               />
               <div className="grid gap-8 lg:grid-cols-2">
                 <div>
-                  <h4 className="mb-2 text-sm font-semibold text-slate-950">
+                  <h4 className="mb-2 text-sm font-semibold text-[#4A3426]">
                     Business & Tax
                   </h4>
                   <DetailField
@@ -1764,7 +1764,7 @@ export default function VendorsPage() {
                   />
                 </div>
                 <div>
-                  <h4 className="mb-2 text-sm font-semibold text-slate-950">
+                  <h4 className="mb-2 text-sm font-semibold text-[#4A3426]">
                     Commercial & Contact
                   </h4>
                   <DetailField
@@ -1810,7 +1810,7 @@ export default function VendorsPage() {
         formatRecord={(data) => (
           <div className="text-sm">
             <p className="font-semibold">{data.name || data.legal_name}</p>
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-[#7A6555]">
               GST: {data.tax_id || "N/A"}
             </p>
           </div>

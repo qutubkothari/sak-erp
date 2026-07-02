@@ -159,7 +159,7 @@ export default function DashboardLayout({
 
   return (
     <SecurityWrapper>
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <div className="min-h-screen bg-[#FAF9F6] dark:bg-[#2B211B]">
         {/* Command palette — global Cmd+K */}
         <CommandPalette />
         {/* Confirm dialog portal */}
@@ -174,7 +174,7 @@ export default function DashboardLayout({
         >
           {/* Top sub-header with breadcrumbs */}
           {showBreadcrumbs && (
-            <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/70 backdrop-blur-xl px-4 lg:px-6 py-3 flex items-center shadow-sm">
+            <div className="sticky top-0 z-30 border-b border-[#E8DCC4] bg-white/90 backdrop-blur-xl px-4 lg:px-6 py-3 flex items-center shadow-sm">
               <Breadcrumbs />
             </div>
           )}
