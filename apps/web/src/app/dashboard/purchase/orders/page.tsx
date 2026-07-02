@@ -1774,31 +1774,95 @@ function PurchaseOrdersContent() {
       // Fetch related data in parallel
       const [grnsData, advancesData, vendorBalanceData] = await Promise.all([
         apiClient.get<any[]>(`/purchase/grn?poId=${po.id}`).catch(() => []),
-        apiClient.get<any[]>(`/purchase/debit-notes/po-advances`).catch(() => []),
+        apiClient.get<any[]>(`/purchase/debit-notes/advances?po_id=${po.id}`).catch(() => []),
         po.vendor?.id ? apiClient.get<any>(`/purchase/debit-notes/vendor/${po.vendor.id}/advance-balance`).catch(() => null) : Promise.resolve(null),
       ]);
 
-      // Filter advances for this PO
-      const poAdvances = (advancesData || []).filter((a: any) => a.po_id === po.id);
+      const poAdvances = advancesData || [];
+      const grnIds = (grnsData || []).map((grn: any) => grn.id).filter(Boolean);
+      const debitNotesData = po.vendor?.id
+        ? await apiClient.get<any[]>(`/purchase/debit-notes?vendor_id=${po.vendor.id}`).catch(() => [])
+        : [];
+      const poDebitNotes = (debitNotesData || []).filter((note: any) => grnIds.includes(note.grn_id || note.grn?.id));
 
       // Process GRNs to get payment entries for each
       const grnsWithPayments = await Promise.all(
         (grnsData || []).map(async (grn: any) => {
           try {
             const paymentEntries = await apiClient.get<any[]>(`/purchase/debit-notes/grn/${grn.id}/payment-entries`).catch(() => []);
-            return { ...grn, payment_entries: paymentEntries || [] };
+            const normalizedEntries = Array.isArray(paymentEntries) ? [...paymentEntries] : [];
+            const recordedEntryAmount = normalizedEntries.reduce((sum: number, entry: any) => sum + Number(entry.amount || 0), 0);
+            const aggregatePaidAmount = Number(grn.paid_amount || 0);
+
+            // Older AP records stored settlement only on the GRN. Preserve that
+            // history in the PO trail without duplicating newer payment entries.
+            if (aggregatePaidAmount > recordedEntryAmount + 0.009) {
+              normalizedEntries.push({
+                id: `grn-aggregate-${grn.id}`,
+                entry_type: 'RECORDED_PAYMENT',
+                amount: aggregatePaidAmount - recordedEntryAmount,
+                payment_date: grn.payment_date || grn.updated_at || grn.grn_date,
+                payment_method: grn.payment_method || 'Recorded settlement',
+                payment_reference: grn.payment_reference || null,
+                payment_notes: grn.payment_notes || 'Payment recorded against supplier invoice',
+                tds_amount: 0,
+                short_payment_amount: 0,
+              });
+            }
+
+            const debitNotes = poDebitNotes.filter((note: any) => (note.grn_id || note.grn?.id) === grn.id);
+            const netPayable = Number(grn.net_payable_amount ?? grn.gross_amount ?? 0);
+            const paidAmount = Number(grn.paid_amount || normalizedEntries.reduce((sum: number, entry: any) => sum + Number(entry.amount || 0), 0));
+            const tdsAmount = Number(grn.tds_amount || 0);
+            const shortAmount = Number(grn.short_payment_amount || 0);
+
+            return {
+              ...grn,
+              payment_entries: normalizedEntries.sort((a: any, b: any) => new Date(a.payment_date || 0).getTime() - new Date(b.payment_date || 0).getTime()),
+              debit_notes: debitNotes,
+              settlement: {
+                net_payable: netPayable,
+                paid: paidAmount,
+                tds: tdsAmount,
+                short_payment: shortAmount,
+                outstanding: Math.max(0, netPayable - paidAmount - tdsAmount - shortAmount),
+              },
+            };
           } catch {
-            return { ...grn, payment_entries: [] };
+            return { ...grn, payment_entries: [], debit_notes: [], settlement: null };
           }
         })
       );
+
+      const financialSummary = grnsWithPayments.reduce((summary: any, grn: any) => {
+        const settlement = grn.settlement || {};
+        summary.invoiced += Number(settlement.net_payable || 0);
+        summary.paid += Number(settlement.paid || 0);
+        summary.tds += Number(settlement.tds || 0);
+        summary.shortPayment += Number(settlement.short_payment || 0);
+        summary.outstanding += Number(settlement.outstanding || 0);
+        summary.paymentCount += grn.payment_entries?.length || 0;
+        return summary;
+      }, {
+        poValue: Number(po.total_amount || 0),
+        invoiced: 0,
+        paid: 0,
+        tds: 0,
+        shortPayment: 0,
+        outstanding: 0,
+        paymentCount: 0,
+        advancePaid: poAdvances.reduce((sum: number, advance: any) => sum + Number(advance.amount || 0), 0),
+        debitNotes: poDebitNotes.reduce((sum: number, note: any) => sum + Number(note.total_amount || 0), 0),
+      });
 
       setTrailData({
         po,
         pr: po.pr,
         grns: grnsWithPayments,
         advances: poAdvances,
+        debitNotes: poDebitNotes,
         vendorAdvanceBalance: vendorBalanceData,
+        financialSummary,
       });
       setShowTrailModal(true);
     } catch (error) {
@@ -4701,7 +4765,40 @@ function PurchaseOrdersContent() {
                           <span className="text-gray-500">Items:</span>
                           <p className="font-medium">{trailPO.purchase_order_items?.length || 0}</p>
                         </div>
+                        <div>
+                          <span className="text-gray-500">Approved By:</span>
+                          <p className="font-medium">{(trailPO as any).approved_by_name || 'Not approved'}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Approved On:</span>
+                          <p className="font-medium">{(trailPO as any).approved_at ? new Date((trailPO as any).approved_at).toLocaleString() : '-'}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Sent to Supplier:</span>
+                          <p className="font-medium">{(trailPO as any).sent_at ? new Date((trailPO as any).sent_at).toLocaleString() : 'Not sent'}</p>
+                        </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Financial reconciliation */}
+                  <div className="border-l-4 border-[#8B6F47] pl-4">
+                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[#5E4635]">Financial Reconciliation</h3>
+                    <div className="grid grid-cols-2 gap-px overflow-hidden rounded border border-[#E8DCC4] bg-[#E8DCC4] md:grid-cols-4 xl:grid-cols-7">
+                      {[
+                        ['PO Value', trailData.financialSummary?.poValue],
+                        ['Invoiced', trailData.financialSummary?.invoiced],
+                        ['Supplier Payments', trailData.financialSummary?.paid],
+                        ['Advances', trailData.financialSummary?.advancePaid],
+                        ['Debit Notes', trailData.financialSummary?.debitNotes],
+                        ['TDS / Short Pay', Number(trailData.financialSummary?.tds || 0) + Number(trailData.financialSummary?.shortPayment || 0)],
+                        ['Outstanding', trailData.financialSummary?.outstanding],
+                      ].map(([label, value]) => (
+                        <div key={String(label)} className="bg-white p-3">
+                          <div className="text-xs font-medium text-[#7A6555]">{label}</div>
+                          <div className="mt-1 text-base font-bold tabular-nums text-[#4A3426]">₹{fmtINR(Number(value || 0))}</div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
@@ -4755,7 +4852,7 @@ function PurchaseOrdersContent() {
                               </div>
                             </div>
                             {/* Payment Entries for this GRN */}
-                            {grn.payment_entries?.length > 0 && (
+                            {false && grn.payment_entries?.length > 0 && (
                               <div className="mt-3 pt-3 border-t border-green-200">
                                 <div className="flex justify-between items-center mb-2">
                                   <h5 className="text-xs font-bold text-green-700">💳 Payments:</h5>
@@ -4796,6 +4893,116 @@ function PurchaseOrdersContent() {
                     ) : (
                       <div className="bg-gray-50 rounded-lg p-4 text-gray-500 italic">
                         No GRNs received yet
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Supplier invoices and settlements */}
+                  <div className="border-l-4 border-emerald-600 pl-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-emerald-800">
+                        Supplier Invoices & Settlements
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800">{trailData.grns?.length || 0}</span>
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowTrailModal(false);
+                          router.push('/dashboard/accounts/payables');
+                        }}
+                        className="text-xs font-medium text-[#8B6F47] hover:text-[#5E4635] hover:underline"
+                      >
+                        Open Accounts Payable
+                      </button>
+                    </div>
+                    {trailData.grns?.length > 0 ? (
+                      <div className="space-y-3">
+                        {trailData.grns.map((grn: any) => {
+                          const settlement = grn.settlement || {};
+                          return (
+                            <div key={`invoice-${grn.id}`} className="border border-[#E8DCC4] bg-white">
+                              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E8DCC4] bg-[#FAF9F6] px-4 py-3">
+                                <div>
+                                  <div className="text-xs font-medium text-[#7A6555]">Supplier Invoice</div>
+                                  <div className="font-semibold text-[#4A3426]">{grn.invoice_number || 'Invoice number not recorded'}</div>
+                                  <div className="text-xs text-[#7A6555]">Against {grn.grn_number}</div>
+                                </div>
+                                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                                  grn.payment_status === 'PAID'
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                    : grn.payment_status === 'PARTIAL'
+                                      ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                      : 'border-[#E8DCC4] bg-white text-[#6F4E37]'
+                                }`}>
+                                  {grn.payment_status || 'UNPAID'}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4 px-4 py-3 text-sm md:grid-cols-4 xl:grid-cols-7">
+                                <div><span className="text-xs text-gray-500">Invoice Date</span><p className="font-medium">{grn.invoice_date ? new Date(grn.invoice_date).toLocaleDateString() : '-'}</p></div>
+                                <div><span className="text-xs text-gray-500">Gross</span><p className="font-medium">₹{fmtINR(Number(grn.gross_amount || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Tax</span><p className="font-medium">₹{fmtINR(Number(grn.tax_amount || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Debit Notes</span><p className="font-medium">₹{fmtINR(Number(grn.debit_note_amount || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Net Payable</span><p className="font-semibold">₹{fmtINR(Number(settlement.net_payable || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Settled</span><p className="font-semibold text-emerald-700">₹{fmtINR(Number(settlement.paid || 0) + Number(settlement.tds || 0) + Number(settlement.short_payment || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Outstanding</span><p className="font-bold text-amber-700">₹{fmtINR(Number(settlement.outstanding || 0))}</p></div>
+                              </div>
+
+                              <div className="border-t border-[#E8DCC4] px-4 py-3">
+                                <div className="mb-2 text-xs font-semibold uppercase text-[#7A6555]">Supplier Payments / Remittance</div>
+                                {grn.payment_entries?.length > 0 ? (
+                                  <div className="overflow-x-auto">
+                                    <table className="min-w-full text-sm">
+                                      <thead className="bg-[#FAF9F6] text-left text-xs text-[#7A6555]">
+                                        <tr>
+                                          <th className="px-3 py-2">Date</th>
+                                          <th className="px-3 py-2">Type</th>
+                                          <th className="px-3 py-2">Method</th>
+                                          <th className="px-3 py-2">Reference</th>
+                                          <th className="px-3 py-2 text-right">Payment</th>
+                                          <th className="px-3 py-2 text-right">TDS</th>
+                                          <th className="px-3 py-2 text-right">Short Pay</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-[#E8DCC4]">
+                                        {grn.payment_entries.map((payment: any) => (
+                                          <tr key={payment.id}>
+                                            <td className="px-3 py-2 whitespace-nowrap">{payment.payment_date ? new Date(payment.payment_date).toLocaleDateString() : '-'}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap">{payment.entry_type === 'RECORDED_PAYMENT' ? 'Recorded Payment' : payment.entry_type || 'Payment'}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap">{payment.payment_method || '-'}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap">{payment.payment_reference || '-'}</td>
+                                            <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">₹{fmtINR(Number(payment.amount || 0))}</td>
+                                            <td className="px-3 py-2 text-right whitespace-nowrap">₹{fmtINR(Number(payment.tds_amount || 0))}</td>
+                                            <td className="px-3 py-2 text-right whitespace-nowrap">₹{fmtINR(Number(payment.short_payment_amount || 0))}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                ) : (
+                                  <div className="text-sm text-[#7A6555]">No supplier payment has been recorded for this invoice.</div>
+                                )}
+                              </div>
+
+                              {grn.debit_notes?.length > 0 && (
+                                <div className="border-t border-[#E8DCC4] px-4 py-3">
+                                  <div className="mb-2 text-xs font-semibold uppercase text-[#7A6555]">Debit Notes / Adjustments</div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {grn.debit_notes.map((note: any) => (
+                                      <span key={note.id} className="border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-800">
+                                        {note.debit_note_number}: ₹{fmtINR(Number(note.total_amount || 0))} ({note.status})
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="border border-[#E8DCC4] bg-white p-4 text-sm text-[#7A6555]">
+                        No supplier invoices are available because no GRN has been posted for this PO.
                       </div>
                     )}
                   </div>
@@ -4890,7 +5097,7 @@ function PurchaseOrdersContent() {
                   {/* Summary */}
                   <div className="bg-gray-100 rounded-lg p-4 mt-6">
                     <h3 className="text-sm font-bold text-gray-700 mb-3">📊 Trail Summary</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                    <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4 xl:grid-cols-7">
                       <div className="text-center">
                         <div className="text-2xl font-bold text-blue-600">{trailData.pr ? '1' : '0'}</div>
                         <div className="text-gray-500">PRs</div>
@@ -4904,6 +5111,10 @@ function PurchaseOrdersContent() {
                         <div className="text-gray-500">GRNs</div>
                       </div>
                       <div className="text-center">
+                        <div className="text-2xl font-bold text-emerald-700">{trailData.grns?.filter((g: any) => g.invoice_number).length || 0}</div>
+                        <div className="text-gray-500">Supplier Invoices</div>
+                      </div>
+                      <div className="text-center">
                         <div className="text-2xl font-bold text-[#8B6F47]">
                           {trailData.advances?.length || 0}
                         </div>
@@ -4911,9 +5122,13 @@ function PurchaseOrdersContent() {
                       </div>
                       <div className="text-center">
                         <div className="text-2xl font-bold text-orange-600">
-                          {trailData.grns?.reduce((t: number, g: any) => t + (g.payment_entries?.length || 0), 0) || 0}
+                          {trailData.financialSummary?.paymentCount || 0}
                         </div>
-                        <div className="text-gray-500">Payments</div>
+                        <div className="text-gray-500">Supplier Payments</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-red-700">{trailData.debitNotes?.length || 0}</div>
+                        <div className="text-gray-500">Debit Notes</div>
                       </div>
                     </div>
                   </div>
