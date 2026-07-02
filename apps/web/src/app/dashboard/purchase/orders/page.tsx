@@ -2771,15 +2771,15 @@ function PurchaseOrdersContent() {
       {showModal && (
         <FullScreenPortal>
         <div className="fixed inset-0 z-[1000] flex h-[100dvh] w-screen flex-col overflow-hidden bg-white">
-            <div className="z-20 flex shrink-0 items-center justify-between gap-4 border-b border-[#E8DCC4] bg-white px-5 py-3">
-              <h2 className="text-xl font-bold text-[#4A3426]">
+            <div className="z-20 flex shrink-0 flex-col gap-3 border-b border-[#E8DCC4] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <h2 className="text-lg font-bold text-[#4A3426] sm:text-xl">
                 {editingMode === 'create'
                   ? `Create ${isServiceOrder ? 'Service' : 'Purchase'} Order`
                   : editingMode === 'tracking'
                     ? 'Update Tracking Information'
                     : `Edit ${isServiceOrder ? 'Service' : 'Purchase'} Order`}
               </h2>
-              <div className="flex items-center gap-3">
+              <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:gap-3 [&>button]:shrink-0">
                 <ErpButton
                   onClick={() => {
                     setShowModal(false);
@@ -2821,6 +2821,7 @@ function PurchaseOrdersContent() {
                       onClick={() => handleCreateOrder('PENDING')}
                       disabled={submitting}
                       variant="primary"
+                      className="w-full sm:w-auto"
                     >
                       <Send className="h-4 w-4" />
                       {submitting ? 'Submitting...' : 'Submit for Approval'}
