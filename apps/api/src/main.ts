@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import compression from 'compression';
 import { json, urlencoded, static as serveStatic } from 'express';
-import { mkdirSync } from 'fs';
+import { existsSync, mkdirSync, statSync } from 'fs';
 import { resolve } from 'path';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
@@ -46,6 +46,39 @@ async function bootstrap() {
     resolve(process.cwd(), '..', '..', 'uploads');
   mkdirSync(uploadsRoot, { recursive: true });
   app.use('/uploads', serveStatic(uploadsRoot));
+
+  // PMSTest can contain GRN records copied from live while the physical files
+  // still sit in the live upload directory. Serve configured fallback roots
+  // after the primary upload root, without changing saved invoice URLs.
+  const configuredUploadFallbacks = configService
+    .get<string>('UPLOAD_FALLBACK_DIRS', '')
+    .split(',')
+    .map((dir) => dir.trim())
+    .filter(Boolean);
+  const inferredLiveUploadRoot = uploadsRoot.includes('/sak-erp-test/uploads')
+    ? uploadsRoot.replace('/sak-erp-test/uploads', '/sak-erp/uploads')
+    : '';
+  const uploadFallbackRoots = Array.from(
+    new Set([...configuredUploadFallbacks, inferredLiveUploadRoot].filter(Boolean)),
+  );
+
+  app.use('/uploads', (req, res, next) => {
+    const requestPath = decodeURIComponent(String(req.path || ''));
+    for (const root of uploadFallbackRoots) {
+      const resolvedRoot = resolve(root);
+      const candidate = resolve(resolvedRoot, `.${requestPath}`);
+      if (!candidate.startsWith(resolvedRoot) || !existsSync(candidate)) continue;
+      try {
+        if (statSync(candidate).isFile()) {
+          res.sendFile(candidate);
+          return;
+        }
+      } catch {
+        // Try the next fallback root.
+      }
+    }
+    next();
+  });
 
   // Global validation pipe
   app.useGlobalPipes(
