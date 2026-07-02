@@ -78,6 +78,13 @@ function calcPoLineTotal(quantity: number, unitPrice: number, discountPercent: n
   return taxableAmount + (taxableAmount * Math.max(0, Number(taxRate || 0))) / 100;
 }
 
+function fmtDate(value: unknown): string {
+  if (!value) return '-';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('en-IN');
+}
+
 function FullScreenPortal({ children }: { children: ReactNode }) {
   if (typeof document === 'undefined') return null;
   return createPortal(children, document.body);
@@ -4836,7 +4843,7 @@ function PurchaseOrdersContent() {
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
                               <div>
                                 <span className="text-gray-500">Date:</span>
-                                <p className="font-medium">{new Date(grn.grn_date).toLocaleDateString()}</p>
+                                <p className="font-medium">{fmtDate(grn.grn_date || grn.receipt_date || grn.created_at)}</p>
                               </div>
                               <div>
                                 <span className="text-gray-500">Invoice:</span>
@@ -4939,7 +4946,7 @@ function PurchaseOrdersContent() {
                               </div>
 
                               <div className="grid grid-cols-2 gap-4 px-4 py-3 text-sm md:grid-cols-4 xl:grid-cols-7">
-                                <div><span className="text-xs text-gray-500">Invoice Date</span><p className="font-medium">{grn.invoice_date ? new Date(grn.invoice_date).toLocaleDateString() : '-'}</p></div>
+                                <div><span className="text-xs text-gray-500">Invoice Date</span><p className="font-medium">{fmtDate(grn.invoice_date)}</p></div>
                                 <div><span className="text-xs text-gray-500">Gross</span><p className="font-medium">₹{fmtINR(Number(grn.gross_amount || 0))}</p></div>
                                 <div><span className="text-xs text-gray-500">Tax</span><p className="font-medium">₹{fmtINR(Number(grn.tax_amount || 0))}</p></div>
                                 <div><span className="text-xs text-gray-500">Debit Notes</span><p className="font-medium">₹{fmtINR(Number(grn.debit_note_amount || 0))}</p></div>
@@ -4967,7 +4974,7 @@ function PurchaseOrdersContent() {
                                       <tbody className="divide-y divide-[#E8DCC4]">
                                         {grn.payment_entries.map((payment: any) => (
                                           <tr key={payment.id}>
-                                            <td className="px-3 py-2 whitespace-nowrap">{payment.payment_date ? new Date(payment.payment_date).toLocaleDateString() : '-'}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap">{fmtDate(payment.payment_date)}</td>
                                             <td className="px-3 py-2 whitespace-nowrap">{payment.entry_type === 'RECORDED_PAYMENT' ? 'Recorded Payment' : payment.entry_type || 'Payment'}</td>
                                             <td className="px-3 py-2 whitespace-nowrap">{payment.payment_method || '-'}</td>
                                             <td className="px-3 py-2 whitespace-nowrap">{payment.payment_reference || '-'}</td>
@@ -5034,7 +5041,7 @@ function PurchaseOrdersContent() {
                           {trailData.advances.map((adv: any) => (
                             <div key={adv.id} className="flex justify-between items-center text-sm bg-white rounded px-3 py-2">
                               <div className="flex gap-3">
-                                <span className="text-gray-600">{new Date(adv.payment_date).toLocaleDateString()}</span>
+                                <span className="text-gray-600">{fmtDate(adv.payment_date)}</span>
                                 <span className="font-semibold text-[#4A3426]">₹{fmtINR(adv.amount)}</span>
                                 <span className="text-gray-500">{adv.payment_method}</span>
                                 {adv.payment_reference && (
