@@ -180,7 +180,12 @@ const ACCOUNT_TYPE_OPTIONS = [
   { value: "OD", label: "Overdraft" },
 ];
 
-const SALUTATION_OPTIONS = ["", "Mr.", "Mrs.", "Ms.", "Dr."].map((value) => ({
+const BUSINESS_PREFIX_OPTIONS = ["", "M/s.", "Messrs.", "The"].map((value) => ({
+  value,
+  label: value || "No prefix",
+}));
+
+const CONTACT_TITLE_OPTIONS = ["", "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Er.", "Adv.", "CA"].map((value) => ({
   value,
   label: value || "No title",
 }));
@@ -1304,12 +1309,12 @@ export default function VendorsPage() {
                   <div className="flex gap-2">
                     <div className="w-32">
                       <SearchableSelect
-                        options={SALUTATION_OPTIONS}
+                        options={BUSINESS_PREFIX_OPTIONS}
                         value={form.salutation}
                         onChange={(value) =>
                           setForm({ ...form, salutation: value })
                         }
-                        placeholder="Title"
+                        placeholder="Prefix"
                       />
                     </div>
                     <input
@@ -1526,7 +1531,7 @@ export default function VendorsPage() {
                         <div className="flex gap-2">
                           <div className="w-32">
                             <SearchableSelect
-                              options={SALUTATION_OPTIONS}
+                              options={CONTACT_TITLE_OPTIONS}
                               value={contact.salutation}
                               onChange={(value) =>
                                 updateContact(index, "salutation", value)
