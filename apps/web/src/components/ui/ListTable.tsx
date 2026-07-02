@@ -483,7 +483,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
   return (
     <div className={`overflow-hidden rounded-md border border-[#E8DCC4] bg-white ${className}`}>
       {/* Toolbar */}
-      <div className="grid gap-2 border-b border-[#E8DCC4] bg-white p-2.5 xl:grid-cols-[minmax(24rem,1fr)_auto] xl:items-center">
+      <div className="grid gap-2 border-b border-[#E8DCC4] bg-white p-2.5 2xl:grid-cols-[minmax(24rem,1fr)_auto] 2xl:items-center">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {!hideSearch && (
             <input
@@ -646,7 +646,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-center gap-2 xl:w-auto xl:flex-nowrap xl:justify-end">
+        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] 2xl:w-auto">
           {toolbarRight}
           {exportFilename && (
             <button
@@ -667,7 +667,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
               localStorage.setItem(pageSizeStorageKey, JSON.stringify(next));
               setPageIndex(0);
             }}
-            className="min-h-9 rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm"
+            className="min-h-9 w-full rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm sm:w-auto"
           >
             {pageSizeOptions.map((n) => (
               <option key={n} value={n}>
@@ -722,7 +722,9 @@ export function ListTable<T>(props: ListTableProps<T>) {
                 return (
                   <th
                     key={col.id}
-                    style={{ width: `${width}px`, minWidth: `${width}px` }}
+                    style={fitToContainer
+                      ? { width: `${width}px` }
+                      : { width: `${width}px`, minWidth: `${width}px` }}
                     className={
                       `relative sticky top-0 z-10 bg-transparent px-3 py-2 text-[11px] font-semibold uppercase text-[#6F4E37] ` +
                       headerAlignClass +

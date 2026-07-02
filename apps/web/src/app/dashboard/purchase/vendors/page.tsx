@@ -957,7 +957,7 @@ export default function VendorsPage() {
             setVerificationFilter(context.verification || "ALL");
           }}
           toolbarRight={
-            <div className="grid w-full shrink-0 gap-2 sm:grid-cols-3 xl:w-[42rem]">
+            <div className="grid w-full gap-2 sm:grid-cols-3 2xl:w-[42rem] 2xl:shrink-0">
               <SearchableSelect
                 options={FILTER_CATEGORY_OPTIONS}
                 value={categoryFilter}
