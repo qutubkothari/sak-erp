@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { getTodayDateInputValue } from '@/lib/date';
@@ -210,6 +210,9 @@ export default function AccountsPayablePage() {
   });
   const [advancePOs, setAdvancePOs] = useState<any[]>([]);
   const [advanceVendors, setAdvanceVendors] = useState<any[]>([]);
+  const [poSearch, setPoSearch] = useState('');
+  const [poDropdownOpen, setPoDropdownOpen] = useState(false);
+  const poSearchRef = useRef<HTMLDivElement>(null);
   const [submittingAdvance, setSubmittingAdvance] = useState(false);
   const [advanceError, setAdvanceError] = useState<string | null>(null);
 
@@ -300,6 +303,21 @@ export default function AccountsPayablePage() {
       setSubmittingAdvance(false);
     }
   };
+
+  const filteredPOs = useMemo(() => {
+    if (!poSearch.trim()) return advancePOs;
+    const q = poSearch.toLowerCase();
+    return advancePOs.filter((po: any) =>
+      (po.po_number || '').toLowerCase().includes(q) ||
+      (po.vendor?.name || po.vendor_name || '').toLowerCase().includes(q)
+    );
+  }, [advancePOs, poSearch]);
+
+  const selectedPODisplay = useMemo(() => {
+    if (!advanceForm.po_id) return '';
+    const po = advancePOs.find((p: any) => p.id === advanceForm.po_id);
+    return po ? `${po.po_number} · ${po.vendor?.name || po.vendor_name || ''}` : '';
+  }, [advanceForm.po_id, advancePOs]);
 
   // Fetch vendors for blanket advance selection
   const fetchVendorsForAdvance = async () => {
@@ -767,13 +785,14 @@ export default function AccountsPayablePage() {
       const net = +(grn.net_payable_amount || 0);
       const paid = +(grn.paid_amount || 0) + +(grn.tds_amount || 0) + +(grn.short_payment_amount || 0) + +((grn as any)._advance_paid || 0);
       const outstanding = Math.max(0, net - paid);
+      const gross = +(grn.gross_amount || 0) + +(grn.tax_amount || 0);
       return `<tr>
         <td>${idx + 1}</td>
         <td>${grn.purchase_order?.po_number || '—'}</td>
         <td>${grn.invoice_number || '—'}</td>
         <td>${grn.invoice_date ? new Date(grn.invoice_date).toLocaleDateString('en-IN') : '—'}</td>
         <td>${grn.grn_number}</td>
-        <td style="text-align:right">₹${fmtINR(grn.gross_amount)}</td>
+        <td style="text-align:right">₹${fmtINR(gross)}</td>
         <td style="text-align:right">₹${fmtINR(net)}</td>
         <td style="text-align:right;color:#16a34a">₹${fmtINR(paid)}</td>
         <td style="text-align:right;font-weight:700;color:#ea580c">₹${fmtINR(outstanding)}</td>
@@ -945,6 +964,8 @@ export default function AccountsPayablePage() {
                   advance_type: 'BLANKET',
                   vendor_id: vendor.vendor_id 
                 }));
+                setPoSearch('');
+                setPoDropdownOpen(false);
                 fetchVendorsForAdvance();
                 setShowAdvanceModal(true);
               }}
@@ -1036,6 +1057,8 @@ export default function AccountsPayablePage() {
             <button onClick={() => { 
               fetchPOsForAdvance(); 
               fetchVendorsForAdvance();
+              setPoSearch('');
+              setPoDropdownOpen(false);
               setShowAdvanceModal(true); 
               setAdvanceError(null); 
             }}
@@ -1829,7 +1852,7 @@ export default function AccountsPayablePage() {
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setAdvanceForm(f => ({ ...f, advance_type: 'PO', vendor_id: '' }))}
+                    onClick={() => { setAdvanceForm(f => ({ ...f, advance_type: 'PO', vendor_id: '', po_id: '' })); setPoSearch(''); setPoDropdownOpen(false); }}
                     className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       advanceForm.advance_type === 'PO'
                         ? 'bg-blue-100 text-blue-800 border-2 border-blue-500'
@@ -1840,7 +1863,7 @@ export default function AccountsPayablePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setAdvanceForm(f => ({ ...f, advance_type: 'BLANKET', po_id: '' }))}
+                    onClick={() => { setAdvanceForm(f => ({ ...f, advance_type: 'BLANKET', po_id: '' })); setPoSearch(''); setPoDropdownOpen(false); }}
                     className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       advanceForm.advance_type === 'BLANKET'
                         ? 'bg-teal-100 text-teal-800 border-2 border-teal-500'
@@ -1859,15 +1882,35 @@ export default function AccountsPayablePage() {
 
               {/* Conditional: PO Selection for PO advances */}
               {advanceForm.advance_type === 'PO' && (
-                <div>
+                <div className="relative" ref={poSearchRef}>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Purchase Order *</label>
-                  <select value={advanceForm.po_id} onChange={(e) => setAdvanceForm(f => ({ ...f, po_id: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                    <option value="">— Select PO —</option>
-                    {advancePOs.map((po: any) => (
-                      <option key={po.id} value={po.id}>{po.po_number} · {po.vendor?.name || po.vendor_name || ''}</option>
-                    ))}
-                  </select>
+                  <input
+                    type="text"
+                    value={poDropdownOpen ? poSearch : selectedPODisplay}
+                    onChange={(e) => { setPoSearch(e.target.value); setPoDropdownOpen(true); }}
+                    onFocus={() => { setPoSearch(''); setPoDropdownOpen(true); }}
+                    onBlur={() => setTimeout(() => setPoDropdownOpen(false), 150)}
+                    placeholder="Search PO number or vendor..."
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                  {poDropdownOpen && (
+                    <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-gray-300 rounded-lg shadow-lg">
+                      {filteredPOs.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-gray-500">No POs found</div>
+                      ) : (
+                        filteredPOs.map((po: any) => (
+                          <div
+                            key={po.id}
+                            onMouseDown={(e) => { e.preventDefault(); setAdvanceForm(f => ({ ...f, po_id: po.id })); setPoSearch(''); setPoDropdownOpen(false); }}
+                            className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${advanceForm.po_id === po.id ? 'bg-blue-100' : ''}`}
+                          >
+                            <div className="font-medium">{po.po_number}</div>
+                            <div className="text-xs text-gray-500">{po.vendor?.name || po.vendor_name || ''}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

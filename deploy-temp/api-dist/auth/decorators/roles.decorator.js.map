@@ -1,1 +1,0 @@
-{"version":3,"sources":["../../../src/auth/decorators/roles.decorator.ts"],"sourcesContent":["import { SetMetadata } from '@nestjs/common';\r\n\r\nexport const Roles = (...roles: string[]) => SetMetadata('roles', roles);\r\n"],"names":["Roles","roles","SetMetadata"],"mappings":";;;;+BAEaA;;;eAAAA;;;wBAFe;AAErB,MAAMA,QAAQ,CAAC,GAAGC,QAAoBC,IAAAA,mBAAW,EAAC,SAASD"}

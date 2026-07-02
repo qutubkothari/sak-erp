@@ -566,17 +566,20 @@ export class VendorsService {
 
     await this.assertUniqueTaxId(tenantId, payload.tax_id, id);
 
-    const { error } = await this.supabase
+    const { data: vendor, error } = await this.supabase
       .from('vendors')
       .update({
         ...payload,
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
     if (error) throw new BadRequestException(error.message);
-    return this.findOne(tenantId, id);
+    if (!vendor) throw new NotFoundException('Vendor not found or not updated');
+    return this.hydrateVendor(vendor);
   }
 
   async setVerification(tenantId: string, userId: string, id: string, isVerified: boolean) {

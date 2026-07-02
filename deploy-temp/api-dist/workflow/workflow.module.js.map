@@ -1,1 +1,0 @@
-{"version":3,"sources":["../../src/workflow/workflow.module.ts"],"sourcesContent":["import { Module } from '@nestjs/common';\r\n\r\n@Module({})\r\nexport class WorkflowModule {}\r\n"],"names":["WorkflowModule"],"mappings":";;;;+BAGaA;;;eAAAA;;;wBAHU;;;;;;;AAGhB,IAAA,AAAMA,iBAAN,MAAMA;AAAgB"}

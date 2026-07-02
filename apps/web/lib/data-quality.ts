@@ -14,7 +14,7 @@ const TITLE_CASE_FIELDS = new Set([
 ]);
 
 const PERSON_NAME_FIELDS = new Set([
-  'contact_person', 'contactPerson', 'employee_name', 'technician_name', 'primary_contact', 'primaryContact',
+  'employee_name', 'technician_name',
 ]);
 
 const EMAIL_FIELDS = new Set(['email', 'contact_email', 'customer_email', 'recipientEmail', 'recipient_email']);

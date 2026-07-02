@@ -185,6 +185,27 @@ export class PurchaseOrdersService {
     return this.toNumber(value);
   }
 
+  private assertNoDuplicatePoItems(items: any[]) {
+    if (!Array.isArray(items)) return;
+    const seen = new Set<string>();
+    const duplicates: string[] = [];
+    for (const item of items) {
+      const itemId = String(item?.itemId || item?.item_id || '').trim();
+      const itemCode = String(item?.itemCode || item?.item_code || '').trim();
+      const key = itemId || itemCode;
+      if (!key) continue;
+      if (seen.has(key)) {
+        duplicates.push(itemCode || itemId || 'Unknown');
+      }
+      seen.add(key);
+    }
+    if (duplicates.length > 0) {
+      throw new BadRequestException(
+        `Duplicate items are not allowed in a Purchase Order: ${Array.from(new Set(duplicates)).join(', ')}`,
+      );
+    }
+  }
+
   private buildWorldClassPoPdfData(po: any) {
     const safeNumber = (value: any): number => this.toNumber(value);
     const poItems = Array.isArray(po?.purchase_order_items || po?.items) ? (po.purchase_order_items || po.items) : [];
@@ -716,6 +737,8 @@ export class PurchaseOrdersService {
     for (const [key, ts] of this.recentCreations.entries()) {
       if (now - ts > 60000) this.recentCreations.delete(key);
     }
+
+    this.assertNoDuplicatePoItems(data.items);
     
     // VERIFICATION DISABLED TEMPORARILY - uncomment below to re-enable
     // const isDraftCreate = (data.status || 'DRAFT') === 'DRAFT';
@@ -885,10 +908,15 @@ export class PurchaseOrdersService {
     // Insert items
     if (data.items && data.items.length > 0) {
       const items = data.items.map((item: any) => {
-        const baseAmount = (item.orderedQty || 0) * (item.rate || 0);
-        const taxAmount = baseAmount * ((item.taxPercent || 0) / 100);
-        const discountAmount = baseAmount * ((item.discountPercent || 0) / 100);
-        const finalAmount = baseAmount + taxAmount - discountAmount;
+        const orderedQty = this.safeNumber(item.orderedQty || item.quantity);
+        const rate = this.safeNumber(item.rate || item.unitPrice);
+        const taxPercent = this.safeNumber(item.taxPercent ?? item.taxRate ?? 0);
+        const discountPercent = this.safeNumber(item.discountPercent ?? item.discount_percent ?? item.discount ?? 0);
+        const baseAmount = orderedQty * rate;
+        const discountAmount = baseAmount * (discountPercent / 100);
+        const taxableAmount = Math.max(0, baseAmount - discountAmount);
+        const taxAmount = taxableAmount * (taxPercent / 100);
+        const finalAmount = taxableAmount + taxAmount;
         
         return {
           po_id: po.id,
@@ -898,10 +926,10 @@ export class PurchaseOrdersService {
           item_name: item.itemName,
           description: item.description,
           uom: item.uom,
-          ordered_qty: item.orderedQty,
-          rate: item.rate,
-          tax_percent: item.taxPercent || 0,
-          discount_percent: item.discountPercent || 0,
+          ordered_qty: orderedQty,
+          rate,
+          tax_percent: taxPercent,
+          discount_percent: discountPercent,
           amount: item.amount || finalAmount,
           delivery_date: item.deliveryDate,
           payment_terms: item.paymentTerms ?? null,
@@ -1106,6 +1134,9 @@ export class PurchaseOrdersService {
       .eq('id', id)
       .eq('tenant_id', tenantId)
       .single();
+
+    this.assertNoDuplicatePoItems(data.items);
+
     // VERIFICATION DISABLED TEMPORARILY - uncomment below to re-enable
     // const isDraftUpdate = (data.status || existingPO?.status || '') === 'DRAFT';
     // if (!isDraftUpdate) {
@@ -1190,7 +1221,7 @@ export class PurchaseOrdersService {
           ordered_qty: item.orderedQty || item.quantity,
           rate: item.rate || item.unitPrice,
           tax_percent: item.taxPercent ?? item.taxRate ?? 0,
-          discount_percent: item.discountPercent || 0,
+          discount_percent: item.discountPercent ?? item.discount_percent ?? item.discount ?? 0,
           amount: item.amount || item.totalPrice,
           delivery_date: item.deliveryDate,
           payment_terms: item.paymentTerms ?? null,

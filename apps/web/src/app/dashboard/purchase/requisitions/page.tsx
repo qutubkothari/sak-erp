@@ -6,9 +6,13 @@ import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import { getTodayDateInputValue } from '@/lib/date';
 import { loadDeliveryAddresses, saveDeliveryAddress, type DeliveryAddressOption } from '@/lib/delivery-addresses';
+import { toast } from 'sonner';
+import { Plus, Trash2, Eye, FileText, CheckCircle, Search, Edit, X, RefreshCw, Send, History, Check, AlertCircle } from 'lucide-react';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
+import { SlidePanel } from '../../../../components/ui/SlidePanel';
+import { StatCard } from '../../../../components/ui/StatCard';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import DateInput from '../../../../components/ui/DateInput';
 import { useEscapeKey } from '../../../../hooks/useEscapeKey';
@@ -177,19 +181,19 @@ function getPrWorkflowLabel(pr: Pick<Requisition, 'workflow_status_label' | 'sta
 function getPrWorkflowBadgeClass(status: string): string {
   switch (status) {
     case 'GOODS_RCVD':
-      return 'bg-emerald-100 text-emerald-800';
+      return 'bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm';
     case 'PO_DONE':
-      return 'bg-green-100 text-green-800';
+      return 'bg-green-50 text-green-700 border border-green-200 shadow-sm';
     case 'RFQ_RCVD':
-      return 'bg-blue-100 text-blue-800';
+      return 'bg-blue-50 text-blue-700 border border-blue-200 shadow-sm';
     case 'RFQ_ISSUED':
-      return 'bg-amber-100 text-amber-800';
+      return 'bg-amber-50 text-amber-700 border border-amber-200 shadow-sm';
     case 'DRAFT':
-      return 'bg-yellow-100 text-yellow-800';
+      return 'bg-slate-50 text-slate-700 border border-slate-200 shadow-sm';
     case 'REJECTED':
-      return 'bg-red-100 text-red-800';
+      return 'bg-red-50 text-red-700 border border-red-200 shadow-sm';
     default:
-      return 'bg-gray-100 text-gray-800';
+      return 'bg-gray-50 text-gray-700 border border-gray-200 shadow-sm';
   }
 }
 
@@ -1399,11 +1403,11 @@ function PRContent() {
     if (!confirmed) return;
     try {
       await apiClient.post(`/purchase/requisitions/${prId}/approve`, {});
-      alert('PR approved successfully!');
+      toast.success('PR approved successfully!');
       setShowDetailModal(false);
       fetchRequisitions();
     } catch (error) {
-      alert('Failed to approve PR');
+      toast.error('Failed to approve PR');
     }
   };
 
@@ -1412,11 +1416,11 @@ function PRContent() {
     if (!reason) return;
     try {
       await apiClient.post(`/purchase/requisitions/${prId}/reject`, { reason });
-      alert('PR rejected successfully!');
+      toast.success('PR rejected successfully!');
       setShowDetailModal(false);
       fetchRequisitions();
     } catch (error) {
-      alert('Failed to reject PR');
+      toast.error('Failed to reject PR');
     }
   };
 
@@ -1430,11 +1434,11 @@ function PRContent() {
     if (!confirmed) return;
     try {
       await apiClient.delete(`/purchase/requisitions/${prId}`);
-      alert('PR deleted successfully!');
+      toast.success('PR deleted successfully!');
       setShowDetailModal(false);
       fetchRequisitions();
     } catch (error) {
-      alert('Failed to delete PR');
+      toast.error('Failed to delete PR');
     }
   };
 
@@ -1463,10 +1467,10 @@ function PRContent() {
       
       if (editingPRId) {
         await apiClient.put(`/purchase/requisitions/${editingPRId}`, prData);
-        alert(`Purchase Requisition ${status === 'DRAFT' ? 'saved as draft' : 'updated'} successfully!`);
+        toast.success(`Purchase Requisition ${status === 'DRAFT' ? 'saved as draft' : 'updated'} successfully!`);
       } else {
         await apiClient.post('/purchase/requisitions', prData);
-        alert(`Purchase Requisition ${status === 'DRAFT' ? 'saved as draft' : 'submitted'} successfully!`);
+        toast.success(`Purchase Requisition ${status === 'DRAFT' ? 'saved as draft' : 'submitted'} successfully!`);
       }
       
       setShowCreateForm(false);
@@ -1476,7 +1480,7 @@ function PRContent() {
       fetchRequisitions(); // Refresh the list
     } catch (error: any) {
       const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error';
-      alert(`Failed to save purchase requisition: ${errorMessage}`);
+      toast.error(`Failed to save purchase requisition: ${errorMessage}`);
     }
   };
 
@@ -1488,7 +1492,7 @@ function PRContent() {
 
     // Validate items before duplicate check
     if (items.length === 0) {
-      alert('Please add at least one item');
+      toast.error('Please add at least one item');
       return;
     }
 
@@ -1507,49 +1511,102 @@ function PRContent() {
     );
   };
 
+  const totalPRs = requisitions.length;
+  const pendingApprovals = requisitions.filter(pr => pr.workflow_status === 'PENDING' || pr.status === 'PENDING').length;
+  const draftPRs = requisitions.filter(pr => pr.status === 'DRAFT').length;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gray-50/50 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="mb-8 flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-4xl font-bold text-amber-900 mb-2">Purchase Requisitions</h1>
-            <p className="text-amber-700">Create and manage purchase requisition requests</p>
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Purchase Requisitions</h1>
+            <p className="text-gray-500 mt-1">Create and manage internal purchase requests</p>
           </div>
           {canCreatePR && (
-          <button
-            type="button"
-            onClick={() => setShowCreateForm(true)}
-            className="bg-amber-800 text-white px-6 py-3 rounded-lg hover:bg-amber-900 transition-colors font-semibold"
-          >
-            + New Requisition
-          </button>
+            <button
+              type="button"
+              onClick={() => setShowCreateForm(true)}
+              className="inline-flex items-center gap-2 bg-amber-600 text-white px-5 py-2.5 rounded-lg hover:bg-amber-700 transition-all font-medium shadow-sm hover:shadow"
+            >
+              <Plus className="w-5 h-5" />
+              New Requisition
+            </button>
           )}
         </div>
 
-        {/* Create Form Modal */}
-        {showCreateForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-amber-900">
-                  {editingPRId ? 'Edit Purchase Requisition' : 'New Purchase Requisition'}
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCreateForm(false);
-                    setEditingPRId(null);
-                    setItems([]);
-                    setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
-                  }}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
-                >
-                  ×
-                </button>
-              </div>
+        {/* KPI Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatCard
+            title="Total Requisitions"
+            value={totalPRs}
+            icon={<FileText className="w-5 h-5 text-amber-700" />}
+            iconBg="bg-amber-100"
+            loading={loadingRequisitions}
+          />
+          <StatCard
+            title="Pending Approval"
+            value={pendingApprovals}
+            icon={<AlertCircle className="w-5 h-5 text-orange-700" />}
+            iconBg="bg-orange-100"
+            alert={pendingApprovals > 0}
+            loading={loadingRequisitions}
+          />
+          <StatCard
+            title="Drafts"
+            value={draftPRs}
+            icon={<Edit className="w-5 h-5 text-gray-700" />}
+            iconBg="bg-gray-100"
+            loading={loadingRequisitions}
+          />
+        </div>
 
-              <div className="p-6">
+        {/* Create Form Slide Panel */}
+        <SlidePanel
+          open={showCreateForm}
+          onClose={() => {
+            setShowCreateForm(false);
+            setEditingPRId(null);
+            setItems([]);
+            setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
+          }}
+          title={editingPRId ? 'Edit Purchase Requisition' : 'New Purchase Requisition'}
+          width="4xl"
+          footer={
+            <div className="flex justify-end gap-3 w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setEditingPRId(null);
+                  setItems([]);
+                  setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
+                }}
+                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSubmit('DRAFT')}
+                disabled={items.length === 0}
+                className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 font-medium flex items-center gap-2"
+              >
+                <FileText className="w-4 h-4" /> Save as Draft
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSubmit('SUBMITTED')}
+                disabled={items.length === 0 || !formData.requiredDate}
+                className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 font-medium flex items-center gap-2 shadow-sm"
+              >
+                <Send className="w-4 h-4" /> {editingPRId ? 'Update Requisition' : 'Submit for Approval'}
+              </button>
+            </div>
+          }
+        >
+          <div className="space-y-6 pb-4">
                 {/* Basic Information */}
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div>
@@ -1970,36 +2027,8 @@ function PRContent() {
                   />
                 </div>
 
-                {/* Actions */}
-                <div className="flex justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateForm(false)}
-                    className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSubmit('DRAFT')}
-                    disabled={items.length === 0}
-                    className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Save as Draft
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSubmit('SUBMITTED')}
-                    disabled={items.length === 0 || !formData.department || !formData.requiredDate}
-                    className="px-6 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {editingPRId ? 'Update Requisition' : 'Submit for Approval'}
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
-        )}
+        </SlidePanel>
 
         {/* List View */}
         <div className="mb-4">

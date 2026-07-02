@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { apiClient } from '../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
@@ -23,6 +23,10 @@ export default function DashboardReminders() {
   const [pendingQC, setPendingQC] = useState<PendingGRN[]>([]);
   const [dismissed, setDismissed] = useState(false);
   const [expanded, setExpanded] = useState(false);
+
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   const user = useMemo(() => readStoredUser(), []);
   const canApprovePO = hasModulePermission(user, 'Purchase Management', 'approve');
@@ -63,18 +67,72 @@ export default function DashboardReminders() {
     };
   }, [canApprovePO, canUpdateQC]);
 
+  const handleDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      setIsDragging(true);
+      setDragOffset({ x: e.clientX - position.x, y: e.clientY - position.y });
+    },
+    [position]
+  );
+
+  const handleDragMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isDragging) return;
+      setPosition({ x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y });
+    },
+    [isDragging, dragOffset]
+  );
+
+  const handleDragEnd = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    window.addEventListener('mousemove', handleDragMove);
+    window.addEventListener('mouseup', handleDragEnd);
+    return () => {
+      window.removeEventListener('mousemove', handleDragMove);
+      window.removeEventListener('mouseup', handleDragEnd);
+    };
+  }, [isDragging, handleDragMove, handleDragEnd]);
+
   const total = pendingPOs.length + pendingQC.length;
 
   if (dismissed || total === 0) return null;
 
+  const dragBar = (
+    <div
+      onMouseDown={handleDragStart}
+      onClick={(e) => e.stopPropagation()}
+      className="mr-2 cursor-grab rounded px-1 py-2 text-amber-700 hover:bg-amber-100 active:cursor-grabbing"
+      title="Drag to move"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="9" cy="5" r="1" />
+        <circle cx="15" cy="5" r="1" />
+        <circle cx="9" cy="12" r="1" />
+        <circle cx="15" cy="12" r="1" />
+        <circle cx="9" cy="19" r="1" />
+        <circle cx="15" cy="19" r="1" />
+      </svg>
+    </div>
+  );
+
+  const transformStyle = { transform: `translate(${position.x}px, ${position.y}px)` };
+
   if (!expanded) {
     return (
-      <div className="fixed bottom-5 right-5 z-50 w-[320px] max-w-[calc(100vw-2rem)] rounded-xl border border-amber-200 bg-white shadow-xl">
+      <div
+        className="fixed bottom-5 right-5 z-50 w-[320px] max-w-[calc(100vw-2rem)] rounded-xl border border-amber-200 bg-white shadow-xl"
+        style={transformStyle}
+      >
         <button
           type="button"
           onClick={() => setExpanded(true)}
           className="flex w-full items-center justify-between gap-3 rounded-xl bg-amber-50 px-4 py-3 text-left hover:bg-amber-100"
         >
+          {dragBar}
           <div>
             <h2 className="text-sm font-bold text-amber-900">Action Required</h2>
             <p className="mt-0.5 text-xs text-amber-800">
@@ -100,9 +158,13 @@ export default function DashboardReminders() {
   }
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-amber-200 bg-white shadow-2xl">
+    <div
+      className="fixed bottom-5 right-5 z-50 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-amber-200 bg-white shadow-2xl"
+      style={transformStyle}
+    >
       <div className="border-b border-amber-100 bg-amber-50 px-4 py-3">
         <div className="flex items-start justify-between gap-3">
+          {dragBar}
           <div>
             <h2 className="text-sm font-bold text-amber-900">Action Required</h2>
             <p className="mt-0.5 text-xs text-amber-800">Pending approvals and QC reminders</p>

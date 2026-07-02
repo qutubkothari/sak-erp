@@ -13,7 +13,7 @@ import { useAuthStore } from '@/stores/auth.store';
  * 5. Warn on DevTools opening
  */
 
-const SESSION_TIMEOUT_MINUTES = 15; // Auto-logout after 15 min inactivity
+const SESSION_TIMEOUT_MINUTES = 60; // Auto-logout after 60 min inactivity
 const WARNING_BEFORE_LOGOUT = 60; // Show warning 60 seconds before logout
 
 export function SecurityWrapper({ children }: { children: React.ReactNode }) {
@@ -89,7 +89,7 @@ export function SecurityWrapper({ children }: { children: React.ReactNode }) {
     };
 
     // Listen for user activity
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'];
+    const events = ['mousedown', 'mouseup', 'click', 'keydown', 'keyup', 'input', 'change', 'scroll', 'wheel', 'touchstart', 'touchmove', 'mousemove', 'pointermove', 'focus'];
     events.forEach((event) => {
       document.addEventListener(event, handleActivity, { passive: true });
     });

@@ -53,6 +53,13 @@ function calcFreightGstAmount(freightAmount: number | undefined | null, applicab
   return Number(((base * rate) / 100).toFixed(2));
 }
 
+function calcPoLineTotal(quantity: number, unitPrice: number, discountPercent: number, taxRate: number): number {
+  const grossAmount = Math.max(0, Number(quantity || 0) * Number(unitPrice || 0));
+  const discountAmount = grossAmount * (Math.max(0, Number(discountPercent || 0)) / 100);
+  const taxableAmount = Math.max(0, grossAmount - discountAmount);
+  return taxableAmount + (taxableAmount * Math.max(0, Number(taxRate || 0))) / 100;
+}
+
 interface PurchaseOrder {
   id: string;
   po_number: string;
@@ -113,6 +120,7 @@ interface PurchaseOrder {
     received_qty?: number;
     remaining_qty?: number;
     rate?: number;
+    discount_percent?: number;
     amount?: number;
     uom?: string;
     serial_no?: number;
@@ -1026,6 +1034,7 @@ function PurchaseOrdersContent() {
             itemName: item.itemName || '',
             orderedQty: item.quantity,
             rate: item.unitPrice,
+            discountPercent: item.discount || 0,
             taxPercent: item.taxRate,
             amount: item.totalPrice,
             remarks: item.specifications || '',
@@ -1267,6 +1276,7 @@ function PurchaseOrdersContent() {
           itemName: item.itemName || '',
           orderedQty: item.quantity,
           rate: item.unitPrice,
+          discountPercent: item.discount || 0,
           taxPercent: item.taxRate,
           amount: item.totalPrice,
           remarks: item.specifications || '',
@@ -1553,10 +1563,7 @@ function PurchaseOrdersContent() {
     // Recalculate total price (including discount)
     if (field === 'quantity' || field === 'unitPrice' || field === 'taxRate' || field === 'discount' || field === 'itemId' || field === 'vendorId') {
       const item = updatedItems[index];
-      const grossAmount = item.quantity * item.unitPrice;
-      const discount = item.discount || 0;
-      const subtotal = Math.max(0, grossAmount - discount);
-      item.totalPrice = subtotal + (subtotal * item.taxRate) / 100;
+      item.totalPrice = calcPoLineTotal(item.quantity, item.unitPrice, item.discount || 0, item.taxRate);
     }
 
     // Use functional update to avoid clobbering other form fields
@@ -1596,10 +1603,7 @@ function PurchaseOrdersContent() {
       items: prev.items.map(item => {
         const rfqPrice = item.prItemId ? rfqPriceByPrItemId[String(item.prItemId)] : undefined;
         const effectivePrice = rfqPrice != null ? rfqPrice : item.unitPrice;
-        const grossAmount = item.quantity * effectivePrice;
-        const discount = item.discount || 0;
-        const subtotal = Math.max(0, grossAmount - discount);
-        const totalPrice = subtotal + (subtotal * item.taxRate) / 100;
+        const totalPrice = calcPoLineTotal(item.quantity, effectivePrice, item.discount || 0, item.taxRate);
         return {
           ...item,
           vendorId,
@@ -1793,7 +1797,7 @@ function PurchaseOrdersContent() {
         vendorId: resolvedVendorId, // Use PO's vendor for all items
         quantity: item.ordered_qty || 0,
         unitPrice: item.rate || 0,
-        discount: item.discount || 0,
+        discount: item.discount_percent ?? item.discountPercent ?? item.discount ?? 0,
         taxRate: item.tax_percent != null ? item.tax_percent : 18,
         totalPrice: item.amount || 0,
         specifications: item.remarks || '',
@@ -3043,7 +3047,7 @@ function PurchaseOrdersContent() {
                           <div>Qty</div>
                           <div>UOM</div>
                           <div>Unit Price</div>
-                          <div className="text-right">Disc (₹)</div>
+                          <div className="text-right">Discount %</div>
                           <div>GST %</div>
                           <div className="text-right">Total</div>
                           <div></div>
@@ -3316,9 +3320,10 @@ function PurchaseOrdersContent() {
                                 type="number"
                                 value={item.discount || 0}
                                 onChange={(e) => handleUpdateItem(index, 'discount', parseFloat(e.target.value) || 0)}
-                                placeholder="Disc"
+                                placeholder="Discount %"
                                 className="w-full border border-gray-300 rounded px-3 py-2"
                                 min="0"
+                                max="100"
                               />
                             </div>
                             <div className="min-w-0">
@@ -3801,6 +3806,7 @@ function PurchaseOrdersContent() {
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Quantity</th>
                         <th className="px-4 py-2 text-center text-xs font-medium text-gray-700">UOM</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Rate</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Discount %</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Payment Terms</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Delivery Terms</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Amount</th>
@@ -3880,6 +3886,7 @@ function PurchaseOrdersContent() {
                                 );
                               })()}
                             </td>
+                            <td className="px-4 py-2 text-right text-sm">{fmtPercent(item.discount_percent ?? item.discountPercent ?? item.discount ?? 0)}%</td>
                             <td className="px-4 py-2 text-sm text-gray-700">{item.payment_terms || (item as any).paymentTerms || '-'}</td>
                             <td className="px-4 py-2 text-sm text-gray-700">{item.delivery_terms || (item as any).deliveryTerms || '-'}</td>
                             <td className="px-4 py-2 text-right font-medium">₹{fmtINR(item.amount)}</td>
@@ -3887,7 +3894,7 @@ function PurchaseOrdersContent() {
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={9} className="px-4 py-8 text-center text-gray-500">No items found</td>
+                          <td colSpan={10} className="px-4 py-8 text-center text-gray-500">No items found</td>
                         </tr>
                       )}
                     </tbody>

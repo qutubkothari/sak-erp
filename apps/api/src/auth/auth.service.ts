@@ -563,7 +563,7 @@ export class AuthService {
   async refreshToken(refreshToken: string) {
     try {
       const payload = this.jwtService.verify(refreshToken, {
-        secret: process.env.JWT_REFRESH_SECRET,
+        secret: process.env.JWT_REFRESH_SECRET || 'default-refresh-secret',
       });
 
       const { data: user, error: userError } = await this.supabase

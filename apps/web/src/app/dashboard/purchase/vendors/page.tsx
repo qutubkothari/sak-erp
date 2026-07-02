@@ -334,7 +334,10 @@ export default function VendorsPage() {
 
     try {
       if (editingVendor) {
-        await apiClient.put(`/purchase/vendors/${editingVendor.id}`, payload);
+        const updatedVendor = await apiClient.put<Vendor>(`/purchase/vendors/${editingVendor.id}`, payload);
+        if (updatedVendor?.id) {
+          setVendors((prev) => prev.map((vendor) => (vendor.id === updatedVendor.id ? updatedVendor : vendor)));
+        }
         toast.success('Vendor updated successfully');
       } else {
         await apiClient.post('/purchase/vendors', payload);

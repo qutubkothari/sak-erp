@@ -29,6 +29,39 @@ export class GrnService {
     return Number.isFinite(n) ? n : 0;
   }
 
+  private calculateDiscountedLineAmount(quantity: any, rate: any, discountPercent: any): number {
+    const qty = Math.max(0, this.toNumber(quantity));
+    const unitRate = Math.max(0, this.toNumber(rate));
+    const discountRate = Math.max(0, this.toNumber(discountPercent));
+    const gross = qty * unitRate;
+    const discountAmount = gross * (discountRate / 100);
+    return Math.max(0, gross - discountAmount);
+  }
+
+  private async getPoItemPricingMap(poItemIds: string[]) {
+    const ids = Array.from(new Set(poItemIds.filter((id) => typeof id === 'string' && id.trim().length > 0)));
+    if (ids.length === 0) return new Map<string, { rate: number; discountPercent: number; taxPercent: number }>();
+
+    const { data, error } = await this.supabase
+      .from('purchase_order_items')
+      .select('id, rate, discount_percent, tax_percent')
+      .in('id', ids);
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    const map = new Map<string, { rate: number; discountPercent: number; taxPercent: number }>();
+    for (const row of data ?? []) {
+      map.set(String((row as any).id), {
+        rate: this.toNumber((row as any).rate),
+        discountPercent: this.toNumber((row as any).discount_percent),
+        taxPercent: this.toNumber((row as any).tax_percent),
+      });
+    }
+    return map;
+  }
+
   private async getPoItemQtyMap(poItemIds: string[]) {
     const ids = Array.from(new Set(poItemIds.filter((id) => typeof id === 'string' && id.trim().length > 0)));
     if (ids.length === 0) return new Map<string, { orderedQty: number; receivedQty: number }>();
@@ -417,6 +450,7 @@ export class GrnService {
         invoice_file_name: data.invoiceFileName || null,
         invoice_file_type: data.invoiceFileType || null,
         invoice_file_size: data.invoiceFileSize || null,
+        additional_invoice_files: Array.isArray(data.additionalInvoiceFiles) ? data.additionalInvoiceFiles : (data.additional_invoice_files || []),
         warehouse_id: data.warehouseId?.trim() || null,
         status: data.status || 'DRAFT',
         notes: data.remarks || null,
@@ -472,30 +506,38 @@ export class GrnService {
         return uuidRegex.test(id.trim());
       };
 
+      const poItemPricingMap = await this.getPoItemPricingMap(poItemIds);
+
       const items = data.items
         .filter((item: any) => validItem(item.poItemId) && validItem(item.itemId))
-        .map((item: any) => ({
-          grn_id: grn.id,
-          po_item_id: item.poItemId.trim(),
-          item_id: item.itemId.trim(),
-          item_code: item.itemCode,
-          item_name: item.itemName,
-          description: item.description,
-          uom: item.uom,
-          ordered_qty: item.orderedQty,
-          received_qty: item.receivedQty,
-          accepted_qty: item.acceptedQty || 0,
-          rejected_qty: item.rejectedQty || 0,
-          rejection_reason: item.rejectionReason || null,
-          inspection_status: item.inspectionStatus || 'PENDING',
-          inspection_remarks: item.inspectionRemarks || null,
-          batch_number: item.batchNumber || null,
-          manufacturing_date: item.manufacturingDate || null,
-          expiry_date: item.expiryDate || null,
-          rate: item.rate,
-          amount: (item.receivedQty || 0) * (item.rate || 0),
-          remarks: item.remarks || null,
-        }));
+        .map((item: any) => {
+          const poItemId = item.poItemId.trim();
+          const poPricing = poItemPricingMap.get(poItemId);
+          const rate = this.toNumber(item.rate ?? poPricing?.rate);
+          const discountPercent = this.toNumber(item.discountPercent ?? item.discount_percent ?? poPricing?.discountPercent ?? 0);
+          return {
+            grn_id: grn.id,
+            po_item_id: poItemId,
+            item_id: item.itemId.trim(),
+            item_code: item.itemCode,
+            item_name: item.itemName,
+            description: item.description,
+            uom: item.uom,
+            ordered_qty: item.orderedQty,
+            received_qty: item.receivedQty,
+            accepted_qty: item.acceptedQty || 0,
+            rejected_qty: item.rejectedQty || 0,
+            rejection_reason: item.rejectionReason || null,
+            inspection_status: item.inspectionStatus || 'PENDING',
+            inspection_remarks: item.inspectionRemarks || null,
+            batch_number: item.batchNumber || null,
+            manufacturing_date: item.manufacturingDate || null,
+            expiry_date: item.expiryDate || null,
+            rate,
+            amount: this.calculateDiscountedLineAmount(item.receivedQty, rate, discountPercent),
+            remarks: item.remarks || null,
+          };
+        });
 
       if (items.length === 0) {
         throw new BadRequestException('No valid items to save. Items must have valid PO Item ID and Item ID.');
@@ -711,6 +753,7 @@ export class GrnService {
         invoice_file_name: data.invoiceFileName || null,
         invoice_file_type: data.invoiceFileType || null,
         invoice_file_size: data.invoiceFileSize || null,
+        additional_invoice_files: Array.isArray(data.additionalInvoiceFiles) ? data.additionalInvoiceFiles : (data.additional_invoice_files || []),
         warehouse_id: data.warehouseId?.trim() || null,
         notes: data.remarks || null,
         updated_at: new Date().toISOString(),
@@ -775,7 +818,7 @@ export class GrnService {
           manufacturing_date: item.manufacturingDate || null,
           expiry_date: item.expiryDate || null,
           rate: item.rate ?? item.unitPrice,
-          amount: this.toNumber(item.receivedQty ?? item.receivedQuantity) * this.toNumber(item.rate ?? item.unitPrice),
+          amount: this.calculateDiscountedLineAmount(item.receivedQty ?? item.receivedQuantity, item.rate ?? item.unitPrice, item.discountPercent ?? item.discount_percent ?? item.discount ?? 0),
           uid_count: uidCountByItemId.get(String(item.itemId || '').trim()) ?? this.toNumber(item.uidCount ?? item.uid_count),
           remarks: item.remarks || item.notes || null,
         }));
@@ -2149,17 +2192,25 @@ export class GrnService {
    * Helper method to calculate and update GRN financial amounts including GST
    */
   private async updateGRNFinancialAmounts(tenantId: string, grnId: string) {
-    // Get all GRN items
+    // Get all GRN items with po_item_id so we can look up discount_percent
     const { data: grnItems } = await this.supabase
       .from('grn_items')
-      .select('rate, received_qty, amount')
+      .select('rate, received_qty, amount, po_item_id')
       .eq('grn_id', grnId);
 
-    // Calculate gross amount (pre-tax, items only)
-    const grossAmount = grnItems?.reduce((sum: number, item: any) => {
-      const itemTotal = item.amount || (parseFloat(item.rate || 0) * parseFloat(item.received_qty || 0));
-      return sum + itemTotal;
-    }, 0) || 0;
+    // Collect all po_item_ids and fetch their discount_percent in one query
+    const poItemIds = (grnItems ?? [])
+      .map((i: any) => String(i.po_item_id || '').trim())
+      .filter(Boolean);
+    const poPricingMap = await this.getPoItemPricingMap(poItemIds);
+
+    // Calculate gross amount applying discount per line (pre-tax, items only)
+    const grossAmount = (grnItems ?? []).reduce((sum: number, item: any) => {
+      const poItemId = String(item.po_item_id || '').trim();
+      const discountPercent = poItemId ? (poPricingMap.get(poItemId)?.discountPercent ?? 0) : 0;
+      const lineAmount = this.calculateDiscountedLineAmount(item.received_qty, item.rate, discountPercent);
+      return sum + lineAmount;
+    }, 0);
 
     // Get current GRN to get GST percentage and freight
     const { data: currentGRN } = await this.supabase

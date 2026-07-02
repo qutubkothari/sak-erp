@@ -69,14 +69,18 @@ export default function DashboardLayout({
         if (pathname && !isPathAllowedForUser(currentUser, pathname)) {
           router.replace(getDefaultLandingPath(currentUser));
         }
-      } catch {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
-        localStorage.removeItem('userId');
-        localStorage.removeItem('tenant');
-        localStorage.removeItem('tenantId');
-        if (!cancelled) router.replace('/login');
+      } catch (error: any) {
+        const message = error?.message || '';
+        const isUnauthorized = message.includes('401') || message.toLowerCase().includes('unauthorized') || message.toLowerCase().includes('invalid token');
+        if (isUnauthorized) {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
+          localStorage.removeItem('userId');
+          localStorage.removeItem('tenant');
+          localStorage.removeItem('tenantId');
+          if (!cancelled) router.replace('/login');
+        }
       }
     };
 

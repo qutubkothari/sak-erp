@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useRef, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import QRCode from 'qrcode';
 import { apiClient } from '../../../../../lib/api-client';
@@ -10,6 +10,132 @@ import { getTodayDateInputValue } from '@/lib/date';
 import DateInput from '../../../../components/ui/DateInput';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { useEscapeKey } from '../../../../hooks/useEscapeKey';
+import { Search, X, ChevronDown } from 'lucide-react';
+
+interface SearchableSelectOption {
+  value: string;
+  label: string;
+}
+
+function SearchableSelect({
+  options,
+  value,
+  onChange,
+  placeholder = 'Select...',
+  emptyMessage = 'No matches found',
+}: {
+  options: SearchableSelectOption[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  emptyMessage?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const selectedLabel = options.find((o) => o.value === value)?.label || '';
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((o) => o.label.toLowerCase().includes(q));
+  }, [options, query]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      setQuery('');
+      inputRef.current?.focus();
+    } else {
+      setQuery('');
+    }
+  }, [open]);
+
+  const handleSelect = (val: string) => {
+    onChange(val);
+    setOpen(false);
+    setQuery('');
+  };
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onChange('');
+    setQuery('');
+    setOpen(false);
+  };
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full border border-gray-300 rounded-lg px-4 py-2 text-left bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none flex items-center justify-between"
+      >
+        <span className={selectedLabel ? 'text-gray-900' : 'text-gray-400'}>
+          {selectedLabel || placeholder}
+        </span>
+        <div className="flex items-center gap-2">
+          {value && (
+            <span
+              onClick={handleClear}
+              className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600"
+            >
+              <X size={14} />
+            </span>
+          )}
+          <ChevronDown size={18} className="text-gray-400" />
+        </div>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-72 flex flex-col">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200">
+            <Search size={16} className="text-gray-400" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search PO or vendor..."
+              className="flex-1 outline-none text-sm text-gray-900 placeholder-gray-400"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+          <div className="overflow-y-auto flex-1 p-1">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-gray-500">{emptyMessage}</div>
+            ) : (
+              filtered.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => handleSelect(option.value)}
+                  className={`
+                    w-full text-left px-3 py-2 text-sm rounded-md transition-colors
+                    ${option.value === value ? 'bg-amber-50 text-amber-900' : 'text-gray-700 hover:bg-gray-100'}
+                  `}
+                >
+                  {option.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function getApiV1BaseUrl(): string | null {
   const raw = (process.env.NEXT_PUBLIC_API_URL || '').trim();
@@ -38,6 +164,7 @@ interface GRN {
   invoice_file_name?: string;
   invoice_file_type?: string;
   invoice_file_size?: number;
+  additional_invoice_files?: Array<{ url: string; name: string; type: string }>;
   status: string;
   remarks?: string;
   qc_completed?: boolean;
@@ -107,6 +234,7 @@ interface PurchaseOrder {
     ordered_qty: number;
     received_qty?: number;
     rate: number;
+    discount_percent?: number;
     item?: {
       hsn_code?: string;
     };
@@ -656,6 +784,7 @@ function GRNContent() {
     invoiceFileName: string;
     invoiceFileType: string;
     invoiceFileSize: number;
+    additionalInvoiceFiles: Array<{ url: string; name: string; type: string }>;
     warehouseId: string;
     notes: string;
     items: Array<{
@@ -670,6 +799,7 @@ function GRNContent() {
       acceptedQty: number;
       rejectedQty: number;
       unitPrice?: number;
+      uidCount?: number;
       batchNumber: string;
       expiryDate?: string;
       notes?: string;
@@ -681,6 +811,7 @@ function GRNContent() {
     invoiceFileName: '',
     invoiceFileType: '',
     invoiceFileSize: 0,
+    additionalInvoiceFiles: [],
     warehouseId: '',
     notes: '',
     items: [],
@@ -1384,6 +1515,7 @@ function GRNContent() {
             expiryDate: '',
             notes: '',
             rejectionReason: '',
+            discountPercent: item.discount_percent ?? 0,
             masterHsnCode: item.item?.hsn_code || '',
             supplierHsnCode: item.item?.hsn_code || '',
           };
@@ -1475,6 +1607,7 @@ function GRNContent() {
         invoiceFileName: editFormData.invoiceFileName || null,
         invoiceFileType: editFormData.invoiceFileType || null,
         invoiceFileSize: editFormData.invoiceFileSize || null,
+        additionalInvoiceFiles: editFormData.additionalInvoiceFiles.length > 0 ? editFormData.additionalInvoiceFiles : undefined,
         warehouseId: editFormData.warehouseId,
         remarks: editFormData.notes,
         items: (patchedItems as any[]).map((item: any) => ({
@@ -1550,6 +1683,7 @@ function GRNContent() {
           rejectedQty: item.rejectedQuantity,
           rejectionReason: item.rejectionReason || null,
           rate: item.unitPrice,
+          discountPercent: (item as any).discountPercent ?? 0,
           batchNumber: item.batchNumber || null,
           expiryDate: item.expiryDate || null,
           remarks: item.notes || null,
@@ -1937,7 +2071,7 @@ function GRNContent() {
     });
   };
 
-  const handleAdditionalInvoiceFileSelect = async (file: File) => {
+  const handleAdditionalInvoiceFileSelect = async (file: File, target: 'create' | 'edit' = 'create') => {
     const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
     if (!validTypes.includes(file.type)) { alert('Please upload PNG, JPG, or PDF files only'); return; }
     if (file.size > 10 * 1024 * 1024) { alert('File size must be less than 10MB'); return; }
@@ -1955,7 +2089,12 @@ function GRNContent() {
         const data = await response.json();
         const url = String(data?.url || '').trim();
         if (url) {
-          setAdditionalInvoiceFiles(prev => [...prev, { url, name: String(data?.name || file.name), type: String(data?.type || file.type) }]);
+          const fileInfo = { url, name: String(data?.name || file.name), type: String(data?.type || file.type) };
+          if (target === 'edit') {
+            setEditFormData(prev => ({ ...prev, additionalInvoiceFiles: [...prev.additionalInvoiceFiles, fileInfo] }));
+          } else {
+            setAdditionalInvoiceFiles(prev => [...prev, fileInfo]);
+          }
           setAdditionalUploadStatus(`✓ ${file.name} uploaded`);
           setTimeout(() => setAdditionalUploadStatus(''), 3000);
         }
@@ -2191,6 +2330,7 @@ function GRNContent() {
                     acceptedQty: Number(item.accepted_qty || item.accepted_quantity) || 0,
                     rejectedQty: Number(item.rejected_qty || item.rejected_quantity) || 0,
                     unitPrice: Number(item.rate || item.unit_price || item.unitPrice) || 0,
+                    uidCount: Number((item as any).uid_count) || 0,
                     batchNumber: item.batch_number || '',
                     expiryDate: item.expiry_date || '',
                     notes: item.notes || '',
@@ -2205,6 +2345,7 @@ function GRNContent() {
                   invoiceFileName: detailedGRN.invoice_file_name || '',
                   invoiceFileType: detailedGRN.invoice_file_type || '',
                   invoiceFileSize: detailedGRN.invoice_file_size || 0,
+                  additionalInvoiceFiles: Array.isArray(detailedGRN.additional_invoice_files) ? detailedGRN.additional_invoice_files : [],
                   warehouseId: detailedGRN.warehouse?.id || '',
                   notes: detailedGRN.remarks || detailedGRN.notes || '',
                   items: hydratedItems as any,
@@ -2219,6 +2360,7 @@ function GRNContent() {
                   invoiceFileName: grn.invoice_file_name || '',
                   invoiceFileType: grn.invoice_file_type || '',
                   invoiceFileSize: grn.invoice_file_size || 0,
+                  additionalInvoiceFiles: Array.isArray(grn.additional_invoice_files) ? grn.additional_invoice_files : [],
                   warehouseId: grn.warehouse?.id || '',
                   notes: grn.remarks || '',
                   items: (Array.isArray(grn.grn_items) ? grn.grn_items : []).map((item: any) => ({
@@ -2236,6 +2378,7 @@ function GRNContent() {
                     acceptedQty: Number(item.accepted_qty || item.accepted_quantity) || 0,
                     rejectedQty: Number(item.rejected_qty || item.rejected_quantity) || 0,
                     unitPrice: Number(item.rate || item.unit_price || item.unitPrice) || 0,
+                    uidCount: Number((item as any).uid_count) || 0,
                     batchNumber: item.batch_number || '',
                     expiryDate: item.expiry_date || '',
                     notes: item.notes || '',
@@ -2326,19 +2469,16 @@ function GRNContent() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Purchase Order *</label>
-                  <select
+                  <SearchableSelect
                     value={formData.poId}
-                    onChange={(e) => handlePOChange(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-amber-500"
-                    required
-                  >
-                    <option value="">Select Purchase Order...</option>
-                    {purchaseOrders.map(po => (
-                      <option key={po.id} value={po.id}>
-                        {po.po_number} - {po.vendor.name} ({new Date(po.po_date).toLocaleDateString()})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(value) => handlePOChange(value)}
+                    placeholder="Select Purchase Order..."
+                    emptyMessage="No purchase orders found"
+                    options={purchaseOrders.map((po) => ({
+                      value: po.id,
+                      label: `${po.po_number} - ${po.vendor.name} (${new Date(po.po_date).toLocaleDateString()})`,
+                    }))}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Vendor *</label>
@@ -2793,6 +2933,24 @@ function GRNContent() {
                         </div>
                       )}
                       {renderInvoiceUploadStatus(invoiceUploadStatus.edit)}
+                      {/* Additional invoice files */}
+                      {editFormData.additionalInvoiceFiles.map((f, i) => (
+                        <div key={i} className="text-xs text-gray-600 mt-1 flex items-center gap-2">
+                          <span>📄 {f.name}</span>
+                          <button type="button" onClick={() => handleViewInvoice(f.url, f.name)}
+                            className="text-blue-600 hover:text-blue-800 underline">Open</button>
+                          <button type="button" onClick={() => setEditFormData(prev => ({ ...prev, additionalInvoiceFiles: prev.additionalInvoiceFiles.filter((_, idx) => idx !== i) }))}
+                            className="text-red-500 hover:text-red-700">✕</button>
+                        </div>
+                      ))}
+                      <div className="mt-2">
+                        <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                          <span>+ Add Another Invoice File</span>
+                          <input type="file" accept="image/png,image/jpeg,image/jpg,application/pdf" className="hidden"
+                            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAdditionalInvoiceFileSelect(f, 'edit'); e.target.value = ''; }} />
+                        </label>
+                        {additionalUploadStatus && <span className="ml-3 text-xs text-green-600">{additionalUploadStatus}</span>}
+                      </div>
                     </>
                   ) : selectedGRN.invoice_file_url ? (
                     <div className="flex flex-col gap-1 mt-1">
@@ -2913,19 +3071,20 @@ function GRNContent() {
                               className="w-20 border border-gray-300 rounded px-2 py-1 text-right"
                             />
                           </td>
-                          <td className="px-4 py-2 text-sm text-right">
+                          <td className="px-4 py-2 text-sm text-gray-900 text-right">
                             <input
                               type="number"
-                              step="0.01"
-                              value={item.unitPrice ?? ''}
+                              value={item.acceptedQty}
                               onChange={(e) => {
                                 const newItems = [...editFormData.items];
-                                (newItems[idx] as any).unitPrice = parseFloat(e.target.value) || 0;
+                                newItems[idx].acceptedQty = Number(e.target.value);
                                 setEditFormData({ ...editFormData, items: newItems });
                               }}
-                              className="w-28 border border-gray-300 rounded px-2 py-1 text-right"
-                              placeholder="0.00"
+                              className="w-20 border border-gray-300 rounded px-2 py-1 text-right"
                             />
+                          </td>
+                          <td className="px-4 py-2 text-sm text-right">
+                            <span className="text-gray-600">{item.uidCount || 0}</span>
                           </td>
                           <td className="px-4 py-2 text-sm">
                             <input
