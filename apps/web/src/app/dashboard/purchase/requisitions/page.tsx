@@ -13,6 +13,7 @@ import DuplicateWarning, { useDuplicateDetection } from '../../../../components/
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { SlidePanel } from '../../../../components/ui/SlidePanel';
 import { StatCard } from '../../../../components/ui/StatCard';
+import { ErpButton, ErpPageHeader, ErpStatusBadge } from '../../../../components/ui/ErpPrimitives';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import DateInput from '../../../../components/ui/DateInput';
 import { useEscapeKey } from '../../../../hooks/useEscapeKey';
@@ -178,25 +179,6 @@ function getPrWorkflowLabel(pr: Pick<Requisition, 'workflow_status_label' | 'sta
   return String(pr?.workflow_status_label || pr?.status || 'UNKNOWN').trim();
 }
 
-function getPrWorkflowBadgeClass(status: string): string {
-  switch (status) {
-    case 'GOODS_RCVD':
-      return 'bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm';
-    case 'PO_DONE':
-      return 'bg-green-50 text-green-700 border border-green-200 shadow-sm';
-    case 'RFQ_RCVD':
-      return 'bg-blue-50 text-blue-700 border border-blue-200 shadow-sm';
-    case 'RFQ_ISSUED':
-      return 'bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm';
-    case 'DRAFT':
-      return 'bg-slate-50 text-slate-700 border border-slate-200 shadow-sm';
-    case 'REJECTED':
-      return 'bg-red-50 text-red-700 border border-red-200 shadow-sm';
-    default:
-      return 'bg-gray-50 text-gray-700 border border-gray-200 shadow-sm';
-  }
-}
-
 function normalizeDateInputValue(value: string | null | undefined): string {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -356,13 +338,7 @@ function PRContent() {
       label: 'Status',
       accessor: (r) => getPrWorkflowLabel(r),
       cell: (r) => (
-        <span
-          className={`px-2 py-1 text-xs font-semibold rounded-full ${getPrWorkflowBadgeClass(
-            getPrWorkflowStatus(r),
-          )}`}
-        >
-          {getPrWorkflowLabel(r)}
-        </span>
+        <ErpStatusBadge status={getPrWorkflowStatus(r)} label={getPrWorkflowLabel(r)} />
       ),
     },
     {
@@ -389,49 +365,45 @@ function PRContent() {
       sortable: false,
       hideable: false,
       cell: (req) => (
-        <div className="flex gap-2">
-          <button
-            type="button"
+        <div className="flex flex-wrap gap-1.5">
+          <ErpButton
             onClick={() => handleViewDetails(req.id)}
-            className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-md text-xs font-semibold transition-colors"
+            variant="secondary"
+            size="sm"
           >
             View
-          </button>
+          </ErpButton>
           {(req.status === 'DRAFT' || req.status === 'SUBMITTED' || req.status === 'REJECTED') && canEditPR && (
-            <button
-              type="button"
+            <ErpButton
               onClick={() => handleEditPR(req.id)}
-              className="px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md text-xs font-semibold transition-colors"
+              variant="ghost"
+              size="sm"
             >
               Edit
-            </button>
+            </ErpButton>
           )}
           {(req.status === 'DRAFT' || req.status === 'SUBMITTED') && canApprovePR && (
             <>
-              <button
-                type="button"
+              <ErpButton
                 onClick={() => handleApprove(req.id)}
-                className="px-3 py-1 bg-green-50 text-green-700 hover:bg-green-100 rounded-md text-xs font-semibold transition-colors"
+                variant="approve"
+                size="sm"
               >
                 Approve
-              </button>
-              <button
-                type="button"
+              </ErpButton>
+              <ErpButton
                 onClick={() => handleReject(req.id)}
-                className="px-3 py-1 bg-red-50 text-red-700 hover:bg-red-100 rounded-md text-xs font-semibold transition-colors"
+                variant="danger"
+                size="sm"
               >
                 Reject
-              </button>
+              </ErpButton>
             </>
           )}
           {canDeletePR && (
-          <button
-            type="button"
-            onClick={() => handleDelete(req.id)}
-            className="px-3 py-1 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-md text-xs font-semibold transition-colors"
-          >
-            Delete
-          </button>
+            <ErpButton onClick={() => handleDelete(req.id)} variant="ghost" size="sm">
+              Delete
+            </ErpButton>
           )}
         </div>
       ),
@@ -1512,29 +1484,31 @@ function PRContent() {
   };
 
   const totalPRs = requisitions.length;
-  const pendingApprovals = requisitions.filter(pr => pr.workflow_status === 'PENDING' || pr.status === 'PENDING').length;
+  const pendingApprovals = requisitions.filter((pr) =>
+    ['PENDING', 'SUBMITTED', 'AWAITING_APPROVAL'].includes(
+      String(pr.workflow_status || pr.status || '').toUpperCase(),
+    ),
+  ).length;
   const draftPRs = requisitions.filter(pr => pr.status === 'DRAFT').length;
 
   return (
-    <div className="min-h-screen bg-gray-50/50 p-4 md:p-8">
-      <div className="w-full mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-50 p-4 md:p-6">
+      <div className="mx-auto w-full space-y-5">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Purchase Requisitions</h1>
-            <p className="text-gray-500 mt-1">Create and manage internal purchase requests</p>
-          </div>
-          {canCreatePR && (
-            <button
-              type="button"
+        <ErpPageHeader
+          eyebrow="Procurement"
+          title="Purchase Requisitions"
+          description="Create, approve, source, and convert internal purchase requirements."
+          actions={canCreatePR ? (
+            <ErpButton
               onClick={() => setShowCreateForm(true)}
-              className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition-all font-medium shadow-sm hover:shadow"
+              variant="primary"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="h-4 w-4" />
               New Requisition
-            </button>
-          )}
-        </div>
+            </ErpButton>
+          ) : null}
+        />
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1575,34 +1549,31 @@ function PRContent() {
           width="4xl"
           footer={
             <div className="flex justify-end gap-3 w-full">
-              <button
-                type="button"
+              <ErpButton
                 onClick={() => {
                   setShowCreateForm(false);
                   setEditingPRId(null);
                   setItems([]);
                   setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
                 }}
-                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                variant="secondary"
               >
                 Cancel
-              </button>
-              <button
-                type="button"
+              </ErpButton>
+              <ErpButton
                 onClick={() => handleSubmit('DRAFT')}
                 disabled={items.length === 0}
-                className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 font-medium flex items-center gap-2"
+                variant="secondary"
               >
                 <FileText className="w-4 h-4" /> Save as Draft
-              </button>
-              <button
-                type="button"
+              </ErpButton>
+              <ErpButton
                 onClick={() => handleSubmit('SUBMITTED')}
                 disabled={items.length === 0 || !formData.requiredDate}
-                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 font-medium flex items-center gap-2 shadow-sm"
+                variant="primary"
               >
                 <Send className="w-4 h-4" /> {editingPRId ? 'Update Requisition' : 'Submit for Approval'}
-              </button>
+              </ErpButton>
             </div>
           }
         >
@@ -2064,151 +2035,169 @@ function PRContent() {
             pageSizeOptions={[10, 25, 50, 100]}
             searchPlaceholder="Search by PR number, department, status…"
             toolbarRight={
-              <div className="flex gap-2">
-                <select
+              <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
+                <SearchableSelect
                   value={filterVendor}
-                  onChange={(e) => setFilterVendor(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="">All Vendors</option>
-                  {rfqVendors.map((v) => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </select>
-                <select
+                  onChange={setFilterVendor}
+                  options={[
+                    { value: '', label: 'All vendors' },
+                    ...rfqVendors.map((vendor) => ({
+                      value: vendor.id,
+                      label: vendor.name,
+                      subtitle: vendor.code || vendor.email,
+                    })),
+                  ]}
+                  placeholder="Filter by vendor"
+                  className="w-full sm:w-56"
+                />
+                <SearchableSelect
                   value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="">All Status</option>
-                  <option value="DRAFT">Draft</option>
-                  <option value="RFQ_ISSUED">RFQ Issued</option>
-                  <option value="RFQ_RCVD">RFQ Rcvd</option>
-                  <option value="PO_DONE">PO Done</option>
-                  <option value="GOODS_RCVD">Goods Recvd</option>
-                  <option value="REJECTED">Rejected</option>
-                </select>
+                  onChange={setFilterStatus}
+                  options={[
+                    { value: '', label: 'All statuses' },
+                    { value: 'DRAFT', label: 'Draft' },
+                    { value: 'SUBMITTED', label: 'Submitted' },
+                    { value: 'RFQ_ISSUED', label: 'RFQ issued' },
+                    { value: 'RFQ_RCVD', label: 'RFQ received' },
+                    { value: 'PO_DONE', label: 'PO completed' },
+                    { value: 'GOODS_RCVD', label: 'Goods received' },
+                    { value: 'REJECTED', label: 'Rejected' },
+                  ]}
+                  placeholder="Filter by status"
+                  className="w-full sm:w-48"
+                />
               </div>
             }
           />
         )}
 
-        {/* PR Detail Modal */}
+        {/* Full-screen PR workspace */}
         {showDetailModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg w-full w-full max-h-[90vh] flex flex-col">
+          <div className="fixed inset-0 z-[80] bg-slate-50">
+            <div className="flex h-screen w-screen flex-col bg-white">
               {loadingDetail ? (
-                <div className="p-8 text-center">
+                <div className="flex flex-1 items-center justify-center p-8 text-center">
                   <div className="animate-pulse">
                     <div className="h-4 bg-gray-200 rounded w-3/4 mx-auto mb-4"></div>
                     <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto"></div>
+                    <p className="text-gray-600 mt-4">Loading PR details...</p>
                   </div>
-                  <p className="text-gray-600 mt-4">Loading PR details...</p>
                 </div>
               ) : selectedPR ? (
                 <>
                   {/* Sticky Header */}
-                  <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-4 rounded-t-lg flex justify-between items-center gap-4">
-                    <div>
-                      <h2 className="text-2xl font-bold text-gray-900">Purchase Requisition Details</h2>
-                      <p className="text-gray-600 mt-1">PR Number: {selectedPR.pr_number}</p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {(selectedPR.status === 'DRAFT' || selectedPR.status === 'SUBMITTED') && (
-                        <>
-                          <button
+                  <div className="z-10 border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h2 className="text-xl font-bold text-slate-950 sm:text-2xl">Purchase Requisition</h2>
+                          <ErpStatusBadge
+                            status={getPrWorkflowStatus(selectedPR)}
+                            label={getPrWorkflowLabel(selectedPR)}
+                          />
+                        </div>
+                        <p className="mt-1 text-sm font-medium text-slate-600">{selectedPR.pr_number}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {(selectedPR.status === 'DRAFT' || selectedPR.status === 'SUBMITTED') && canEditPR && (
+                          <ErpButton
                             onClick={() => {
                               handleEditPR(selectedPR.id);
                               setShowDetailModal(false);
                             }}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                            variant="secondary"
+                            size="sm"
                           >
+                            <Edit className="h-4 w-4" />
                             Edit
-                          </button>
-                          {canApprovePR && (
-                            <>
-                              <button
-                                onClick={() => handleReject(selectedPR.id)}
-                                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
-                              >
-                                Reject
-                              </button>
-                              <button
-                                onClick={() => handleApprove(selectedPR.id)}
-                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
-                              >
-                                Approve
-                              </button>
-                            </>
-                          )}
-                        </>
-                      )}
-                      {selectedPR.status !== 'DRAFT' &&
-                        selectedPR.status !== 'REJECTED' &&
-                        getPrWorkflowStatus(selectedPR) !== 'PO_DONE' &&
-                        getPrWorkflowStatus(selectedPR) !== 'GOODS_RCVD' && (
-                        <>
-                          <button
-                            onClick={async () => {
-                              const nextOpen = !rfqPanelOpen;
-                              setRfqPanelOpen(nextOpen);
-                              if (nextOpen && rfqVendors.length === 0) {
-                                await fetchRFQVendors();
-                              }
-                              if (nextOpen && selectedPR) {
-                                await fetchPreferredVendorsForPR(selectedPR);
-                              }
-                            }}
-                            className="px-4 py-2 bg-indigo-800 text-white rounded-lg hover:bg-indigo-900 transition-colors text-sm"
-                          >
-                            Send RFQ
-                          </button>
-                          <button
-                            onClick={async () => {
-                              const next = !showRfqResponses;
-                              setShowRfqResponses(next);
-                              if (next) {
-                                await fetchRfqHistory(selectedPR.id);
-                              }
-                            }}
-                            className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm"
-                          >
-                            View / Record RFQ Responses
-                          </button>
-                          <button
-                            onClick={() => {
-                              setShowDetailModal(false);
-                              router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
-                            }}
-                            className="px-4 py-2 bg-indigo-800 text-white rounded-lg hover:bg-indigo-900 transition-colors text-sm"
-                          >
-                            Create PO from this PR
-                          </button>
-                        </>
-                      )}
-                      <button
-                        onClick={() => setShowDetailModal(false)}
-                        className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors text-sm"
-                      >
-                        Close
-                      </button>
+                          </ErpButton>
+                        )}
+                        {(selectedPR.status === 'DRAFT' || selectedPR.status === 'SUBMITTED') && canApprovePR && (
+                          <>
+                            <ErpButton onClick={() => handleReject(selectedPR.id)} variant="danger" size="sm">
+                              <X className="h-4 w-4" />
+                              Reject
+                            </ErpButton>
+                            <ErpButton onClick={() => handleApprove(selectedPR.id)} variant="approve" size="sm">
+                              <Check className="h-4 w-4" />
+                              Approve
+                            </ErpButton>
+                          </>
+                        )}
+                        {selectedPR.status !== 'DRAFT' &&
+                          selectedPR.status !== 'REJECTED' &&
+                          getPrWorkflowStatus(selectedPR) !== 'PO_DONE' &&
+                          getPrWorkflowStatus(selectedPR) !== 'GOODS_RCVD' && (
+                          <>
+                            <ErpButton
+                              onClick={async () => {
+                                const nextOpen = !rfqPanelOpen;
+                                setRfqPanelOpen(nextOpen);
+                                if (nextOpen && rfqVendors.length === 0) {
+                                  await fetchRFQVendors();
+                                }
+                                if (nextOpen && selectedPR) {
+                                  await fetchPreferredVendorsForPR(selectedPR);
+                                }
+                              }}
+                              variant="secondary"
+                              size="sm"
+                            >
+                              <Send className="h-4 w-4" />
+                              Send RFQ
+                            </ErpButton>
+                            <ErpButton
+                              onClick={async () => {
+                                const next = !showRfqResponses;
+                                setShowRfqResponses(next);
+                                if (next) {
+                                  await fetchRfqHistory(selectedPR.id);
+                                }
+                              }}
+                              variant="secondary"
+                              size="sm"
+                            >
+                              View RFQ responses
+                            </ErpButton>
+                            <ErpButton
+                              onClick={() => {
+                                setShowDetailModal(false);
+                                router.push(`/dashboard/purchase/orders?prId=${selectedPR.id}`);
+                              }}
+                              variant="primary"
+                              size="sm"
+                            >
+                              Create PO
+                            </ErpButton>
+                          </>
+                        )}
+                        <ErpButton
+                          onClick={() => setShowDetailModal(false)}
+                          variant="ghost"
+                          size="sm"
+                          aria-label="Close requisition details"
+                        >
+                          <X className="h-4 w-4" />
+                          Close
+                        </ErpButton>
+                      </div>
                     </div>
                   </div>
-                  <div className="p-6 overflow-auto flex-1">
+                  <div className="flex-1 overflow-auto bg-slate-50 p-4 sm:p-6">
 
                   {/* PR Info */}
-                  <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
+                  <div className="mb-6 grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
                     <div>
                       <p className="text-sm text-gray-600">Department</p>
                       <p className="font-semibold">{selectedPR.department}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Status</p>
-                      <span className={`inline-block px-3 py-1 text-sm font-semibold rounded-full ${getPrWorkflowBadgeClass(
-                        getPrWorkflowStatus(selectedPR),
-                      )}`}>
-                        {getPrWorkflowLabel(selectedPR)}
-                      </span>
+                      <ErpStatusBadge
+                        status={getPrWorkflowStatus(selectedPR)}
+                        label={getPrWorkflowLabel(selectedPR)}
+                        className="mt-1"
+                      />
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Required Date</p>
@@ -2226,7 +2215,7 @@ function PRContent() {
                       <p className="text-sm text-gray-600">Request Date</p>
                       <p className="font-semibold">{new Date(selectedPR.request_date).toLocaleDateString()}</p>
                     </div>
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2 lg:col-span-4">
                       <p className="text-sm text-gray-600">Delivery Address</p>
                       <p className="font-semibold whitespace-pre-line">{selectedPR.delivery_address || 'N/A'}</p>
                     </div>

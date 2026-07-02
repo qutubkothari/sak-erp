@@ -1,0 +1,126 @@
+'use client';
+
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type HTMLAttributes,
+  type ReactNode,
+} from 'react';
+import { cn } from '@/lib/utils';
+
+type ButtonVariant = 'primary' | 'secondary' | 'approve' | 'danger' | 'ghost';
+type ButtonSize = 'sm' | 'md';
+
+interface ErpButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+}
+
+const buttonVariants: Record<ButtonVariant, string> = {
+  primary: 'border-indigo-700 bg-indigo-700 text-white hover:border-indigo-800 hover:bg-indigo-800',
+  secondary: 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-950',
+  approve: 'border-emerald-700 bg-emerald-700 text-white hover:border-emerald-800 hover:bg-emerald-800',
+  danger: 'border-red-300 bg-white text-red-700 hover:border-red-400 hover:bg-red-50',
+  ghost: 'border-transparent bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950',
+};
+
+const buttonSizes: Record<ButtonSize, string> = {
+  sm: 'min-h-8 px-3 py-1.5 text-xs',
+  md: 'min-h-10 px-4 py-2 text-sm',
+};
+
+export const ErpButton = forwardRef<HTMLButtonElement, ErpButtonProps>(
+  ({ className, variant = 'secondary', size = 'md', type = 'button', ...props }, ref) => (
+    <button
+      ref={ref}
+      type={type}
+      className={cn(
+        'inline-flex items-center justify-center gap-2 rounded-md border font-semibold transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
+        'disabled:pointer-events-none disabled:opacity-50',
+        buttonVariants[variant],
+        buttonSizes[size],
+        className,
+      )}
+      {...props}
+    />
+  ),
+);
+
+ErpButton.displayName = 'ErpButton';
+
+interface ErpPageHeaderProps {
+  title: string;
+  description?: string;
+  eyebrow?: string;
+  actions?: ReactNode;
+}
+
+export function ErpPageHeader({ title, description, eyebrow, actions }: ErpPageHeaderProps) {
+  return (
+    <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
+      <div className="min-w-0">
+        {eyebrow ? (
+          <p className="mb-1 text-xs font-semibold uppercase text-indigo-700">{eyebrow}</p>
+        ) : null}
+        <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">{title}</h1>
+        {description ? <p className="mt-1 max-w-3xl text-sm text-slate-600">{description}</p> : null}
+      </div>
+      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+    </header>
+  );
+}
+
+type StatusTone = 'neutral' | 'info' | 'warning' | 'success' | 'danger';
+
+const statusToneClasses: Record<StatusTone, string> = {
+  neutral: 'border-slate-200 bg-slate-50 text-slate-700',
+  info: 'border-blue-200 bg-blue-50 text-blue-700',
+  warning: 'border-amber-200 bg-amber-50 text-amber-800',
+  success: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  danger: 'border-red-200 bg-red-50 text-red-700',
+};
+
+function getStatusTone(status: string): StatusTone {
+  const normalized = status.trim().toUpperCase();
+
+  if (['REJECTED', 'CANCELLED', 'FAILED', 'OVERDUE'].includes(normalized)) return 'danger';
+  if (['DRAFT', 'PENDING', 'OPEN'].includes(normalized)) return 'neutral';
+  if (['SUBMITTED', 'RFQ_ISSUED', 'RFQ_RCVD', 'PARTIAL', 'IN_PROGRESS'].includes(normalized)) return 'info';
+  if (['ON_HOLD', 'AWAITING_APPROVAL'].includes(normalized)) return 'warning';
+  if (['APPROVED', 'COMPLETED', 'PO_DONE', 'GOODS_RCVD', 'RECEIVED', 'DONE'].includes(normalized)) {
+    return 'success';
+  }
+
+  return 'neutral';
+}
+
+interface ErpStatusBadgeProps extends HTMLAttributes<HTMLSpanElement> {
+  status: string;
+  label?: string;
+  tone?: StatusTone;
+}
+
+export function ErpStatusBadge({
+  status,
+  label,
+  tone,
+  className,
+  ...props
+}: ErpStatusBadgeProps) {
+  const resolvedTone = tone ?? getStatusTone(status);
+
+  return (
+    <span
+      className={cn(
+        'inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-xs font-semibold',
+        statusToneClasses[resolvedTone],
+        className,
+      )}
+      title={label ?? status}
+      {...props}
+    >
+      <span className="truncate">{label ?? status}</span>
+    </span>
+  );
+}

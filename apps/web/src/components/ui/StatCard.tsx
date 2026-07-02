@@ -43,8 +43,7 @@ function TrendBadge({ trend }: { trend: number }) {
 }
 
 /**
- * Enterprise-grade KPI stat card with trend indicator.
- * Replaces the basic div cards in the dashboard.
+ * Compact KPI card for operational screens.
  */
 export function StatCard({
   title,
@@ -65,33 +64,28 @@ export function StatCard({
     <Tag
       onClick={onClick}
       className={cn(
-        'group relative rounded-2xl border bg-white/80 backdrop-blur-xl p-6 shadow-md transition-all duration-300 ease-out text-left w-full hover:-translate-y-1 hover:shadow-xl overflow-hidden',
+        'relative w-full rounded-lg border bg-white p-4 text-left shadow-sm transition-colors',
         onClick && 'cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500',
         alert
-          ? 'border-red-200 ring-1 ring-red-100'
-          : 'border-slate-200 hover:border-indigo-200',
+          ? 'border-red-200'
+          : 'border-slate-200 hover:border-slate-300',
         className,
       )}
     >
-      {/* Alert pulse */}
       {alert && (
         <span className="absolute right-3 top-3 flex h-2.5 w-2.5">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
           <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
         </span>
       )}
 
-      {/* Subtle ambient glow effect */}
-      <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-gradient-to-br from-indigo-100 to-transparent opacity-50 blur-2xl group-hover:opacity-100 transition-opacity" />
-
-      <div className="flex items-start justify-between gap-4 relative z-10">
+      <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-500 truncate">{title}</p>
 
           {loading ? (
             <div className="mt-2 h-8 w-20 animate-pulse rounded-md bg-gray-200" />
           ) : (
-            <p className={cn('mt-1 text-3xl font-bold tracking-tight', alert ? 'text-red-600' : 'text-gray-900')}>
+            <p className={cn('mt-1 text-2xl font-bold', alert ? 'text-red-600' : 'text-slate-950')}>
               {value}
             </p>
           )}
@@ -107,9 +101,8 @@ export function StatCard({
         </div>
 
         {icon && (
-          <div className={cn('rounded-2xl p-3.5 flex-shrink-0 shadow-sm border border-white/50 relative overflow-hidden', iconBg)}>
-            <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent pointer-events-none" />
-            <div className="relative z-10">{icon}</div>
+          <div className={cn('flex-shrink-0 rounded-md border border-slate-200 p-2.5', iconBg)}>
+            <div>{icon}</div>
           </div>
         )}
       </div>

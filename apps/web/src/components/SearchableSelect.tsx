@@ -167,7 +167,10 @@ export default function SearchableSelect({
         placeholder={placeholder}
         required={required}
         disabled={disabled}
-        className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white text-sm disabled:opacity-60 ${
+        role="combobox"
+        aria-expanded={isOpen}
+        aria-autocomplete="list"
+        className={`w-full min-h-10 px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-sm text-slate-900 placeholder:text-slate-400 disabled:bg-slate-50 disabled:text-slate-500 disabled:opacity-60 ${
           truncateInput ? 'truncate' : ''
         }`}
         autoComplete="off"
@@ -176,12 +179,13 @@ export default function SearchableSelect({
       {isOpen && !disabled && dropdownPos && createPortal(
         <div
           ref={dropdownRef}
-          className={`fixed z-[99999] bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto ${dropdownClassName}`}
+          role="listbox"
+          className={`fixed z-[99999] bg-white border border-slate-200 rounded-md shadow-lg max-h-60 overflow-y-auto ${dropdownClassName}`}
           style={{ top: dropdownPos.top + 2, left: dropdownPos.left, width: dropdownPos.width }}
           onMouseDown={(e) => e.preventDefault()}
         >
           {filteredOptions.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-gray-500">No items found</div>
+            <div className="px-3 py-3 text-sm text-slate-500">No items found</div>
           ) : (
             filteredOptions.map((option, index) => (
               <div
@@ -191,13 +195,13 @@ export default function SearchableSelect({
                 onMouseEnter={() => setHighlightedIndex(index)}
                 className={`px-3 py-2 cursor-pointer text-sm ${
                   index === highlightedIndex
-                    ? 'bg-amber-100 text-amber-900'
-                    : 'hover:bg-gray-100'
+                    ? 'bg-indigo-50 text-indigo-900'
+                    : 'text-slate-700 hover:bg-slate-50'
                 }`}
               >
                 <div className="font-medium whitespace-normal break-words">{option.label}</div>
                 {option.subtitle && (
-                  <div className="text-xs text-gray-500 mt-0.5 whitespace-normal break-words">{option.subtitle}</div>
+                  <div className="text-xs text-slate-500 mt-0.5 whitespace-normal break-words">{option.subtitle}</div>
                 )}
               </div>
             ))
