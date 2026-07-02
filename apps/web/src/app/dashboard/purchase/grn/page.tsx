@@ -2132,11 +2132,53 @@ function GRNContent() {
       : 'bg-gray-100 text-gray-800';
   };
 
+  const startEditGRN = (grn: GRN) => {
+    const hydratedItems = backfillEditItems(
+      (Array.isArray(grn.grn_items) ? grn.grn_items : []).map((item: any) => ({
+        id: item.id,
+        itemId: item.item_id || item.itemId || item.item?.id || '',
+        poItemId: item.po_item_id || item.poItemId || '',
+        itemCode: item.item_code || item.item?.code || '',
+        itemName: item.item_name || item.item?.name || '',
+        uom: item.uom || item.item?.uom || '',
+        orderedQuantity:
+          Number(item.ordered_qty || item.ordered_quantity) ||
+          Number(item.received_qty || item.received_quantity) ||
+          0,
+        receivedQty: Number(item.received_qty || item.received_quantity) || 0,
+        acceptedQty: Number(item.accepted_qty || item.accepted_quantity) || 0,
+        rejectedQty: Number(item.rejected_qty || item.rejected_quantity) || 0,
+        unitPrice: Number(item.rate || item.unit_price || item.unitPrice) || 0,
+        uidCount: Number((item as any).uid_count) || 0,
+        batchNumber: item.batch_number || '',
+        expiryDate: item.expiry_date || '',
+        notes: item.notes || '',
+      })),
+      grn,
+    );
+
+    setInvoiceUploadStatus((prev) => ({ ...prev, edit: emptyInvoiceUploadStatus }));
+    setEditFormData({
+      invoiceNumber: grn.invoice_number || '',
+      invoiceDate: grn.invoice_date || '',
+      invoiceFileUrl: grn.invoice_file_url || '',
+      invoiceFileName: grn.invoice_file_name || '',
+      invoiceFileType: grn.invoice_file_type || '',
+      invoiceFileSize: grn.invoice_file_size || 0,
+      additionalInvoiceFiles: Array.isArray(grn.additional_invoice_files) ? grn.additional_invoice_files : [],
+      warehouseId: grn.warehouse?.id || '',
+      notes: grn.remarks || (grn as any).notes || '',
+      items: hydratedItems as any,
+    });
+    setEditMode(true);
+  };
+
   const grnTableColumns: Array<ListTableColumn<GRN>> = [
     {
       id: 'created_at',
       label: 'Created',
       accessor: (grn) => grn.created_at || '',
+      defaultVisible: false,
       minWidth: 126,
       cellClassName: 'whitespace-nowrap text-[#5E4635]',
       cell: (grn) => grn.created_at ? new Date(grn.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-',
@@ -2152,6 +2194,7 @@ function GRNContent() {
           <div className="truncate text-xs text-[#7A6555]" title={g.purchase_order?.po_number || ''}>
             PO: {g.purchase_order?.po_number || '-'}
           </div>
+          <div className="truncate text-xs text-[#7A6555]">Receipt: {formatDateOnly(getGrnReceiptDate(g))}</div>
         </div>
       ),
     },
@@ -2189,6 +2232,7 @@ function GRNContent() {
         return Number.isNaN(time) ? 0 : time;
       },
       minWidth: 112,
+      defaultVisible: false,
       cellClassName: 'whitespace-nowrap',
       cell: (g) => <span className="text-sm text-[#5E4635]">{formatDateOnly(getGrnReceiptDate(g))}</span>,
     },
@@ -2274,9 +2318,9 @@ function GRNContent() {
       sortable: false,
       hideable: false,
       align: 'right',
-      minWidth: 220,
+      minWidth: 96,
       cell: (grn) => (
-        <div className="flex flex-wrap justify-end gap-1.5 text-sm">
+        <div className="flex justify-end text-sm">
           <button
             type="button"
             onClick={async () => {
@@ -2299,125 +2343,8 @@ function GRNContent() {
             className="inline-flex min-h-8 items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2.5 text-xs font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
           >
             <Eye className="h-3.5 w-3.5" />
-            View
+            Open
           </button>
-
-          {grn.status === 'COMPLETED' && (
-            <button
-              type="button"
-              onClick={() => {
-                fetchGRNUIDs(grn.id);
-              }}
-              className="inline-flex min-h-8 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-            >
-              UIDs
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => printGRN(grn)}
-            className="inline-flex min-h-8 items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2.5 text-xs font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
-          >
-            <Printer className="h-3.5 w-3.5" />
-            Print
-          </button>
-
-          {canEditGRN && (
-            <button
-              type="button"
-              onClick={async () => {
-              try {
-                const token = localStorage.getItem('accessToken');
-                const response = await fetch(`/api/v1/purchase/grn/${grn.id}`, {
-                  headers: { Authorization: `Bearer ${token}` },
-                });
-                const detailedGRN = await response.json();
-                setSelectedGRN(detailedGRN);
-                setInvoiceUploadStatus(prev => ({ ...prev, edit: emptyInvoiceUploadStatus }));
-
-                const rawItems = Array.isArray(detailedGRN.grn_items) ? detailedGRN.grn_items : [];
-                const hydratedItems = backfillEditItems(
-                  rawItems.map((item: any) => ({
-                    id: item.id,
-                    itemId: item.item_id || item.itemId || item.item?.id || '',
-                    poItemId: item.po_item_id || item.poItemId || '',
-                    itemCode: item.item_code || item.item?.code || '',
-                    itemName: item.item_name || item.item?.name || '',
-                    uom: item.uom || item.item?.uom || '',
-                    orderedQuantity:
-                      Number(item.ordered_qty || item.ordered_quantity) ||
-                      Number(item.received_qty || item.received_quantity) ||
-                      0,
-                    receivedQty: Number(item.received_qty || item.received_quantity) || 0,
-                    acceptedQty: Number(item.accepted_qty || item.accepted_quantity) || 0,
-                    rejectedQty: Number(item.rejected_qty || item.rejected_quantity) || 0,
-                    unitPrice: Number(item.rate || item.unit_price || item.unitPrice) || 0,
-                    uidCount: Number((item as any).uid_count) || 0,
-                    batchNumber: item.batch_number || '',
-                    expiryDate: item.expiry_date || '',
-                    notes: item.notes || '',
-                  })),
-                  detailedGRN,
-                );
-
-                setEditFormData({
-                  invoiceNumber: detailedGRN.invoice_number || '',
-                  invoiceDate: detailedGRN.invoice_date || '',
-                  invoiceFileUrl: detailedGRN.invoice_file_url || '',
-                  invoiceFileName: detailedGRN.invoice_file_name || '',
-                  invoiceFileType: detailedGRN.invoice_file_type || '',
-                  invoiceFileSize: detailedGRN.invoice_file_size || 0,
-                  additionalInvoiceFiles: Array.isArray(detailedGRN.additional_invoice_files) ? detailedGRN.additional_invoice_files : [],
-                  warehouseId: detailedGRN.warehouse?.id || '',
-                  notes: detailedGRN.remarks || detailedGRN.notes || '',
-                  items: hydratedItems as any,
-                });
-              } catch (error) {
-                setSelectedGRN(grn);
-                setInvoiceUploadStatus(prev => ({ ...prev, edit: emptyInvoiceUploadStatus }));
-                setEditFormData({
-                  invoiceNumber: grn.invoice_number || '',
-                  invoiceDate: grn.invoice_date || '',
-                  invoiceFileUrl: grn.invoice_file_url || '',
-                  invoiceFileName: grn.invoice_file_name || '',
-                  invoiceFileType: grn.invoice_file_type || '',
-                  invoiceFileSize: grn.invoice_file_size || 0,
-                  additionalInvoiceFiles: Array.isArray(grn.additional_invoice_files) ? grn.additional_invoice_files : [],
-                  warehouseId: grn.warehouse?.id || '',
-                  notes: grn.remarks || '',
-                  items: (Array.isArray(grn.grn_items) ? grn.grn_items : []).map((item: any) => ({
-                    id: item.id,
-                    itemId: item.item_id || item.itemId || item.item?.id || '',
-                    poItemId: item.po_item_id || item.poItemId || '',
-                    itemCode: item.item_code || item.item?.code || '',
-                    itemName: item.item_name || item.item?.name || '',
-                    uom: item.uom || item.item?.uom || '',
-                    orderedQuantity:
-                      Number(item.ordered_qty || item.ordered_quantity) ||
-                      Number(item.received_qty || item.received_quantity) ||
-                      0,
-                    receivedQty: Number(item.received_qty || item.received_quantity) || 0,
-                    acceptedQty: Number(item.accepted_qty || item.accepted_quantity) || 0,
-                    rejectedQty: Number(item.rejected_qty || item.rejected_quantity) || 0,
-                    unitPrice: Number(item.rate || item.unit_price || item.unitPrice) || 0,
-                    uidCount: Number((item as any).uid_count) || 0,
-                    batchNumber: item.batch_number || '',
-                    expiryDate: item.expiry_date || '',
-                    notes: item.notes || '',
-                  })),
-                });
-              }
-
-              setShowViewModal(true);
-              setEditMode(true);
-              }}
-              className="inline-flex min-h-8 items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2.5 text-xs font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              Edit
-            </button>
-          )}
         </div>
       ),
     },
@@ -2464,7 +2391,7 @@ function GRNContent() {
           </div>
         ) : (
           <ListTable
-            storageKey="grnTable:v2"
+            storageKey="grnTable:v3"
             rows={visibleGrns}
             columns={grnTableColumns}
             getRowId={(g) => g.id}
@@ -3293,14 +3220,29 @@ function GRNContent() {
             <div className="shrink-0 border-t border-[#E8DCC4] bg-white px-5 py-3 flex justify-between items-center">
               <div className="flex gap-3">
                 {editMode ? (
-                  <button
+                  <ErpButton
+                    variant="primary"
                     onClick={handleUpdateGRN}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                   >
-                    💾 Save Changes
-                  </button>
+                    Save Changes
+                  </ErpButton>
                 ) : (
                   <>
+                    <ErpButton variant="secondary" onClick={() => printGRN(selectedGRN)}>
+                      <Printer className="h-4 w-4" />
+                      Print
+                    </ErpButton>
+                    {selectedGRN.status === 'COMPLETED' && (
+                      <ErpButton variant="secondary" onClick={() => fetchGRNUIDs(selectedGRN.id)}>
+                        UIDs
+                      </ErpButton>
+                    )}
+                    {canEditGRN && (
+                      <ErpButton variant="secondary" onClick={() => startEditGRN(selectedGRN)}>
+                        <Pencil className="h-4 w-4" />
+                        Edit
+                      </ErpButton>
+                    )}
                     {canEditGRN && (
                       <button
                         onClick={() => {
