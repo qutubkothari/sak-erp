@@ -2474,7 +2474,53 @@ export class GrnService {
         .eq('grn_id', grnId)
         .maybeSingle();
 
-      if (error || !control) return null;
+      if (error || !control) {
+        const input = await this.buildSapControlsInput(tenantId, grnId);
+        if (!input) return null;
+        const transient = buildSapGrnControls(input);
+        return {
+          id: null,
+          tenant_id: tenantId,
+          grn_id: grnId,
+          movement_type: transient.movementType,
+          movement_text: transient.movementText,
+          material_document_number: transient.materialDocumentNumber,
+          fiscal_year: transient.fiscalYear,
+          inspection_lot_number: transient.inspectionLotNumber,
+          gr_ir_status: transient.grIrStatus,
+          qc_gate_status: transient.qcGateStatus,
+          three_way_match_status: transient.threeWayMatchStatus,
+          tolerance_status: transient.toleranceStatus,
+          reversal_status: transient.reversalStatus,
+          stock_posting_policy: transient.stockPostingPolicy,
+          metadata: {
+            po_number: input.poNumber,
+            messages: transient.messages,
+            transient: true,
+          },
+          items: transient.items.map((item) => ({
+            grn_item_id: item.id || null,
+            po_item_id: item.poItemId || null,
+            item_id: item.itemId || null,
+            item_code: item.itemCode || null,
+            movement_type: item.movementType,
+            stock_type: item.stockType,
+            ordered_qty: item.orderedQty,
+            previous_received_qty: item.previousReceivedQty,
+            received_qty: item.receivedQty,
+            accepted_qty: item.acceptedQty,
+            rejected_qty: item.rejectedQty,
+            po_rate: item.poRate,
+            grn_rate: item.grnRate,
+            qty_variance: item.qtyVariance,
+            price_variance_percent: item.priceVariancePercent,
+            tolerance_status: item.toleranceStatus,
+            metadata: {
+              messages: item.toleranceMessages,
+            },
+          })),
+        };
+      }
 
       const { data: items } = await this.supabase
         .from('grn_sap_control_items')
