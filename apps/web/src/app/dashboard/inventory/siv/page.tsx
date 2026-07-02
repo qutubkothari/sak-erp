@@ -7,7 +7,7 @@ import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import { buildDocumentBranding, escapeHtml, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import { ErpButton, ErpMetricStrip, ErpPageHeader, ErpStatusBadge } from '../../../../components/ui/ErpPrimitives';
-import { Check, History, PackageCheck, Plus, Printer, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertTriangle, Check, GitBranch, History, PackageCheck, Plus, Printer, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react';
 
 const AUTO_REFRESH_MS = 30000;
 
@@ -668,18 +668,18 @@ export default function SivPage() {
 
   const deleteSivHistoryRow = useCallback(async (movementId: string) => {
     const confirmedDel = await confirmDialog({
-      title: 'Delete SIV Entry',
-      message: 'Delete this SIV entry? Stock/UIDs will be reversed.',
-      confirmLabel: 'Delete',
+      title: 'Reverse SIV Entry',
+      message: 'Reverse this SIV goods issue? Stock and UID movement will be reversed.',
+      confirmLabel: 'Reverse',
       variant: 'danger',
     });
     if (!confirmedDel) return;
     try {
       await apiClient.delete(`/job-orders/store/material-requisitions/history/${movementId}`);
       await loadAll();
-      alert('SIV entry deleted and reversed');
+      alert('SIV goods issue reversed');
     } catch (err: any) {
-      alert('Failed to delete: ' + (err.message || err));
+      alert('Failed to reverse: ' + (err.message || err));
     }
   }, [loadAll]);
 
@@ -1125,6 +1125,24 @@ export default function SivPage() {
     0,
   );
   const approvedHistoryCount = sivHistory.filter((row) => row.approved_by).length;
+  const awaitingApprovalCount = sivHistory.length - approvedHistoryCount;
+  const blockedLineCount = openMaterialReqs.reduce(
+    (sum, req) =>
+      sum +
+      (req.materialLines || []).filter(
+        (line) => Number(line.pending_quantity || 0) > 0 && Number(line.available_quantity || 0) <= 0 && !itemRequiresUid(line.item_id),
+      ).length,
+    0,
+  );
+  const getLineStockStatus = (line: MaterialLine) => {
+    const pending = Number(line.pending_quantity || 0);
+    const available = Number(line.available_quantity || 0);
+    if (pending <= 0) return { label: 'Complete', tone: 'success' as const };
+    if (available >= pending) return { label: 'Ready to Post', tone: 'success' as const };
+    if (available > 0) return { label: 'Partial Stock', tone: 'warning' as const };
+    if (itemRequiresUid(line.item_id)) return { label: 'UID Required', tone: 'info' as const };
+    return { label: 'Blocked', tone: 'danger' as const };
+  };
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] px-4 py-4 text-[#2F241D] lg:px-6">
@@ -1153,10 +1171,43 @@ export default function SivPage() {
             { label: 'Open Jobs', value: openMaterialReqs.length, tone: 'warning' },
             { label: 'Pending Lines', value: pendingLineCount, tone: 'warning' },
             { label: 'Ready Lines', value: readyLineCount, tone: 'success' },
+            { label: 'Blocked Lines', value: blockedLineCount, tone: blockedLineCount > 0 ? 'danger' : 'success' },
             { label: 'SIV History', value: sivHistory.length },
-            { label: 'Approved Rows', value: approvedHistoryCount, tone: 'success' },
+            { label: 'Awaiting Approval', value: awaitingApprovalCount, tone: awaitingApprovalCount > 0 ? 'warning' : 'success' },
           ]}
         />
+
+        <div className="grid gap-3 lg:grid-cols-4">
+          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-[#7A6555]">Movement Type</div>
+            <div className="mt-1 text-lg font-bold text-[#4A3426]">261</div>
+            <div className="text-xs text-[#7A6555]">Goods issue to production order</div>
+          </div>
+          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-[#7A6555]">Document Flow</div>
+            <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#4A3426]">
+              <GitBranch className="h-4 w-4 text-[#8B6F47]" />
+              Job Order {'>'} Reservation {'>'} SIV
+            </div>
+            <div className="text-xs text-[#7A6555]">Open requests are tied to production demand</div>
+          </div>
+          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-[#7A6555]">Posting Control</div>
+            <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#4A3426]">
+              <ShieldCheck className="h-4 w-4 text-emerald-700" />
+              Stock posts on issue
+            </div>
+            <div className="text-xs text-[#7A6555]">Approval remains separate from stock movement</div>
+          </div>
+          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-[#7A6555]">Exception Queue</div>
+            <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#4A3426]">
+              <AlertTriangle className={`h-4 w-4 ${blockedLineCount > 0 ? 'text-red-700' : 'text-emerald-700'}`} />
+              {blockedLineCount} blocked line{blockedLineCount === 1 ? '' : 's'}
+            </div>
+            <div className="text-xs text-[#7A6555]">Stock shortage and UID gaps are stopped before issue</div>
+          </div>
+        </div>
 
         <div className="rounded-md border border-[#E8DCC4] bg-white">
           <div className="flex flex-col gap-3 border-b border-[#E8DCC4] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1422,6 +1473,32 @@ export default function SivPage() {
                           ) : null;
                         })()}
                       </div>
+                      <div className="mt-3 grid gap-2 text-xs md:grid-cols-4">
+                        <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-2">
+                          <div className="font-semibold uppercase text-[#7A6555]">Reference</div>
+                          <div className="mt-1 font-medium text-[#4A3426]">JO / Reservation</div>
+                        </div>
+                        <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-2">
+                          <div className="font-semibold uppercase text-[#7A6555]">Movement</div>
+                          <div className="mt-1 font-medium text-[#4A3426]">261 Goods Issue</div>
+                        </div>
+                        <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-2">
+                          <div className="font-semibold uppercase text-[#7A6555]">Stock Check</div>
+                          <div className="mt-1 font-medium text-[#4A3426]">
+                            {(() => {
+                              const blocked = (req.materialLines || []).filter((line) => {
+                                const status = getLineStockStatus(line);
+                                return status.label === 'Blocked';
+                              }).length;
+                              return blocked > 0 ? `${blocked} blocked` : 'Ready controlled';
+                            })()}
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-2">
+                          <div className="font-semibold uppercase text-[#7A6555]">Approval Gate</div>
+                          <div className="mt-1 font-medium text-[#4A3426]">Manager approval after issue</div>
+                        </div>
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <ErpButton
@@ -1533,6 +1610,12 @@ export default function SivPage() {
                               Pending
                             </th>
                             <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
+                              Stock Status
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
+                              Movement
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                               Issue Qty
                             </th>
                             {hasUidLines && (
@@ -1558,6 +1641,7 @@ export default function SivPage() {
                             // When pending=0 (fully issued), do NOT show BOM even though hasSufficientStock=false.
                             const needsBom = isSubassembly && pending > 0 && available < pending;
                             const disableRow = pending <= 0 || (hasNoStock && !requiresUid);
+                            const stockStatus = getLineStockStatus(ln);
                             return (
                               <Fragment key={ln.id}>
                               <tr className="hover:bg-gray-50">
@@ -1605,6 +1689,17 @@ export default function SivPage() {
                                 <td className="px-4 py-3 text-gray-700">{ln.required_quantity || 0}</td>
                                 <td className="px-4 py-3 text-gray-700">{ln.issued_quantity || 0}</td>
                                 <td className="px-4 py-3 text-[#8B6F47] font-medium">{pending}</td>
+                                <td className="px-4 py-3">
+                                  <ErpStatusBadge
+                                    status={stockStatus.label}
+                                    label={stockStatus.label}
+                                    tone={stockStatus.tone}
+                                  />
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-700">
+                                  <div className="font-medium text-[#4A3426]">261</div>
+                                  <div className="text-xs text-gray-500">Issue to production</div>
+                                </td>
                                 <td className="px-4 py-3">
                                   {!disableRow && (
                                     <input
@@ -1679,7 +1774,7 @@ export default function SivPage() {
                               </tr>
                               {expandedLineIds[ln.id] && needsBom && (
                                 <tr className="bg-sky-50/70">
-                                  <td colSpan={hasUidLines ? 7 : 6} className="px-10 py-3">
+                                  <td colSpan={hasUidLines ? 9 : 8} className="px-10 py-3">
                                     {lineBomLoading[ln.id] ? (
                                       <div className="text-sm text-gray-500 italic py-2">Loading BOM components…</div>
                                     ) : !lineBomData[ln.id] || lineBomData[ln.id].length === 0 ? (
@@ -1820,6 +1915,24 @@ export default function SivPage() {
                             {rows.length} line{rows.length !== 1 ? 's' : ''} &middot; Approved {approvedCount}/{rows.length}
                             {latestDate ? ` · Last issued ${new Date(latestDate).toLocaleDateString()}` : ''}
                           </p>
+                          <div className="mt-2 grid gap-2 text-xs sm:grid-cols-4">
+                            <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-2">
+                              <div className="font-semibold uppercase text-[#7A6555]">Document</div>
+                              <div className="mt-1 font-medium text-[#4A3426]">SIV / Goods Issue</div>
+                            </div>
+                            <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-2">
+                              <div className="font-semibold uppercase text-[#7A6555]">Movement</div>
+                              <div className="mt-1 font-medium text-[#4A3426]">261</div>
+                            </div>
+                            <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-2">
+                              <div className="font-semibold uppercase text-[#7A6555]">Stock Posting</div>
+                              <div className="mt-1 font-medium text-[#4A3426]">Posted on issue</div>
+                            </div>
+                            <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-2">
+                              <div className="font-semibold uppercase text-[#7A6555]">Approval</div>
+                              <div className="mt-1 font-medium text-[#4A3426]">{approvedCount === rows.length ? 'Complete' : `${rows.length - approvedCount} pending`}</div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -1849,6 +1962,7 @@ export default function SivPage() {
                               <th className="w-8 px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]"></th>
                               <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Item</th>
                               <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">UID</th>
+                              <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Movement</th>
                               <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Qty</th>
                               <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Issued At</th>
                               <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Status</th>
@@ -1877,6 +1991,10 @@ export default function SivPage() {
                                     <div className="text-xs text-gray-500">{row.item_name}</div>
                                   </td>
                                   <td className="px-3 py-2 text-sm text-gray-700">{row.uid || '-'}</td>
+                                  <td className="px-3 py-2 text-sm text-gray-700">
+                                    <div className="font-medium text-[#4A3426]">261</div>
+                                    <div className="text-xs text-gray-500">Stock posted</div>
+                                  </td>
                                   <td className="px-3 py-2 text-sm text-gray-700">{row.quantity ?? 0}</td>
                                   <td className="px-3 py-2 text-sm text-gray-700">
                                     {row.movement_date ? new Date(row.movement_date).toLocaleString() : '-'}
@@ -1907,8 +2025,8 @@ export default function SivPage() {
                                           onClick={() => void deleteSivHistoryRow(row.id)}
                                           className="inline-flex min-h-8 items-center gap-1 rounded-md border border-red-300 bg-white px-2.5 text-xs font-semibold text-red-700 hover:bg-red-50"
                                         >
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                          Delete
+                                          <RotateCcw className="h-3.5 w-3.5" />
+                                          Reverse
                                         </button>
                                       )}
                                     </div>
