@@ -46,6 +46,8 @@ export type ListTableProps<T> = {
   initialSearch?: string;
   hideSearch?: boolean;
   toolbarRight?: ReactNode;
+  toolbarLayout?: 'default' | 'singleLine';
+  searchClassName?: string;
   emptyState?: ReactNode;
   className?: string;
   /** When provided, a "Export CSV" button appears in the toolbar */
@@ -107,6 +109,8 @@ export function ListTable<T>(props: ListTableProps<T>) {
     initialSearch = '',
     hideSearch,
     toolbarRight,
+    toolbarLayout = 'default',
+    searchClassName = '',
     emptyState,
     className = '',
     exportFilename,
@@ -483,7 +487,13 @@ export function ListTable<T>(props: ListTableProps<T>) {
   return (
     <div className={`overflow-hidden rounded-md border border-[#E8DCC4] bg-white ${className}`}>
       {/* Toolbar */}
-      <div className="grid gap-2 border-b border-[#E8DCC4] bg-white p-2.5 2xl:grid-cols-[minmax(24rem,1fr)_auto] 2xl:items-center">
+      <div
+        className={
+          toolbarLayout === 'singleLine'
+            ? 'flex flex-wrap items-center justify-between gap-2 border-b border-[#E8DCC4] bg-white p-2.5'
+            : 'grid gap-2 border-b border-[#E8DCC4] bg-white p-2.5 2xl:grid-cols-[minmax(24rem,1fr)_auto] 2xl:items-center'
+        }
+      >
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {!hideSearch && (
             <input
@@ -494,7 +504,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
                 setPageIndex(0);
               }}
               placeholder={searchPlaceholder}
-              className="min-h-9 w-full min-w-0 border border-[#D8C8AA] px-3 py-1.5 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30 sm:max-w-lg"
+              className={`min-h-9 w-full min-w-0 border border-[#D8C8AA] px-3 py-1.5 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30 sm:max-w-lg ${searchClassName}`}
             />
           )}
           <div className="relative" ref={columnsMenuRef}>
@@ -646,7 +656,13 @@ export function ListTable<T>(props: ListTableProps<T>) {
           </div>
         </div>
 
-        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] 2xl:w-auto">
+        <div
+          className={
+            toolbarLayout === 'singleLine'
+              ? 'flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2'
+              : 'grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] 2xl:w-auto'
+          }
+        >
           {toolbarRight}
           {exportFilename && (
             <button

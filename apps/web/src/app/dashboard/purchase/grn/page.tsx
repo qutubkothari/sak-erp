@@ -2426,11 +2426,13 @@ function GRNContent() {
             pageSizeOptions={[10, 25, 50, 100]}
             initialSearch={initialGrnSearch}
             searchPlaceholder="Search by GRN number, PO number, vendor, invoice…"
+            toolbarLayout="singleLine"
+            searchClassName="sm:max-w-[28rem] lg:max-w-[34rem]"
             toolbarRight={
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="min-h-9 w-full rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm text-[#2F241D] focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30 sm:w-48"
+                className="min-h-9 w-40 rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm text-[#2F241D] focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
               >
                 <option value="ALL">All Status</option>
                 <option value="DRAFT">Draft</option>
