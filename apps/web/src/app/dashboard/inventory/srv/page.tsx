@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import QRCode from 'qrcode';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
@@ -9,6 +8,8 @@ import { getTodayDateInputValue } from '@/lib/date';
 import { buildDocumentBranding, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import { hasModulePermission, hasScreenPermission, readStoredUser } from '@/lib/rbac';
 import SearchableSelect from '../../../../components/SearchableSelect';
+import { ErpButton, ErpMetricStrip, ErpPageHeader, ErpStatusBadge } from '../../../../components/ui/ErpPrimitives';
+import { Check, ClipboardCheck, GitBranch, History, PackageCheck, Plus, Printer, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react';
 
 const AUTO_REFRESH_MS = 30000;
 
@@ -103,8 +104,8 @@ function getSrvRowIdentity(row: ReceiptVoucherRow | null | undefined): string {
 }
 
 export default function SrvPage() {
-  const router = useRouter();
   const currentUser = readStoredUser();
+  const canCreate = hasModulePermission(currentUser, 'Inventory', 'create');
   const canApprove = hasModulePermission(currentUser, 'Inventory', 'approve');
   const canDelete = hasModulePermission(currentUser, 'Inventory', 'delete');
   const todayDate = getTodayDateInputValue();
@@ -578,18 +579,18 @@ export default function SrvPage() {
   const deleteSrv = useCallback(
     async (movementId: string) => {
       const confirmed = await confirmDialog({
-        title: 'Delete SRV Entry',
-        message: 'Delete this SRV entry? Stock/UIDs will be reversed.',
-        confirmLabel: 'Delete',
+        title: 'Reverse SRV Entry',
+        message: 'Reverse this SRV goods receipt? Stock and UID movement will be reversed.',
+        confirmLabel: 'Reverse',
         variant: 'danger',
       });
       if (!confirmed) return;
       try {
         await apiClient.delete(`/job-orders/store/receipt-vouchers/${movementId}`);
         await loadAll();
-        alert('SRV deleted and reversed successfully!');
+        alert('SRV goods receipt reversed successfully!');
       } catch (err: any) {
-        alert('Failed to delete SRV: ' + (err.message || err));
+        alert('Failed to reverse SRV: ' + (err.message || err));
       }
     },
     [loadAll]
@@ -916,144 +917,235 @@ export default function SrvPage() {
     printWindow.focus();
   }, []);
 
+  const openManualSrv = useCallback(async () => {
+    setManualSrvAlert(null);
+    setManualSrvForm({ itemId: '', quantity: '', warehouseId: '', receiverName: '', receiverPhone: '', notes: '', movementDate: todayDate });
+    if (manualSrvItems.length === 0) {
+      const token = localStorage.getItem('accessToken');
+      try {
+        const res = await fetch('/api/v1/inventory/items', { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        setManualSrvItems(Array.isArray(data) ? data.map((i: any) => ({ id: i.id, code: i.code, name: i.name })).sort((a: any, b: any) => a.code.localeCompare(b.code)) : []);
+      } catch {}
+    }
+    setShowManualSrvModal(true);
+  }, [manualSrvItems.length, todayDate]);
+
+  const pendingApprovalCount = srvHistory.filter((row) => !row.approved_by).length;
+  const approvedCount = srvHistory.length - pendingApprovalCount;
+  const uidTrackedCount = [...openSrvs, ...srvHistory].filter((row) => String(row.uid || '').trim()).length;
+  const qcPendingCount = openSrvs.length;
+  const totalReceivedQty = srvHistory.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
+
   return (
-    <div className="min-h-screen bg-[#E8DCC4] p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex justify-between items-center">
-          <div>
-            <h1 className="text-4xl font-bold text-[#36454F] mb-2">Store Receipt Voucher (SRV)</h1>
-            <p className="text-[#6F4E37]">Receive finished goods from production</p>
+    <div className="min-h-screen bg-[#FAF9F6] px-4 py-4 text-[#2F241D] lg:px-6">
+      <div className="flex min-h-[calc(100vh-2rem)] flex-col gap-4">
+        <ErpPageHeader
+          eyebrow="Inventory"
+          title="Store Receipt Voucher"
+          description="Receive finished goods from production, complete QC, post stock, and generate UID traceability."
+          actions={
+            <div className="flex flex-wrap gap-2">
+              {canCreate && (
+                <ErpButton variant="primary" onClick={() => void openManualSrv()}>
+                  <Plus className="h-4 w-4" />
+                  Manual SRV
+                </ErpButton>
+              )}
+              <ErpButton
+                variant="secondary"
+                onClick={() => { void loadAll(); }}
+                disabled={loading}
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </ErpButton>
+            </div>
+          }
+        />
+
+        <ErpMetricStrip
+          loading={loading}
+          metrics={[
+            { label: 'QC Pending', value: qcPendingCount, tone: qcPendingCount > 0 ? 'warning' : 'success' },
+            { label: 'Posted Receipts', value: srvHistory.length, tone: 'success' },
+            { label: 'Received Qty', value: totalReceivedQty },
+            { label: 'UID Tracked', value: uidTrackedCount, tone: uidTrackedCount > 0 ? 'success' : 'neutral' },
+            { label: 'Awaiting Approval', value: pendingApprovalCount, tone: pendingApprovalCount > 0 ? 'warning' : 'success' },
+          ]}
+        />
+
+        <div className="grid gap-3 lg:grid-cols-4">
+          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-[#7A6555]">Movement Type</div>
+            <div className="mt-1 text-lg font-bold text-[#4A3426]">101</div>
+            <div className="text-xs text-[#7A6555]">Goods receipt from production</div>
           </div>
-          <div className="flex gap-3">
-            <button
-              onClick={async () => {
-                setManualSrvAlert(null);
-                setManualSrvForm({ itemId: '', quantity: '', warehouseId: '', receiverName: '', receiverPhone: '', notes: '', movementDate: todayDate });
-                if (manualSrvItems.length === 0) {
-                  const token = localStorage.getItem('accessToken');
-                  try {
-                    const res = await fetch('/api/v1/inventory/items', { headers: { Authorization: `Bearer ${token}` } });
-                    const data = await res.json();
-                    setManualSrvItems(Array.isArray(data) ? data.map((i: any) => ({ id: i.id, code: i.code, name: i.name })).sort((a: any, b: any) => a.code.localeCompare(b.code)) : []);
-                  } catch {}
-                }
-                setShowManualSrvModal(true);
-              }}
-              className="bg-amber-600 text-white px-5 py-3 rounded-lg hover:bg-amber-700 transition-colors font-semibold shadow-md"
-            >
-              + Manual SRV
-            </button>
-            <button
-              onClick={() => { void loadAll(); }}
-              disabled={loading}
-              className="bg-[#8B6F47] text-white px-6 py-3 rounded-lg hover:bg-[#6F4E37] transition-colors font-semibold disabled:opacity-50 shadow-md"
-            >
-              {loading ? 'Loading...' : 'Refresh'}
-            </button>
+          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-[#7A6555]">Document Flow</div>
+            <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#4A3426]">
+              <GitBranch className="h-4 w-4 text-[#8B6F47]" />
+              Job Order {'>'} SRV {'>'} QC {'>'} Stock
+            </div>
+            <div className="text-xs text-[#7A6555]">Production receipts move through QC before final acceptance</div>
+          </div>
+          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-[#7A6555]">QC Gate</div>
+            <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#4A3426]">
+              <ClipboardCheck className="h-4 w-4 text-[#8B6F47]" />
+              {qcPendingCount} pending receipt{qcPendingCount === 1 ? '' : 's'}
+            </div>
+            <div className="text-xs text-[#7A6555]">Accepted quantity controls stock and UID generation</div>
+          </div>
+          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-[#7A6555]">Posting Control</div>
+            <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#4A3426]">
+              <ShieldCheck className="h-4 w-4 text-emerald-700" />
+              Stock posts after QC accept
+            </div>
+            <div className="text-xs text-[#7A6555]">Reversal restores stock and UID movement</div>
           </div>
         </div>
 
-        {/* Sub-tabs: Open / History */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6 border-2 border-[#8B6F47]/20">
-          <div className="flex gap-4">
+        <div className="rounded-md border border-[#E8DCC4] bg-white">
+          <div className="flex flex-col gap-3 border-b border-[#E8DCC4] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap gap-2">
             <button
+              type="button"
               onClick={() => setActiveSrvView('open')}
-              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+              className={`inline-flex min-h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors ${
                 activeSrvView === 'open'
-                  ? 'bg-[#8B6F47] text-white shadow-sm'
-                  : 'bg-[#E8DCC4] text-[#6F4E37] hover:bg-[#D4C4A8]'
+                  ? 'border-[#8B6F47] bg-[#8B6F47] text-white'
+                  : 'border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]'
               }`}
             >
-              Open ({openSrvs.length})
+              <PackageCheck className="h-4 w-4" />
+              QC Pending ({openSrvs.length})
             </button>
             <button
+              type="button"
               onClick={() => setActiveSrvView('history')}
-              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+              className={`inline-flex min-h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors ${
                 activeSrvView === 'history'
-                  ? 'bg-[#8B6F47] text-white shadow-sm'
-                  : 'bg-[#E8DCC4] text-[#6F4E37] hover:bg-[#D4C4A8]'
+                  ? 'border-[#8B6F47] bg-[#8B6F47] text-white'
+                  : 'border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]'
               }`}
             >
-              History ({srvHistory.length})
+              <History className="h-4 w-4" />
+              Posted Receipts ({srvHistory.length})
             </button>
+            </div>
+            {activeSrvView === 'history' && canApprove && (
+              <ErpButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void approveAllPending()}
+                disabled={bulkApproving || pendingApprovalCount === 0}
+              >
+                <Check className="h-4 w-4" />
+                {bulkApproving ? 'Approving...' : `Approve Pending (${pendingApprovalCount})`}
+              </ErpButton>
+            )}
           </div>
         </div>
 
         {activeSrvView === 'open' && (
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div className="min-h-0 flex-1 rounded-md border border-[#E8DCC4] bg-white">
+            <div className="border-b border-[#E8DCC4] px-4 py-3">
+              <h2 className="text-base font-bold text-[#4A3426]">Receipts Awaiting QC</h2>
+              <p className="mt-0.5 text-xs text-[#7A6555]">Complete QC acceptance before final stock/UID posting.</p>
+            </div>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-[#E8DCC4]">
+                <thead className="bg-[#F5EFE3]">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                       Job Order
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                       Item
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                       UID
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                       Qty
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
+                      Movement
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
+                      QC / Posting
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                       Received By
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                       Received At
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-right text-xs font-semibold uppercase text-[#5E4635]">
                       Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="divide-y divide-[#E8DCC4] bg-white">
                   {openSrvs.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                      <td colSpan={9} className="px-6 py-8 text-center text-[#7A6555]">
                         No pending SRVs.
                       </td>
                     </tr>
                   )}
                   {openSrvs.map((row) => (
-                    <tr key={getSrvRowIdentity(row)} className="hover:bg-[#E8DCC4]/30">
-                      <td className="px-6 py-4 text-sm font-medium text-[#36454F]">
+                    <tr key={getSrvRowIdentity(row)} className="hover:bg-[#FFFCF5]">
+                      <td className="px-4 py-3 text-sm font-semibold text-[#4A3426]">
                         {row.job_order_number || row.job_order_id}
                       </td>
-                      <td className="px-6 py-4 text-sm text-[#6F4E37]">
-                        {row.item_code} - {row.item_name}
+                      <td className="px-4 py-3 text-sm text-[#5E4635]">
+                        <div className="font-medium text-gray-900">{row.item_code}</div>
+                        <div className="text-xs text-gray-500">{row.item_name}</div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{row.uid || '-'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{row.quantity || 0}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{resolveEmployeeLabel(row.received_by_name || row.received_by)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">
+                      <td className="px-4 py-3 text-sm text-gray-700">{row.uid || '-'}</td>
+                      <td className="px-4 py-3 text-sm font-semibold text-[#4A3426]">{row.quantity || 0}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        <div className="font-medium text-[#4A3426]">101</div>
+                        <div className="text-xs text-gray-500">Receipt from production</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <ErpStatusBadge status="QC_PENDING" label="QC Pending" tone="warning" />
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{resolveEmployeeLabel(row.received_by_name || row.received_by)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
                         {row.movement_date
                           ? new Date(row.movement_date).toLocaleString()
                           : '-'}
                       </td>
-                      <td className="px-6 py-4 text-sm">
-                        <div className="flex gap-3">
-                          <button
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2">
+                          <ErpButton
                             onClick={() => printSrv(row)}
-                            className="text-gray-600 hover:text-gray-900 font-medium"
+                            variant="secondary"
+                            size="sm"
                           >
+                            <Printer className="h-4 w-4" />
                             Print
-                          </button>
-                          <button
+                          </ErpButton>
+                          <ErpButton
                             onClick={() => openView(row)}
-                            className="text-amber-600 hover:text-amber-900 font-medium"
+                            size="sm"
                           >
                             View
-                          </button>
+                          </ErpButton>
                           {canDelete && (
-                          <button
+                          <ErpButton
                             onClick={() => deleteSrv(String(row.entry_id || row.id || '').trim())}
-                            className="text-red-600 hover:text-red-900 font-medium"
+                            variant="danger"
+                            size="sm"
                           >
-                            Delete
-                          </button>
+                            <RotateCcw className="h-4 w-4" />
+                            Reverse
+                          </ErpButton>
                           )}
                         </div>
                       </td>
@@ -1066,80 +1158,118 @@ export default function SrvPage() {
         )}
 
         {activeSrvView === 'history' && (
-          <div className="space-y-4">
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div className="min-h-0 flex-1 rounded-md border border-[#E8DCC4] bg-white">
+            <div className="border-b border-[#E8DCC4] px-4 py-3">
+              <h2 className="text-base font-bold text-[#4A3426]">Posted SRV History</h2>
+              <p className="mt-0.5 text-xs text-[#7A6555]">Posted receipts, approvals, UID traceability, and reversal controls.</p>
+            </div>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-[#E8DCC4]">
+                <thead className="bg-[#F5EFE3]">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                       Job Order
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                       Item
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                       UID
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                       Qty
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
+                      Movement
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
+                      Status
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                       Received By
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">
                       Received At
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-4 py-2 text-right text-xs font-semibold uppercase text-[#5E4635]">
                       Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="divide-y divide-[#E8DCC4] bg-white">
                   {srvHistory.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                      <td colSpan={9} className="px-6 py-8 text-center text-[#7A6555]">
                         No SRV history.
                       </td>
                     </tr>
                   )}
                   {srvHistory.map((row) => (
-                    <tr key={getSrvRowIdentity(row)} className="hover:bg-[#E8DCC4]/30">
-                      <td className="px-6 py-4 text-sm font-medium text-[#36454F]">
+                    <tr key={getSrvRowIdentity(row)} className="hover:bg-[#FFFCF5]">
+                      <td className="px-4 py-3 text-sm font-semibold text-[#4A3426]">
                         {row.job_order_number || row.job_order_id}
                       </td>
-                      <td className="px-6 py-4 text-sm text-[#6F4E37]">
-                        {row.item_code} - {row.item_name}
+                      <td className="px-4 py-3 text-sm text-[#5E4635]">
+                        <div className="font-medium text-gray-900">{row.item_code}</div>
+                        <div className="text-xs text-gray-500">{row.item_name}</div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{row.uid || '-'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{row.quantity || 0}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{resolveEmployeeLabel(row.received_by_name || row.received_by)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">
+                      <td className="px-4 py-3 text-sm text-gray-700">{row.uid || '-'}</td>
+                      <td className="px-4 py-3 text-sm font-semibold text-[#4A3426]">{row.quantity || 0}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        <div className="font-medium text-[#4A3426]">101</div>
+                        <div className="text-xs text-gray-500">Stock posted</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <ErpStatusBadge
+                          status={row.approved_by ? 'APPROVED' : 'POSTED'}
+                          label={row.approved_by ? 'Approved' : 'Posted'}
+                          tone={row.approved_by ? 'success' : 'info'}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{resolveEmployeeLabel(row.received_by_name || row.received_by)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
                         {row.movement_date
                           ? new Date(row.movement_date).toLocaleString()
                           : '-'}
                       </td>
-                      <td className="px-6 py-4 text-sm">
-                        <div className="flex gap-3">
-                          <button
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2">
+                          <ErpButton
                             onClick={() => openView(row)}
-                            className="text-amber-600 hover:text-amber-900 font-medium"
+                            size="sm"
                           >
                             View
-                          </button>
-                          <button
+                          </ErpButton>
+                          <ErpButton
                             onClick={() => printSrv(row)}
-                            className="text-gray-600 hover:text-gray-900 font-medium"
+                            variant="secondary"
+                            size="sm"
                           >
+                            <Printer className="h-4 w-4" />
                             Print
-                          </button>
-                          {canDelete && (
-                          <button
-                            onClick={() => deleteSrv(String(row.entry_id || row.id || '').trim())}
-                            className="text-red-600 hover:text-red-900 font-medium"
+                          </ErpButton>
+                          {canApprove && !row.approved_by && (
+                          <ErpButton
+                            onClick={async () => {
+                              await approveSrv(row);
+                              await loadAll();
+                            }}
+                            variant="primary"
+                            size="sm"
                           >
-                            Delete
-                          </button>
+                            <Check className="h-4 w-4" />
+                            Approve
+                          </ErpButton>
+                          )}
+                          {canDelete && (
+                          <ErpButton
+                            onClick={() => deleteSrv(String(row.entry_id || row.id || '').trim())}
+                            variant="danger"
+                            size="sm"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                            Reverse
+                          </ErpButton>
                           )}
                         </div>
                       </td>
@@ -1148,7 +1278,6 @@ export default function SrvPage() {
                 </tbody>
               </table>
             </div>
-          </div>
           </div>
         )}
 
