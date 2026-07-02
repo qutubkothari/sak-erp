@@ -1547,7 +1547,7 @@ function PRContent() {
             setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
           }}
           title={editingPRId ? 'Edit Purchase Requisition' : 'New Purchase Requisition'}
-          width="4xl"
+          width="full"
           footer={
             <div className="flex justify-end gap-3 w-full">
               <ErpButton

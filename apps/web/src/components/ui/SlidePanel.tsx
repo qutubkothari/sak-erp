@@ -9,7 +9,7 @@ interface SlidePanelProps {
   onClose: () => void;
   title: string;
   subtitle?: string;
-  width?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl';
+  width?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | 'full';
   children: React.ReactNode;
   footer?: React.ReactNode;
 }
@@ -23,6 +23,7 @@ const widthMap = {
   '3xl': 'max-w-3xl',
   '4xl': 'max-w-4xl',
   '5xl': 'max-w-5xl',
+  full: 'max-w-none',
 };
 
 /**
