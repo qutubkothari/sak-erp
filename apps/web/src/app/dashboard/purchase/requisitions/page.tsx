@@ -20,6 +20,7 @@ import { useEscapeKey } from '../../../../hooks/useEscapeKey';
 
 interface PRItem {
   id: string;
+  masterItemId?: string;
   itemCode?: string;
   itemName: string;
   uom?: string;
@@ -41,6 +42,32 @@ interface Item {
 }
 
 type RawItem = Record<string, any>;
+
+type RequisitionFormSection = 'general' | 'items' | 'notes' | 'review';
+
+const REQUISITION_FORM_SECTIONS: Array<{ id: RequisitionFormSection; label: string }> = [
+  { id: 'general', label: 'General' },
+  { id: 'items', label: 'Items' },
+  { id: 'notes', label: 'Notes' },
+  { id: 'review', label: 'Review' },
+];
+
+const DEPARTMENT_OPTIONS = [
+  'PRODUCTION',
+  'PROCUREMENT',
+  'INVENTORY',
+  'QUALITY',
+  'SALES',
+  'SERVICE',
+  'ACCOUNTS',
+  'HR',
+  'ADMINISTRATION',
+].map((department) => ({ value: department, label: department }));
+
+const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'].map((priority) => ({
+  value: priority,
+  label: priority,
+}));
 
 interface Requisition {
   id: string;
@@ -103,6 +130,9 @@ interface PRDetail {
   updated_by?: string;
   edit_count?: number;
   last_edited_at?: string;
+  current_approval_level?: number;
+  rejection_reason?: string | null;
+  rejected_at?: string | null;
   workflow_status?: string;
   workflow_status_detail?: string | null;
   workflow_status_label?: string;
@@ -158,6 +188,15 @@ interface RfqRecord {
   }>;
 }
 
+interface ApprovalHistoryEntry {
+  id: string;
+  action: string;
+  actor_name: string;
+  reason?: string | null;
+  approval_level?: number;
+  created_at: string;
+}
+
 const resolveUomFromItem = (item: any): string => {
   return (
     String(item?.uom || '').trim() ||
@@ -208,6 +247,7 @@ function PRContent() {
   const router = useRouter();
   const todayDate = getTodayDateInputValue();
   const currentUser = readStoredUser();
+  const currentUserId = String((currentUser as any)?.id || (currentUser as any)?.userId || '');
   const canApprovePR = hasModulePermission(currentUser, 'Purchase Management', 'approve');
   const canCreatePR = hasModulePermission(currentUser, 'Purchase Management', 'create');
   const canEditPR = hasModulePermission(currentUser, 'Purchase Management', 'edit');
@@ -226,8 +266,10 @@ function PRContent() {
   const [sortColumn, setSortColumn] = useState<string>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [approvalHistory, setApprovalHistory] = useState<ApprovalHistoryEntry[]>([]);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingPRId, setEditingPRId] = useState<string | null>(null);
+  const [formSection, setFormSection] = useState<RequisitionFormSection>('general');
   const [formData, setFormData] = useState({
     department: '',
     requiredDate: '',
@@ -381,7 +423,7 @@ function PRContent() {
               <Edit className="h-4 w-4" />
             </ErpButton>
           )}
-          {(req.status === 'DRAFT' || req.status === 'SUBMITTED') && canApprovePR && (
+          {req.status === 'SUBMITTED' && canApprovePR && String(req.requested_by) !== currentUserId && (
             <>
               <ErpButton
                 onClick={() => handleApprove(req.id)}
@@ -665,6 +707,7 @@ function PRContent() {
 
     const nextItem = {
       id: Date.now().toString(),
+      masterItemId: selectedItem.id,
       itemCode: selectedItem.code,
       itemName: `${selectedItem.code} - ${selectedItem.name}`,
       uom: resolveUomFromItem(selectedItem) || undefined,
@@ -721,6 +764,7 @@ function PRContent() {
     setItems([]);
     setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
     setDeliveryAddressName('');
+    setFormSection('general');
     resetItemEntry();
   };
 
@@ -803,6 +847,7 @@ function PRContent() {
     setItems(prev => prev.map(item => 
       item.id === editingItemId ? {
         ...item,
+        masterItemId: selectedItem.id,
         itemCode: selectedItem.code,
         itemName: `${selectedItem.code} - ${selectedItem.name}`,
         uom: resolveUomFromItem(selectedItem) || item.uom,
@@ -833,6 +878,7 @@ function PRContent() {
     setRfqPanelOpen(false);
     setShowRfqResponses(false);
     setRfqHistory([]);
+    setApprovalHistory([]);
     setEditingRfqResponse(null);
     setRfqItemVendors({});
     setRfqResponseDate('');
@@ -842,8 +888,12 @@ function PRContent() {
       fetchMasterItems();
     }
     try {
-      const data = await apiClient.get(`/purchase/requisitions/${prId}`);
+      const [data, history] = await Promise.all([
+        apiClient.get(`/purchase/requisitions/${prId}`),
+        apiClient.get(`/purchase/requisitions/${prId}/approval-history`),
+      ]);
       setSelectedPR(data);
+      setApprovalHistory(Array.isArray(history) ? history : []);
     } catch (error) {
       alert('Failed to load PR details');
       setShowDetailModal(false);
@@ -854,8 +904,12 @@ function PRContent() {
 
   const refreshSelectedPRDetail = async (prId: string) => {
     try {
-      const data = await apiClient.get(`/purchase/requisitions/${prId}`);
+      const [data, history] = await Promise.all([
+        apiClient.get(`/purchase/requisitions/${prId}`),
+        apiClient.get(`/purchase/requisitions/${prId}/approval-history`),
+      ]);
       setSelectedPR(data);
+      setApprovalHistory(Array.isArray(history) ? history : []);
     } catch {
     }
   };
@@ -909,6 +963,7 @@ function PRContent() {
 
       const prItems: PRItem[] = rawItems.map((item: any) => ({
         id: String(item?.id || ''),
+        masterItemId: item?.item_id || item?.itemId || undefined,
         itemCode: item?.item_code || item?.itemCode || '',
         itemName: item?.item_name || item?.itemName || '',
         uom: resolveUomFromItem(item?.item || item),
@@ -923,6 +978,7 @@ function PRContent() {
       setItems(prItems);
 
       setEditingPRId(prId);
+      setFormSection('general');
       setShowCreateForm(true);
     } catch (error) {
       const msg = (error as any)?.message ? String((error as any).message) : '';
@@ -1387,6 +1443,8 @@ function PRContent() {
         purpose: formData.notes || null,
         status: status,
         items: items.map(item => ({
+          id: item.id,
+          itemId: item.masterItemId,
           itemCode: item.itemCode,
           itemName: item.itemName,
           vendorId: item.vendorId || null,
@@ -1431,7 +1489,8 @@ function PRContent() {
     // Prepare payload for duplicate check
     const checkPayload = {
       items: items.map(item => ({
-        itemId: item.id,
+        itemId: item.masterItemId,
+        itemCode: item.itemCode,
         quantity: item.quantity,
       })),
     };
@@ -1450,6 +1509,12 @@ function PRContent() {
     ),
   ).length;
   const draftPRs = requisitions.filter(pr => pr.status === 'DRAFT').length;
+  const formSectionIndex = REQUISITION_FORM_SECTIONS.findIndex((section) => section.id === formSection);
+  const estimatedTotal = items.reduce(
+    (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.estimatedPrice) || 0),
+    0,
+  );
+  const canSubmitRequisition = Boolean(formData.department && formData.requiredDate && items.length > 0);
 
   return (
     <div className="w-full">
@@ -1487,35 +1552,83 @@ function PRContent() {
           open={showCreateForm}
           onClose={closeRequisitionForm}
           title={editingPRId ? 'Edit Purchase Requisition' : 'New Purchase Requisition'}
+          subtitle={`${items.length} line item${items.length === 1 ? '' : 's'} | Estimated value ${estimatedTotal.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}`}
           width="full"
           footer={
-            <div className="flex justify-end gap-3 w-full">
-              <ErpButton
-                onClick={closeRequisitionForm}
-                variant="secondary"
-              >
-                Cancel
-              </ErpButton>
-              <ErpButton
-                onClick={() => handleSubmit('DRAFT')}
-                disabled={items.length === 0}
-                variant="secondary"
-              >
-                <FileText className="w-4 h-4" /> Save as Draft
-              </ErpButton>
-              <ErpButton
-                onClick={() => handleSubmit('SUBMITTED')}
-                disabled={items.length === 0 || !formData.requiredDate}
-                variant="primary"
-              >
-                <Send className="w-4 h-4" /> {editingPRId ? 'Update Requisition' : 'Submit for Approval'}
-              </ErpButton>
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <ErpButton onClick={closeRequisitionForm} variant="ghost">Cancel</ErpButton>
+                <ErpButton
+                  onClick={() => setFormSection(REQUISITION_FORM_SECTIONS[Math.max(0, formSectionIndex - 1)].id)}
+                  disabled={formSectionIndex === 0}
+                  variant="secondary"
+                >
+                  Previous
+                </ErpButton>
+                <ErpButton
+                  onClick={() => setFormSection(REQUISITION_FORM_SECTIONS[Math.min(REQUISITION_FORM_SECTIONS.length - 1, formSectionIndex + 1)].id)}
+                  disabled={formSectionIndex === REQUISITION_FORM_SECTIONS.length - 1}
+                  variant="secondary"
+                >
+                  Next
+                </ErpButton>
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <ErpButton
+                  onClick={() => handleSubmit('DRAFT')}
+                  disabled={items.length === 0}
+                  variant="secondary"
+                >
+                  <FileText className="w-4 h-4" /> Save Draft
+                </ErpButton>
+                <ErpButton
+                  onClick={() => handleSubmit('SUBMITTED')}
+                  disabled={!canSubmitRequisition}
+                  variant="primary"
+                >
+                  <Send className="w-4 h-4" /> {editingPRId ? 'Update & Submit' : 'Submit for Approval'}
+                </ErpButton>
+              </div>
             </div>
           }
         >
           <div className="space-y-4 pb-2">
-                {/* Basic Information */}
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <nav className="sticky -top-3 z-20 -mx-4 -mt-3 border-b border-slate-200 bg-white px-4" aria-label="Requisition sections">
+              <div className="flex min-w-max items-center gap-6 overflow-x-auto">
+                {REQUISITION_FORM_SECTIONS.map((section, index) => {
+                  const isActive = section.id === formSection;
+                  return (
+                    <button
+                      key={section.id}
+                      type="button"
+                      onClick={() => setFormSection(section.id)}
+                      className={`border-b-2 px-1 py-3 text-sm font-semibold transition-colors ${isActive ? 'border-indigo-700 text-indigo-800' : 'border-transparent text-slate-500 hover:text-slate-900'}`}
+                      aria-current={isActive ? 'step' : undefined}
+                    >
+                      <span className="mr-2 text-xs text-slate-400">{index + 1}</span>
+                      {section.label}{section.id === 'items' ? ` (${items.length})` : ''}
+                    </button>
+                  );
+                })}
+              </div>
+            </nav>
+            {formSection === 'general' && (
+              <section aria-labelledby="pr-general-heading" className="space-y-4">
+                <div>
+                  <h3 id="pr-general-heading" className="text-lg font-semibold text-slate-950">General Information</h3>
+                  <p className="text-sm text-slate-500">Request ownership, priority, required date, and delivery location.</p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">Department *</label>
+                    <SearchableSelect
+                      value={formData.department}
+                      onChange={(department) => setFormData((prev) => ({ ...prev, department }))}
+                      options={DEPARTMENT_OPTIONS}
+                      placeholder="Search department"
+                      required
+                    />
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Required Date *
@@ -1528,7 +1641,17 @@ function PRContent() {
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">Priority *</label>
+                    <SearchableSelect
+                      value={formData.priority}
+                      onChange={(priority) => setFormData((prev) => ({ ...prev, priority }))}
+                      options={PRIORITY_OPTIONS}
+                      placeholder="Select priority"
+                      required
+                    />
+                  </div>
+                  <div className="lg:col-span-3">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Delivery Address
                     </label>
@@ -1571,10 +1694,13 @@ function PRContent() {
                     </div>
                   </div>
                 </div>
+              </section>
+            )}
 
                 {/* Items Section */}
-                <div>
-                  <h3 className="mb-2 text-base font-semibold text-slate-900">Items</h3>
+            {formSection === 'items' && (
+                <section aria-labelledby="pr-items-heading">
+                  <h3 id="pr-items-heading" className="mb-2 text-lg font-semibold text-slate-950">Line Items</h3>
 
                   {/* Add Item Form */}
                   <div ref={itemEntryRef} className="scroll-mt-3 mb-3 rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -1801,10 +1927,16 @@ function PRContent() {
                       </div>
                     </div>
                   )}
-                </div>
+                </section>
+            )}
 
                 {/* Notes */}
-                <div className="mb-6">
+            {formSection === 'notes' && (
+                <section aria-labelledby="pr-notes-heading" className="space-y-3">
+                  <div>
+                    <h3 id="pr-notes-heading" className="text-lg font-semibold text-slate-950">Notes and Instructions</h3>
+                    <p className="text-sm text-slate-500">Information that applies to the complete requisition.</p>
+                  </div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Additional Notes
                   </label>
@@ -1815,7 +1947,45 @@ function PRContent() {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     placeholder="Any additional information..."
                   />
+                </section>
+            )}
+
+            {formSection === 'review' && (
+              <section aria-labelledby="pr-review-heading" className="space-y-5">
+                <div>
+                  <h3 id="pr-review-heading" className="text-lg font-semibold text-slate-950">Review Requisition</h3>
+                  <p className="text-sm text-slate-500">Confirm the request details before saving or submitting.</p>
                 </div>
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-4 border-y border-slate-200 py-4 lg:grid-cols-5">
+                  <div><dt className="text-xs font-medium text-slate-500">Department</dt><dd className="mt-1 font-semibold text-slate-900">{formData.department || 'Required'}</dd></div>
+                  <div><dt className="text-xs font-medium text-slate-500">Priority</dt><dd className="mt-1 font-semibold text-slate-900">{formData.priority}</dd></div>
+                  <div><dt className="text-xs font-medium text-slate-500">Required date</dt><dd className="mt-1 font-semibold text-slate-900">{formData.requiredDate || 'Required'}</dd></div>
+                  <div><dt className="text-xs font-medium text-slate-500">Line items</dt><dd className="mt-1 font-semibold text-slate-900">{items.length}</dd></div>
+                  <div><dt className="text-xs font-medium text-slate-500">Estimated value</dt><dd className="mt-1 font-semibold text-slate-900">{estimatedTotal.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</dd></div>
+                </dl>
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold text-slate-900">Items</h4>
+                  {items.length === 0 ? (
+                    <button type="button" onClick={() => setFormSection('items')} className="text-sm font-semibold text-indigo-700 hover:text-indigo-900">Add at least one line item</button>
+                  ) : (
+                    <div className="overflow-hidden rounded-md border border-slate-200">
+                      <table className="w-full table-fixed">
+                        <thead className="bg-slate-50 text-left text-xs uppercase text-slate-600"><tr><th className="px-3 py-2">Item</th><th className="w-32 px-3 py-2 text-right">Quantity</th><th className="w-40 px-3 py-2 text-right">Amount</th></tr></thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {items.map((item) => (
+                            <tr key={item.id}><td className="px-3 py-2 text-sm font-medium text-slate-900">{item.itemName}</td><td className="px-3 py-2 text-right text-sm">{item.quantity} {item.uom}</td><td className="px-3 py-2 text-right text-sm font-semibold">{((item.quantity || 0) * (item.estimatedPrice || 0)).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</td></tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div><p className="text-xs font-medium text-slate-500">Delivery address</p><p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{formData.deliveryAddress || 'Not specified'}</p></div>
+                  <div><p className="text-xs font-medium text-slate-500">Notes</p><p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{formData.notes || 'No additional notes'}</p></div>
+                </div>
+              </section>
+            )}
 
           </div>
         </SlidePanel>
@@ -1853,6 +2023,11 @@ function PRContent() {
             defaultPageSize={10}
             pageSizeOptions={[10, 25, 50, 100]}
             searchPlaceholder="Search by PR number, department, status…"
+            variantContext={{ vendor: filterVendor, status: filterStatus }}
+            onApplyVariantContext={(context) => {
+              setFilterVendor(context.vendor || '');
+              setFilterStatus(context.status || '');
+            }}
             toolbarRight={
               <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
                 <SearchableSelect
@@ -1931,7 +2106,7 @@ function PRContent() {
                             Edit
                           </ErpButton>
                         )}
-                        {(selectedPR.status === 'DRAFT' || selectedPR.status === 'SUBMITTED') && canApprovePR && (
+                        {selectedPR.status === 'SUBMITTED' && canApprovePR && String(selectedPR.requested_by) !== currentUserId && (
                           <>
                             <ErpButton onClick={() => handleReject(selectedPR.id)} variant="danger" size="sm">
                               <X className="h-4 w-4" />
@@ -2078,6 +2253,24 @@ function PRContent() {
                       </div>
                     )}
                   </div>
+
+                  {(approvalHistory.length > 0 || selectedPR.rejection_reason) && (
+                    <section className="mb-6 border-y border-slate-200 bg-white py-4" aria-labelledby="approval-history-heading">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <h3 id="approval-history-heading" className="text-sm font-semibold text-slate-950">Approval History</h3>
+                        <span className="text-xs text-slate-500">Current level {Number(selectedPR.current_approval_level || 0) + (selectedPR.status === 'SUBMITTED' ? 1 : 0)}</span>
+                      </div>
+                      <ol className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                        {approvalHistory.map((entry) => (
+                          <li key={entry.id} className="border-l-2 border-slate-300 pl-3">
+                            <p className="text-sm font-semibold text-slate-900">{entry.action.replaceAll('_', ' ')}</p>
+                            <p className="text-xs text-slate-500">{entry.actor_name} · {new Date(entry.created_at).toLocaleString()}</p>
+                            {entry.reason ? <p className="mt-1 whitespace-pre-wrap text-sm text-red-700">{entry.reason}</p> : null}
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
+                  )}
 
                   {/* Items Table */}
                   <div className="mb-6">

@@ -15,6 +15,21 @@
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
+  "jest": {
+    "moduleFileExtensions": ["js", "json", "ts"],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "diagnostics": false,
+          "tsconfig": "tsconfig.spec.json"
+        }
+      ]
+    },
+    "testEnvironment": "node"
+  },
   "dependencies": {
     "@apollo/server": "^4.10.0",
     "@nestjs/apollo": "^12.1.0",

@@ -6,6 +6,7 @@ import { RfqExcelService } from './rfq-excel.service';
 
 const PR_WORKFLOW_STATUS = {
   DRAFT: 'DRAFT',
+  AWAITING_APPROVAL: 'AWAITING_APPROVAL',
   RFQ_ISSUED: 'RFQ_ISSUED',
   RFQ_RCVD: 'RFQ_RCVD',
   PO_DONE: 'PO_DONE',
@@ -43,6 +44,8 @@ function buildWorkflowStatusLabel(status: string, detail?: string | null): strin
   switch (status) {
     case PR_WORKFLOW_STATUS.DRAFT:
       return 'Draft';
+    case PR_WORKFLOW_STATUS.AWAITING_APPROVAL:
+      return detail ? `Awaiting Approval (${detail})` : 'Awaiting Approval';
     case PR_WORKFLOW_STATUS.RFQ_ISSUED:
       if (detail === 'No') return 'RFQ Not Sent';
       if (detail === 'Yes') return 'RFQ Sent';
@@ -80,6 +83,30 @@ function normalizeDateOnly(value: any): string | null {
   }
 
   return parsed.toISOString().slice(0, 10);
+}
+
+function isUuid(value: unknown): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
+export function canonicalizeRequisitionItems(entries: any[], persisted: boolean) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((item) => ({
+      key: String(
+        persisted
+          ? item?.item_id || item?.item_code || ''
+          : item?.itemId || item?.item_id || item?.itemCode || item?.item_code || '',
+      ).trim().toLowerCase(),
+      quantity: Number(persisted ? item?.requested_qty : item?.quantity ?? item?.requestedQty),
+    }))
+    .filter((item) => item.key && Number.isFinite(item.quantity))
+    .sort((left, right) => left.key.localeCompare(right.key));
+}
+
+export function requisitionItemsMatch(left: Array<{ key: string; quantity: number }>, right: Array<{ key: string; quantity: number }>) {
+  return left.length === right.length && left.every((item, index) => (
+    item.key === right[index].key && item.quantity === right[index].quantity
+  ));
 }
 
 @Injectable()
@@ -136,11 +163,10 @@ export class PurchaseRequisitionsService {
       const id = String(rawItem?.itemId || rawItem?.item_id || '').trim();
       const code = String(rawItem?.itemCode || rawItem?.item_code || '').trim();
       const item = (id && byId.get(id)) || (code && byCode.get(code));
-      if (!item) continue;
+      if (!item) throw new BadRequestException(`Item ${code || id || 'unknown'} was not found in the item master.`);
       const label = item.name || item.code || code || id;
       if (item.is_active === false) throw new BadRequestException(`Item ${label} is inactive and cannot be used.`);
-      // Verification check disabled - causing too many errors
-      // if (item.is_verified !== true) throw new BadRequestException(`Item ${label} is not verified by admin and cannot be used.`);
+      if (item.is_verified !== true) throw new BadRequestException(`Item ${label} is not verified and cannot be used.`);
     }
   }
 
@@ -159,6 +185,11 @@ export class PurchaseRequisitionsService {
     // Generate PR number
     const prNumber = await this.generatePRNumber(tenantId);
 
+    const requestedStatus = normalizeStatus(data.status || 'DRAFT');
+    if (!['DRAFT', 'SUBMITTED'].includes(requestedStatus)) {
+      throw new BadRequestException('A new requisition can only be saved as draft or submitted.');
+    }
+
     const { data: pr, error } = await this.supabase
       .from('purchase_requisitions')
       .insert({
@@ -170,7 +201,8 @@ export class PurchaseRequisitionsService {
         delivery_address: data.deliveryAddress ?? data.delivery_address ?? null,
         requested_by: userId,
         required_date: data.requiredDate,
-        status: data.status || 'DRAFT',
+        priority: normalizeStatus(data.priority || 'MEDIUM'),
+        status: 'DRAFT',
         remarks: data.remarks,
       })
       .select()
@@ -182,6 +214,7 @@ export class PurchaseRequisitionsService {
     if (data.items && data.items.length > 0) {
       const items = data.items.map((item: any) => ({
         pr_id: pr.id,
+        item_id: item.itemId ?? item.item_id ?? null,
         item_code: item.itemCode,
         item_name: item.itemName,
         vendor_id: item.vendorId ?? item.vendor_id ?? null,
@@ -211,7 +244,49 @@ export class PurchaseRequisitionsService {
       if (itemsError) throw new BadRequestException(itemsError.message);
     }
 
+    if (requestedStatus === 'SUBMITTED') {
+      return this.submit(tenantId, pr.id, userId);
+    }
+
     return this.findOne(tenantId, pr.id);
+  }
+
+  async checkDuplicates(tenantId: string, rawItems: any[]) {
+    const items = Array.isArray(rawItems) ? rawItems : [];
+    if (items.length === 0) return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
+
+    const requested = canonicalizeRequisitionItems(items, false);
+    if (requested.length !== items.length) {
+      throw new BadRequestException('Each duplicate-check item requires an item ID or code and a valid quantity.');
+    }
+
+    const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await this.supabase
+      .from('purchase_requisitions')
+      .select('id, pr_number, status, created_at, purchase_requisition_items(item_id, item_code, requested_qty)')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', since);
+
+    if (error) throw new BadRequestException(error.message);
+
+    const match = (data || []).find((pr: any) => {
+      const existing = canonicalizeRequisitionItems(pr?.purchase_requisition_items || [], true);
+      return requisitionItemsMatch(existing, requested);
+    });
+
+    if (!match) return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
+
+    return {
+      hasDuplicates: true,
+      exactMatches: [],
+      fuzzyMatches: [{
+        id: match.id,
+        matchScore: 100,
+        matchedFields: ['items'],
+        data: match,
+      }],
+      message: `A requisition with the same items and quantities was created recently (${match.pr_number}).`,
+    };
   }
 
   async findAll(tenantId: string, filters?: any) {
@@ -491,7 +566,129 @@ export class PurchaseRequisitionsService {
     };
   }
 
-  async update(tenantId: string, id: string, data: any) {
+  async findApprovalHistory(tenantId: string, id: string) {
+    await this.getRequisitionForTransition(tenantId, id);
+    const { data, error } = await this.supabase
+      .from('purchase_requisition_approval_history')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('pr_id', id)
+      .order('created_at', { ascending: true });
+    if (error) throw new BadRequestException(error.message);
+
+    const rows = data || [];
+    const actorIds = Array.from(new Set(rows.map((row: any) => String(row.actor_id || '')).filter(Boolean)));
+    const actorsById = new Map<string, string>();
+    if (actorIds.length > 0) {
+      const { data: users } = await this.supabase.from('users').select('id, first_name, last_name, email').in('id', actorIds);
+      (users || []).forEach((user: any) => {
+        actorsById.set(String(user.id), [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email || 'Unknown user');
+      });
+    }
+    return rows.map((row: any) => ({ ...row, actor_name: actorsById.get(String(row.actor_id)) || 'Unknown user' }));
+  }
+
+  private async logApprovalAction(args: {
+    tenantId: string;
+    prId: string;
+    actorId: string;
+    action: string;
+    fromStatus?: string;
+    toStatus?: string;
+    reason?: string | null;
+    approvalLevel?: number;
+    approvalRuleId?: string | null;
+  }) {
+    const { error } = await this.supabase.from('purchase_requisition_approval_history').insert({
+      tenant_id: args.tenantId,
+      pr_id: args.prId,
+      actor_id: args.actorId,
+      action: args.action,
+      from_status: args.fromStatus || null,
+      to_status: args.toStatus || null,
+      reason: args.reason || null,
+      approval_level: args.approvalLevel || 0,
+      approval_rule_id: args.approvalRuleId || null,
+    });
+    if (error) throw new BadRequestException(`Failed to record requisition history: ${error.message}`);
+  }
+
+  private async getRequisitionForTransition(tenantId: string, id: string) {
+    const { data, error } = await this.supabase
+      .from('purchase_requisitions')
+      .select('id, status, requested_by, department, required_date, current_approval_level, purchase_requisition_items(id, requested_qty, estimated_rate)')
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .single();
+    if (error || !data) throw new NotFoundException('Purchase Requisition not found');
+    return data as any;
+  }
+
+  private async getMatchingApprovalRules(tenantId: string, department: string, totalAmount: number) {
+    const { data, error } = await this.supabase
+      .from('purchase_requisition_approval_rules')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .order('sequence', { ascending: true });
+    if (error) throw new BadRequestException(`Failed to load approval rules: ${error.message}`);
+    return (data || []).filter((rule: any) => {
+      const departmentMatches = !rule.department || normalizeStatus(rule.department) === normalizeStatus(department);
+      const minimumMatches = totalAmount >= Number(rule.min_amount || 0);
+      const maximumMatches = rule.max_amount === null || rule.max_amount === undefined || totalAmount <= Number(rule.max_amount);
+      return departmentMatches && minimumMatches && maximumMatches;
+    });
+  }
+
+  private async assertRuleApprover(userId: string, rule: any) {
+    if (rule?.approver_user_id && String(rule.approver_user_id) !== String(userId)) {
+      throw new BadRequestException('This approval step is assigned to another approver.');
+    }
+    if (!rule?.approver_role_id) return;
+
+    const [{ data: membership }, { data: legacyUser }] = await Promise.all([
+      this.supabase.from('user_roles').select('user_id').eq('user_id', userId).eq('role_id', rule.approver_role_id).maybeSingle(),
+      this.supabase.from('users').select('id').eq('id', userId).eq('role_id', rule.approver_role_id).maybeSingle(),
+    ]);
+    if (!membership && !legacyUser) throw new BadRequestException('Your role is not assigned to this approval step.');
+  }
+
+  async update(tenantId: string, id: string, data: any, userId: string) {
+    const current = await this.getRequisitionForTransition(tenantId, id);
+    const currentStatus = normalizeStatus(current.status);
+    if (!['DRAFT', 'SUBMITTED', 'REJECTED'].includes(currentStatus)) {
+      throw new BadRequestException(`A requisition in ${currentStatus} status cannot be edited.`);
+    }
+
+    let existingRowsForSync: any[] = [];
+    if (Array.isArray(data.items)) {
+      const { data: existingRows, error: existingError } = await this.supabase
+        .from('purchase_requisition_items')
+        .select('id, total_ordered_qty')
+        .eq('pr_id', id);
+      if (existingError) throw new BadRequestException(existingError.message);
+      existingRowsForSync = existingRows || [];
+
+      const retainedIds = new Set(
+        data.items
+          .map((item: any) => String(item?.id || '').trim())
+          .filter((itemId: string) => isUuid(itemId)),
+      );
+      const removedRows = existingRowsForSync.filter((item: any) => !retainedIds.has(String(item.id)));
+      const removedIds = removedRows.map((item: any) => String(item.id));
+      if (removedRows.some((item: any) => Number(item.total_ordered_qty || 0) > 0)) {
+        throw new BadRequestException('An item already converted to a purchase order cannot be removed.');
+      }
+      if (removedIds.length > 0) {
+        const [{ data: poLinks }, { data: rfqLinks }] = await Promise.all([
+          this.supabase.from('purchase_order_items').select('id').in('pr_item_id', removedIds).limit(1),
+          this.supabase.from('rfq_items').select('id').in('pr_item_id', removedIds).limit(1),
+        ]);
+        if ((poLinks || []).length > 0 || (rfqLinks || []).length > 0) {
+          throw new BadRequestException('An item referenced by a PO or RFQ cannot be removed.');
+        }
+      }
+    }
     if (data.items) {
       await this.assertItemsVerified(tenantId, data.items);
       await this.assertVendorsVerified(
@@ -501,6 +698,13 @@ export class PurchaseRequisitionsService {
     }
 
     const nowIso = new Date().toISOString();
+    const requestedStatus = data.status === undefined ? currentStatus : normalizeStatus(data.status);
+    if (!['DRAFT', 'SUBMITTED'].includes(requestedStatus)) {
+      throw new BadRequestException('An edited requisition can only be saved as draft or submitted.');
+    }
+    if (requestedStatus === 'DRAFT' && currentStatus !== 'DRAFT') {
+      throw new BadRequestException('A submitted or rejected requisition cannot be moved back to draft.');
+    }
     const updateData: any = {
       department: data.department,
       required_date: data.requiredDate,
@@ -510,11 +714,13 @@ export class PurchaseRequisitionsService {
       delivery_address: data.deliveryAddress ?? data.delivery_address ?? null,
       notes: data.notes ?? data.purpose ?? null,
       remarks: data.remarks ?? null,
+      updated_by: userId,
       updated_at: nowIso,
     };
-
-    if (data.status !== undefined) {
-      updateData.status = data.status;
+    if (currentStatus === 'SUBMITTED') {
+      updateData.current_approval_level = 0;
+      updateData.approved_by = null;
+      updateData.approved_at = null;
     }
 
     const { error } = await this.supabase
@@ -525,84 +731,162 @@ export class PurchaseRequisitionsService {
 
     if (error) throw new BadRequestException(error.message);
 
-    // Update items if provided
-    if (data.items) {
-      // Delete existing items
-      await this.supabase
-        .from('purchase_requisition_items')
-        .delete()
-        .eq('pr_id', id);
+    if (Array.isArray(data.items)) {
+      const existingRows = existingRowsForSync;
 
-      // Insert new items
-      if (data.items.length > 0) {
-        const items = data.items.map((item: any) => ({
-          pr_id: id,
-          item_code: item.itemCode,
-          item_name: item.itemName,
-          vendor_id: item.vendorId ?? item.vendor_id ?? null,
-          description: item.description ?? item.specifications ?? null,
-          uom: item.uom ?? null,
-          requested_qty: item.requestedQty ?? item.quantity ?? null,
-          estimated_rate: item.estimatedRate ?? item.estimatedPrice ?? null,
-          required_date: item.requiredDate ?? null,
-          payment_terms: item.paymentTerms ?? null,
-          delivery_terms: item.deliveryTerms ?? null,
-          remarks: item.remarks ?? item.notes ?? null,
-        }));
+      const existingById = new Map((existingRows || []).map((item: any) => [String(item.id), item]));
+      const retainedIds = new Set<string>();
+      const newRows: any[] = [];
 
-        const { error: itemsError } = await this.supabase
-          .from('purchase_requisition_items')
-          .insert(items);
-        if (itemsError) throw new BadRequestException(`Failed to save PR items: ${itemsError.message}`);
+      const buildItemPayload = (item: any) => ({
+        item_id: item.itemId ?? item.item_id ?? null,
+        item_code: item.itemCode,
+        item_name: item.itemName,
+        vendor_id: item.vendorId ?? item.vendor_id ?? null,
+        description: item.description ?? item.specifications ?? null,
+        uom: item.uom ?? null,
+        requested_qty: item.requestedQty ?? item.quantity ?? null,
+        estimated_rate: item.estimatedRate ?? item.estimatedPrice ?? null,
+        required_date: item.requiredDate ?? null,
+        payment_terms: item.paymentTerms ?? null,
+        delivery_terms: item.deliveryTerms ?? null,
+        remarks: item.remarks ?? item.notes ?? null,
+        updated_by: userId,
+        updated_at: nowIso,
+      });
+
+      for (const item of data.items) {
+        const incomingId = String(item?.id || '').trim();
+        if (isUuid(incomingId) && existingById.has(incomingId)) {
+          retainedIds.add(incomingId);
+          const { error: itemError } = await this.supabase
+            .from('purchase_requisition_items')
+            .update(buildItemPayload(item))
+            .eq('pr_id', id)
+            .eq('id', incomingId);
+          if (itemError) throw new BadRequestException(`Failed to update PR item: ${itemError.message}`);
+        } else {
+          newRows.push({ pr_id: id, ...buildItemPayload(item), updated_by: undefined, updated_at: undefined });
+        }
+      }
+
+      if (newRows.length > 0) {
+        const sanitizedRows = newRows.map(({ updated_by, updated_at, ...row }) => row);
+        const { error: insertError } = await this.supabase.from('purchase_requisition_items').insert(sanitizedRows);
+        if (insertError) throw new BadRequestException(`Failed to add PR item: ${insertError.message}`);
+      }
+
+      const removedRows = (existingRows || []).filter((item: any) => !retainedIds.has(String(item.id)));
+      const removedIds = removedRows.map((item: any) => String(item.id));
+      if (removedIds.length > 0) {
+        const { error: deleteError } = await this.supabase.from('purchase_requisition_items').delete().in('id', removedIds).eq('pr_id', id);
+        if (deleteError) throw new BadRequestException(`Failed to remove PR item: ${deleteError.message}`);
       }
     }
 
     return this.findOne(tenantId, id);
   }
 
-  async submit(tenantId: string, id: string) {
+  async submit(tenantId: string, id: string, userId: string) {
+    const pr = await this.getRequisitionForTransition(tenantId, id);
+    const fromStatus = normalizeStatus(pr.status);
+    if (!['DRAFT', 'REJECTED'].includes(fromStatus)) {
+      throw new BadRequestException(`Only draft or rejected requisitions can be submitted; current status is ${fromStatus}.`);
+    }
+    if (!String(pr.department || '').trim() || !pr.required_date || !(pr.purchase_requisition_items || []).length) {
+      throw new BadRequestException('Department, required date, and at least one item are required before submission.');
+    }
     const { error } = await this.supabase
       .from('purchase_requisitions')
       .update({
         status: 'SUBMITTED',
+        submitted_at: new Date().toISOString(),
+        current_approval_level: 0,
+        rejection_reason: null,
+        rejected_by: null,
+        rejected_at: null,
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
       .eq('id', id);
 
     if (error) throw new BadRequestException(error.message);
+    await this.logApprovalAction({ tenantId, prId: id, actorId: userId, action: 'SUBMITTED', fromStatus, toStatus: 'SUBMITTED' });
+    if (requestedStatus === 'SUBMITTED' && currentStatus !== 'SUBMITTED') {
+      return this.submit(tenantId, id, userId);
+    }
+    if (currentStatus === 'SUBMITTED') {
+      await this.logApprovalAction({ tenantId, prId: id, actorId: userId, action: 'EDITED_AND_RESUBMITTED', fromStatus: currentStatus, toStatus: 'SUBMITTED' });
+    }
     return this.findOne(tenantId, id);
   }
 
   async approve(tenantId: string, id: string, userId: string) {
+    const pr = await this.getRequisitionForTransition(tenantId, id);
+    const fromStatus = normalizeStatus(pr.status);
+    if (fromStatus !== 'SUBMITTED') throw new BadRequestException(`Only submitted requisitions can be approved; current status is ${fromStatus}.`);
+    if (String(pr.requested_by) === String(userId)) throw new BadRequestException('You cannot approve your own purchase requisition.');
+
+    const totalAmount = (pr.purchase_requisition_items || []).reduce(
+      (sum: number, item: any) => sum + Number(item.requested_qty || 0) * Number(item.estimated_rate || 0),
+      0,
+    );
+    const rules = await this.getMatchingApprovalRules(tenantId, pr.department, totalAmount);
+    const currentLevel = Number(pr.current_approval_level || 0);
+    const currentRule = rules[currentLevel];
+    if (currentRule) await this.assertRuleApprover(userId, currentRule);
+    const finalApproval = rules.length === 0 || currentLevel + 1 >= rules.length;
+    const nextStatus = finalApproval ? 'APPROVED' : 'SUBMITTED';
+
     const { error } = await this.supabase
       .from('purchase_requisitions')
       .update({
-        status: 'APPROVED',
-        approved_by: userId,
-        approved_at: new Date().toISOString(),
+        status: nextStatus,
+        current_approval_level: currentLevel + 1,
+        approved_by: finalApproval ? userId : null,
+        approved_at: finalApproval ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
       .eq('id', id);
 
     if (error) throw new BadRequestException(error.message);
+    await this.logApprovalAction({
+      tenantId,
+      prId: id,
+      actorId: userId,
+      action: finalApproval ? 'APPROVED' : 'APPROVED_STEP',
+      fromStatus,
+      toStatus: nextStatus,
+      approvalLevel: currentLevel + 1,
+      approvalRuleId: currentRule?.id || null,
+    });
     return this.findOne(tenantId, id);
   }
 
-  async reject(tenantId: string, id: string, userId: string) {
+  async reject(tenantId: string, id: string, userId: string, reason: string) {
+    const normalizedReason = String(reason || '').trim();
+    if (!normalizedReason) throw new BadRequestException('A rejection reason is required.');
+    const pr = await this.getRequisitionForTransition(tenantId, id);
+    const fromStatus = normalizeStatus(pr.status);
+    if (fromStatus !== 'SUBMITTED') throw new BadRequestException(`Only submitted requisitions can be rejected; current status is ${fromStatus}.`);
+    if (String(pr.requested_by) === String(userId)) throw new BadRequestException('You cannot reject your own purchase requisition.');
     const { error } = await this.supabase
       .from('purchase_requisitions')
       .update({
         status: 'REJECTED',
-        approved_by: userId,
-        approved_at: new Date().toISOString(),
+        approved_by: null,
+        approved_at: null,
+        rejection_reason: normalizedReason,
+        rejected_by: userId,
+        rejected_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
       .eq('id', id);
 
     if (error) throw new BadRequestException(error.message);
+    await this.logApprovalAction({ tenantId, prId: id, actorId: userId, action: 'REJECTED', fromStatus, toStatus: 'REJECTED', reason: normalizedReason });
     return this.findOne(tenantId, id);
   }
 
@@ -1315,6 +1599,9 @@ export class PurchaseRequisitionsService {
         workflowStatus = PR_WORKFLOW_STATUS.REJECTED;
       } else if (baseStatus === 'DRAFT' || !baseStatus) {
         workflowStatus = PR_WORKFLOW_STATUS.DRAFT;
+      } else if (baseStatus === 'SUBMITTED') {
+        workflowStatus = PR_WORKFLOW_STATUS.AWAITING_APPROVAL;
+        workflowDetail = `Level ${Number(row?.current_approval_level || 0) + 1}`;
       } else if (goodsReceived) {
         workflowStatus = PR_WORKFLOW_STATUS.GOODS_RCVD;
       } else if (poDone) {

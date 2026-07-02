@@ -1,7 +1,7 @@
 'use client';
 
 import React, { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Download, GripVertical } from 'lucide-react';
+import { ArrowDown, ArrowUp, Bookmark, Download, GripVertical, Save, Trash2 } from 'lucide-react';
 import { downloadCSV } from '@/lib/utils';
 
 export type ListTableColumn<T> = {
@@ -23,6 +23,18 @@ export type ListTableColumn<T> = {
 
 type SortDirection = 'asc' | 'desc';
 
+type ListTableVariant = {
+  name: string;
+  searchTerm: string;
+  sortId: string;
+  sortDir: SortDirection;
+  pageSize: number;
+  visibleById: Record<string, boolean>;
+  columnOrder: string[];
+  columnWidths: Record<string, number>;
+  context?: Record<string, string>;
+};
+
 export type ListTableProps<T> = {
   storageKey: string;
   rows: T[];
@@ -42,6 +54,8 @@ export type ListTableProps<T> = {
   selectable?: boolean;
   selectedRowIds?: string[];
   onSelectionChange?: (selectedRowIds: string[]) => void;
+  variantContext?: Record<string, string>;
+  onApplyVariantContext?: (context: Record<string, string>) => void;
 };
 
 function safeParseJson<T>(value: string | null): T | null {
@@ -100,13 +114,17 @@ export function ListTable<T>(props: ListTableProps<T>) {
     selectable = false,
     selectedRowIds,
     onSelectionChange,
+    variantContext,
+    onApplyVariantContext,
   } = props;
 
   const columnsMenuRef = useRef<HTMLDivElement | null>(null);
+  const variantsMenuRef = useRef<HTMLDivElement | null>(null);
 
   const visibilityStorageKey = `${storageKey}:columns:v1`;
   const orderStorageKey = `${storageKey}:columnOrder:v1`;
   const pageSizeStorageKey = `${storageKey}:pageSize:v1`;
+  const variantsStorageKey = `${storageKey}:variants:v1`;
 
   const defaultVisibility = useMemo(() => {
     const map: Record<string, boolean> = {};
@@ -122,6 +140,9 @@ export function ListTable<T>(props: ListTableProps<T>) {
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(defaultPageSize);
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
+  const [showVariantsMenu, setShowVariantsMenu] = useState(false);
+  const [variantName, setVariantName] = useState('');
+  const [savedVariants, setSavedVariants] = useState<ListTableVariant[]>([]);
   const [visibleById, setVisibleById] = useState<Record<string, boolean>>(defaultVisibility);
   const [columnOrder, setColumnOrder] = useState<string[]>(() => columns.filter((c) => c.hideable !== false).map((c) => c.id));
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
@@ -152,6 +173,11 @@ export function ListTable<T>(props: ListTableProps<T>) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibilityStorageKey, orderStorageKey, pageSizeStorageKey]);
+
+  useEffect(() => {
+    const saved = safeParseJson<ListTableVariant[]>(localStorage.getItem(variantsStorageKey));
+    setSavedVariants(Array.isArray(saved) ? saved : []);
+  }, [variantsStorageKey]);
 
   const orderedColumns = useMemo(() => {
     const leadingFixed = columns.filter((c) => c.hideable === false && c.id !== 'actions');
@@ -215,6 +241,18 @@ export function ListTable<T>(props: ListTableProps<T>) {
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [showColumnsMenu]);
+
+  useEffect(() => {
+    if (!showVariantsMenu) return;
+    const onDocClick = (event: MouseEvent) => {
+      const element = variantsMenuRef.current;
+      if (element && event.target instanceof Node && !element.contains(event.target)) {
+        setShowVariantsMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [showVariantsMenu]);
 
   const visibleColumns = useMemo(() => {
     return orderedColumns.filter((c) => visibleById[c.id] !== false);
@@ -386,6 +424,45 @@ export function ListTable<T>(props: ListTableProps<T>) {
     localStorage.setItem(orderStorageKey, JSON.stringify(defaultOrder));
   };
 
+  const saveVariant = () => {
+    const name = variantName.trim();
+    if (!name) return;
+    const variant: ListTableVariant = {
+      name,
+      searchTerm,
+      sortId,
+      sortDir,
+      pageSize,
+      visibleById,
+      columnOrder,
+      columnWidths,
+      context: variantContext,
+    };
+    const next = [...savedVariants.filter((entry) => entry.name.toLowerCase() !== name.toLowerCase()), variant];
+    setSavedVariants(next);
+    localStorage.setItem(variantsStorageKey, JSON.stringify(next));
+    setVariantName('');
+  };
+
+  const applyVariant = (variant: ListTableVariant) => {
+    setSearchTerm(variant.searchTerm || '');
+    setSortId(variant.sortId || '');
+    setSortDir(variant.sortDir || 'asc');
+    setPageSize(pageSizeOptions.includes(variant.pageSize) ? variant.pageSize : defaultPageSize);
+    setVisibleById({ ...defaultVisibility, ...variant.visibleById });
+    setColumnOrder(Array.isArray(variant.columnOrder) ? variant.columnOrder : []);
+    setColumnWidths(variant.columnWidths || {});
+    if (variant.context && onApplyVariantContext) onApplyVariantContext(variant.context);
+    setPageIndex(0);
+    setShowVariantsMenu(false);
+  };
+
+  const deleteVariant = (name: string) => {
+    const next = savedVariants.filter((variant) => variant.name !== name);
+    setSavedVariants(next);
+    localStorage.setItem(variantsStorageKey, JSON.stringify(next));
+  };
+
   const handleExportCSV = () => {
     if (!exportFilename) return;
     // Build export rows from all sorted/filtered rows (not just current page)
@@ -503,6 +580,65 @@ export function ListTable<T>(props: ListTableProps<T>) {
                       </div>
                     ))}
                 </div>
+              </div>
+            )}
+          </div>
+          <div className="relative" ref={variantsMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShowVariantsMenu((current) => !current)}
+              className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
+            >
+              <Bookmark className="h-4 w-4" /> Views
+            </button>
+            {showVariantsMenu && (
+              <div className="absolute left-0 z-50 mt-2 w-80 rounded-md border border-slate-200 bg-white p-3 shadow-lg">
+                <div className="mb-3 flex items-center gap-2">
+                  <input
+                    value={variantName}
+                    onChange={(event) => setVariantName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        saveVariant();
+                      }
+                    }}
+                    placeholder="Name this view"
+                    className="min-h-9 min-w-0 flex-1 rounded-md border border-slate-300 px-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={saveVariant}
+                    disabled={!variantName.trim()}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-40"
+                    title="Save current view"
+                    aria-label="Save current view"
+                  >
+                    <Save className="h-4 w-4" />
+                  </button>
+                </div>
+                {savedVariants.length === 0 ? (
+                  <p className="py-2 text-sm text-slate-500">No saved views yet.</p>
+                ) : (
+                  <div className="max-h-64 space-y-1 overflow-auto">
+                    {savedVariants.map((variant) => (
+                      <div key={variant.name} className="flex items-center gap-2 rounded-md hover:bg-slate-50">
+                        <button type="button" onClick={() => applyVariant(variant)} className="min-w-0 flex-1 truncate px-2 py-2 text-left text-sm font-medium text-slate-700">
+                          {variant.name}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteVariant(variant.name)}
+                          className="mr-1 rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-700"
+                          title={`Delete ${variant.name}`}
+                          aria-label={`Delete ${variant.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

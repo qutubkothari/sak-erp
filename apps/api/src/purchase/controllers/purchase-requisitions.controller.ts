@@ -12,7 +12,6 @@ import {
 } from '@nestjs/common';
 import { PurchaseRequisitionsService } from '../services/purchase-requisitions.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
@@ -110,47 +109,11 @@ function hasPurchaseApproveAccess(user: any): boolean {
 export class PurchaseRequisitionsController {
   constructor(
     private readonly prService: PurchaseRequisitionsService,
-    private readonly duplicateDetectionService: DuplicateDetectionService,
   ) {}
 
   @Post('check-duplicates')
   async checkDuplicates(@Request() req: any, @Body() prData: any) {
-    const existing = await this.prService.findAll(req.user.tenantId, {});
-    
-    // Check for same items within last 3 days
-    const recentPRs = existing.filter((pr: any) => {
-      const daysDiff = Math.abs(new Date().getTime() - new Date(pr.created_at).getTime()) / (1000 * 3600 * 24);
-      return daysDiff <= 3;
-    });
-    
-    if (recentPRs.length === 0) {
-      return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
-    }
-    
-    // Check if items match
-    for (const recentPR of recentPRs) {
-      const hasSameItems = this.duplicateDetectionService.checkArrayDuplicates(
-        prData.items || [],
-        [recentPR.items || []],
-        ['item_id', 'quantity'],
-      );
-      
-      if (hasSameItems) {
-        return {
-          hasDuplicates: true,
-          fuzzyMatches: [{
-            id: recentPR.id,
-            matchScore: 90,
-            matchedFields: ['items'],
-            data: recentPR,
-          }],
-          exactMatches: [],
-          message: 'Similar Purchase Requisition with same items created in last 3 days',
-        };
-      }
-    }
-    
-    return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
+    return this.prService.checkDuplicates(req.user.tenantId, prData?.items || []);
   }
 
   @Post()
@@ -182,15 +145,20 @@ export class PurchaseRequisitionsController {
     return this.prService.findOneAvailableForPO(req.user.tenantId, id);
   }
 
+  @Get(':id/approval-history')
+  async findApprovalHistory(@Request() req: any, @Param('id') id: string) {
+    return this.prService.findApprovalHistory(req.user.tenantId, id);
+  }
+
   @Put(':id')
   @RequireUpdate('purchase_requisitions')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.prService.update(req.user.tenantId, id, body);
+    return this.prService.update(req.user.tenantId, id, body, req.user.userId);
   }
 
   @Post(':id/submit')
   async submit(@Request() req: any, @Param('id') id: string) {
-    return this.prService.submit(req.user.tenantId, id);
+    return this.prService.submit(req.user.tenantId, id, req.user.userId);
   }
 
   @Post(':id/approve')
@@ -201,8 +169,8 @@ export class PurchaseRequisitionsController {
 
   @Post(':id/reject')
   @RequireApprove('purchase_requisitions')
-  async reject(@Request() req: any, @Param('id') id: string) {
-    return this.prService.reject(req.user.tenantId, id, req.user.userId);
+  async reject(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.prService.reject(req.user.tenantId, id, req.user.userId, body?.reason);
   }
 
   @Post(':id/rfq/send')
