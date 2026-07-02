@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
@@ -1890,9 +1891,9 @@ function PRContent() {
         )}
 
         {/* Full-screen PR workspace */}
-        {showDetailModal && (
-          <div className="fixed inset-0 z-[80] bg-slate-50">
-            <div className="flex h-screen w-screen flex-col bg-white">
+        {showDetailModal && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 z-[1000] h-[100dvh] w-screen overflow-hidden bg-slate-50">
+            <div className="flex h-full w-full flex-col bg-white">
               {loadingDetail ? (
                 <div className="flex flex-1 items-center justify-center p-8 text-center">
                   <div className="animate-pulse">
@@ -2274,7 +2275,8 @@ function PRContent() {
                 </div>
               )}
             </div>
-          </div>
+          </div>,
+          document.body,
         )}
 
         {showRfqResponses && selectedPR && (
