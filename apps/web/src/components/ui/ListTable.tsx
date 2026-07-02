@@ -255,7 +255,9 @@ export function ListTable<T>(props: ListTableProps<T>) {
   }, [showVariantsMenu]);
 
   const visibleColumns = useMemo(() => {
-    return orderedColumns.filter((c) => visibleById[c.id] !== false);
+    // Fixed utility columns (for example Actions) must never disappear because
+    // of stale visibility preferences saved by an older table configuration.
+    return orderedColumns.filter((c) => c.hideable === false || visibleById[c.id] !== false);
   }, [orderedColumns, visibleById]);
 
   const tableMinWidth = useMemo(() => {
@@ -481,7 +483,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
   return (
     <div className={`overflow-hidden rounded-md border border-[#E8DCC4] bg-white ${className}`}>
       {/* Toolbar */}
-      <div className="flex flex-col gap-2 border-b border-[#E8DCC4] bg-white p-2.5 xl:flex-row xl:items-center xl:justify-between">
+      <div className="grid gap-2 border-b border-[#E8DCC4] bg-white p-2.5 xl:grid-cols-[minmax(24rem,1fr)_auto] xl:items-center">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {!hideSearch && (
             <input
@@ -644,7 +646,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 xl:w-auto xl:flex-nowrap xl:justify-end">
           {toolbarRight}
           {exportFilename && (
             <button
@@ -685,12 +687,18 @@ export function ListTable<T>(props: ListTableProps<T>) {
           className="table-fixed"
           style={fitToContainer ? { width: '100%' } : { width: `${scrollTableWidth}px`, minWidth: '100%' }}
         >
+          <colgroup>
+            {selectable ? <col style={{ width: '44px' }} /> : null}
+            {visibleColumns.map((col) => (
+              <col key={col.id} style={{ width: `${getColumnWidth(col)}px` }} />
+            ))}
+          </colgroup>
           <thead className="border-b border-[#E8DCC4] bg-[#FAF9F6]">
             <tr>
               {selectable && (
                 <th
-                  style={fitToContainer ? undefined : { width: '44px', minWidth: '44px' }}
-                  className="sticky top-0 z-10 bg-[#FAF9F6]/90 backdrop-blur-sm px-4 py-3 text-left"
+                  style={{ width: '44px', minWidth: '44px', maxWidth: '44px' }}
+                  className="sticky top-0 z-10 bg-[#FAF9F6]/90 px-3 py-3 text-center"
                 >
                   <input
                     type="checkbox"
@@ -760,7 +768,10 @@ export function ListTable<T>(props: ListTableProps<T>) {
               pagedRows.map((row) => (
                 <tr key={getRowId(row)} className="group hover:bg-[#F5EFE3]/60 transition-colors">
                   {selectable && (
-                    <td className="px-3 py-2.5 text-left">
+                    <td
+                      style={{ width: '44px', minWidth: '44px', maxWidth: '44px' }}
+                      className="px-3 py-2.5 text-center"
+                    >
                       <input
                         type="checkbox"
                         checked={selectedRowIdsSet.has(getRowId(row))}
