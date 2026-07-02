@@ -423,6 +423,18 @@ function PRContent() {
               <Edit className="h-4 w-4" />
             </ErpButton>
           )}
+          {(req.status === 'DRAFT' || req.status === 'REJECTED') && canEditPR && (
+            <ErpButton
+              onClick={() => handleSubmitExisting(req.id)}
+              variant="primary"
+              size="sm"
+              className="h-8 w-8 p-0"
+              title="Submit for approval"
+              aria-label="Submit for approval"
+            >
+              <Send className="h-4 w-4" />
+            </ErpButton>
+          )}
           {req.status === 'SUBMITTED' && canApprovePR && String(req.requested_by) !== currentUserId && (
             <>
               <ErpButton
@@ -1402,6 +1414,26 @@ function PRContent() {
     }
   };
 
+  const handleSubmitExisting = async (prId: string) => {
+    const confirmed = await confirmDialog({
+      title: 'Submit Purchase Requisition',
+      message: 'Submit this PR to the manager approval queue?',
+      confirmLabel: 'Submit for Approval',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
+
+    try {
+      await apiClient.post(`/purchase/requisitions/${prId}/submit`, {});
+      toast.success('PR submitted for approval.');
+      await fetchRequisitions();
+      if (showDetailModal) await handleViewDetails(prId);
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.message || 'Failed to submit PR';
+      toast.error(message);
+    }
+  };
+
   const handleReject = async (prId: string) => {
     const reason = prompt('Please enter rejection reason:');
     if (!reason) return;
@@ -2093,7 +2125,7 @@ function PRContent() {
                         <p className="mt-1 text-sm font-medium text-slate-600">{selectedPR.pr_number}</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        {(selectedPR.status === 'DRAFT' || selectedPR.status === 'SUBMITTED') && canEditPR && (
+                        {(selectedPR.status === 'DRAFT' || selectedPR.status === 'SUBMITTED' || selectedPR.status === 'REJECTED') && canEditPR && (
                           <ErpButton
                             onClick={() => {
                               handleEditPR(selectedPR.id);
@@ -2104,6 +2136,12 @@ function PRContent() {
                           >
                             <Edit className="h-4 w-4" />
                             Edit
+                          </ErpButton>
+                        )}
+                        {(selectedPR.status === 'DRAFT' || selectedPR.status === 'REJECTED') && canEditPR && (
+                          <ErpButton onClick={() => handleSubmitExisting(selectedPR.id)} variant="primary" size="sm">
+                            <Send className="h-4 w-4" />
+                            Submit for Approval
                           </ErpButton>
                         )}
                         {selectedPR.status === 'SUBMITTED' && canApprovePR && String(selectedPR.requested_by) !== currentUserId && (
@@ -2117,6 +2155,16 @@ function PRContent() {
                               Approve
                             </ErpButton>
                           </>
+                        )}
+                        {selectedPR.status === 'SUBMITTED' && String(selectedPR.requested_by) === currentUserId && (
+                          <span className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+                            Awaiting manager approval
+                          </span>
+                        )}
+                        {selectedPR.status === 'SUBMITTED' && !canApprovePR && String(selectedPR.requested_by) !== currentUserId && (
+                          <span className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
+                            Approval access required
+                          </span>
                         )}
                         {selectedPR.status !== 'DRAFT' &&
                           selectedPR.status !== 'REJECTED' &&
