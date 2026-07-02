@@ -393,15 +393,15 @@ function PRContent() {
           <button
             type="button"
             onClick={() => handleViewDetails(req.id)}
-            className="text-indigo-600 hover:text-indigo-900 font-medium"
+            className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-md text-xs font-semibold transition-colors"
           >
-            View Details
+            View
           </button>
           {(req.status === 'DRAFT' || req.status === 'SUBMITTED' || req.status === 'REJECTED') && canEditPR && (
             <button
               type="button"
               onClick={() => handleEditPR(req.id)}
-              className="text-blue-600 hover:text-blue-900 font-medium"
+              className="px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md text-xs font-semibold transition-colors"
             >
               Edit
             </button>
@@ -411,14 +411,14 @@ function PRContent() {
               <button
                 type="button"
                 onClick={() => handleApprove(req.id)}
-                className="text-green-600 hover:text-green-900 font-medium"
+                className="px-3 py-1 bg-green-50 text-green-700 hover:bg-green-100 rounded-md text-xs font-semibold transition-colors"
               >
                 Approve
               </button>
               <button
                 type="button"
                 onClick={() => handleReject(req.id)}
-                className="text-red-600 hover:text-red-900 font-medium"
+                className="px-3 py-1 bg-red-50 text-red-700 hover:bg-red-100 rounded-md text-xs font-semibold transition-colors"
               >
                 Reject
               </button>
@@ -428,7 +428,7 @@ function PRContent() {
           <button
             type="button"
             onClick={() => handleDelete(req.id)}
-            className="text-gray-600 hover:text-gray-900 font-medium"
+            className="px-3 py-1 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-md text-xs font-semibold transition-colors"
           >
             Delete
           </button>

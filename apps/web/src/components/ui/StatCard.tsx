@@ -53,7 +53,7 @@ export function StatCard({
   trend,
   trendLabel,
   icon,
-  iconBg = 'bg-amber-100',
+  iconBg = 'bg-indigo-50',
   onClick,
   alert = false,
   loading = false,
@@ -65,11 +65,11 @@ export function StatCard({
     <Tag
       onClick={onClick}
       className={cn(
-        'group relative rounded-xl border bg-white p-5 shadow-sm transition-all text-left w-full',
-        onClick && 'cursor-pointer hover:shadow-md hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-600',
+        'group relative rounded-2xl border bg-white/80 backdrop-blur-xl p-6 shadow-md transition-all duration-300 ease-out text-left w-full hover:-translate-y-1 hover:shadow-xl overflow-hidden',
+        onClick && 'cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500',
         alert
-          ? 'border-red-300 ring-1 ring-red-200'
-          : 'border-gray-200 hover:border-amber-200',
+          ? 'border-red-200 ring-1 ring-red-100'
+          : 'border-slate-200 hover:border-indigo-200',
         className,
       )}
     >
@@ -81,7 +81,10 @@ export function StatCard({
         </span>
       )}
 
-      <div className="flex items-start justify-between gap-4">
+      {/* Subtle ambient glow effect */}
+      <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-gradient-to-br from-indigo-100 to-transparent opacity-50 blur-2xl group-hover:opacity-100 transition-opacity" />
+
+      <div className="flex items-start justify-between gap-4 relative z-10">
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-500 truncate">{title}</p>
 
@@ -104,8 +107,9 @@ export function StatCard({
         </div>
 
         {icon && (
-          <div className={cn('rounded-xl p-3 flex-shrink-0', iconBg)}>
-            {icon}
+          <div className={cn('rounded-2xl p-3.5 flex-shrink-0 shadow-sm border border-white/50 relative overflow-hidden', iconBg)}>
+            <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent pointer-events-none" />
+            <div className="relative z-10">{icon}</div>
           </div>
         )}
       </div>

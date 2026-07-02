@@ -402,9 +402,9 @@ export function ListTable<T>(props: ListTableProps<T>) {
   };
 
   return (
-    <div className={`bg-white rounded-lg shadow-md overflow-hidden ${className}`}>
+    <div className={`bg-white/80 backdrop-blur-xl rounded-2xl shadow-md border border-slate-200 overflow-hidden ${className}`}>
       {/* Toolbar */}
-      <div className="p-3 border-b bg-gray-50 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="p-4 border-b border-slate-200 bg-white/50 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 items-center gap-3">
           {!hideSearch && (
             <input
@@ -422,7 +422,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
             <button
               type="button"
               onClick={() => setShowColumnsMenu((s) => !s)}
-              className="px-3 py-2 border border-gray-300 rounded-md bg-white hover:bg-gray-50 text-sm"
+              className="px-3 py-2 border border-gray-300 rounded-md bg-white hover:bg-indigo-50/50 transition-colors text-sm"
             >
               Columns
             </button>
@@ -445,21 +445,21 @@ export function ListTable<T>(props: ListTableProps<T>) {
                   <button
                     type="button"
                     onClick={() => setAllColumns(true)}
-                    className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                    className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-indigo-50/50 transition-colors"
                   >
                     All
                   </button>
                   <button
                     type="button"
                     onClick={() => setAllColumns(false)}
-                    className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                    className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-indigo-50/50 transition-colors"
                   >
                     None
                   </button>
                   <button
                     type="button"
                     onClick={resetColumns}
-                    className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                    className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-indigo-50/50 transition-colors"
                   >
                     Reset
                   </button>
@@ -469,7 +469,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
                   {orderedColumns
                     .filter((c) => c.hideable !== false)
                     .map((col, index, list) => (
-                      <div key={col.id} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-50">
+                      <div key={col.id} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm text-gray-700 hover:bg-indigo-50/50 transition-colors">
                         <GripVertical className="h-4 w-4 shrink-0 text-gray-300" />
                         <label className="flex min-w-0 flex-1 items-center gap-2">
                           <input
@@ -515,7 +515,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
               type="button"
               onClick={handleExportCSV}
               title="Export to CSV"
-              className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-sm text-gray-700 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-indigo-50/50 transition-colors text-sm text-gray-700 transition-colors"
             >
               <Download className="h-4 w-4" />
               <span className="hidden sm:inline">Export CSV</span>
@@ -549,12 +549,12 @@ export function ListTable<T>(props: ListTableProps<T>) {
           className="table-fixed"
           style={fitToContainer ? { width: '100%' } : { width: `${scrollTableWidth}px`, minWidth: '100%' }}
         >
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-slate-50/80 border-b border-slate-200 backdrop-blur-sm">
             <tr>
               {selectable && (
                 <th
                   style={fitToContainer ? undefined : { width: '44px', minWidth: '44px' }}
-                  className="sticky top-0 z-10 bg-gray-50 px-3 py-2.5 text-left"
+                  className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm px-4 py-3 text-left"
                 >
                   <input
                     type="checkbox"
@@ -580,9 +580,9 @@ export function ListTable<T>(props: ListTableProps<T>) {
                     key={col.id}
                     style={{ width: `${width}px`, minWidth: `${width}px` }}
                     className={
-                      `relative sticky top-0 z-10 bg-gray-50 px-3 py-2.5 text-[11px] font-semibold text-gray-600 uppercase tracking-wide ` +
+                      `relative sticky top-0 z-10 bg-transparent px-4 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider ` +
                       headerAlignClass +
-                      ` ${sortable ? 'cursor-pointer hover:bg-gray-100' : ''} ` +
+                      ` ${sortable ? 'cursor-pointer hover:bg-slate-200/50 transition-colors' : ''} ` +
                       (col.headerClassName || '')
                     }
                     onClick={() => {
@@ -622,7 +622,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
               </tr>
             ) : (
               pagedRows.map((row) => (
-                <tr key={getRowId(row)} className="group hover:bg-gray-50">
+                <tr key={getRowId(row)} className="group hover:bg-indigo-50/50 transition-colors">
                   {selectable && (
                     <td className="px-3 py-2.5 text-left">
                       <input
@@ -667,7 +667,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
             type="button"
             onClick={() => setPageIndex(0)}
             disabled={clampedPageIndex === 0}
-            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-slate-200/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             First
           </button>
@@ -675,7 +675,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
             type="button"
             onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
             disabled={clampedPageIndex === 0}
-            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-slate-200/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Prev
           </button>
@@ -686,7 +686,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
             type="button"
             onClick={() => setPageIndex((p) => Math.min(totalPages - 1, p + 1))}
             disabled={clampedPageIndex >= totalPages - 1}
-            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-slate-200/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Next
           </button>
@@ -694,7 +694,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
             type="button"
             onClick={() => setPageIndex(totalPages - 1)}
             disabled={clampedPageIndex >= totalPages - 1}
-            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-slate-200/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Last
           </button>

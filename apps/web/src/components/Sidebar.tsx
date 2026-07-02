@@ -499,23 +499,23 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
   return (
     <aside 
-      className={`fixed left-0 top-0 h-screen bg-[#E8DCC4] border-r-2 border-[#8B6F47] z-50 flex flex-col transition-all duration-300 ${
+      className={`fixed left-0 top-0 h-screen bg-slate-950 border-r-2 border-slate-800 z-50 flex flex-col transition-all duration-300 ${
         collapsed ? 'w-16' : 'w-56'
       }`}
     >
       {/* Header */}
-      <div className={`h-14 flex items-center border-b-2 border-[#8B6F47]/30 ${collapsed ? 'justify-center px-2' : 'justify-between px-3'}`}>
+      <div className={`h-14 flex items-center border-b-2 border-slate-800/30 ${collapsed ? 'justify-center px-2' : 'justify-between px-3'}`}>
         {!collapsed && (
           <Link href={homeHref} className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-[#8B6F47] rounded-lg flex items-center justify-center shadow-md">
+            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-md">
               <span className="text-white font-bold text-sm">{appBranding.initials}</span>
             </div>
-            <span className="font-bold text-sm text-[#36454F] truncate max-w-[132px]" title={appBranding.companyName}>{appBranding.companyName}</span>
+            <span className="font-bold text-sm text-slate-100 truncate max-w-[132px]" title={appBranding.companyName}>{appBranding.companyName}</span>
           </Link>
         )}
         <button
           onClick={onToggle}
-          className="p-1.5 rounded-lg hover:bg-[#D4C4A8] transition-colors text-[#6F4E37]"
+          className="p-1.5 rounded-lg hover:bg-slate-800 hover:text-slate-100 transition-colors text-slate-400"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
@@ -527,12 +527,12 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <div className="px-3 pt-2 pb-1">
           <button
             onClick={openCommandPalette}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[#D4C4A8]/60 hover:bg-[#D4C4A8] text-[#6F4E37] text-xs font-medium transition-colors border border-[#8B6F47]/20"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 hover:text-slate-100 text-slate-400 text-xs font-medium transition-colors border border-slate-800/20"
             title="Command palette (Ctrl+K)"
           >
             <Search size={13} className="flex-shrink-0" />
             <span className="flex-1 text-left">Quick search…</span>
-            <kbd className="hidden sm:inline text-[10px] bg-white/70 border border-[#8B6F47]/20 rounded px-1.5 py-0.5 font-mono text-[#8B6F47]">⌘K</kbd>
+            <kbd className="hidden sm:inline text-[10px] bg-white/70 border border-slate-800/20 rounded px-1.5 py-0.5 font-mono text-indigo-400">⌘K</kbd>
           </button>
         </div>
       )}
@@ -540,7 +540,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <div className="px-2 pt-2 pb-1 flex justify-center">
           <button
             onClick={openCommandPalette}
-            className="p-2 rounded-lg hover:bg-[#D4C4A8] text-[#6F4E37] transition-colors"
+            className="p-2 rounded-lg hover:bg-slate-800 hover:text-slate-100 text-slate-400 transition-colors"
             title="Quick search (Ctrl+K)"
           >
             <Search size={16} />
@@ -565,8 +565,8 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     onClick={() => toggleSection(item.name)}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                       isActive
-                        ? 'bg-[#8B6F47] text-white shadow-sm'
-                        : 'text-[#6F4E37] hover:bg-[#D4C4A8]'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
                     }`}
                     title={collapsed ? item.name : undefined}
                   >
@@ -582,15 +582,15 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     )}
                   </button>
                   {!collapsed && isExpanded && (
-                    <div className="ml-5 mt-1 space-y-0.5 border-l-2 border-[#8B6F47]/30 pl-3">
+                    <div className="ml-5 mt-1 space-y-0.5 border-l-2 border-slate-800/30 pl-3">
                       {children.map((child) => (
                         <Link
                           key={child.href}
                           href={child.href}
                           className={`block px-3 py-1.5 rounded text-xs font-medium transition-colors ${
                             pathname === child.href.split('?')[0]
-                              ? 'bg-[#8B6F47] text-white shadow-sm'
-                              : 'text-[#6F4E37] hover:bg-[#D4C4A8]'
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
                           }`}
                         >
                           {child.name}
@@ -604,8 +604,8 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   href={item.href}
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                     isActive
-                      ? 'bg-[#8B6F47] text-white shadow-sm'
-                      : 'text-[#6F4E37] hover:bg-[#D4C4A8]'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
                   }`}
                   title={collapsed ? item.name : undefined}
                 >
@@ -619,11 +619,11 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       </nav>
 
       {/* User section */}
-      <div className={`border-t-2 border-[#8B6F47]/30 p-2 ${collapsed ? 'flex flex-col items-center gap-1' : ''}`}>
+      <div className={`border-t-2 border-slate-800/30 p-2 ${collapsed ? 'flex flex-col items-center gap-1' : ''}`}>
         {/* Dark mode toggle */}
         <button
           onClick={toggleDarkMode}
-          className={`rounded-lg p-1.5 hover:bg-[#D4C4A8] text-[#6F4E37] transition-colors ${collapsed ? '' : 'w-full flex items-center gap-2 px-2 py-1.5 mb-1 text-xs font-medium'}`}
+          className={`rounded-lg p-1.5 hover:bg-slate-800 hover:text-slate-100 text-slate-400 transition-colors ${collapsed ? '' : 'w-full flex items-center gap-2 px-2 py-1.5 mb-1 text-xs font-medium'}`}
           title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
         >
           {darkMode ? <Sun size={14} /> : <Moon size={14} />}
@@ -631,16 +631,16 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </button>
 
         <div className={`flex items-center gap-3 ${collapsed ? '' : 'px-2 py-2'}`}>
-          <div className="w-8 h-8 bg-[#8B6F47] rounded-full flex items-center justify-center flex-shrink-0 shadow-md">
+          <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-md">
             <span className="text-xs font-bold text-white">{getUserInitialsLocal()}</span>
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold truncate text-[#36454F]">
+              <p className="text-xs font-semibold truncate text-slate-100">
                 {getUserDisplayName(currentUser)}
               </p>
               {getUserRoleLabel(currentUser) && (
-                <p className="text-[10px] truncate text-[#8B6F47] font-medium">
+                <p className="text-[10px] truncate text-indigo-400 font-medium">
                   {getUserRoleLabel(currentUser)}
                 </p>
               )}
@@ -649,7 +649,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   localStorage.clear();
                   window.location.href = '/';
                 }}
-                className="text-xs text-[#6F4E37] hover:text-[#8B6F47] flex items-center gap-1 transition-colors font-medium mt-0.5"
+                className="text-xs text-slate-400 hover:text-indigo-400 flex items-center gap-1 transition-colors font-medium mt-0.5"
               >
                 <LogOut size={12} />
                 Logout
