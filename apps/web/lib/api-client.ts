@@ -126,9 +126,45 @@ interface ResetPasswordData {
 
 class ApiClient {
   private baseUrl: string;
+  private refreshInFlight: Promise<string | null> | null = null;
 
   constructor(baseUrl?: string) {
     this.baseUrl = normalizeBaseUrl(baseUrl ?? getApiBaseUrl());
+  }
+
+  private async refreshAccessToken(): Promise<string | null> {
+    if (typeof window === 'undefined') return null;
+    if (this.refreshInFlight) return this.refreshInFlight;
+
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) return null;
+
+    this.refreshInFlight = (async () => {
+      try {
+        const response = await fetch(`${this.baseUrl}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        const text = await response.text();
+        const data = text ? JSON.parse(text) : null;
+        const authData = data?.data ?? data;
+
+        if (response.ok && authData?.accessToken && authData?.refreshToken) {
+          this.saveTokens(authData.accessToken, authData.refreshToken);
+          return authData.accessToken as string;
+        }
+
+        this.clearTokens();
+        return null;
+      } catch {
+        return null;
+      } finally {
+        this.refreshInFlight = null;
+      }
+    })();
+
+    return this.refreshInFlight;
   }
 
   /**
@@ -194,31 +230,10 @@ class ApiClient {
         !isAuthEndpoint &&
         typeof window !== 'undefined'
       ) {
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (refreshToken) {
-          try {
-            const refreshResponse = await fetch(`${this.baseUrl}/auth/refresh`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ refreshToken }),
-            });
-
-            const refreshText = await refreshResponse.text();
-            const refreshData = refreshText ? JSON.parse(refreshText) : null;
-
-            if (refreshResponse.ok) {
-              const authData = (refreshData as any)?.data ?? refreshData;
-              const nextAccessToken = authData?.accessToken;
-              const nextRefreshToken = authData?.refreshToken;
-              if (nextAccessToken && nextRefreshToken) {
-                this.saveTokens(nextAccessToken, nextRefreshToken);
-                applyAuthHeader(nextAccessToken);
-                ({ response, data } = await execute());
-              }
-            }
-          } catch {
-            // Ignore refresh errors; fall through to normal error handling.
-          }
+        const nextAccessToken = await this.refreshAccessToken();
+        if (nextAccessToken) {
+          applyAuthHeader(nextAccessToken);
+          ({ response, data } = await execute());
         }
       }
 

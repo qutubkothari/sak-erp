@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../lib/api-client';
-import { getDefaultLandingPath, hasModulePermission, isAdminLike, readStoredUser } from '@/lib/rbac';
+import { getDefaultLandingPath, hasModulePermission, isAdminLike } from '@/lib/rbac';
+import { useAuthStore } from '@/stores/auth.store';
 import { StatCard } from '@/components/ui/StatCard';
 import { StatCardSkeleton } from '@/components/ui/Skeleton';
 import {
@@ -49,21 +50,28 @@ const MODULE_CARDS = [
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user, isReady, hydrate } = useAuthStore();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [todayLabel, setTodayLabel] = useState('');
 
   useEffect(() => {
+    hydrate();
+    setTodayLabel(new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }));
+  }, [hydrate]);
+
+  useEffect(() => {
+    if (!isReady) return;
     if (!apiClient.isAuthenticated()) {
       router.push('/login');
       return;
     }
-    const user = readStoredUser();
     if (!isAdminLike(user)) {
       router.replace(getDefaultLandingPath(user));
       return;
     }
     fetchStats();
-  }, [router]);
+  }, [isReady, router, user]);
 
   const fetchStats = async () => {
     try {
@@ -76,7 +84,6 @@ export default function DashboardPage() {
     }
   };
 
-  const user = readStoredUser();
   const canSeeProductionManagement = hasModulePermission(user, 'Production', 'approve');
 
   return (
@@ -85,7 +92,7 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Operations Dashboard</h1>
         <p className="mt-0.5 text-sm text-gray-500">
-          {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          {todayLabel}
         </p>
       </div>
 

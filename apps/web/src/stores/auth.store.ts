@@ -37,7 +37,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch {
       /* ignore */
     }
-    set({ user });
+    set({ user, isReady: true });
   },
 
   clearUser: () => {
@@ -46,7 +46,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch {
       /* ignore */
     }
-    set({ user: null });
+    set({ user: null, isReady: true });
   },
 }));
 

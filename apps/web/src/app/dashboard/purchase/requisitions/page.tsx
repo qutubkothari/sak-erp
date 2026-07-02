@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
-import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { hasModulePermission } from '@/lib/rbac';
+import { useAuthStore } from '@/stores/auth.store';
 import { getTodayDateInputValue } from '@/lib/date';
 import { loadDeliveryAddresses, saveDeliveryAddress, type DeliveryAddressOption } from '@/lib/delivery-addresses';
 import { toast } from 'sonner';
@@ -245,8 +246,12 @@ const AUTO_REFRESH_MS = 30000;
 function PRContent() {
   const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
-  const todayDate = getTodayDateInputValue();
-  const currentUser = readStoredUser();
+  const { user: currentUser, hydrate: hydrateAuth } = useAuthStore();
+  const [todayDate, setTodayDate] = useState('');
+  useEffect(() => {
+    hydrateAuth();
+    setTodayDate(getTodayDateInputValue());
+  }, [hydrateAuth]);
   const currentUserId = String((currentUser as any)?.id || (currentUser as any)?.userId || '');
   const canApprovePR = hasModulePermission(currentUser, 'Purchase Management', 'approve');
   const canCreatePR = hasModulePermission(currentUser, 'Purchase Management', 'create');

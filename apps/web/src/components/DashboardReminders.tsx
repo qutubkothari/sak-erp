@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiClient } from '../../lib/api-client';
-import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { hasModulePermission } from '@/lib/rbac';
+import { useAuthStore } from '@/stores/auth.store';
 
 type PendingPO = {
   id: string;
@@ -28,7 +29,7 @@ export default function DashboardReminders() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
-  const user = useMemo(() => readStoredUser(), []);
+  const { user, isReady, hydrate } = useAuthStore();
   const canApprovePO = hasModulePermission(user, 'Purchase Management', 'approve');
   const canUpdateQC =
     hasModulePermission(user, 'Inventory', 'edit') ||
@@ -37,6 +38,16 @@ export default function DashboardReminders() {
     hasModulePermission(user, 'Quality Control', 'approve');
 
   useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  useEffect(() => {
+    if (!isReady) return;
+    if (!apiClient.isAuthenticated()) {
+      setPendingPOs([]);
+      setPendingQC([]);
+      return;
+    }
     let cancelled = false;
 
     const fetchReminders = async () => {
@@ -65,7 +76,7 @@ export default function DashboardReminders() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [canApprovePO, canUpdateQC]);
+  }, [canApprovePO, canUpdateQC, isReady]);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
