@@ -5,6 +5,8 @@ import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { buildDocumentBranding, escapeHtml } from '@/lib/document-branding';
+import { ErpButton, ErpMetricStrip, ErpPageHeader } from '../../../../components/ui/ErpPrimitives';
+import { ClipboardCheck, FileText, GitBranch, Printer, RefreshCw, ShieldCheck } from 'lucide-react';
 
 type InventoryItem = {
   id: string;
@@ -426,6 +428,22 @@ export default function StockAdjustmentsPage() {
     return { delta: parsed - currentAvailable, result: parsed };
   }, [currentAvailable, mode, quantityInput]);
 
+  const increaseCount = useMemo(
+    () => adjustments.filter((movement) => !!movement.to_warehouse && !movement.from_warehouse).length,
+    [adjustments],
+  );
+  const decreaseCount = useMemo(
+    () => adjustments.filter((movement) => !!movement.from_warehouse && !movement.to_warehouse).length,
+    [adjustments],
+  );
+  const selectedMovementType = mode === 'increase' ? '701' : mode === 'decrease' ? '702' : '709';
+  const selectedMovementLabel =
+    mode === 'increase'
+      ? 'Inventory gain / found stock'
+      : mode === 'decrease'
+        ? 'Inventory loss / write-off'
+        : 'Physical count correction';
+
   const resolveUidRequirement = useCallback((quantity: number) => {
     if (!selectedItemIsUidTracked) {
       return {
@@ -698,22 +716,67 @@ export default function StockAdjustmentsPage() {
   }, [prepareAdjustmentSubmission, savePreparedAdjustment, uidDialogState.action, uidDialogState.generateUids, uidDialogState.requiredCount, uidDialogState.selectedUids]);
 
   return (
-    <div className="min-h-screen bg-[#E8DCC4] p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 className="text-4xl font-bold text-[#36454F]">Stock Adjustments</h1>
-            <p className="text-[#6F4E37] mt-2">Adjust warehouse stock for physical count corrections, write-offs, and manual increases.</p>
+    <div className="min-h-screen bg-[#FAF9F6] px-4 py-4 text-[#2F241D] lg:px-6">
+      <div className="flex min-h-[calc(100vh-2rem)] flex-col gap-4">
+        <ErpPageHeader
+          eyebrow="Inventory"
+          title="Stock Adjustments"
+          description="Post physical count corrections, write-offs, gains, and UID-controlled stock movements."
+          actions={
+            <ErpButton
+              variant="secondary"
+              onClick={() => {
+                void loadData();
+              }}
+              disabled={loading}
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </ErpButton>
+          }
+        />
+
+        <ErpMetricStrip
+          loading={loading}
+          metrics={[
+            { label: 'Adjustments', value: adjustments.length },
+            { label: 'Increases', value: increaseCount, tone: 'success' },
+            { label: 'Decreases', value: decreaseCount, tone: decreaseCount > 0 ? 'warning' : 'neutral' },
+            { label: 'Selected Stock', value: `${formatNumber(currentAvailable)} ${selectedItem?.uom || ''}`.trim() },
+            { label: 'UID Control', value: selectedItemIsUidTracked ? selectedItemUidStrategy : 'Not tracked', tone: selectedItemIsUidTracked ? 'warning' : 'neutral' },
+          ]}
+        />
+
+        <div className="grid gap-3 lg:grid-cols-4">
+          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-[#7A6555]">Movement Type</div>
+            <div className="mt-1 text-lg font-bold text-[#4A3426]">{selectedMovementType}</div>
+            <div className="text-xs text-[#7A6555]">{selectedMovementLabel}</div>
           </div>
-          <button
-            onClick={() => {
-              void loadData();
-            }}
-            disabled={loading}
-            className="bg-[#8B6F47] text-white px-6 py-3 rounded-lg hover:bg-[#6F4E37] transition-colors font-semibold disabled:opacity-50 shadow-md"
-          >
-            {loading ? 'Loading...' : 'Refresh'}
-          </button>
+          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-[#7A6555]">Document Flow</div>
+            <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#4A3426]">
+              <GitBranch className="h-4 w-4 text-[#8B6F47]" />
+              Count {'>'} Adjustment {'>'} Stock
+            </div>
+            <div className="text-xs text-[#7A6555]">Adjustment posts directly to warehouse stock</div>
+          </div>
+          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-[#7A6555]">Posting Control</div>
+            <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#4A3426]">
+              <ShieldCheck className="h-4 w-4 text-emerald-700" />
+              Immediate stock posting
+            </div>
+            <div className="text-xs text-[#7A6555]">Decrease blocks when quantity exceeds available stock</div>
+          </div>
+          <div className="rounded-md border border-[#E8DCC4] bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-[#7A6555]">Audit Reason</div>
+            <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#4A3426]">
+              <ClipboardCheck className="h-4 w-4 text-[#8B6F47]" />
+              Notes required by process
+            </div>
+            <div className="text-xs text-[#7A6555]">Use notes for physical count, write-off, or correction reason</div>
+          </div>
         </div>
 
         {statusMessage && (
@@ -728,15 +791,15 @@ export default function StockAdjustmentsPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-[420px_minmax(0,1fr)] gap-6">
-          <div className="bg-white rounded-lg shadow-md border-2 border-[#8B6F47]/20 p-6 space-y-4">
+        <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
+          <div className="rounded-md border border-[#E8DCC4] bg-white p-4 space-y-4">
             <div>
-              <h2 className="text-xl font-bold text-[#36454F]">New Adjustment</h2>
-              <p className="text-sm text-[#6F4E37] mt-1">Create an inventory movement of type ADJUSTMENT.</p>
+              <h2 className="text-base font-bold text-[#4A3426]">New Adjustment</h2>
+              <p className="mt-0.5 text-xs text-[#7A6555]">Create an inventory movement with controlled stock posting.</p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Item</label>
+              <label className="mb-1 block text-xs font-semibold uppercase text-[#7A6555]">Item</label>
               <SearchableSelect
                 options={itemOptions}
                 value={itemId}
@@ -745,15 +808,15 @@ export default function StockAdjustmentsPage() {
                 truncateInput={false}
                 disabled={loading || items.length === 0}
               />
-              <p className="mt-2 text-xs text-gray-500">Type part code or item name to filter the list.</p>
+              <p className="mt-1 text-xs text-[#7A6555]">Type part code or item name to filter the list.</p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Warehouse</label>
+              <label className="mb-1 block text-xs font-semibold uppercase text-[#7A6555]">Warehouse</label>
               <select
                 value={warehouseId}
                 onChange={(e) => setWarehouseId(e.target.value)}
-                className="w-full border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
+                className="min-h-10 w-full rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
               >
                 <option value="">Select warehouse</option>
                 {warehouses.map((warehouse) => (
@@ -768,7 +831,7 @@ export default function StockAdjustmentsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Adjustment Mode</label>
+              <label className="mb-1 block text-xs font-semibold uppercase text-[#7A6555]">Adjustment Mode</label>
               <div className="grid grid-cols-3 gap-2">
                 {([
                   ['increase', 'Increase'],
@@ -779,10 +842,10 @@ export default function StockAdjustmentsPage() {
                     key={value}
                     type="button"
                     onClick={() => setMode(value)}
-                    className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`min-h-9 rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${
                       mode === value
-                        ? 'border-[#8B6F47] bg-[#E8DCC4] text-[#6F4E37]'
-                        : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                        ? 'border-[#8B6F47] bg-[#8B6F47] text-white'
+                        : 'border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]'
                     }`}
                   >
                     {label}
@@ -792,7 +855,7 @@ export default function StockAdjustmentsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">
+              <label className="mb-1 block text-xs font-semibold uppercase text-[#7A6555]">
                 {mode === 'set' ? 'Final Stock Quantity' : 'Adjustment Quantity'}
               </label>
               <input
@@ -801,18 +864,18 @@ export default function StockAdjustmentsPage() {
                 step="0.001"
                 value={quantityInput}
                 onChange={(e) => setQuantityInput(e.target.value)}
-                className="w-full border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
+                className="min-h-10 w-full rounded-md border border-[#D8C8AA] px-3 py-2 focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
                 placeholder={mode === 'set' ? 'Enter final counted stock' : 'Enter quantity'}
               />
             </div>
 
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
-                <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600">Effective Date / Time</label>
+                <label className="block text-xs font-semibold uppercase text-[#7A6555]">Effective Date / Time</label>
                 <button
                   type="button"
                   onClick={() => setEffectiveAt(toDateTimeLocalValue())}
-                  className="text-xs font-semibold uppercase tracking-wide text-[#8B6F47] hover:text-[#6F4E37]"
+                  className="text-xs font-semibold uppercase text-[#8B6F47] hover:text-[#6F4E37]"
                 >
                   Use now
                 </button>
@@ -827,89 +890,106 @@ export default function StockAdjustmentsPage() {
                   }
                 }}
                 step={60}
-                className="w-full border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
+                className="min-h-10 w-full rounded-md border border-[#D8C8AA] px-3 py-2 focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-2">Notes</label>
+              <label className="mb-1 block text-xs font-semibold uppercase text-[#7A6555]">Adjustment Reason / Notes</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={4}
-                className="w-full border-2 border-[#8B6F47]/30 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent resize-y"
-                placeholder="Reason for adjustment"
+                className="w-full rounded-md border border-[#D8C8AA] px-3 py-2 focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30 resize-y"
+                placeholder="Physical count correction / write-off / found stock reason"
               />
             </div>
 
-            <button
+            <ErpButton
               onClick={() => {
                 void requestSubmitAdjustment();
               }}
               disabled={saving || loading || !canCreate}
-              className="w-full bg-[#8B6F47] text-white px-4 py-3 rounded-lg hover:bg-[#6F4E37] font-semibold disabled:opacity-50 shadow-md"
+              variant="primary"
+              className="w-full"
             >
+              <FileText className="h-4 w-4" />
               {saving ? 'Saving...' : 'Save Adjustment'}
-            </button>
+            </ErpButton>
 
             {!canCreate && (
-              <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 Your current role can view this screen but cannot create stock adjustments.
               </p>
             )}
           </div>
 
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-md border-2 border-[#8B6F47]/20 p-6">
+          <div className="space-y-4">
+            <div className="rounded-md border border-[#E8DCC4] bg-white p-4">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h2 className="text-xl font-bold text-[#36454F]">Current Stock Snapshot</h2>
-                  <p className="text-sm text-[#6F4E37] mt-1">Review the selected item and warehouse before posting the adjustment.</p>
+                  <h2 className="text-base font-bold text-[#4A3426]">Current Stock Snapshot</h2>
+                  <p className="mt-0.5 text-xs text-[#7A6555]">Review the selected item and warehouse before posting the adjustment.</p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 min-w-0">
-                  <div className="rounded-lg bg-[#F7F1E6] px-4 py-3 border border-[#8B6F47]/20">
-                    <div className="text-xs uppercase tracking-wide text-gray-500">Item</div>
-                    <div className="font-semibold text-[#36454F] mt-1">{selectedItem ? ([selectedItem.code, selectedItem.name].filter(Boolean).join(' - ')) : '-'}</div>
+                  <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-4 py-3">
+                    <div className="text-xs font-semibold uppercase text-[#7A6555]">Item</div>
+                    <div className="mt-1 font-semibold text-[#4A3426]">{selectedItem ? ([selectedItem.code, selectedItem.name].filter(Boolean).join(' - ')) : '-'}</div>
                     {selectedItemIsUidTracked && (
-                      <div className="mt-2 inline-flex rounded-full bg-[#8B6F47]/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#6F4E37]">
+                      <div className="mt-2 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold uppercase text-amber-800">
                         UID tracked: {selectedItemUidStrategy}
                       </div>
                     )}
                   </div>
-                  <div className="rounded-lg bg-[#F7F1E6] px-4 py-3 border border-[#8B6F47]/20">
-                    <div className="text-xs uppercase tracking-wide text-gray-500">Warehouse</div>
-                    <div className="font-semibold text-[#36454F] mt-1">{selectedWarehouse ? ([selectedWarehouse.code, selectedWarehouse.name].filter(Boolean).join(' - ')) : '-'}</div>
+                  <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-4 py-3">
+                    <div className="text-xs font-semibold uppercase text-[#7A6555]">Warehouse</div>
+                    <div className="mt-1 font-semibold text-[#4A3426]">{selectedWarehouse ? ([selectedWarehouse.code, selectedWarehouse.name].filter(Boolean).join(' - ')) : '-'}</div>
                   </div>
-                  <div className="rounded-lg bg-[#F7F1E6] px-4 py-3 border border-[#8B6F47]/20">
-                    <div className="text-xs uppercase tracking-wide text-gray-500">Available Now</div>
-                    <div className="font-semibold text-[#36454F] mt-1">{formatNumber(currentAvailable)} {selectedItem?.uom || ''}</div>
+                  <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-4 py-3">
+                    <div className="text-xs font-semibold uppercase text-[#7A6555]">Available Now</div>
+                    <div className="mt-1 font-semibold text-[#4A3426]">{formatNumber(currentAvailable)} {selectedItem?.uom || ''}</div>
                     {stockLoading && <div className="mt-1 text-xs text-gray-500">Refreshing stock...</div>}
                   </div>
                 </div>
               </div>
 
               {draftSummary && (
-                <div className="mt-4 rounded-lg border border-[#8B6F47]/20 bg-[#FFF9F0] px-4 py-3 text-sm text-[#6F4E37]">
-                  <span className="font-semibold">Preview:</span>{' '}
-                  {draftSummary.delta >= 0 ? '+' : ''}{formatNumber(draftSummary.delta)} change, resulting stock {formatNumber(draftSummary.result)}.
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-4 py-3 text-sm">
+                    <div className="text-xs font-semibold uppercase text-[#7A6555]">Movement</div>
+                    <div className="mt-1 font-bold text-[#4A3426]">{selectedMovementType}</div>
+                    <div className="text-xs text-[#7A6555]">{selectedMovementLabel}</div>
+                  </div>
+                  <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-4 py-3 text-sm">
+                    <div className="text-xs font-semibold uppercase text-[#7A6555]">Stock Change</div>
+                    <div className={`mt-1 font-bold ${draftSummary.delta < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                      {draftSummary.delta >= 0 ? '+' : ''}{formatNumber(draftSummary.delta)}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-4 py-3 text-sm">
+                    <div className="text-xs font-semibold uppercase text-[#7A6555]">Resulting Stock</div>
+                    <div className="mt-1 font-bold text-[#4A3426]">{formatNumber(draftSummary.result)} {selectedItem?.uom || ''}</div>
+                  </div>
                 </div>
               )}
             </div>
 
-            <div className="bg-white rounded-lg shadow-md border-2 border-[#8B6F47]/20 overflow-hidden">
-              <div className="px-6 py-4 border-b border-[#8B6F47]/15 bg-[#F7F1E6]">
+            <div className="overflow-hidden rounded-md border border-[#E8DCC4] bg-white">
+              <div className="border-b border-[#E8DCC4] bg-white px-4 py-3">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h2 className="text-xl font-bold text-[#36454F]">Recent Adjustments</h2>
-                    <p className="text-sm text-[#6F4E37] mt-1">Latest ADJUSTMENT movements across warehouses.</p>
+                    <h2 className="text-base font-bold text-[#4A3426]">Recent Adjustments</h2>
+                    <p className="mt-0.5 text-xs text-[#7A6555]">Latest ADJUSTMENT movements across warehouses.</p>
                   </div>
-                  <button
+                  <ErpButton
                     type="button"
                     onClick={() => setPrintDialog(prev => ({ ...prev, open: true }))}
-                    className="shrink-0 rounded-lg border border-[#8B6F47]/30 bg-white px-4 py-2 text-sm font-semibold text-[#6F4E37] hover:bg-[#F7F1E6]"
+                    variant="secondary"
+                    size="sm"
                   >
+                    <Printer className="h-4 w-4" />
                     Print Report
-                  </button>
+                  </ErpButton>
                 </div>
               </div>
 
@@ -919,18 +999,18 @@ export default function StockAdjustmentsPage() {
                 <div className="p-6 text-gray-600">No stock adjustments found.</div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                  <table className="min-w-full divide-y divide-[#E8DCC4]">
+                    <thead className="bg-[#F5EFE3]">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Movement</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Direction</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Movement</th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Item</th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Direction</th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Quantity</th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Date</th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Notes</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 bg-white">
+                    <tbody className="divide-y divide-[#E8DCC4] bg-white">
                       {adjustments.map((movement) => {
                         const isIncrease = !!movement.to_warehouse && !movement.from_warehouse;
                         const isDecrease = !!movement.from_warehouse && !movement.to_warehouse;
