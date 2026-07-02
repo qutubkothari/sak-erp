@@ -84,14 +84,14 @@ export function SlidePanel({
         )}
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5 flex-shrink-0">
+        <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-4 py-3">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 leading-tight">{title}</h2>
             {subtitle && <p className="mt-0.5 text-sm text-gray-500">{subtitle}</p>}
           </div>
           <button
             onClick={onClose}
-            className="mt-0.5 rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors flex-shrink-0"
+            className="flex-shrink-0 rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
             aria-label="Close panel"
           >
             <X className="h-5 w-5" />
@@ -99,11 +99,11 @@ export function SlidePanel({
         </div>
 
         {/* Body — scrollable */}
-        <div className="flex-1 overflow-y-auto px-6 py-6">{children}</div>
+        <div className="flex-1 overflow-y-auto px-4 py-3">{children}</div>
 
         {/* Footer — optional sticky action bar */}
         {footer && (
-          <div className="border-t border-gray-200 px-6 py-4 flex-shrink-0 bg-gray-50">
+          <div className="flex-shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-2.5">
             {footer}
           </div>
         )}

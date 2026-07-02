@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
@@ -38,9 +38,6 @@ interface Item {
   uom: string;
   standard_cost?: number;
 }
-
-const PR_ITEM_SEARCH_MIN_CHARS = 2;
-const PR_ITEM_SEARCH_RESULT_LIMIT = 75;
 
 type RawItem = Record<string, any>;
 
@@ -214,8 +211,6 @@ function PRContent() {
   const canCreatePR = hasModulePermission(currentUser, 'Purchase Management', 'create');
   const canEditPR = hasModulePermission(currentUser, 'Purchase Management', 'edit');
   const canDeletePR = hasModulePermission(currentUser, 'Purchase Management', 'delete');
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const itemResultRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [items, setItems] = useState<PRItem[]>([]);
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
@@ -256,11 +251,8 @@ function PRContent() {
   });
 
   const [masterItems, setMasterItems] = useState<Item[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [useManualEntry, setUseManualEntry] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [highlightedItemIndex, setHighlightedItemIndex] = useState(0);
+  const [itemEntryError, setItemEntryError] = useState('');
   const [itemsLoadError, setItemsLoadError] = useState<string | null>(null);
   const [lastPurchasePrice, setLastPurchasePrice] = useState<{
     unit_price: number;
@@ -438,7 +430,6 @@ function PRContent() {
   useEscapeKey(showDetailModal, () => { setShowDetailModal(false); setSelectedPR(null); });
   useEscapeKey(showRfqPreview, () => setShowRfqPreview(false));
   useEscapeKey(showRfqResponses, () => setShowRfqResponses(false));
-  useEscapeKey(showCreateForm, () => setShowCreateForm(false));
 
   useEffect(() => {
     fetchRequisitions();
@@ -503,18 +494,6 @@ function PRContent() {
     }
   };
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   const fetchRequisitions = async (options?: { silent?: boolean }) => {
     try {
       if (!options?.silent) {
@@ -562,46 +541,18 @@ function PRContent() {
     }
   };
 
-  const normalizedItemSearch = searchTerm.trim().toLowerCase();
-  const hasEnoughSearchText = normalizedItemSearch.length >= PR_ITEM_SEARCH_MIN_CHARS;
-
-  const filteredItems = hasEnoughSearchText
-    ? masterItems
-        .filter(item => (
-          item.name.toLowerCase().includes(normalizedItemSearch) ||
-          item.code.toLowerCase().includes(normalizedItemSearch) ||
-          (item.uom && item.uom.toLowerCase().includes(normalizedItemSearch))
-        ))
-        .slice(0, PR_ITEM_SEARCH_RESULT_LIMIT)
-    : [];
-
-  useEffect(() => {
-    if (!showDropdown || filteredItems.length === 0) {
-      setHighlightedItemIndex(0);
-      return;
-    }
-
-    setHighlightedItemIndex((prev) => {
-      if (prev < 0) return 0;
-      if (prev >= filteredItems.length) return filteredItems.length - 1;
-      return prev;
-    });
-  }, [filteredItems.length, showDropdown]);
-
-  useEffect(() => {
-    if (!showDropdown || filteredItems.length === 0) {
-      return;
-    }
-
-    itemResultRefs.current[highlightedItemIndex]?.scrollIntoView({ block: 'nearest' });
-  }, [filteredItems, highlightedItemIndex, showDropdown]);
-
   const selectItem = async (item: Item) => {
+    setItemEntryError('');
     setSelectedItemId(item.id);
-    setSearchTerm(`${item.code} - ${item.name}`);
-    setShowDropdown(false);
-    setHighlightedItemIndex(0);
     setLastPurchasePrice(null);
+    setItemForm((prev) => ({
+      ...prev,
+      itemName: `${item.code} - ${item.name}`,
+      uom: item.uom || '',
+      vendorId: '',
+      vendorName: '',
+      estimatedPrice: item.standard_cost?.toString() || '',
+    }));
 
     // Fetch preferred vendor
     try {
@@ -678,77 +629,47 @@ function PRContent() {
     }
   };
 
-  const handleItemSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (useManualEntry) return;
-
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      setShowDropdown(false);
-      setHighlightedItemIndex(0);
-      return;
-    }
-
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      if (!showDropdown) {
-        setShowDropdown(true);
-      }
-      if (!filteredItems.length) return;
-      setHighlightedItemIndex((prev) => Math.min(prev + 1, filteredItems.length - 1));
-      return;
-    }
-
-    if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      if (!showDropdown) {
-        setShowDropdown(true);
-      }
-      if (!filteredItems.length) return;
-      setHighlightedItemIndex((prev) => Math.max(prev - 1, 0));
-      return;
-    }
-
-    if (event.key === 'Enter' && showDropdown && filteredItems[highlightedItemIndex]) {
-      event.preventDefault();
-      void selectItem(filteredItems[highlightedItemIndex]);
-    }
-  };
-
   const addItem = () => {
-    if (!itemForm.quantity) {
-      alert('Please enter quantity');
+    setItemEntryError('');
+    const quantity = Number(itemForm.quantity);
+    const estimatedPrice = itemForm.estimatedPrice ? Number(itemForm.estimatedPrice) : undefined;
+
+    if (!selectedItemId) {
+      setItemEntryError('Select an item from the search results before adding it.');
       return;
     }
-    
-    if (!itemForm.itemName && !searchTerm) {
-      alert('Please search and select an item, or enter item name');
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setItemEntryError('Enter a quantity greater than zero.');
       return;
     }
 
     const selectedItem = masterItems.find(item => item.id === selectedItemId);
+    if (!selectedItem) {
+      setItemEntryError('The selected item is no longer available. Search and select it again.');
+      return;
+    }
 
-    // Check for duplicate items (only when selecting from master items, not manual entry)
-    if (selectedItemId && !useManualEntry) {
-      const duplicate = items.find(item => {
-        const existingItemId = masterItems.find(mi => mi.code === item.itemCode)?.id;
-        return existingItemId === selectedItemId;
-      });
-      
-      if (duplicate) {
-        alert('This item is already added to the requisition');
-        return;
-      }
+    if (estimatedPrice !== undefined && (!Number.isFinite(estimatedPrice) || estimatedPrice < 0)) {
+      setItemEntryError('Estimated unit price cannot be negative.');
+      return;
+    }
+
+    const duplicate = items.find(item => item.itemCode === selectedItem.code);
+    if (duplicate) {
+      setItemEntryError('This item is already included in the requisition. Edit the existing line instead.');
+      return;
     }
 
     const nextItem = {
       id: Date.now().toString(),
-      itemCode: selectedItem?.code || '',
-      itemName: useManualEntry ? itemForm.itemName : searchTerm,
-      uom: useManualEntry ? (itemForm.uom || undefined) : (resolveUomFromItem(selectedItem) || undefined),
+      itemCode: selectedItem.code,
+      itemName: `${selectedItem.code} - ${selectedItem.name}`,
+      uom: resolveUomFromItem(selectedItem) || undefined,
       vendorId: itemForm.vendorId || undefined,
       vendorName: itemForm.vendorName || undefined,
-      quantity: parseFloat(itemForm.quantity),
-      estimatedPrice: itemForm.estimatedPrice ? parseFloat(itemForm.estimatedPrice) : undefined,
+      quantity,
+      estimatedPrice,
       specifications: itemForm.specifications,
       paymentTerms: itemForm.paymentTerms || undefined,
       deliveryTerms: itemForm.deliveryTerms || undefined,
@@ -769,9 +690,7 @@ function PRContent() {
       deliveryTerms: '',
       requiredDate: '',
     });
-    setSearchTerm('');
     setSelectedItemId(null);
-    setUseManualEntry(false);
     setLastPurchasePrice(null);
   };
 
@@ -788,11 +707,19 @@ function PRContent() {
       deliveryTerms: '',
       requiredDate: '',
     });
-    setSearchTerm('');
     setSelectedItemId(null);
-    setShowDropdown(false);
-    setUseManualEntry(false);
+    setItemEntryError('');
     setLastPurchasePrice(null);
+  };
+
+  const closeRequisitionForm = () => {
+    setShowCreateForm(false);
+    setEditingPRId(null);
+    setEditingItemId(null);
+    setItems([]);
+    setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
+    setDeliveryAddressName('');
+    resetItemEntry();
   };
 
   const removeItem = (id: string) => {
@@ -820,53 +747,58 @@ function PRContent() {
       deliveryTerms: item.deliveryTerms || '',
       requiredDate: (item as any).requiredDate || '',
     });
-    setSearchTerm(item.itemName);
     if (matchedItem) {
       setSelectedItemId(matchedItem.id);
+    } else {
+      setSelectedItemId(null);
+      setItemEntryError('This item is not available in the current item master and cannot be edited.');
     }
   };
 
   const updateItem = () => {
     if (!editingItemId) return;
-    
-    if (!itemForm.quantity) {
-      alert('Please enter quantity');
+
+    setItemEntryError('');
+    const quantity = Number(itemForm.quantity);
+    const estimatedPrice = itemForm.estimatedPrice ? Number(itemForm.estimatedPrice) : undefined;
+
+    if (!selectedItemId) {
+      setItemEntryError('Select an item from the search results before updating this line.');
       return;
     }
-    
-    if (!itemForm.itemName && !searchTerm) {
-      alert('Please search and select an item, or enter item name');
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setItemEntryError('Enter a quantity greater than zero.');
       return;
     }
 
     const selectedItem = masterItems.find(item => item.id === selectedItemId);
+    if (!selectedItem) {
+      setItemEntryError('The selected item is no longer available. Search and select it again.');
+      return;
+    }
 
-    // Check for duplicate items when changing selection (only when selecting from master items, not manual entry)
-    if (selectedItemId && !useManualEntry) {
-      const duplicate = items.find(item => {
-        if (item.id === editingItemId) return false; // Skip the item being edited
-        const existingItemId = masterItems.find(mi => mi.code === item.itemCode)?.id;
-        return existingItemId === selectedItemId;
-      });
-      
-      if (duplicate) {
-        alert('This item is already added to the requisition');
-        return;
-      }
+    if (estimatedPrice !== undefined && (!Number.isFinite(estimatedPrice) || estimatedPrice < 0)) {
+      setItemEntryError('Estimated unit price cannot be negative.');
+      return;
+    }
+
+    const duplicate = items.find(item => item.id !== editingItemId && item.itemCode === selectedItem.code);
+    if (duplicate) {
+      setItemEntryError('This item is already included in the requisition.');
+      return;
     }
 
     setItems(prev => prev.map(item => 
       item.id === editingItemId ? {
         ...item,
-        itemCode: selectedItem?.code || item.itemCode,
-        itemName: useManualEntry ? itemForm.itemName : searchTerm,
-        uom: useManualEntry
-          ? (itemForm.uom || item.uom)
-          : (resolveUomFromItem(selectedItem) || item.uom),
+        itemCode: selectedItem.code,
+        itemName: `${selectedItem.code} - ${selectedItem.name}`,
+        uom: resolveUomFromItem(selectedItem) || item.uom,
         vendorId: itemForm.vendorId || undefined,
         vendorName: itemForm.vendorName || undefined,
-        quantity: parseFloat(itemForm.quantity),
-        estimatedPrice: itemForm.estimatedPrice ? parseFloat(itemForm.estimatedPrice) : undefined,
+        quantity,
+        estimatedPrice,
         specifications: itemForm.specifications,
         paymentTerms: itemForm.paymentTerms || undefined,
         deliveryTerms: itemForm.deliveryTerms || undefined,
@@ -935,6 +867,8 @@ function PRContent() {
   const handleEditPR = async (prId: string) => {
     try {
       const data = await apiClient.get(`/purchase/requisitions/${prId}`);
+      resetItemEntry();
+      setEditingItemId(null);
 
       const toDateInputValue = (value: any): string => {
         const raw = String(value || '').trim();
@@ -952,7 +886,7 @@ function PRContent() {
         requiredDate: toDateInputValue(data.required_date ?? data.requiredDate),
         priority: data.priority || 'MEDIUM',
         deliveryAddress: data.delivery_address || data.deliveryAddress || '',
-        notes: data.notes || '',
+        notes: data.purpose || data.notes || '',
       });
 
       // Populate items (API may return purchase_requisition_items)
@@ -1463,10 +1397,7 @@ function PRContent() {
         toast.success(`Purchase Requisition ${status === 'DRAFT' ? 'saved as draft' : 'submitted'} successfully!`);
       }
       
-      setShowCreateForm(false);
-      setItems([]);
-      setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
-      setEditingPRId(null);
+      closeRequisitionForm();
       fetchRequisitions(); // Refresh the list
     } catch (error: any) {
       const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error';
@@ -1519,7 +1450,10 @@ function PRContent() {
           description="Create, approve, source, and convert internal purchase requirements."
           actions={canCreatePR ? (
             <ErpButton
-              onClick={() => setShowCreateForm(true)}
+              onClick={() => {
+                closeRequisitionForm();
+                setShowCreateForm(true);
+              }}
               variant="primary"
             >
               <Plus className="h-4 w-4" />
@@ -1540,23 +1474,13 @@ function PRContent() {
         {/* Create Form Slide Panel */}
         <SlidePanel
           open={showCreateForm}
-          onClose={() => {
-            setShowCreateForm(false);
-            setEditingPRId(null);
-            setItems([]);
-            setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
-          }}
+          onClose={closeRequisitionForm}
           title={editingPRId ? 'Edit Purchase Requisition' : 'New Purchase Requisition'}
           width="full"
           footer={
             <div className="flex justify-end gap-3 w-full">
               <ErpButton
-                onClick={() => {
-                  setShowCreateForm(false);
-                  setEditingPRId(null);
-                  setItems([]);
-                  setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
-                }}
+                onClick={closeRequisitionForm}
                 variant="secondary"
               >
                 Cancel
@@ -1578,9 +1502,9 @@ function PRContent() {
             </div>
           }
         >
-          <div className="space-y-6 pb-4">
+          <div className="space-y-4 pb-2">
                 {/* Basic Information */}
-                <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Required Date *
@@ -1598,21 +1522,18 @@ function PRContent() {
                       Delivery Address
                     </label>
                     <div className="space-y-2">
-                      <select
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        value=""
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            setFormData({ ...formData, deliveryAddress: e.target.value });
-                            e.target.value = '';
-                          }
-                        }}
-                      >
-                        <option value="">Select stored delivery address...</option>
-                        {deliveryAddresses.map((entry) => (
-                          <option key={entry.id} value={entry.address}>{entry.name}</option>
-                        ))}
-                      </select>
+                      <SearchableSelect
+                        value={deliveryAddresses.some((entry) => entry.address === formData.deliveryAddress) ? formData.deliveryAddress : ''}
+                        onChange={(address) => setFormData((prev) => ({ ...prev, deliveryAddress: address }))}
+                        options={deliveryAddresses.map((entry) => ({
+                          value: entry.address,
+                          label: entry.name,
+                          subtitle: entry.address,
+                        }))}
+                        placeholder="Search stored delivery addresses"
+                        truncateInput={false}
+                        showSubtitleInInput={false}
+                      />
                       <textarea
                         value={formData.deliveryAddress}
                         onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
@@ -1641,184 +1562,66 @@ function PRContent() {
                 </div>
 
                 {/* Items Section */}
-                <div className="mb-6">
-                  <h3 className="text-lg font-bold text-gray-900 mb-4">Items</h3>
-                  
-                  {/* Toggle between search and manual entry */}
-                  <div className="flex gap-2 mb-4">
-                    <button
-                      type="button"
-                      onClick={() => setUseManualEntry(false)}
-                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                        !useManualEntry
-                          ? 'bg-indigo-800 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      Search Existing Items
-                    </button>
-                  </div>
-                  
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-slate-900">Items</h3>
+
                   {/* Add Item Form */}
-                  <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                    <div className="grid grid-cols-6 gap-3 mb-3">
+                  <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
                       {/* Item Name/Search */}
-                      <div className="relative col-span-2" ref={dropdownRef}>
-                        {!useManualEntry ? (
-                          <>
-                            <div className="relative">
-                              <input
-                                type="text"
-                                value={searchTerm}
-                                onChange={(e) => {
-                                  setSearchTerm(e.target.value);
-                                  setShowDropdown(true);
-                                  setHighlightedItemIndex(0);
-                                  setSelectedItemId(null);
-                                  setItemForm((prev) => ({ ...prev, vendorId: '', vendorName: '' }));
-                                  setLastPurchasePrice(null);
-                                }}
-                                onFocus={() => setShowDropdown(true)}
-                                onKeyDown={handleItemSearchKeyDown}
-                                placeholder="Search items by name, code, UOM..."
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                                autoComplete="off"
-                              />
-                              {searchTerm && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSearchTerm('');
-                                    setSelectedItemId(null);
-                                    setHighlightedItemIndex(0);
-                                    setItemForm({ ...itemForm, estimatedPrice: '', vendorId: '', vendorName: '' });
-                                    setLastPurchasePrice(null);
-                                  }}
-                                  className="absolute right-2 top-2.5 text-gray-400 hover:text-gray-600"
-                                >
-                                  ✕
-                                </button>
-                              )}
-                            </div>
-                            {itemForm.vendorName ? (
-                              <div className="mt-1 text-xs text-gray-600">
-                                Preferred Vendor: <span className="font-medium text-gray-800">{itemForm.vendorName}</span>
-                              </div>
-                            ) : null}
-                            {showDropdown && (
-                              <div className="absolute left-0 z-50 mt-2 w-[42rem] max-w-[min(42rem,calc(100vw-8rem))] bg-white border border-gray-300 rounded-xl shadow-2xl max-h-[26rem] overflow-y-auto">
-                                {itemsLoadError ? (
-                                  <div className="px-4 py-6 text-center">
-                                    <div className="text-red-600 font-semibold mb-2">⚠️ {itemsLoadError}</div>
-                                    <button
-                                      type="button"
-                                      onClick={() => window.location.href = '/login'}
-                                      className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm"
-                                    >
-                                      Go to Login
-                                    </button>
-                                  </div>
-                                ) : !searchTerm.trim() ? (
-                                  <div className="px-5 py-6 text-sm text-gray-600">
-                                    Start typing to search products.
-                                    <div className="mt-1 text-xs text-gray-500">
-                                      Search by item name, SAS part number, or UOM.
-                                    </div>
-                                  </div>
-                                ) : !hasEnoughSearchText ? (
-                                  <div className="px-5 py-6 text-sm text-gray-600">
-                                    Type at least {PR_ITEM_SEARCH_MIN_CHARS} characters to search.
-                                  </div>
-                                ) : filteredItems.length > 0 ? (
-                                  <>
-                                    <div className="sticky top-0 bg-indigo-50 px-4 py-3 text-xs font-semibold text-indigo-900 border-b flex items-center justify-between gap-3">
-                                      <span>
-                                        Showing {filteredItems.length} result{filteredItems.length !== 1 ? 's' : ''}
-                                      </span>
-                                      <span className="text-[11px] font-medium text-indigo-800/80">
-                                        Search: {searchTerm.trim()}
-                                      </span>
-                                    </div>
-                                    {filteredItems.map((item, index) => (
-                                      <button
-                                        type="button"
-                                        key={item.id}
-                                        ref={(element) => {
-                                          itemResultRefs.current[index] = element;
-                                        }}
-                                        onClick={() => selectItem(item)}
-                                        onMouseEnter={() => setHighlightedItemIndex(index)}
-                                        className={`w-full text-left px-4 py-3 hover:bg-indigo-50 border-b last:border-b-0 transition-colors ${
-                                          selectedItemId === item.id || highlightedItemIndex === index ? 'bg-indigo-100' : ''
-                                        }`}
-                                      >
-                                        <div className="grid grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)_auto] gap-4 items-start">
-                                          <div className="min-w-0">
-                                            <div className="font-semibold text-gray-900 leading-5 break-words">{item.name}</div>
-                                            <div className="mt-1 text-xs text-gray-500">ID: {item.id}</div>
-                                          </div>
-                                          <div className="min-w-0 text-sm text-gray-600">
-                                            <div>
-                                              <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-xs font-medium">
-                                                {item.code}
-                                              </span>
-                                            </div>
-                                            <div className="mt-2 text-xs text-gray-500">UOM: {item.uom || '-'}</div>
-                                          </div>
-                                          <div className="text-right min-w-[5.5rem]">
-                                            <div className="text-[11px] uppercase tracking-wide text-gray-500">Std Cost</div>
-                                            <div className="font-semibold text-green-700">
-                                              {typeof item.standard_cost === 'number' ? `₹${item.standard_cost.toFixed(2)}` : '-'}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </button>
-                                    ))}
-                                    {filteredItems.length === PR_ITEM_SEARCH_RESULT_LIMIT ? (
-                                      <div className="px-4 py-2 text-xs text-gray-500 bg-gray-50 border-t">
-                                        Refine the search to narrow down more than {PR_ITEM_SEARCH_RESULT_LIMIT} matching products.
-                                      </div>
-                                    ) : null}
-                                  </>
-                                ) : (
-                                  <div className="px-4 py-8 text-center text-gray-500">
-                                    <div className="text-4xl mb-2">🔍</div>
-                                    <div className="font-medium">No items found</div>
-                                    <div className="text-sm mt-1">Try a different search term</div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <input
-                            type="text"
-                            value={itemForm.itemName}
-                            onChange={(e) => setItemForm({ ...itemForm, itemName: e.target.value })}
-                            placeholder="Item Name *"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                          />
-                        )}
+                      <div className="xl:col-span-4">
+                        <SearchableSelect
+                          value={selectedItemId || ''}
+                          onChange={(itemId) => {
+                            setItemEntryError('');
+                            const item = masterItems.find((candidate) => candidate.id === itemId);
+                            if (item) void selectItem(item);
+                          }}
+                          options={masterItems.map((item) => ({
+                            value: item.id,
+                            label: `${item.code} - ${item.name}`,
+                            subtitle: `UOM: ${item.uom || '-'}${typeof item.standard_cost === 'number' ? ` | Standard cost: ${item.standard_cost.toFixed(2)}` : ''}`,
+                          }))}
+                          placeholder={itemsLoadError || 'Search item code, name, or UOM'}
+                          disabled={Boolean(itemsLoadError)}
+                          truncateInput={false}
+                          minSearchChars={2}
+                          maxResults={75}
+                          showSubtitleInInput={false}
+                          dropdownClassName="max-h-80"
+                        />
+                        {itemForm.vendorName ? (
+                          <p className="mt-1 text-xs text-slate-600">
+                            Preferred vendor: <span className="font-medium text-slate-800">{itemForm.vendorName}</span>
+                          </p>
+                        ) : null}
                       </div>
                       <input
                         type="number"
+                        min="0.0001"
+                        step="any"
                         value={itemForm.quantity}
-                        onChange={(e) => setItemForm({ ...itemForm, quantity: e.target.value })}
+                        onChange={(e) => {
+                          setItemEntryError('');
+                          setItemForm({ ...itemForm, quantity: e.target.value });
+                        }}
                         placeholder="Quantity *"
-                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        className="border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-indigo-500 xl:col-span-2"
                       />
                       <input
                         type="text"
                         value={itemForm.uom || ''}
                         onChange={(e) => setItemForm({ ...itemForm, uom: e.target.value })}
                         placeholder="UOM"
-                        readOnly={!useManualEntry}
-                        className={`px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 ${!useManualEntry ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                        title={!useManualEntry ? 'UOM is auto-filled from master item' : 'Enter unit of measurement (e.g., PCS, KG, MTR)'}
+                        readOnly
+                        className="cursor-not-allowed border border-gray-300 bg-gray-100 px-3 py-2 focus:ring-2 focus:ring-indigo-500 xl:col-span-2"
+                        title="UOM is filled from the selected master item"
                       />
-                      <div>
+                      <div className="xl:col-span-2">
                         <input
                           type="number"
+                          min="0"
+                          step="any"
                           value={itemForm.estimatedPrice}
                           onChange={(e) => setItemForm({ ...itemForm, estimatedPrice: e.target.value })}
                           placeholder="Est. Unit Price"
@@ -1832,38 +1635,43 @@ function PRContent() {
                         )}
                       </div>
                       {editingItemId ? (
-                        <div className="flex gap-2">
-                          <button
+                        <div className="flex gap-2 xl:col-span-2">
+                          <ErpButton
                             type="button"
                             onClick={updateItem}
-                            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                            variant="approve"
+                            className="flex-1"
                           >
                             Update
-                          </button>
-                          <button
+                          </ErpButton>
+                          <ErpButton
                             type="button"
                             onClick={cancelEdit}
-                            className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"
+                            variant="secondary"
                           >
                             Cancel
-                          </button>
+                          </ErpButton>
                         </div>
                       ) : (
-                        <button
+                        <ErpButton
                           type="button"
                           onClick={addItem}
-                          className="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-900 transition-colors"
+                          variant="primary"
+                          className="xl:col-span-2"
                         >
-                          + Add
-                        </button>
+                          <Plus className="h-4 w-4" /> Add Item
+                        </ErpButton>
                       )}
                     </div>
-                    <input
-                      type="text"
+                    {itemEntryError ? (
+                      <p role="alert" className="mb-3 text-sm font-medium text-red-700">{itemEntryError}</p>
+                    ) : null}
+                    <textarea
                       value={itemForm.specifications}
                       onChange={(e) => setItemForm({ ...itemForm, specifications: e.target.value })}
                       placeholder="Specifications / Notes"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      rows={2}
+                      className="w-full resize-y rounded-md border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-indigo-500"
                     />
 
                     <div className="grid grid-cols-2 gap-3 mt-3">
@@ -1907,10 +1715,9 @@ function PRContent() {
                                 <div className="font-medium text-gray-900">{item.itemName}</div>
                               </td>
                               <td className="px-4 py-2">
-                                <select
+                                <SearchableSelect
                                   value={item.vendorId || ''}
-                                  onChange={(e) => {
-                                    const vendorId = e.target.value;
+                                  onChange={(vendorId) => {
                                     const vendor = rfqVendors.find((v) => v.id === vendorId);
                                     setItems((prev) =>
                                       prev.map((it) =>
@@ -1924,15 +1731,18 @@ function PRContent() {
                                       ),
                                     );
                                   }}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                                >
-                                  <option value="">Select Vendor</option>
-                                  {rfqVendors.map((vendor) => (
-                                    <option key={vendor.id} value={vendor.id}>
-                                      {vendor.name}
-                                    </option>
-                                  ))}
-                                </select>
+                                  options={[
+                                    { value: '', label: 'No vendor assigned' },
+                                    ...rfqVendors.map((vendor) => ({
+                                      value: vendor.id,
+                                      label: vendor.name,
+                                      subtitle: vendor.code || vendor.email,
+                                    })),
+                                  ]}
+                                  placeholder="Search vendors"
+                                  className="min-w-52"
+                                  showSubtitleInInput={false}
+                                />
                               </td>
                               <td className="px-4 py-2">
                                 {item.quantity}
@@ -1946,6 +1756,9 @@ function PRContent() {
                                 {item.estimatedPrice ? `₹${item.estimatedPrice.toFixed(2)}` : '-'}
                               </td>
                               <td className="px-4 py-2 text-sm text-gray-600">
+                                {item.deliveryTerms || '-'}
+                              </td>
+                              <td className="whitespace-pre-wrap px-4 py-2 text-sm text-gray-600">
                                 {item.specifications || '-'}
                               </td>
                               <td className="px-4 py-2">
@@ -1970,17 +1783,6 @@ function PRContent() {
                           ))}
                         </tbody>
                       </table>
-                      {items.length > 0 && (
-                        <div className="mt-4 flex justify-center">
-                          <button
-                            type="button"
-                            onClick={resetItemEntry}
-                            className="px-6 py-2 text-indigo-600 hover:text-indigo-800 font-medium border-2 border-dashed border-indigo-300 hover:border-indigo-500 rounded-lg transition-colors"
-                          >
-                            + Add Another Item
-                          </button>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>

@@ -19,6 +19,9 @@ interface SearchableSelectProps {
   truncateInput?: boolean;
   required?: boolean;
   disabled?: boolean;
+  minSearchChars?: number;
+  maxResults?: number;
+  showSubtitleInInput?: boolean;
 }
 
 export default function SearchableSelect({
@@ -31,6 +34,9 @@ export default function SearchableSelect({
   truncateInput = true,
   required = false,
   disabled = false,
+  minSearchChars = 0,
+  maxResults,
+  showSubtitleInInput = true,
 }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -54,16 +60,22 @@ export default function SearchableSelect({
 
   const selectedOption = options.find((opt) => opt.value === value);
   const displayValue = selectedOption
-    ? `${selectedOption.label}${selectedOption.subtitle ? ` - ${selectedOption.subtitle}` : ''}`
+    ? `${selectedOption.label}${showSubtitleInInput && selectedOption.subtitle ? ` - ${selectedOption.subtitle}` : ''}`
     : '';
 
-  const filteredOptions = options.filter((option) => {
-    if (!searchTerm) return true; // Show all options when no search term
-    return (
-      option.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      option.subtitle?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  });
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const hasEnoughSearchText = normalizedSearchTerm.length >= minSearchChars;
+  const matchingOptions = hasEnoughSearchText
+    ? options
+        .filter((option) => (
+          !normalizedSearchTerm ||
+          option.label.toLowerCase().includes(normalizedSearchTerm) ||
+          option.subtitle?.toLowerCase().includes(normalizedSearchTerm)
+        ))
+    : [];
+  const filteredOptions = typeof maxResults === 'number'
+    ? matchingOptions.slice(0, maxResults)
+    : matchingOptions;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -184,8 +196,12 @@ export default function SearchableSelect({
           style={{ top: dropdownPos.top + 2, left: dropdownPos.left, width: dropdownPos.width }}
           onMouseDown={(e) => e.preventDefault()}
         >
-          {filteredOptions.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-slate-500">No items found</div>
+          {!hasEnoughSearchText ? (
+            <div className="px-3 py-3 text-sm text-slate-500">
+              Type at least {minSearchChars} characters to search
+            </div>
+          ) : filteredOptions.length === 0 ? (
+            <div className="px-3 py-3 text-sm text-slate-500">No matching options</div>
           ) : (
             filteredOptions.map((option, index) => (
               <div
