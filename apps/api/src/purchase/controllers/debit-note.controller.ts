@@ -73,6 +73,11 @@ export class DebitNoteController {
     return this.debitNoteService.getGrnsWithPaymentStatus(tenantId, query);
   }
 
+  @Get('po/:poId/settlement')
+  async getPoSettlement(@Req() req: any, @Param('poId') poId: string) {
+    return this.debitNoteService.getPoSettlement(req.user.tenantId, poId);
+  }
+
   // Legacy endpoints (keep for backward compatibility)
   @Get('po-advances')
   async getAllAdvancePayments(@Req() req: any) {

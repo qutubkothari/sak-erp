@@ -1779,13 +1779,16 @@ function PurchaseOrdersContent() {
       setTrailPO(po);
       
       // Fetch related data in parallel
-      const [grnsData, advancesData, vendorBalanceData] = await Promise.all([
+      const [grnsData, poSettlementData, vendorBalanceData] = await Promise.all([
         apiClient.get<any[]>(`/purchase/grn?poId=${po.id}`).catch(() => []),
-        apiClient.get<any[]>(`/purchase/debit-notes/advances?po_id=${po.id}`).catch(() => []),
+        apiClient.get<any>(`/purchase/debit-notes/po/${po.id}/settlement`).catch(() => null),
         po.vendor?.id ? apiClient.get<any>(`/purchase/debit-notes/vendor/${po.vendor.id}/advance-balance`).catch(() => null) : Promise.resolve(null),
       ]);
 
-      const poAdvances = advancesData || [];
+      const poAdvances = poSettlementData?.advances || [];
+      const settlementByGrn = new Map(
+        (poSettlementData?.invoices || []).map((invoice: any) => [invoice.grn_id, invoice]),
+      );
       const grnIds = (grnsData || []).map((grn: any) => grn.id).filter(Boolean);
       const debitNotesData = po.vendor?.id
         ? await apiClient.get<any[]>(`/purchase/debit-notes?vendor_id=${po.vendor.id}`).catch(() => [])
@@ -1796,10 +1799,12 @@ function PurchaseOrdersContent() {
       const grnsWithPayments = await Promise.all(
         (grnsData || []).map(async (grn: any) => {
           try {
-            const paymentEntries = await apiClient.get<any[]>(`/purchase/debit-notes/grn/${grn.id}/payment-entries`).catch(() => []);
+            const authoritativeInvoice: any = settlementByGrn.get(grn.id);
+            const paymentEntries = authoritativeInvoice?.payment_entries
+              ?? await apiClient.get<any[]>(`/purchase/debit-notes/grn/${grn.id}/payment-entries`).catch(() => []);
             const normalizedEntries = Array.isArray(paymentEntries) ? [...paymentEntries] : [];
             const recordedEntryAmount = normalizedEntries.reduce((sum: number, entry: any) => sum + Number(entry.amount || 0), 0);
-            const aggregatePaidAmount = Number(grn.paid_amount || 0);
+            const aggregatePaidAmount = Number(authoritativeInvoice?.settlement?.cashPaid ?? grn.paid_amount ?? 0);
 
             // Older AP records stored settlement only on the GRN. Preserve that
             // history in the PO trail without duplicating newer payment entries.
@@ -1819,12 +1824,14 @@ function PurchaseOrdersContent() {
 
             const debitNotes = poDebitNotes.filter((note: any) => (note.grn_id || note.grn?.id) === grn.id);
             const netPayable = Number(grn.net_payable_amount ?? grn.gross_amount ?? 0);
-            const paidAmount = Number(grn.paid_amount || normalizedEntries.reduce((sum: number, entry: any) => sum + Number(entry.amount || 0), 0));
-            const tdsAmount = Number(grn.tds_amount || 0);
-            const shortAmount = Number(grn.short_payment_amount || 0);
+            const paidAmount = Number(authoritativeInvoice?.settlement?.cashPaid ?? grn.paid_amount ?? normalizedEntries.reduce((sum: number, entry: any) => sum + Number(entry.amount || 0), 0));
+            const tdsAmount = Number(authoritativeInvoice?.settlement?.tds ?? grn.tds_amount ?? 0);
+            const shortAmount = Number(authoritativeInvoice?.settlement?.shortPayment ?? grn.short_payment_amount ?? 0);
+            const advanceApplied = Number(authoritativeInvoice?.settlement?.advanceApplied || 0);
 
             return {
               ...grn,
+              payment_status: authoritativeInvoice?.settlement?.paymentStatus || grn.payment_status,
               payment_entries: normalizedEntries.sort((a: any, b: any) => new Date(a.payment_date || 0).getTime() - new Date(b.payment_date || 0).getTime()),
               debit_notes: debitNotes,
               settlement: {
@@ -1832,7 +1839,9 @@ function PurchaseOrdersContent() {
                 paid: paidAmount,
                 tds: tdsAmount,
                 short_payment: shortAmount,
-                outstanding: Math.max(0, netPayable - paidAmount - tdsAmount - shortAmount),
+                advance_applied: advanceApplied,
+                total_settled: Number(authoritativeInvoice?.settlement?.totalSettled ?? paidAmount + tdsAmount + shortAmount + advanceApplied),
+                outstanding: Number(authoritativeInvoice?.settlement?.outstanding ?? Math.max(0, netPayable - paidAmount - tdsAmount - shortAmount - advanceApplied)),
               },
             };
           } catch {
@@ -1841,12 +1850,13 @@ function PurchaseOrdersContent() {
         })
       );
 
-      const financialSummary = grnsWithPayments.reduce((summary: any, grn: any) => {
+      const calculatedSummary = grnsWithPayments.reduce((summary: any, grn: any) => {
         const settlement = grn.settlement || {};
         summary.invoiced += Number(settlement.net_payable || 0);
         summary.paid += Number(settlement.paid || 0);
         summary.tds += Number(settlement.tds || 0);
         summary.shortPayment += Number(settlement.short_payment || 0);
+        summary.advanceApplied += Number(settlement.advance_applied || 0);
         summary.outstanding += Number(settlement.outstanding || 0);
         summary.paymentCount += grn.payment_entries?.length || 0;
         return summary;
@@ -1858,9 +1868,21 @@ function PurchaseOrdersContent() {
         shortPayment: 0,
         outstanding: 0,
         paymentCount: 0,
-        advancePaid: poAdvances.reduce((sum: number, advance: any) => sum + Number(advance.amount || 0), 0),
-        debitNotes: poDebitNotes.reduce((sum: number, note: any) => sum + Number(note.total_amount || 0), 0),
+        advanceApplied: 0,
       });
+      const authoritativeSummary = poSettlementData?.summary;
+      const financialSummary = {
+        ...calculatedSummary,
+        invoiced: Number(authoritativeSummary?.invoiced ?? calculatedSummary.invoiced),
+        paid: Number(authoritativeSummary?.cashPaid ?? calculatedSummary.paid),
+        tds: Number(authoritativeSummary?.tds ?? calculatedSummary.tds),
+        shortPayment: Number(authoritativeSummary?.shortPayment ?? calculatedSummary.shortPayment),
+        outstanding: Number(authoritativeSummary?.outstanding ?? calculatedSummary.outstanding),
+        advancePaid: Number(authoritativeSummary?.totalAdvance ?? poAdvances.reduce((sum: number, advance: any) => sum + Number(advance.amount || 0), 0)),
+        advanceApplied: Number(authoritativeSummary?.advanceApplied || 0),
+        advanceAvailable: Number(authoritativeSummary?.advanceAvailable || 0),
+        debitNotes: poDebitNotes.reduce((sum: number, note: any) => sum + Number(note.total_amount || 0), 0),
+      };
 
       setTrailData({
         po,
@@ -4791,12 +4813,14 @@ function PurchaseOrdersContent() {
                   {/* Financial reconciliation */}
                   <div className="border-l-4 border-[#8B6F47] pl-4">
                     <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[#5E4635]">Financial Reconciliation</h3>
-                    <div className="grid grid-cols-2 gap-px overflow-hidden rounded border border-[#E8DCC4] bg-[#E8DCC4] md:grid-cols-4 xl:grid-cols-7">
+                    <div className="grid grid-cols-2 gap-px overflow-hidden rounded border border-[#E8DCC4] bg-[#E8DCC4] md:grid-cols-4 xl:grid-cols-8">
                       {[
                         ['PO Value', trailData.financialSummary?.poValue],
                         ['Invoiced', trailData.financialSummary?.invoiced],
                         ['Supplier Payments', trailData.financialSummary?.paid],
-                        ['Advances', trailData.financialSummary?.advancePaid],
+                        ['Advance Paid', trailData.financialSummary?.advancePaid],
+                        ['Advance Applied', trailData.financialSummary?.advanceApplied],
+                        ['Advance Available', trailData.financialSummary?.advanceAvailable],
                         ['Debit Notes', trailData.financialSummary?.debitNotes],
                         ['TDS / Short Pay', Number(trailData.financialSummary?.tds || 0) + Number(trailData.financialSummary?.shortPayment || 0)],
                         ['Outstanding', trailData.financialSummary?.outstanding],
@@ -4945,13 +4969,14 @@ function PurchaseOrdersContent() {
                                 </span>
                               </div>
 
-                              <div className="grid grid-cols-2 gap-4 px-4 py-3 text-sm md:grid-cols-4 xl:grid-cols-7">
+                              <div className="grid grid-cols-2 gap-4 px-4 py-3 text-sm md:grid-cols-4 xl:grid-cols-8">
                                 <div><span className="text-xs text-gray-500">Invoice Date</span><p className="font-medium">{fmtDate(grn.invoice_date)}</p></div>
                                 <div><span className="text-xs text-gray-500">Gross</span><p className="font-medium">₹{fmtINR(Number(grn.gross_amount || 0))}</p></div>
                                 <div><span className="text-xs text-gray-500">Tax</span><p className="font-medium">₹{fmtINR(Number(grn.tax_amount || 0))}</p></div>
                                 <div><span className="text-xs text-gray-500">Debit Notes</span><p className="font-medium">₹{fmtINR(Number(grn.debit_note_amount || 0))}</p></div>
                                 <div><span className="text-xs text-gray-500">Net Payable</span><p className="font-semibold">₹{fmtINR(Number(settlement.net_payable || 0))}</p></div>
-                                <div><span className="text-xs text-gray-500">Settled</span><p className="font-semibold text-emerald-700">₹{fmtINR(Number(settlement.paid || 0) + Number(settlement.tds || 0) + Number(settlement.short_payment || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Advance Applied</span><p className="font-semibold text-[#8B6F47]">₹{fmtINR(Number(settlement.advance_applied || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Total Settled</span><p className="font-semibold text-emerald-700">₹{fmtINR(Number(settlement.total_settled || 0))}</p></div>
                                 <div><span className="text-xs text-gray-500">Outstanding</span><p className="font-bold text-amber-700">₹{fmtINR(Number(settlement.outstanding || 0))}</p></div>
                               </div>
 

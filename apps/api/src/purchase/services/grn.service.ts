@@ -5,6 +5,7 @@ import { normalizeInventoryCategory } from '../../inventory/utils/inventory-cate
 import { mkdir, writeFile, unlink } from 'fs/promises';
 import { extname, join, resolve } from 'path';
 import { randomUUID } from 'crypto';
+import { allocatePoSettlement } from '../utils/po-settlement';
 
 @Injectable()
 export class GrnService {
@@ -920,8 +921,9 @@ export class GrnService {
    *
    * Rules:
    *   advance >= net_payable  → payment_status = PAID, auto-approve invoice (no approval queue)
-   *   0 < advance < net_payable → payment_status = PARTIAL, paid_amount = advance,
-   *                               balance remains unapproved (goes to Supplier Invoices for approval)
+   *   0 < advance < net_payable → payment_status = PARTIAL; the remaining balance
+   *                               stays in Supplier Invoices for approval
+   *   PO advances are allocated oldest-invoice-first and never stored as cash paid.
    *   no advance              → no change (payment_status stays DUE)
    */
   private async applyPoAdvanceToGrn(tenantId: string, grnId: string) {
@@ -937,31 +939,74 @@ export class GrnService {
     const netPayable = this.toNumber(grn.net_payable_amount);
     if (netPayable <= 0) return;
 
-    // Sum balance_amount across all advance records for this PO
-    const { data: advances } = await this.supabase
+    const [{ data: advances }, { data: poGrns }] = await Promise.all([
+      this.supabase
       .from('po_advance_payments')
-      .select('amount, balance_amount')
+      .select('amount')
       .eq('po_id', grn.po_id)
-      .eq('tenant_id', tenantId);
+      .eq('tenant_id', tenantId),
+      this.supabase
+        .from('grns')
+        .select('id, invoice_date, receipt_date, created_at, net_payable_amount, gross_amount, paid_amount, tds_amount, short_payment_amount, payment_method, payment_reference')
+        .eq('po_id', grn.po_id)
+        .eq('tenant_id', tenantId),
+    ]);
 
-    const totalAdvanceBalance = (advances || []).reduce(
-      (sum: number, a: any) => sum + this.toNumber(a.balance_amount ?? a.amount),
+    const totalAdvance = (advances || []).reduce(
+      (sum: number, advance: any) => sum + this.toNumber(advance.amount),
       0,
     );
 
-    if (totalAdvanceBalance <= 0) return;
+    if (totalAdvance <= 0) return;
 
-    const advanceApplied = Math.min(totalAdvanceBalance, netPayable);
+    const grnIds = (poGrns || []).map((invoice: any) => invoice.id);
+    const { data: paymentEntries } = grnIds.length > 0
+      ? await this.supabase
+        .from('grn_payment_entries')
+        .select('grn_id, amount, tds_amount, short_payment_amount')
+        .eq('tenant_id', tenantId)
+        .in('grn_id', grnIds)
+      : { data: [] };
+    const entriesByGrn = new Map<string, any[]>();
+    for (const entry of paymentEntries || []) {
+      const entries = entriesByGrn.get(entry.grn_id) || [];
+      entries.push(entry);
+      entriesByGrn.set(entry.grn_id, entries);
+    }
+
+    const settlement = allocatePoSettlement((poGrns || []).map((invoice: any) => {
+      const entries = entriesByGrn.get(invoice.id) || [];
+      const hasCashEvidence = entries.length > 0 || Boolean(invoice.payment_method || invoice.payment_reference);
+      return {
+        id: invoice.id,
+        date: invoice.invoice_date || invoice.receipt_date || invoice.created_at,
+        netPayable: this.toNumber(invoice.net_payable_amount ?? invoice.gross_amount),
+        cashPaid: entries.length > 0
+          ? entries.reduce((sum: number, entry: any) => sum + this.toNumber(entry.amount), 0)
+          : hasCashEvidence
+            ? this.toNumber(invoice.paid_amount)
+            : 0,
+        tds: entries.length > 0
+          ? entries.reduce((sum: number, entry: any) => sum + this.toNumber(entry.tds_amount), 0)
+          : this.toNumber(invoice.tds_amount),
+        shortPayment: entries.length > 0
+          ? entries.reduce((sum: number, entry: any) => sum + this.toNumber(entry.short_payment_amount), 0)
+          : this.toNumber(invoice.short_payment_amount),
+      };
+    }), totalAdvance);
+    const currentSettlement = settlement.invoices.find((invoice) => invoice.id === grnId);
+    if (!currentSettlement || currentSettlement.advanceApplied <= 0) return;
+
+    const advanceApplied = currentSettlement.advanceApplied;
     const isFullyCovered = advanceApplied >= netPayable - 0.009;
-    const paymentStatus = isFullyCovered ? 'PAID' : 'PARTIAL';
+    const paymentStatus = currentSettlement.paymentStatus;
 
     console.log(
       `[applyPoAdvanceToGrn] GRN ${grnId}: netPayable=${netPayable}, ` +
-      `advanceBalance=${totalAdvanceBalance}, applied=${advanceApplied}, status=${paymentStatus}`,
+      `advancePool=${totalAdvance}, applied=${advanceApplied}, status=${paymentStatus}`,
     );
 
     const updates: any = {
-      paid_amount: advanceApplied,
       payment_status: paymentStatus,
       updated_at: new Date().toISOString(),
     };
