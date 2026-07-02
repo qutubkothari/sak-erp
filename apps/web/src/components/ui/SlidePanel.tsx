@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -60,12 +61,14 @@ export function SlidePanel({
     return () => window.removeEventListener('keydown', handler);
   }, [open, onClose]);
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
         className={cn(
-          'fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm transition-opacity duration-300',
+          'fixed inset-0 z-[1000] bg-black/40 backdrop-blur-sm transition-opacity duration-300',
           open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
         )}
         onClick={onClose}
@@ -78,7 +81,7 @@ export function SlidePanel({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          'fixed right-0 top-0 z-[110] h-full w-full bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-in-out',
+          'fixed right-0 top-0 z-[1010] flex h-[100dvh] w-full flex-col bg-white shadow-2xl transition-transform duration-300 ease-in-out',
           widthMap[width],
           open ? 'translate-x-0' : 'translate-x-full',
         )}
@@ -108,6 +111,7 @@ export function SlidePanel({
           </div>
         )}
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
