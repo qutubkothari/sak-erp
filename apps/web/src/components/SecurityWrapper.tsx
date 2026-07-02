@@ -25,11 +25,8 @@ export function SecurityWrapper({ children }: { children: React.ReactNode }) {
   const [isSecurityEnabled, setIsSecurityEnabled] = useState(false);
 
   useEffect(() => {
-    const hostname = window.location.hostname;
-    // Enable security ONLY on test environment and localhost
-    if (hostname.includes('test') || hostname === 'localhost' || hostname === '127.0.0.1') {
-      setIsSecurityEnabled(true);
-    }
+    // Disabled security features globally per user request
+    setIsSecurityEnabled(false);
   }, []);
 
   // Get user info for watermark (name may come from various fields)
