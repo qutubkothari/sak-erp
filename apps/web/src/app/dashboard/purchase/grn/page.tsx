@@ -11,7 +11,7 @@ import DateInput from '../../../../components/ui/DateInput';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { useEscapeKey } from '../../../../hooks/useEscapeKey';
 import { ErpButton, ErpMetricStrip, ErpPageHeader, ErpStatusBadge } from '../../../../components/ui/ErpPrimitives';
-import { FileText, Plus, Search, X, ChevronDown } from 'lucide-react';
+import { Eye, FileText, Pencil, Plus, Printer, Search, X, ChevronDown } from 'lucide-react';
 
 interface SearchableSelectOption {
   value: string;
@@ -2135,30 +2135,46 @@ function GRNContent() {
   const grnTableColumns: Array<ListTableColumn<GRN>> = [
     {
       id: 'created_at',
-      label: 'Created Date',
+      label: 'Created',
       accessor: (grn) => grn.created_at || '',
-      cell: (grn) => grn.created_at ? new Date(grn.created_at).toLocaleString('en-IN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-',
+      minWidth: 126,
+      cellClassName: 'whitespace-nowrap text-[#5E4635]',
+      cell: (grn) => grn.created_at ? new Date(grn.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-',
     },
     {
       id: 'grn_number',
-      label: 'GRN Number',
-      accessor: (g) => g.grn_number,
-      cell: (g) => <span className="font-medium text-gray-900">{g.grn_number}</span>,
+      label: 'GRN / PO',
+      accessor: (g) => `${g.grn_number} ${g.purchase_order?.po_number || ''}`,
+      minWidth: 188,
+      cell: (g) => (
+        <div className="min-w-0">
+          <div className="truncate font-semibold text-[#2F241D]" title={g.grn_number}>{g.grn_number}</div>
+          <div className="truncate text-xs text-[#7A6555]" title={g.purchase_order?.po_number || ''}>
+            PO: {g.purchase_order?.po_number || '-'}
+          </div>
+        </div>
+      ),
     },
     {
       id: 'po_number',
       label: 'PO Number',
       accessor: (g) => g.purchase_order?.po_number || '-',
+      defaultVisible: false,
     },
     {
       id: 'vendor',
-      label: 'Vendor',
+      label: 'Supplier',
       accessor: (g) => g.vendor?.name || '',
       searchAccessor: (g) => `${g.vendor?.name || ''} ${g.vendor?.code || ''}`.trim(),
+      minWidth: 260,
       cell: (g) => (
-        <div>
-          <div className="text-sm font-medium text-gray-900">{g.vendor?.name || '-'}</div>
-          <div className="text-xs text-gray-500">{g.vendor?.code || ''}</div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-[#2F241D]" title={g.vendor?.name || '-'}>
+            {g.vendor?.name || '-'}
+          </div>
+          <div className="truncate text-xs uppercase text-[#7A6555]" title={g.vendor?.code || ''}>
+            {g.vendor?.code || ''}
+          </div>
         </div>
       ),
     },
@@ -2172,22 +2188,25 @@ function GRNContent() {
         const time = new Date(receiptDate).getTime();
         return Number.isNaN(time) ? 0 : time;
       },
-      cell: (g) => <span className="text-sm text-gray-600">{formatDateOnly(getGrnReceiptDate(g))}</span>,
+      minWidth: 112,
+      cellClassName: 'whitespace-nowrap',
+      cell: (g) => <span className="text-sm text-[#5E4635]">{formatDateOnly(getGrnReceiptDate(g))}</span>,
     },
     {
       id: 'invoice',
       label: 'Invoice',
       accessor: (g) => g.invoice_number || '',
       searchAccessor: (g) => `${g.invoice_number || ''} ${g.invoice_date || ''}`.trim(),
+      minWidth: 180,
       cell: (g) => (
-        <div className="text-sm text-gray-600 whitespace-nowrap">
-          <div>{g.invoice_number || '-'}</div>
-          {g.invoice_date && <div className="text-xs text-gray-400">{new Date(g.invoice_date).toLocaleDateString()}</div>}
+        <div className="min-w-0 text-sm text-[#5E4635]">
+          <div className="truncate font-medium text-[#2F241D]" title={g.invoice_number || '-'}>{g.invoice_number || '-'}</div>
+          {g.invoice_date && <div className="text-xs text-[#7A6555]">{new Date(g.invoice_date).toLocaleDateString('en-IN')}</div>}
           {g.invoice_file_url && (
             <button
               type="button"
               onClick={() => handleViewInvoice(g.invoice_file_url!, g.invoice_file_name)}
-              className="text-xs text-blue-600 hover:text-blue-800 underline cursor-pointer"
+              className="text-xs font-medium text-[#8B6F47] hover:text-[#4A3426] hover:underline"
             >
               View Invoice
             </button>
@@ -2199,12 +2218,15 @@ function GRNContent() {
       id: 'warehouse',
       label: 'Warehouse',
       accessor: (g) => g.warehouse?.name || '-',
+      defaultVisible: false,
+      minWidth: 160,
     },
     {
       id: 'items_uids',
-      label: 'Items / UIDs',
+      label: 'Receiving / QC',
       sortable: false,
       accessor: (g) => (Array.isArray(g.grn_items) ? g.grn_items.length : 0),
+      minWidth: 220,
       cell: (g) => {
         const items: any[] = Array.isArray(g.grn_items) ? (g.grn_items as any[]) : [];
         const accepted = items.reduce((sum, item) => sum + (Number(item.accepted_qty || item.accepted_quantity) || 0), 0);
@@ -2218,21 +2240,21 @@ function GRNContent() {
         });
 
         return (
-          <div className="text-sm text-gray-600">
-            <div className="font-medium">{items.length} items</div>
-            <div className="text-xs text-gray-400">
-              Accepted: {accepted}
-              {rejected > 0 && <span className="text-red-600 ml-2">Rejected: {rejected}</span>}
+          <div className="min-w-0 text-sm text-[#5E4635]">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="font-semibold text-[#2F241D]">{items.length} items</span>
+              <span className="text-xs">Accepted {accepted}</span>
+              {rejected > 0 && <span className="text-xs font-medium text-red-700">Rejected {rejected}</span>}
             </div>
             {hasUids ? (
-              <div className="mt-1">
+              <div className="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5">
                 <span className="text-xs text-green-600 font-medium">✓ {uidTotal} UIDs</span>
-                <div className="text-[11px] text-gray-400">
+                <div className="hidden">
                   UIDs are generated only for UID-tracked items (batched items may generate fewer UIDs than accepted qty).
                 </div>
               </div>
             ) : hasUidTrackedWithAccepted ? (
-              <div className="text-xs text-amber-500 mt-1">⚠️ UIDs pending</div>
+              <div className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">UIDs pending</div>
             ) : null}
           </div>
         );
@@ -2242,6 +2264,7 @@ function GRNContent() {
       id: 'status',
       label: 'Status',
       accessor: (g) => g.status,
+      minWidth: 120,
       cell: (g) => <ErpStatusBadge status={g.status} />,
       align: 'center',
     },
@@ -2251,8 +2274,9 @@ function GRNContent() {
       sortable: false,
       hideable: false,
       align: 'right',
+      minWidth: 220,
       cell: (grn) => (
-        <div className="whitespace-nowrap text-sm">
+        <div className="flex flex-wrap justify-end gap-1.5 text-sm">
           <button
             type="button"
             onClick={async () => {
@@ -2272,8 +2296,9 @@ function GRNContent() {
               setShowViewModal(true);
               setEditMode(false);
             }}
-            className="text-amber-600 hover:text-amber-900 mr-3 font-medium"
+            className="inline-flex min-h-8 items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2.5 text-xs font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
           >
+            <Eye className="h-3.5 w-3.5" />
             View
           </button>
 
@@ -2283,18 +2308,19 @@ function GRNContent() {
               onClick={() => {
                 fetchGRNUIDs(grn.id);
               }}
-              className="text-green-600 hover:text-green-900 mr-3 font-medium"
+              className="inline-flex min-h-8 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
             >
-              🔍 UIDs
+              UIDs
             </button>
           )}
 
           <button
             type="button"
             onClick={() => printGRN(grn)}
-            className="text-indigo-600 hover:text-indigo-900 mr-3 font-medium"
+            className="inline-flex min-h-8 items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2.5 text-xs font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
           >
-            🖨 Print
+            <Printer className="h-3.5 w-3.5" />
+            Print
           </button>
 
           {canEditGRN && (
@@ -2386,8 +2412,9 @@ function GRNContent() {
               setShowViewModal(true);
               setEditMode(true);
               }}
-              className="text-blue-600 hover:text-blue-900"
+              className="inline-flex min-h-8 items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2.5 text-xs font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
+              <Pencil className="h-3.5 w-3.5" />
               Edit
             </button>
           )}
@@ -2437,15 +2464,14 @@ function GRNContent() {
           </div>
         ) : (
           <ListTable
-            storageKey="grnTable"
+            storageKey="grnTable:v2"
             rows={visibleGrns}
             columns={grnTableColumns}
             getRowId={(g) => g.id}
-            defaultPageSize={10}
+            defaultPageSize={25}
             pageSizeOptions={[10, 25, 50, 100]}
             initialSearch={initialGrnSearch}
             searchPlaceholder="Search by GRN number, PO number, vendor, invoice…"
-            fitToContainer={false}
             toolbarRight={
               <select
                 value={filterStatus}
