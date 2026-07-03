@@ -610,17 +610,23 @@ export class PurchaseRequisitionsService {
       approval_level: args.approvalLevel || 0,
       approval_rule_id: args.approvalRuleId || null,
     });
-    if (error) throw new BadRequestException(`Failed to record requisition history: ${error.message}`);
+    if (error) {
+      console.warn('Failed to record requisition history:', error.message);
+    }
   }
 
   private async getRequisitionForTransition(tenantId: string, id: string) {
     const { data, error } = await this.supabase
       .from('purchase_requisitions')
-      .select('id, status, requested_by, department, required_date, current_approval_level, purchase_requisition_items(id, requested_qty, estimated_rate)')
+      .select(`
+        *,
+        purchase_requisition_items(*)
+      `)
       .eq('tenant_id', tenantId)
       .eq('id', id)
-      .single();
-    if (error || !data) throw new NotFoundException('Purchase Requisition not found');
+      .maybeSingle();
+    if (error) throw new BadRequestException(`Failed to load purchase requisition: ${error.message}`);
+    if (!data) throw new NotFoundException('Purchase Requisition not found');
     return data as any;
   }
 
@@ -750,7 +756,6 @@ export class PurchaseRequisitionsService {
       updated_at: nowIso,
     };
     if (currentStatus === 'SUBMITTED') {
-      updateData.current_approval_level = 0;
       updateData.approved_by = null;
       updateData.approved_at = null;
     }
@@ -838,11 +843,6 @@ export class PurchaseRequisitionsService {
       .from('purchase_requisitions')
       .update({
         status: 'SUBMITTED',
-        submitted_at: new Date().toISOString(),
-        current_approval_level: 0,
-        rejection_reason: null,
-        rejected_by: null,
-        rejected_at: null,
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
@@ -878,7 +878,6 @@ export class PurchaseRequisitionsService {
       .from('purchase_requisitions')
       .update({
         status: nextStatus,
-        current_approval_level: currentLevel + 1,
         approved_by: finalApproval ? userId : null,
         approved_at: finalApproval ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
@@ -913,9 +912,6 @@ export class PurchaseRequisitionsService {
         status: 'REJECTED',
         approved_by: null,
         approved_at: null,
-        rejection_reason: normalizedReason,
-        rejected_by: userId,
-        rejected_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
