@@ -278,6 +278,16 @@ export function ListTable<T>(props: ListTableProps<T>) {
     return Math.max(perColumnWidth, tableMinWidth, 720);
   }, [getColumnWidth, selectable, tableMinWidth, visibleColumns]);
 
+  const getPinnedColumnOffset = useCallback(
+    (columnIndex: number) => {
+      const selectableWidth = selectable ? 44 : 0;
+      return visibleColumns
+        .slice(0, columnIndex)
+        .reduce((total, col) => total + getColumnWidth(col), selectableWidth);
+    },
+    [getColumnWidth, selectable, visibleColumns],
+  );
+
   const filteredRows = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     if (!q) return rows;
@@ -716,7 +726,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
               {selectable && (
                 <th
                   style={{ width: '44px', minWidth: '44px', maxWidth: '44px' }}
-                  className={`${fitToContainer ? 'sticky top-0' : 'sticky left-0 top-0'} z-30 bg-[#FAF9F6] px-3 py-3 text-center shadow-[1px_0_0_#E8DCC4]`}
+                  className={`${fitToContainer ? 'sticky top-0' : 'sticky left-0 top-0'} z-40 bg-[#FAF9F6] px-3 py-3 text-center shadow-[1px_0_0_#E8DCC4]`}
                 >
                   <input
                     type="checkbox"
@@ -728,7 +738,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
                   />
                 </th>
               )}
-              {visibleColumns.map((col) => {
+              {visibleColumns.map((col, columnIndex) => {
                 const sortable = col.sortable ?? Boolean(col.sortAccessor || col.accessor);
                 const isSorted = sortId === col.id;
                 const align = col.align || 'left';
@@ -737,6 +747,8 @@ export function ListTable<T>(props: ListTableProps<T>) {
                 const width = getColumnWidth(col);
                 const resizable = col.resizable !== false;
                 const stickyActions = !fitToContainer && col.id === 'actions';
+                const pinnedLeft = !fitToContainer && columnIndex < 2;
+                const pinnedLeftOffset = pinnedLeft ? getPinnedColumnOffset(columnIndex) : undefined;
 
                 return (
                   <th
@@ -746,10 +758,11 @@ export function ListTable<T>(props: ListTableProps<T>) {
                       : {
                           width: `${width}px`,
                           minWidth: `${width}px`,
+                          ...(pinnedLeft ? { left: `${pinnedLeftOffset}px` } : {}),
                           ...(stickyActions ? { right: 0 } : {}),
                         }}
                     className={
-                      `relative sticky top-0 ${stickyActions ? 'z-30 bg-[#FAF9F6] shadow-[-1px_0_0_#E8DCC4]' : 'z-10 bg-transparent'} px-3 py-2 text-[11px] font-semibold uppercase text-[#6F4E37] ` +
+                      `relative sticky top-0 ${stickyActions ? 'z-30 bg-[#FAF9F6] shadow-[-1px_0_0_#E8DCC4]' : pinnedLeft ? 'z-30 bg-[#FAF9F6] shadow-[1px_0_0_#E8DCC4]' : 'z-10 bg-transparent'} px-3 py-2 text-[11px] font-semibold uppercase text-[#6F4E37] ` +
                       headerAlignClass +
                       ` ${sortable ? 'cursor-pointer hover:bg-[#F5EFE3] transition-colors' : ''} ` +
                       (col.headerClassName || '')
@@ -795,7 +808,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
                   {selectable && (
                     <td
                       style={{ width: '44px', minWidth: '44px', maxWidth: '44px' }}
-                      className={`${fitToContainer ? '' : 'sticky left-0 z-20 bg-white shadow-[1px_0_0_#E8DCC4] group-hover:bg-[#F5EFE3]'} px-3 py-2.5 text-center`}
+                      className={`${fitToContainer ? '' : 'sticky left-0 z-30 bg-white shadow-[1px_0_0_#E8DCC4] group-hover:bg-[#F5EFE3]'} px-3 py-2.5 text-center`}
                     >
                       <input
                         type="checkbox"
@@ -806,11 +819,13 @@ export function ListTable<T>(props: ListTableProps<T>) {
                       />
                     </td>
                   )}
-                  {visibleColumns.map((col) => {
+                  {visibleColumns.map((col, columnIndex) => {
                     const align = col.align || 'left';
                     const cellAlignClass =
                       align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
                     const stickyActions = !fitToContainer && col.id === 'actions';
+                    const pinnedLeft = !fitToContainer && columnIndex < 2;
+                    const pinnedLeftOffset = pinnedLeft ? getPinnedColumnOffset(columnIndex) : undefined;
 
                     return (
                       <td
@@ -820,9 +835,10 @@ export function ListTable<T>(props: ListTableProps<T>) {
                           : {
                               width: `${getColumnWidth(col)}px`,
                               minWidth: `${getColumnWidth(col)}px`,
+                              ...(pinnedLeft ? { left: `${pinnedLeftOffset}px` } : {}),
                               ...(stickyActions ? { right: 0 } : {}),
                             }}
-                        className={`min-w-0 px-3 py-2 text-[13px] leading-5 text-gray-700 align-middle ${stickyActions ? 'sticky z-20 bg-white shadow-[-1px_0_0_#E8DCC4] group-hover:bg-[#F5EFE3]' : ''} ${cellAlignClass} ${col.cellClassName || ''}`}
+                        className={`min-w-0 px-3 py-2 text-[13px] leading-5 text-gray-700 align-middle ${stickyActions ? 'sticky z-20 bg-white shadow-[-1px_0_0_#E8DCC4] group-hover:bg-[#F5EFE3]' : pinnedLeft ? 'sticky z-20 bg-white shadow-[1px_0_0_#E8DCC4] group-hover:bg-[#F5EFE3]' : ''} ${cellAlignClass} ${col.cellClassName || ''}`}
                       >
                         {col.cell ? col.cell(row) : normalizeForSearch(col.accessor ? col.accessor(row) : '')}
                       </td>
